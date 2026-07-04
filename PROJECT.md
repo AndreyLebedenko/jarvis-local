@@ -69,6 +69,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 - `backend.py` — Ollama adapter: streaming `/api/chat`, media via `images`,
   latency metrics on every call. Thin interface so the backend can be swapped
   (llama-server / LiteRT-LM) with one config line.
+- `audio_utils.py` — shared wav-encoding helper. No project-module
+  dependencies, used by both `audio_in.py` and `tts.py` so neither input
+  nor output depends on the other for it.
 - `audio_in.py` — microphone capture + silero-vad; end-of-utterance detection;
   chunks ≤ 30 s; publishes wav chunks to the bus.
 - `tts.py` — subscribes to response sentences; Silero TTS (Russian) for v1.0;
@@ -83,6 +86,12 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   starts: 2.0 s is a deliberately conservative value for the development
   stage; production is expected to tighten it to ~1.0-1.5 s once
   request-boundary behavior is validated (see task-04's audio_in.py).
+  Loading the Silero TTS model requires network on first use (like
+  `ollama pull` for the backend model) - a one-time setup step via
+  `setup_tts_model.py`, run once before the offline runtime starts; not
+  part of runtime behavior. tts.py's model loader checks the local cache
+  explicitly and raises a clear error instead of silently reaching for
+  the network if the one-time setup hasn't been run.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `main.py` — wiring + system prompt. System prompt must enforce SHORT

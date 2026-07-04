@@ -1,6 +1,6 @@
 # Task: Text-to-speech (tts.py)
 
-Status: Not started.
+Status: Completed.
 
 Story: [story-jarvis-v1.0.md](story-jarvis-v1.0.md)
 
@@ -42,7 +42,9 @@ Out of scope:
 
 `bus.py` (task-01), `config.py` (task-02, for voice/rate settings),
 `backend.py` (task-03, as the producer of the token stream this module
-consumes).
+consumes), `audio_utils.py` (shared wav-encoding helper, factored out of
+`audio_in.py` during review so tts.py would not depend on the input
+module just to reuse one function).
 
 ## Acceptance criteria
 
@@ -67,3 +69,8 @@ Manual handoff (speaker-dependent, human runs and reports):
   This is a component check on this module's own slice of the budget, not
   the end-to-end target - that full-pipeline measurement happens in
   task-07.
+
+Manual handoff run by the human via `manual_check_tts.py`: passed - the
+scripted response is spoken correctly, including "3.14" (initially
+silent, fixed by normalize_numbers()) and "т.е." (correctly not split
+mid-abbreviation).

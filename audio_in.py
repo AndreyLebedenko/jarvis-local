@@ -27,15 +27,14 @@ it once that much trailing buffer has passed with no new segment).
 """
 
 import asyncio
-import io
 from dataclasses import dataclass
 
 import numpy as np
 import sounddevice as sd
-import soundfile as sf
 import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
+from audio_utils import samples_to_wav_bytes
 from bus import EventBus
 from config import VadSettings
 
@@ -47,12 +46,6 @@ class UtteranceChunk:
     wav_bytes: bytes
     start_seconds: float
     end_seconds: float
-
-
-def samples_to_wav_bytes(samples: torch.Tensor, sample_rate: int = SAMPLE_RATE) -> bytes:
-    buffer = io.BytesIO()
-    sf.write(buffer, samples.numpy(), sample_rate, format="WAV", subtype="PCM_16")
-    return buffer.getvalue()
 
 
 def _merge_close_segments(segments: list[dict], max_gap_seconds: float) -> list[dict]:
@@ -107,7 +100,7 @@ class VadChunker:
             segment = samples[start_sample:end_sample]
             chunks.append(
                 UtteranceChunk(
-                    wav_bytes=samples_to_wav_bytes(segment),
+                    wav_bytes=samples_to_wav_bytes(segment, SAMPLE_RATE),
                     start_seconds=stamp["start"],
                     end_seconds=stamp["end"],
                 )
