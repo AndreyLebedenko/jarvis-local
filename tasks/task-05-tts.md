@@ -12,10 +12,13 @@ still in progress. Sentence-level streaming is mandatory (PROJECT.md): buffer
 tokens to a sentence boundary, synthesize, play, without waiting for the
 full response. The end-to-end target (defined once in PROJECT.md's
 Architecture v1.0 section and the story card) is first audio within ~3 s of
-the end of the user's utterance, covering audio prefill + first-sentence
-generation + TTS synthesis of that sentence. This module owns only the
-synthesis-and-playback portion of that budget, once a sentence is ready;
-the full end-to-end figure is verified in task-07.
+audio_in.py publishing the finished utterance (not from the literal
+instant speech physically stopped - that has its own separate,
+tunable cost via config.vad.request_end_pause_seconds), covering audio
+prefill + first-sentence generation + TTS synthesis of that sentence.
+This module owns only the synthesis-and-playback portion of that budget,
+once a sentence is ready; the full end-to-end figure is verified in
+task-07.
 
 ## Current boundary
 

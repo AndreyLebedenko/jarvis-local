@@ -9,9 +9,11 @@ speaks in Russian; the assistant hears via microphone (VAD-segmented
 utterances) and optionally looks at the screen (hotkey-triggered
 screenshot). It reasons via the local Ollama backend (`gemma4:12b-it-qat`)
 and replies with short, spoken Russian answers, streamed sentence-by-sentence
-so speech starts within ~3 s of the end of the user's utterance (VAD
-end-of-speech), covering audio prefill, first-sentence generation, and TTS
-synthesis of that sentence. Fully offline at runtime.
+so speech starts within ~3 s of audio_in.py publishing the finished
+utterance (after VAD's request_end_pause_seconds confirm-delay, not from
+the literal instant speech physically stopped), covering audio prefill,
+first-sentence generation, and TTS synthesis of that sentence. Fully
+offline at runtime.
 
 ## Boundaries
 
@@ -38,10 +40,10 @@ the Architecture v1.0 section):
   the agent and executed by the human with reported-good results.
 - End-to-end path verified on real hardware: a spoken question (with an
   optional screenshot) produces a short spoken Russian reply, first audio
-  starting within ~3 s of the end of the user's utterance (VAD
-  end-of-speech) - covering audio prefill, first-sentence generation, and
-  TTS synthesis of that sentence, per PROJECT.md's Architecture v1.0
-  section.
+  starting within ~3 s of audio_in.py publishing the finished utterance
+  (not from the literal instant speech physically stopped) - covering
+  audio prefill, first-sentence generation, and TTS synthesis of that
+  sentence, per PROJECT.md's Architecture v1.0 section.
 - `day0_checks.py` verified facts still hold on the finished build (rerun
   after any backend, model, or driver change per PROJECT.md).
 

@@ -77,29 +77,24 @@ startup / wiring, not the individual adapters:
   explicitly whether to catch it (log and skip the line, or surface an
   error event on the bus) rather than let it silently remain an
   unhandled-exception path into whatever calls `chat()`.
-- **`vad.request_end_pause_seconds` (2.0 s default) eats significantly
-  into the ~3 s latency budget before backend.chat() even starts.**
-  audio_in.py merges Silero's raw speech segments across any gap shorter
-  than this threshold (a breath or thinking pause mid-request), and only
-  publishes an utterance once it is followed by this much buffered
-  silence with no further speech merged into it - confirming the user
-  actually finished the request, not just paused inside it. Chosen
-  deliberately over a much shorter value (an earlier 0.5 s default caused
-  a real bug: a single request with an internal ~0.3 s breath pause was
-  being published as two separate requests). At 2.0 s this delay is no
-  longer a rounding error against the ~3 s target - it is most of it -
-  and is not itself covered by PROJECT.md's "audio prefill + first-
-  sentence generation + TTS synthesis" breakdown. When measuring the
-  end-to-end target in this task's manual handoff, decide explicitly
-  whether "end of the user's utterance" means the instant speech
-  physically stopped (in which case ~2 s of the 3 s budget is pre-spent
-  before this task's wiring even reacts, leaving ~1 s for prefill +
-  generation + TTS - tight but plausible per day-0 numbers) or the
-  instant audio_in.py publishes (in which case the 3 s target is measured
-  from a point that already has the confirm-delay built in, and total
-  perceived latency from the user's real silence is closer to 5 s).
-  Record the chosen definition - and whether the ~3 s figure itself needs
-  revisiting - in PROJECT.md next to the latency target.
+- **Resolved: the ~3 s target is measured from audio_in.py's publish, not
+  from the literal instant speech physically stopped.** `vad.
+  request_end_pause_seconds` (audio_in.py) is a separate, tunable cost
+  paid *before* the ~3 s window starts, not counted against it. audio_in.py
+  merges Silero's raw speech segments across any gap shorter than this
+  threshold (a breath or thinking pause mid-request), and only publishes
+  an utterance once it is followed by this much buffered silence with no
+  further speech merged into it - confirming the user actually finished
+  the request, not just paused inside it. Its current default (2.0 s) is
+  deliberately conservative for the development stage (chosen after an
+  earlier 0.5 s default caused a real bug: a request with an internal
+  ~0.3 s breath pause was published as two separate requests); production
+  is expected to tighten it to ~1.0-1.5 s once request-boundary behavior
+  is validated. Total perceived latency from the user's real silence to
+  first audio is therefore roughly `request_end_pause_seconds + ~3 s`,
+  and tuning the former down is how that total improves - not by
+  loosening the ~3 s figure itself. This task's manual handoff already
+  times from publish (see below), which is correct as-is.
 
 ## Acceptance criteria
 

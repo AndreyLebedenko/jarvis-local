@@ -75,8 +75,14 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   XTTS-v2 as a later quality upgrade. Sentence-level streaming is mandatory:
   buffer LLM tokens to sentence boundary → synthesize → play, while
   generation continues. Target end-to-end response start: within ~3 s of
-  the end of the user's utterance (VAD end-of-speech), covering audio
-  prefill + first-sentence generation + TTS synthesis of that sentence.
+  audio_in.py publishing the finished utterance (i.e. after VAD's
+  request_end_pause_seconds confirm-delay - not from the literal instant
+  speech physically stopped), covering audio prefill + first-sentence
+  generation + TTS synthesis of that sentence. `request_end_pause_seconds`
+  (`config.vad`) is a separate, tunable cost paid before this window
+  starts: 2.0 s is a deliberately conservative value for the development
+  stage; production is expected to tighten it to ~1.0-1.5 s once
+  request-boundary behavior is validated (see task-04's audio_in.py).
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `main.py` — wiring + system prompt. System prompt must enforce SHORT
