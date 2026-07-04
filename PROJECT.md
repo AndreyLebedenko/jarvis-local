@@ -38,6 +38,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 
 - `bus.py` — asyncio event bus (pub/sub). The extension point for everything
   later (emotion side-channel, Discord bridge, etc.). Keep it trivial.
+  Handlers must return quickly (enqueue onto the module's own queue and
+  return); publish() awaits all handlers, so inline heavy work in a handler
+  would serialize the streaming pipeline.
 - `config.py` — settings home: model name, hotkeys, VAD/TTS parameters;
   loaded once at startup.
 - `backend.py` — Ollama adapter: streaming `/api/chat`, media via `images`,
