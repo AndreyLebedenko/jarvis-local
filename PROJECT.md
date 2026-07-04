@@ -38,6 +38,8 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 
 - `bus.py` — asyncio event bus (pub/sub). The extension point for everything
   later (emotion side-channel, Discord bridge, etc.). Keep it trivial.
+- `config.py` — settings home: model name, hotkeys, VAD/TTS parameters;
+  loaded once at startup.
 - `backend.py` — Ollama adapter: streaming `/api/chat`, media via `images`,
   latency metrics on every call. Thin interface so the backend can be swapped
   (llama-server / LiteRT-LM) with one config line.
@@ -46,7 +48,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 - `tts.py` — subscribes to response sentences; Silero TTS (Russian) for v1.0;
   XTTS-v2 as a later quality upgrade. Sentence-level streaming is mandatory:
   buffer LLM tokens to sentence boundary → synthesize → play, while
-  generation continues. Target end-to-end response start: 2–3 s.
+  generation continues. Target end-to-end response start: within ~3 s of
+  the end of the user's utterance (VAD end-of-speech), covering audio
+  prefill + first-sentence generation + TTS synthesis of that sentence.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `main.py` — wiring + system prompt. System prompt must enforce SHORT
