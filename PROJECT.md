@@ -47,6 +47,11 @@ truth for architectural decisions; update it when a decision changes.
   strip media from all but the most recent turn, or replace older turns
   with a text-only summary) is likely needed. Decide during task-07 and
   replace this bullet with the resolution.
+- **OCR of dense screenshots confabulates.** Verified live: a 4K IDE
+  screenshot produced fluent, structurally correct, factually invented
+  text (not the real file contents). Usage pattern must be targeted
+  questions about screen regions, not bulk extraction. Region
+  highlighting is the v2.x roadmap answer (see Roadmap after v1.0).
 
 ## Architecture v1.0
 
@@ -96,6 +101,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
    dataset or low-rank conservative LoRA) — research task.
 4. Optional GUI (dialog history window).
 5. Backend evaluation: LiteRT-LM prefix caching for lower prefill latency.
+6. Region highlighter for screen capture: lets the user mark a region so
+   OCR questions are targeted rather than bulk extraction (see Open
+   questions - OCR confabulation).
 
 ## Day-0 artifacts
 

@@ -59,6 +59,25 @@ Resolve both before or during this task's implementation and update
 PROJECT.md's "Open questions" section with the answer, per CLAUDE.md's
 "Project context" rule 2.
 
+## Backlog notes inherited from task-03
+
+Two implementation decisions surfaced while building backend.py, deferred
+to this task since they belong to process startup / wiring, not the
+adapter itself:
+
+- **Warm-up request at startup.** Cold load measured at 4.2 s vs 0.3 s
+  warm. Given the ~3 s end-to-end latency target (see PROJECT.md's
+  Architecture v1.0 section and the story card), the first real user
+  request cannot absorb a cold-load penalty. Fire a throwaway warm-up
+  request to Ollama during startup, before the process signals it is
+  ready to listen.
+- **Malformed stream line policy.** backend.py's `chat()` currently lets a
+  `json.loads` failure on a malformed stream line raise out of `chat()`
+  uncaught. Acceptable for v1.0 as built, but this task must decide
+  explicitly whether to catch it (log and skip the line, or surface an
+  error event on the bus) rather than let it silently remain an
+  unhandled-exception path into whatever calls `chat()`.
+
 ## Acceptance criteria
 
 Automated tests (fakes/mocks for hardware-touching modules):
