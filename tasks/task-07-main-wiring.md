@@ -41,6 +41,24 @@ Out of scope:
 
 All prior task cards (task-01 through task-06).
 
+## Open question inherited from task-03
+
+PROJECT.md's "Open questions" section flags two unresolved items that this
+task's history-wiring design must settle, not assume:
+
+- Whether media on a non-final message in a multi-turn `messages` array is
+  actually used by `gemma4:12b-it-qat`, or silently ignored/erroring -
+  never verified against live Ollama (day-0 only covered single-turn
+  media). May need a day-0-style experiment before this task relies on
+  resending media in history.
+- The prefill-cost/history-retention policy for accumulated media across
+  turns (trim to the latest turn's media, replace older turns with a
+  text-only summary, or something else).
+
+Resolve both before or during this task's implementation and update
+PROJECT.md's "Open questions" section with the answer, per CLAUDE.md's
+"Project context" rule 2.
+
 ## Acceptance criteria
 
 Automated tests (fakes/mocks for hardware-touching modules):

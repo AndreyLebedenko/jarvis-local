@@ -30,6 +30,24 @@ truth for architectural decisions; update it when a decision changes.
   small fonts garble, use region-select capture at full resolution rather
   than raising the budget.
 
+## Open questions (unverified - do not assume an answer)
+
+- **Media on a non-final message in multi-turn history.** day0_checks.py
+  and backend.py's payload construction are only verified for a single
+  message carrying media (the day-0 case: one user turn, media on that
+  turn). Whether `gemma4:12b-it-qat` attends to, ignores, or errors on
+  media attached to an earlier (non-final) message in a multi-turn
+  `messages` array has never been tested. Needs a day-0-style experiment
+  (two-turn conversation; second turn asks a question about the first
+  turn's audio/image) before task-07 relies on resending media in history.
+- **Prefill cost / history retention policy for media.** If raw media
+  bytes (screenshots especially) are kept verbatim in history and resent
+  on every subsequent turn, prefill time and context usage could grow
+  quickly across a long conversation. A trimming/retention policy (e.g.
+  strip media from all but the most recent turn, or replace older turns
+  with a text-only summary) is likely needed. Decide during task-07 and
+  replace this bullet with the resolution.
+
 ## Architecture v1.0
 
 Background process, no GUI. Hotkeys + sound cues only. Python 3.11, asyncio.
