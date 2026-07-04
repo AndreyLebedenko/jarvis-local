@@ -59,11 +59,11 @@ Resolve both before or during this task's implementation and update
 PROJECT.md's "Open questions" section with the answer, per CLAUDE.md's
 "Project context" rule 2.
 
-## Backlog notes inherited from task-03
+## Backlog notes inherited from task-03 and task-04
 
-Two implementation decisions surfaced while building backend.py, deferred
-to this task since they belong to process startup / wiring, not the
-adapter itself:
+Implementation decisions surfaced while building backend.py and
+audio_in.py, deferred to this task since they belong to process
+startup / wiring, not the individual adapters:
 
 - **Warm-up request at startup.** Cold load measured at 4.2 s vs 0.3 s
   warm. Given the ~3 s end-to-end latency target (see PROJECT.md's
@@ -77,6 +77,29 @@ adapter itself:
   explicitly whether to catch it (log and skip the line, or surface an
   error event on the bus) rather than let it silently remain an
   unhandled-exception path into whatever calls `chat()`.
+- **`vad.request_end_pause_seconds` (2.0 s default) eats significantly
+  into the ~3 s latency budget before backend.chat() even starts.**
+  audio_in.py merges Silero's raw speech segments across any gap shorter
+  than this threshold (a breath or thinking pause mid-request), and only
+  publishes an utterance once it is followed by this much buffered
+  silence with no further speech merged into it - confirming the user
+  actually finished the request, not just paused inside it. Chosen
+  deliberately over a much shorter value (an earlier 0.5 s default caused
+  a real bug: a single request with an internal ~0.3 s breath pause was
+  being published as two separate requests). At 2.0 s this delay is no
+  longer a rounding error against the ~3 s target - it is most of it -
+  and is not itself covered by PROJECT.md's "audio prefill + first-
+  sentence generation + TTS synthesis" breakdown. When measuring the
+  end-to-end target in this task's manual handoff, decide explicitly
+  whether "end of the user's utterance" means the instant speech
+  physically stopped (in which case ~2 s of the 3 s budget is pre-spent
+  before this task's wiring even reacts, leaving ~1 s for prefill +
+  generation + TTS - tight but plausible per day-0 numbers) or the
+  instant audio_in.py publishes (in which case the 3 s target is measured
+  from a point that already has the confirm-delay built in, and total
+  perceived latency from the user's real silence is closer to 5 s).
+  Record the chosen definition - and whether the ~3 s figure itself needs
+  revisiting - in PROJECT.md next to the latency target.
 
 ## Acceptance criteria
 

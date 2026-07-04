@@ -1,6 +1,6 @@
 # Task: Audio input (audio_in.py)
 
-Status: Not started.
+Status: Completed.
 
 Story: [story-jarvis-v1.0.md](story-jarvis-v1.0.md)
 
@@ -59,3 +59,6 @@ Manual handoff (microphone-dependent, human runs and reports):
 - Exact command to run the live capture loop; confirm real speech triggers
   a chunk publish, silence does not, and end-of-utterance latency feels
   reasonable for a conversational pace.
+
+Manual handoff run by the human via `manual_check_audio_in.py`: passed -
+live microphone input arrives and utterances segment correctly.

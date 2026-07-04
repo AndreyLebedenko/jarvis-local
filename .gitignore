@@ -4,3 +4,4 @@ __pycache__/
 config.toml
 .idea/
 screenshots/
+manual_check_audio_out/

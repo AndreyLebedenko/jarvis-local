@@ -25,6 +25,15 @@ shutdown = "ctrl+alt+q"
 [vad]
 threshold = 0.5
 max_chunk_seconds = 30
+# Silero itself splits raw speech into small segments at any internal
+# pause (~100 ms, not configurable here). Adjacent segments closer
+# together than request_end_pause_seconds are merged into one utterance
+# (a breath or thinking pause mid-request, not the end of it). Only a
+# gap at least this long - absence of detected speech, not necessarily
+# full digital silence - is treated as the user actually finishing.
+# Directly eats into the ~3 s end-to-end latency budget - see
+# PROJECT.md's Architecture v1.0 and task-07's backlog notes.
+request_end_pause_seconds = 2.0
 
 [tts]
 voice = "baya"
