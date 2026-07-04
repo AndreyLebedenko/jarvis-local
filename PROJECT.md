@@ -29,6 +29,15 @@ truth for architectural decisions; update it when a decision changes.
 - Screenshot OCR: use high visual token budget (1120) for screen text; if
   small fonts garble, use region-select capture at full resolution rather
   than raising the budget.
+- **Global hotkeys (`keyboard` package) require the process to run
+  elevated (Administrator) on Windows.** Verified live: without
+  elevation, `add_hotkey` callbacks only fire while the app's own window
+  has focus - not globally, from whatever app the user is actually using
+  when they press the hotkey. With an elevated terminal, hotkeys fire
+  from any application, as intended. Jarvis's entire hotkey-driven
+  interaction model (PROJECT.md: "Hotkeys + sound cues only") depends on
+  this working globally, so the process must run elevated - see task-07's
+  backlog notes for the operational consequence.
 
 ## Open questions (unverified - do not assume an answer)
 

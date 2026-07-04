@@ -1,6 +1,6 @@
 # Task: Screen capture (capture.py)
 
-Status: Not started.
+Status: Completed.
 
 Story: [story-jarvis-v1.0.md](story-jarvis-v1.0.md)
 
@@ -54,3 +54,12 @@ Manual handoff (hotkey/display-dependent, human runs and reports):
   triggers a full-screen capture, a second binding (or modifier) triggers
   region-select, the interactive selection works as expected, and the
   resulting image looks correct.
+
+Manual handoff run by the human via `manual_check_capture.py`: passed -
+capture works correctly (verified against saved screenshots). Surfaced an
+elevation requirement not previously known: without an Administrator
+terminal, hotkeys only fire while Jarvis's own window has focus; with
+elevation, they fire globally as intended. Recorded as a verified fact in
+PROJECT.md and as an operational requirement for task-07 (main.py should
+check for and warn about missing elevation at startup) - not a defect in
+this module.

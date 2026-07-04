@@ -59,10 +59,10 @@ Resolve both before or during this task's implementation and update
 PROJECT.md's "Open questions" section with the answer, per CLAUDE.md's
 "Project context" rule 2.
 
-## Backlog notes inherited from task-03 and task-04
+## Backlog notes inherited from task-03, task-04, and task-06
 
-Implementation decisions surfaced while building backend.py and
-audio_in.py, deferred to this task since they belong to process
+Implementation decisions surfaced while building backend.py, audio_in.py,
+and capture.py, deferred to this task since they belong to process
 startup / wiring, not the individual adapters:
 
 - **Warm-up request at startup.** Cold load measured at 4.2 s vs 0.3 s
@@ -95,6 +95,16 @@ startup / wiring, not the individual adapters:
   and tuning the former down is how that total improves - not by
   loosening the ~3 s figure itself. This task's manual handoff already
   times from publish (see below), which is correct as-is.
+- **The process must run elevated (Administrator) for global hotkeys to
+  actually be global (task-06's `keyboard`-based capture.py).** Verified
+  live: without elevation, hotkeys only fire while Jarvis's own window
+  has focus - defeating the point of a hotkey-driven background
+  assistant, since the whole idea is triggering it while some other app
+  is focused. This task's process-startup step should check for
+  elevation and print a clear warning (or refuse to start) if not
+  elevated, rather than silently degrading to "only works when focused"
+  with no explanation. Document the elevation requirement in whatever
+  launch instructions this task produces.
 
 ## Acceptance criteria
 
