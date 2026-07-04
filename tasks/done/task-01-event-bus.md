@@ -1,6 +1,6 @@
 # Task: Event bus (bus.py)
 
-Status: Not started.
+Status: Completed.
 
 Story: [story-jarvis-v1.0.md](story-jarvis-v1.0.md)
 

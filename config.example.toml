@@ -1,0 +1,40 @@
+# Jarvis v1.0 example configuration.
+#
+# Copy this file to config.toml and edit as needed. config.toml is
+# gitignored so personal tweaks (hotkeys, voice, sound cue paths) never
+# get committed. If config.toml is absent, config.py falls back to
+# built-in defaults that mirror the values shown here.
+#
+# A present section may omit keys; omitted keys fall back to their
+# default. An unknown section or unknown key is a config error (typos
+# are caught, not silently ignored).
+
+[backend]
+model = "gemma4:12b-it-qat"
+endpoint = "http://localhost:11434"
+num_ctx = 65536
+# If VRAM pressure appears, PROJECT.md's fallback is
+# OLLAMA_KV_CACHE_TYPE=q8_0, then num_ctx = 32768 (applied by the human,
+# not automatically by this config).
+
+[hotkeys]
+screenshot_full = "ctrl+alt+s"
+screenshot_region = "ctrl+alt+r"
+shutdown = "ctrl+alt+q"
+
+[vad]
+threshold = 0.5
+max_chunk_seconds = 30
+
+[tts]
+voice = "baya"
+rate = 1.0
+
+[capture]
+default_mode = "full"
+
+[sound_cues]
+listening = "sounds/listening.wav"
+thinking = "sounds/thinking.wav"
+speaking = "sounds/speaking.wav"
+error = "sounds/error.wav"
