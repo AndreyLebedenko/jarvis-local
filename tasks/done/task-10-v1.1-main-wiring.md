@@ -1,6 +1,45 @@
 # Task: v1.1 main wiring, config, and manual handoff (main.py)
 
-Status: Draft.
+Status: Completed.
+
+Real hotkeys, wiring, config, and sound cues landed for clipboard input
+(task-08) and microphone sleep (task-09). Open decision resolved: yes,
+Orchestrator auto-pauses the mic during Jarvis's own speech, layered on
+the existing busy-cooldown mitigation.
+
+Manual testing (human) found two real issues, both fixed:
+- No logging was configured anywhere in the process, so INFO-level
+  messages (including sound-cue activity) were silently dropped.
+  `run()` now calls `logging.basicConfig(level=INFO, ...)`, and cue
+  playback / mic sleep-wake transitions log an INFO line.
+- The `input_error` cue was a single short/quiet tone and not reliably
+  audible; redesigned as two blips, matching the other v1.1 cues.
+
+Code review then found three real bugs in the echo-mitigation feature,
+all fixed with regression tests confirmed to fail without the fix and
+pass with it:
+- P1: a single `is_awake` bit could not represent "user wants privacy"
+  and "Jarvis is auto-pausing for its own speech" independently, so a
+  hotkey press during auto-pause could be misread, and finish_turn()
+  could wake a mic the user had put to sleep independently. Fixed by
+  giving `AudioInput` two separate flags (user-requested vs internal
+  auto-pause) ANDed into the actual capture state; `Orchestrator` no
+  longer reasons about the user's own state at all.
+- P2: the hotkey callback decided sleep-vs-wake from a stale read of
+  `is_awake` in the keyboard package's own thread, so two rapid presses
+  could schedule the same action twice instead of toggling twice. Fixed
+  by moving the decision into `AudioInput.toggle_user_sleep()`, run
+  entirely on the event loop.
+- P2: the internal auto-pause was publishing `MicSleepToggled` and
+  playing the privacy sound cues on every spoken response. Fixed - only
+  the user-triggered `toggle_user_sleep()` publishes that event now.
+- P3 (test-only): a hotkey-listener test task was left uncancelled, and
+  a later test had a redundant duplicate cancel/await block. Both fixed.
+
+Final state: 138/138 automated tests passing; full manual handoff
+(clipboard hotkey, mic sleep/wake hotkey, all v1.1 sound cues, normal
+voice turn, echo-mitigation behavior, offline-after-setup) confirmed by
+the human.
 
 Story: [story-v1.1-controlled-input.md](story-v1.1-controlled-input.md)
 

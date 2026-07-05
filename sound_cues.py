@@ -61,11 +61,40 @@ def _cue_error() -> np.ndarray:
     return np.concatenate([_tone(300, 0.12), _tone(200, 0.16)])
 
 
+def _cue_clipboard() -> np.ndarray:
+    return np.concatenate([_tone(660, 0.05), _tone(880, 0.07)])
+
+
+def _cue_input_error() -> np.ndarray:
+    # A repeated double-blip, not the single short low tone this used to
+    # be: human-reported during task-10 manual testing that the single
+    # tone was not reliably audible in practice, unlike the other new
+    # v1.1 cues (all multi-segment). A silent gap between two same-pitch
+    # blips also keeps this rhythmically distinct from the generic
+    # two-tone *falling* `error` cue below (backend/TTS failures, not a
+    # rejected/truncated input).
+    gap = np.zeros(int(SAMPLE_RATE * 0.05), dtype=np.float32)
+    blip = _tone(320, 0.09)
+    return np.concatenate([blip, gap, blip])
+
+
+def _cue_mic_sleep() -> np.ndarray:
+    return np.concatenate([_tone(700, 0.06), _tone(500, 0.08)])
+
+
+def _cue_mic_wake() -> np.ndarray:
+    return np.concatenate([_tone(500, 0.06), _tone(700, 0.08)])
+
+
 _GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "listening": _cue_listening,
     "thinking": _cue_thinking,
     "speaking": _cue_speaking,
     "error": _cue_error,
+    "clipboard": _cue_clipboard,
+    "input_error": _cue_input_error,
+    "mic_sleep": _cue_mic_sleep,
+    "mic_wake": _cue_mic_wake,
 }
 
 
@@ -76,6 +105,10 @@ def ensure_generated(settings: SoundCueSettings) -> None:
         "thinking": settings.thinking,
         "speaking": settings.speaking,
         "error": settings.error,
+        "clipboard": settings.clipboard,
+        "input_error": settings.input_error,
+        "mic_sleep": settings.mic_sleep,
+        "mic_wake": settings.mic_wake,
     }
     for cue, path_str in paths.items():
         path = Path(path_str)
@@ -97,6 +130,10 @@ class SoundCuePlayer:
             "thinking": settings.thinking,
             "speaking": settings.speaking,
             "error": settings.error,
+            "clipboard": settings.clipboard,
+            "input_error": settings.input_error,
+            "mic_sleep": settings.mic_sleep,
+            "mic_wake": settings.mic_wake,
         }
         self._playback_lock = playback_lock or asyncio.Lock()
         self._play_file = play_file or self._default_play_file
@@ -107,6 +144,7 @@ class SoundCuePlayer:
         if path is None:
             logger.warning("Unknown sound cue %r, skipping", cue)
             return
+        logger.info("Playing sound cue %r (%s)", cue, path)
         task = asyncio.create_task(self._play_file(path))
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)

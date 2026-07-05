@@ -30,11 +30,19 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from audio_in import AudioInput, UtteranceChunk, VadChunker
+from audio_in import (
+    AudioInput,
+    MicSleepToggled,
+    UtteranceChunk,
+    VadChunker,
+)
+from audio_in import run_hotkey_listener as run_mic_sleep_hotkey_listener
 from backend import OllamaBackend, ResponseComplete, ResponseToken
 from bus import EventBus
-from capture import CaptureEngine, CaptureInput, ScreenshotCaptured, run_hotkey_listener
+from capture import CaptureEngine, CaptureInput, ScreenshotCaptured
+from capture import run_hotkey_listener as run_capture_hotkey_listener
 from clipboard_input import ClipboardSubmitted
+from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
 from tts import TtsOutput
@@ -111,6 +119,20 @@ class Orchestrator:
     of split that caused the ResponseComplete concurrency bugs found
     during task-07's review - it must not happen again for the same
     reason.
+
+    Echo mitigation (task-10, layered on top of finish_turn()'s existing
+    busy-cooldown - see PROJECT.md's Verified facts): if audio_input is
+    given, audio_input.auto_pause_for_speech()/auto_resume_after_speech()
+    are called unconditionally around this turn's speech (first response
+    token through finish_turn()'s cooldown). Unlike an earlier version of
+    this feature, this class no longer has to track whether it "owns" the
+    pause to avoid overriding a user privacy sleep - that composition
+    (user-requested sleep vs this internal auto-pause, ANDed into the
+    actual capture state) now lives in AudioInput itself, which is the
+    right owner of its own state (see its module docstring for the bug
+    this fixed: a single is_awake bit could not represent both facts
+    independently, so a hotkey press during this auto-pause could wake
+    the mic against the user's actual intent).
     """
 
     def __init__(
@@ -119,11 +141,13 @@ class Orchestrator:
         history: ConversationHistory,
         sound_cues: SoundCuePlayer,
         system_prompt: str = SYSTEM_PROMPT,
+        audio_input: AudioInput | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
         self._sound_cues = sound_cues
         self._system_prompt = system_prompt
+        self._audio_input = audio_input
         self._pending_screenshot_b64: str | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
@@ -193,6 +217,8 @@ class Orchestrator:
         if not self._spoke_this_turn:
             self._spoke_this_turn = True
             await self._sound_cues.play("speaking")
+            if self._audio_input is not None:
+                await self._audio_input.auto_pause_for_speech()
 
     async def on_response_complete(self, event: ResponseComplete) -> None:
         """Records this turn's history. Does not clear the busy flag -
@@ -222,9 +248,16 @@ class Orchestrator:
         same busy-guard that already ignores utterances mid-turn, rather
         than needing echo cancellation or a cross-module mute signal
         into audio_in.py.
+
+        Task-10 layers a second mitigation on top: the mic is resumed
+        from its auto-pause (see on_response_token()) here, after the
+        same cooldown - see this class's docstring for why this no
+        longer needs to track whether it "owns" the pause.
         """
         if cooldown_seconds > 0:
             await asyncio.sleep(cooldown_seconds)
+        if self._audio_input is not None:
+            await self._audio_input.auto_resume_after_speech()
         self._busy = False
 
 
@@ -262,7 +295,7 @@ def build_app(
     tts_output = tts_output or TtsOutput(settings.tts, playback_lock=playback_lock)
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
-    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues)
+    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues, audio_input=audio_input)
     return App(
         bus=bus,
         backend=backend,
@@ -322,6 +355,15 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
     await app.sound_cues.play("listening")
 
 
+async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
+    """Plays the sleep/wake sound cue - the only feedback for this
+    privacy toggle, per the "hotkeys + sound cues only" interaction
+    model. Mirrors _on_full_response_complete's split: audio_in.py only
+    publishes what happened, main.py decides what to do about it."""
+    logger.info("Microphone %s", "awake" if event.is_awake else "asleep")
+    await app.sound_cues.play("mic_wake" if event.is_awake else "mic_sleep")
+
+
 def wire(app: App) -> list[Subscription]:
     """Subscribes every module to the bus events it consumes. Returns the
     (event_type, handler) pairs so shutdown can unsubscribe them - see
@@ -330,12 +372,17 @@ def wire(app: App) -> list[Subscription]:
     async def on_full_response_complete(event: ResponseComplete) -> None:
         await _on_full_response_complete(app, event)
 
+    async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
+        await _on_mic_sleep_toggled(app, event)
+
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
+        (ClipboardSubmitted, app.orchestrator.on_clipboard),
         (ResponseToken, app.tts_output.on_token),
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
+        (MicSleepToggled, on_mic_sleep_toggled),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -381,6 +428,18 @@ async def run_until_shutdown(
 
 
 async def run(settings: Settings | None = None) -> None:
+    # No logging was configured anywhere in the process before this (verified:
+    # grep found no basicConfig/setLevel calls), so every existing INFO-level
+    # log call (e.g. the busy-guard "ignoring ..." messages) was silently
+    # dropped - Python's logging module only auto-prints WARNING+ without
+    # configuration. Human-reported during task-10 manual testing: sound cue
+    # playback for input_error seemed to not fire, with no way to confirm
+    # from the console whether it was even attempted. INFO with a timestamp
+    # makes every such internal event observable without re-instrumenting
+    # each one at WARNING level, which would misrepresent normal events as
+    # warnings.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
     settings = settings or load_settings()
     ensure_generated(settings.sound_cues)
 
@@ -407,7 +466,11 @@ async def run(settings: Settings | None = None) -> None:
 
     background_tasks = [
         asyncio.create_task(app.audio_input.run_microphone_loop()),
-        asyncio.create_task(run_hotkey_listener(app.capture_input, settings.hotkeys)),
+        asyncio.create_task(run_capture_hotkey_listener(app.capture_input, settings.hotkeys)),
+        asyncio.create_task(
+            run_clipboard_hotkey_listener(app.bus, settings.hotkeys, settings.clipboard)
+        ),
+        asyncio.create_task(run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)),
     ]
 
     await app.sound_cues.play("listening")

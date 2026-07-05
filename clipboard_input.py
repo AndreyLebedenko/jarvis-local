@@ -14,18 +14,22 @@ tasks/bug_reports/capture-region-select-tkinter-thread-safety.md) -
 Tkinter is not safe to drive from an arbitrary background thread, and a
 hotkey callback (keyboard's own callback thread) is exactly that.
 
-No hotkey-listening code here yet: task-08's scope deliberately stops at
-"read the clipboard, build the event" - the real global hotkey is added
-in task-10 alongside the rest of v1.1's runtime wiring (see task-08's
-task card for the reasoning: this keeps wiring work from starting before
-the riskier Orchestrator refactor this feature also requires has landed
-and been reviewed on its own).
+run_hotkey_listener() (task-10) binds hotkeys.clipboard_submit to a real
+global hotkey via the keyboard package, mirroring capture.py's
+run_hotkey_listener - config-driven binding, injectable keyboard_module
+and read_clipboard so the wiring itself is testable without a real
+keyboard hook. Task-08 deliberately stopped at "read the clipboard,
+build the event" (see its task card): this keeps wiring work from
+starting before the riskier Orchestrator refactor this feature also
+required had landed and been reviewed on its own.
 """
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from config import ClipboardSettings
+from bus import EventBus
+from config import ClipboardSettings, HotkeySettings
 
 ReadClipboard = Callable[[], str]
 
@@ -73,3 +77,34 @@ def read_clipboard_submission(
     marker = TRUNCATION_MARKER_TEMPLATE.format(max_chars=settings.max_chars)
     truncated_text = text[: settings.max_chars] + "\n" + marker
     return ClipboardSubmitted(text=truncated_text, truncated=True, is_empty=False)
+
+
+async def run_hotkey_listener(
+    bus: EventBus,
+    hotkeys: HotkeySettings,
+    clipboard: ClipboardSettings,
+    keyboard_module=None,
+    read_clipboard: ReadClipboard | None = None,
+) -> None:
+    """Binds hotkeys.clipboard_submit to a real global hotkey; publishes a
+    ClipboardSubmitted event on each trigger. Runs until cancelled.
+    Hardware-dependent in its default form, but keyboard_module and
+    read_clipboard are injectable so the wiring itself (config-driven
+    binding -> callback -> bus publish) is testable without a real
+    keyboard hook or clipboard.
+    """
+    kb = keyboard_module
+    if kb is None:
+        import keyboard as kb
+
+    loop = asyncio.get_running_loop()
+
+    def on_submit() -> None:
+        event = read_clipboard_submission(clipboard, read_clipboard)
+        asyncio.run_coroutine_threadsafe(bus.publish(ClipboardSubmitted, event), loop)
+
+    handle = kb.add_hotkey(hotkeys.clipboard_submit, on_submit)
+    try:
+        await asyncio.Event().wait()
+    finally:
+        kb.remove_hotkey(handle)

@@ -43,6 +43,9 @@ class HotkeySettings:
     # mic_sleep_toggle added for task-09 (v1.1); registering the real
     # listener is task-10's job, per the v1.1 story's task split.
     mic_sleep_toggle: str = "ctrl+alt+m"
+    # clipboard_submit added for task-10 (v1.1): task-08 built the reader
+    # and event but deliberately left the real hotkey out of scope.
+    clipboard_submit: str = "ctrl+alt+v"
 
 
 @dataclass(frozen=True)
@@ -70,9 +73,8 @@ class SoundCueSettings:
     speaking: str = "sounds/speaking.wav"
     error: str = "sounds/error.wav"
     # clipboard/input_error/mic_sleep/mic_wake added for task-08/task-09
-    # (v1.1); the real SoundCuePlayer/ensure_generated() don't reference
-    # these yet - that wiring is task-10's job, per the v1.1 story's task
-    # split.
+    # (v1.1); wired into the real SoundCuePlayer/ensure_generated() by
+    # task-10.
     clipboard: str = "sounds/clipboard.wav"
     input_error: str = "sounds/input_error.wav"
     mic_sleep: str = "sounds/mic_sleep.wav"

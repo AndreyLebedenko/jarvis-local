@@ -217,3 +217,27 @@ def test_sound_cues_mic_sleep_and_mic_wake_fields_parse(tmp_path):
 
     assert settings.sound_cues.mic_sleep == "sounds/custom_mic_sleep.wav"
     assert settings.sound_cues.mic_wake == "sounds/custom_mic_wake.wav"
+
+
+# --- task-10: clipboard_submit hotkey ----------------------------------------
+
+
+def test_hotkeys_clipboard_submit_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [hotkeys]
+        clipboard_submit = "ctrl+alt+c"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.hotkeys.clipboard_submit == "ctrl+alt+c"
+
+
+def test_hotkeys_clipboard_submit_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.hotkeys == HotkeySettings()
