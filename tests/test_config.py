@@ -4,6 +4,7 @@ import pytest
 
 from config import (
     BackendSettings,
+    ClipboardSettings,
     ConfigError,
     Settings,
     load_settings,
@@ -119,3 +120,58 @@ def test_unknown_key_within_known_section_raises_config_error(tmp_path):
 
 def test_config_has_no_project_import_dependencies():
     assert_stdlib_only_imports("config.py")
+
+
+# --- task-08: ClipboardSettings and new sound cue fields --------------------
+
+
+def test_clipboard_max_chars_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [clipboard]
+        max_chars = 500
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.clipboard.max_chars == 500
+
+
+def test_clipboard_max_chars_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.clipboard == ClipboardSettings()
+
+
+def test_clipboard_max_chars_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [clipboard]
+        max_chars = "not-a-number"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_sound_cues_clipboard_and_input_error_fields_parse(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [sound_cues]
+        clipboard = "sounds/custom_clipboard.wav"
+        input_error = "sounds/custom_input_error.wav"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.sound_cues.clipboard == "sounds/custom_clipboard.wav"
+    assert settings.sound_cues.input_error == "sounds/custom_input_error.wav"

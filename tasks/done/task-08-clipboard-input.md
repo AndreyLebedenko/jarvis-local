@@ -1,6 +1,6 @@
 # Task: Clipboard-to-prompt input (clipboard_input.py)
 
-Status: Draft.
+Status: Completed.
 
 Story: [story-v1.1-controlled-input.md](story-v1.1-controlled-input.md)
 
@@ -123,3 +123,11 @@ hotkey, nothing started in `main.py`'s runtime):
   (unknown key rejected, partial section falls back to defaults).
 
 No manual handoff in this task - see task-10.
+
+Review found three real bugs, all fixed with regression tests confirmed
+to fail without the fix and pass with it: `on_utterance()`/`on_clipboard()`
+consuming the pending screenshot / playing the clipboard ack cue before
+checking `_busy`, losing a screenshot or giving false feedback on a turn
+the busy-guard would go on to reject; and a mojibake truncation marker,
+switched to ASCII (consistent with CLAUDE.md's ASCII-preference rule and
+a real encoding incident hit live during review).

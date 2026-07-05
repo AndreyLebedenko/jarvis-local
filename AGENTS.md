@@ -78,6 +78,9 @@
    require network access.
 3. Install Python packages with `pip`; keep `requirements.txt` current in
    the same commit that introduces a dependency.
+4. Run automated tests as `python -m pytest`, not bare `pytest`.
+5. When reading project text files with PowerShell, pass `-Encoding UTF8`
+   explicitly, e.g. `Get-Content -Raw -Encoding UTF8 PROJECT.md`.
 
 ## Git protocol
 
