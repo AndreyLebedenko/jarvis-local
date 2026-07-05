@@ -1,106 +1,120 @@
-# Jarvis — Локальный Голосовой/Визуальный Ассистент
+# Jarvis
 
-Jarvis — это быстрый, полностью автономный голосовой интерфейс для локальной большой языковой модели (LLM), дополненный функцией захвата экрана по требованию. Проект разработан для работы без подключения к сети во время выполнения, используя горячие клавиши и звуковые сигналы для взаимодействия.
+Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks short Russian answers through local TTS.
 
-## Особенности
+Runtime is designed to work offline after the one-time model setup steps are complete.
 
-*   **Полностью оффлайн:** Никаких сетевых зависимостей во время работы.
-*   **Локальная LLM:** Использует Ollama с моделью `gemma4:12b-it-qat` для обработки запросов.
-*   **Голосовое взаимодействие:** Обработка аудиовхода и синтез речи на русском языке.
-*   **Захват экрана:** Горячие клавиши для захвата полного экрана или выделенной области.
-*   **Интерфейс на горячих клавишах:** Взаимодействие осуществляется исключительно через горячие клавиши и звуковые сигналы.
-*   **Потоковый TTS на уровне предложений:** Синтез и воспроизведение речи по мере генерации предложений LLM.
-*   **Модульная архитектура:** Построена на асинхронной шине событий `asyncio` для легкой расширяемости.
-*   **Надежная конфигурация:** Все настройки загружаются из `config.toml` с проверкой типов и разумными значениями по умолчанию.
+[Russian README](README.ru.md)
 
-## Архитектура
+## Status
 
-Проект использует модульный подход, где каждый компонент взаимодействует через асинхронную шину событий. Ключевые модули включают:
+This is a v1.0 hobby/research release. It is usable, but intentionally honest about its limits: no full echo cancellation, Russian-only Silero TTS, rough Latin transliteration, and imperfect OCR on dense screenshots.
 
-*   `bus.py`: Асинхронная шина событий (pub/sub).
-*   `config.py`: Загрузка и валидация настроек.
-*   `backend.py`: Адаптер для Ollama, обрабатывающий потоковые ответы и медиа.
-*   `audio_in.py`: Захват микрофона и обнаружение конца высказывания (VAD).
-*   `tts.py`: Синтез речи (Silero TTS) с буферизацией по предложениям.
-*   `capture.py`: Захват скриншотов по горячим клавишам.
-*   `sound_cues.py`: Воспроизведение звуковых сигналов для обратной связи.
-*   `main.py`: Основная точка входа, связывающая все модули и управляющая системным промптом.
+Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
-## Требования
+## Features
 
-*   **Операционная система:** Windows 11 (для глобальных горячих клавиш требуются права администратора).
-*   **Python:** 3.11 или выше.
-*   **Ollama:** Установленный и запущенный, с загруженной моделью `gemma4:12b-it-qat`.
-    *   `ollama run gemma4:12b-it-qat`
-*   **Аппаратное обеспечение:** GPU с достаточным объемом VRAM (например, RTX 5070 Ti с 16 ГБ VRAM) для эффективной работы LLM.
+- Local Ollama backend using `gemma4:12b-it-qat`.
+- Voice input with Silero VAD.
+- Sentence-level streaming TTS for low perceived latency.
+- Full-screen and region screenshot capture.
+- Hotkey and sound-cue interface, no GUI.
+- Async event-bus architecture with isolated modules.
+- Type-checked TOML configuration.
+- Runtime offline mode after models are downloaded.
 
-## Установка
+## Requirements
 
-1.  **Клонируйте репозиторий:**
-    ```bash
-    git clone https://github.com/your-username/Jarvis.git
-    cd Jarvis
-    ```
+- Windows 11.
+- Python 3.11.
+- Ollama installed and running.
+- A GPU with enough VRAM for the selected Ollama model.
+- Administrator terminal for global hotkeys on Windows.
 
-2.  **Установите зависимости Python:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+## Installation
 
-3.  **Настройте Ollama:**
-    Убедитесь, что Ollama установлен и запущен. Загрузите необходимую модель:
-    ```bash
-    ollama pull gemma4:12b-it-qat
-    ```
+Clone this repository, then install Python dependencies:
 
-4.  **Загрузите модель TTS:**
-    Модель Silero TTS загружается один раз. Запустите скрипт:
-    ```bash
-    python setup_tts_model.py
-    ```
+```bash
+pip install -r requirements.txt
+```
 
-5.  **Настройка конфигурации (опционально):**
-    Проект использует `config.toml` для настроек. Вы можете скопировать `config.example.toml` и изменить его:
-    ```bash
-    copy config.example.toml config.toml
-    ```
-    Отредактируйте `config.toml` для изменения горячих клавиш, модели Ollama, параметров VAD/TTS и т.д.
+Pull the Ollama model:
 
-## Использование
+```bash
+ollama pull gemma4:12b-it-qat
+```
 
-1.  **Запуск Jarvis:**
-    Для корректной работы глобальных горячих клавиш (захват экрана, выключение) **необходимо запускать Jarvis с правами администратора**.
-    ```bash
-    python main.py
-    ```
-    Если вы не запустите его с правами администратора, горячие клавиши будут работать только тогда, когда окно Jarvis активно.
+Download and cache the Silero TTS model once:
 
-2.  **Взаимодействие:**
-    Jarvis работает в фоновом режиме. Взаимодействие происходит через горячие клавиши и звуковые сигналы:
-    *   **"Listening" (прослушивание):** Звуковой сигнал означает, что Jarvis готов слушать ваш запрос.
-    *   **"Thinking" (размышление):** Звуковой сигнал означает, что Jarvis обрабатывает ваш запрос.
-    *   **"Speaking" (говорит):** Звуковой сигнал означает, что Jarvis начал отвечать.
-    *   **"Error" (ошибка):** Звуковой сигнал означает, что произошла ошибка.
+```bash
+python setup_tts_model.py
+```
 
-3.  **Горячие клавиши по умолчанию:**
-    *   `Ctrl+Alt+S`: Захват полного экрана.
-    *   `Ctrl+Alt+R`: Захват выделенной области экрана.
-    *   `Ctrl+Alt+Q`: Выключение Jarvis.
+Optionally create a local config:
 
-    Вы можете изменить эти горячие клавиши в `config.toml`.
+```cmd
+copy config.example.toml config.toml
+```
 
-## Известные проблемы и устранение неполадок
+## Usage
 
-*   **Глобальные горячие клавиши:** Требуют запуска `main.py` с правами администратора на Windows.
-*   **"Холодный" старт Ollama:** Первый запрос к Ollama после запуска может занять больше времени. Это учтено в конфигурации (`read_timeout_seconds`).
-*   **Отсутствие эхоподавления:** Jarvis может "слышать" свой собственный голос через микрофон. Проект включает программное смягчение этой проблемы, но полноценное эхоподавление не реализовано в v1.0.
-*   **Ограничения Silero TTS:** Модель Silero TTS v3_1_ru не поддерживает латинские символы. Проект включает транслитерацию латинских слов в кириллицу для их озвучивания.
-*   **OCR плотных скриншотов:** При захвате очень плотных скриншотов (например, IDE 4K) LLM может "выдумывать" текст. Рекомендуется использовать захват выделенной области для целевых вопросов.
+Run from the repository root:
 
-## Вклад
+```bash
+python main.py
+```
 
-Приветствуются любые вклады! Пожалуйста, ознакомьтесь с `PROJECT.md` для получения информации об архитектурных решениях и принципах разработки.
+For global hotkeys to work from any application on Windows, run the terminal as Administrator. Without elevation, hotkeys may only fire while the app's own terminal window has focus.
 
-## Лицензия
+Default hotkeys:
 
-MIT License
+- `Ctrl+Alt+S`: capture the full screen for the next request.
+- `Ctrl+Alt+R`: capture a selected screen region for the next request.
+- `Ctrl+Alt+Q`: shut down Jarvis.
+
+## Architecture
+
+The app is split into small asyncio modules connected through `bus.py`:
+
+- `audio_in.py`: microphone capture, VAD, utterance chunking.
+- `backend.py`: Ollama `/api/chat` streaming adapter.
+- `capture.py`: screenshot capture.
+- `tts.py`: sentence buffering, Silero TTS synthesis, playback.
+- `sound_cues.py`: generated local cue sounds.
+- `config.py`: TOML settings and validation.
+- `main.py`: wiring, orchestration, prompt, shutdown.
+
+`PROJECT.md` is the source of truth for architectural decisions and verified experiments. The `tasks/` directory keeps story cards, task cards, and bug reports from development.
+
+## Development Process
+
+This repository was built with an agent-assisted workflow: project facts were recorded in `PROJECT.md`, implementation was split into task cards, and day-0 experiments were kept as verified constraints instead of being rediscovered during later work. That history is intentionally public because it shows the engineering trade-offs behind v1.0: local multimodal model behavior, audio payload quirks, hotkey limitations, TTS model constraints, latency measurements, and known risks.
+
+## Known Issues
+
+- Windows global hotkeys require Administrator privileges.
+- A true cold Ollama start can take long enough to require a generous read timeout.
+- There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
+- Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
+- Dense screenshots, especially large IDE views, can cause OCR confabulation. Use region capture for targeted questions.
+
+## Tests
+
+Automated tests cover pure logic only. Hardware-dependent checks for microphone, speakers, global hotkeys, screenshots, VRAM, and a live Ollama endpoint are manual by project policy.
+
+```bash
+python -m pytest
+```
+
+## Licensing
+
+The project code is released under the MIT License. See [LICENSE](LICENSE).
+
+External model weights are not distributed by this repository and are governed by their own licenses and terms:
+
+- Silero VAD is published under MIT by its upstream project.
+- Silero TTS models are governed by Silero Models licensing; the currently configured `v3_1_ru` model is not part of this repository's MIT license.
+- Gemma model weights are governed by Google's Gemma terms or the specific license attached to the model you use through Ollama.
+
+Review the upstream model licenses before commercial use or redistribution.

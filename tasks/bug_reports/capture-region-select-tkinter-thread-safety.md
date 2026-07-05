@@ -15,7 +15,7 @@ Exception in Tkinter callback
 Traceback (most recent call last):
   File ".../tkinter/__init__.py", line 1967, in __call__
     return self.func(*args)
-  File "D:\AI\Jarvis\capture.py", line 117, in on_release
+  File "capture.py", line 117, in on_release
     x0, y0 = start["x"], start["y"]
              ~~~~~^^^^^
 KeyError: 'x'

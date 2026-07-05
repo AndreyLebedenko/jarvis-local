@@ -1,6 +1,6 @@
 # Project: Jarvis — Local Voice/Vision Assistant
 
-Owner: Andrey. Workdir: `D:\AI\Jarvis`. Windows 11, RTX 5070 Ti (16 GB VRAM), 32 GB RAM.
+Owner: private. Workdir: repository root. Windows 11, local consumer GPU.
 Goal: a fast, fully offline voice interface to a local LLM, with on-demand screen
 capture. No network dependency at runtime. This file is the single source of
 truth for architectural decisions; update it when a decision changes.
