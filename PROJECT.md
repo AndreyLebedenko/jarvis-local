@@ -206,9 +206,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   it is not a substitute for real echo cancellation, which v1.0 does not
   attempt.
 
-## Architecture v1.1 (in progress - controlled input)
+## Architecture v1.1 (controlled input)
 
-See [tasks/story-v1.1-controlled-input.md](tasks/story-v1.1-controlled-input.md).
+See [tasks/done/story-v1.1-controlled-input.md](tasks/done/story-v1.1-controlled-input.md).
 Task-08 landed first:
 
 - `clipboard_input.py` — reads clipboard text via `pyperclip` (not

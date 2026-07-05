@@ -1,6 +1,6 @@
 # Story: v1.1 - Controlled input
 
-Status: Draft.
+Status: Completed.
 
 ## Goal (user-facing)
 
@@ -30,11 +30,11 @@ In scope:
 Out of scope:
 
 - Thinking-mode product wiring. That depends on
-  [task-spike-thinking-mode.md](task-spike-thinking-mode.md), which is
+  [task-spike-thinking-mode.md](../task-spike-thinking-mode.md), which is
   parallel research for a later story, not a v1.1 dependency - see
   "Parallel research" below.
 - Read-only dialog history window. It is deferred; see
-  [backlog-history-window.md](backlog-history-window.md).
+  [backlog-history-window.md](../backlog-history-window.md).
 - Text input UI, prompt editor, or chat window.
 - ASR/transcription of spoken user utterances.
 - Echo cancellation.
@@ -74,7 +74,7 @@ Out of scope:
 
 ## Parallel research (not on v1.1's critical path)
 
-- [task-spike-thinking-mode.md](task-spike-thinking-mode.md) - a manual
+- [task-spike-thinking-mode.md](../task-spike-thinking-mode.md) - a manual
   experiment that is prerequisite only for a *future* thinking-mode
   story/task. It does not block, and is not blocked by, task-08/09/10 -
   none of v1.1's own deliverables consume its findings. Originally

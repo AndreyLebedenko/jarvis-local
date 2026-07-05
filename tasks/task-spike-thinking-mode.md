@@ -2,7 +2,7 @@
 
 Status: Draft.
 
-Story: [story-v1.1-controlled-input.md](story-v1.1-controlled-input.md)
+Story: [story-v1.1-controlled-input.md](done/story-v1.1-controlled-input.md)
 
 ## Summary
 
