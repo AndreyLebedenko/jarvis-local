@@ -34,6 +34,7 @@ from audio_in import AudioInput, UtteranceChunk, VadChunker
 from backend import OllamaBackend, ResponseComplete, ResponseToken
 from bus import EventBus
 from capture import CaptureEngine, CaptureInput, ScreenshotCaptured, run_hotkey_listener
+from clipboard_input import ClipboardSubmitted
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
 from tts import TtsOutput
@@ -91,11 +92,26 @@ class ConversationHistory:
         return messages
 
 
+VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
+
+
 class Orchestrator:
     """Owns the per-turn state machine: correlates the latest screenshot
     with the next utterance, calls backend.chat(), builds history, and
     drives the thinking/speaking/error sound cues (listening is driven
-    separately, once TTS finishes speaking - see wire())."""
+    separately, once TTS finishes speaking - see wire()).
+
+    _start_turn() is the one shared turn-start path (busy-guard, thinking
+    cue, message assembly, backend.chat(), error handling) used by every
+    kind of user turn. on_utterance() and on_clipboard() are thin adapters
+    onto it (task-08): audio turns attach wav+pending-screenshot media and
+    a fixed history placeholder (no transcript exists in v1.0); clipboard
+    turns attach the real submitted text and no media at all. Duplicating
+    this logic per input source instead of sharing it is exactly the kind
+    of split that caused the ResponseComplete concurrency bugs found
+    during task-07's review - it must not happen again for the same
+    reason.
+    """
 
     def __init__(
         self,
@@ -112,6 +128,7 @@ class Orchestrator:
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
         self._busy = False
+        self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
 
     async def on_screenshot(self, event: ScreenshotCaptured) -> None:
         self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
@@ -120,22 +137,52 @@ class Orchestrator:
         if self._busy:
             logger.info("Ignoring utterance: previous request still in flight")
             return
-        self._busy = True
-        await self._sound_cues.play("thinking")
-
+        # Must check busy before touching _pending_screenshot_b64: consuming
+        # it here and then having _start_turn() reject the turn would lose
+        # a screenshot that was meant for the next *accepted* turn.
         media = [base64.b64encode(event.wav_bytes).decode()]
         if self._pending_screenshot_b64 is not None:
             media.append(self._pending_screenshot_b64)
             self._pending_screenshot_b64 = None
+        await self._start_turn(VOICE_PLACEHOLDER_TEXT, media)
+
+    async def on_clipboard(self, event: ClipboardSubmitted) -> None:
+        if event.is_empty:
+            # Not turn-state-dependent: there is nothing to submit either
+            # way, so this plays regardless of busy.
+            await self._sound_cues.play("input_error")
+            return
+        if self._busy:
+            logger.info("Ignoring clipboard submission: previous request still in flight")
+            return
+        # Must check busy before playing the ack/warning cue: playing it
+        # and then having _start_turn() silently reject the turn would
+        # tell the user their input was received when it was not.
+        await self._sound_cues.play("input_error" if event.truncated else "clipboard")
+        await self._start_turn(event.text, None)
+
+    async def _start_turn(
+        self, history_text: str, media_b64: list[str] | None
+    ) -> None:
+        # Defensive re-check: on_utterance()/on_clipboard() already gate on
+        # busy before doing their own turn-specific setup above, with no
+        # `await` in between - so this can only fire for a caller that
+        # forgets to pre-check, not for the two above in normal operation.
+        if self._busy:
+            logger.info("Ignoring new turn: previous request still in flight")
+            return
+        self._busy = True
+        await self._sound_cues.play("thinking")
 
         messages = [{"role": "system", "content": self._system_prompt}]
         messages.extend(self._history.as_messages())
-        messages.append({"role": "user", "content": "[голосовое сообщение]"})
+        messages.append({"role": "user", "content": history_text})
 
+        self._current_turn_history_text = history_text
         self._response_tokens = []
         self._spoke_this_turn = False
         try:
-            await self._backend.chat(messages, images_b64=media)
+            await self._backend.chat(messages, images_b64=media_b64)
         except Exception:
             logger.exception("Request failed")
             await self._sound_cues.play("error")
@@ -153,7 +200,7 @@ class Orchestrator:
         speech has actually finished playing (see wire()'s
         on_full_response_complete)."""
         full_text = "".join(self._response_tokens)
-        self._history.add("user", "[голосовое сообщение]")
+        self._history.add("user", self._current_turn_history_text)
         self._history.add("assistant", full_text)
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:

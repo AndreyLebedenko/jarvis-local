@@ -66,6 +66,20 @@ class SoundCueSettings:
     thinking: str = "sounds/thinking.wav"
     speaking: str = "sounds/speaking.wav"
     error: str = "sounds/error.wav"
+    # clipboard/input_error added for task-08 (v1.1); the real
+    # SoundCuePlayer/ensure_generated() don't reference these yet - that
+    # wiring is task-10's job, per the v1.1 story's task split.
+    clipboard: str = "sounds/clipboard.wav"
+    input_error: str = "sounds/input_error.wav"
+
+
+@dataclass(frozen=True)
+class ClipboardSettings:
+    # 20000 chars (~5000 tokens at a rough 4 chars/token estimate) is a
+    # conservative cap against an accidental huge paste (e.g. a log file)
+    # blowing up local-context latency, while comfortably fitting a long
+    # source file or document - see PROJECT.md.
+    max_chars: int = 20000
 
 
 @dataclass(frozen=True)
@@ -76,6 +90,7 @@ class Settings:
     tts: TtsSettings = field(default_factory=TtsSettings)
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     sound_cues: SoundCueSettings = field(default_factory=SoundCueSettings)
+    clipboard: ClipboardSettings = field(default_factory=ClipboardSettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -85,6 +100,7 @@ _SECTIONS: dict[str, type] = {
     "tts": TtsSettings,
     "capture": CaptureSettings,
     "sound_cues": SoundCueSettings,
+    "clipboard": ClipboardSettings,
 }
 
 

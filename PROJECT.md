@@ -167,6 +167,39 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   it is not a substitute for real echo cancellation, which v1.0 does not
   attempt.
 
+## Architecture v1.1 (in progress - controlled input)
+
+See [tasks/story-v1.1-controlled-input.md](tasks/story-v1.1-controlled-input.md).
+Task-08 landed first:
+
+- `clipboard_input.py` — reads clipboard text via `pyperclip` (not
+  Tkinter: reusing Tkinter here would repeat the thread-safety hazard
+  already caught live in capture.py's region-select overlay, see
+  `tasks/bug_reports/capture-region-select-tkinter-thread-safety.md`) and
+  builds a `ClipboardSubmitted` event. No hotkey-listening code lives
+  here yet - the real global hotkey is task-10's job (see the story
+  card's task split). `config.clipboard.max_chars` (default 20000
+  characters, ~5000 tokens at a rough 4 chars/token estimate) caps
+  clipboard length; text over the cap is truncated with a visible
+  in-band marker, never silently cut or rejected - an accidental huge
+  paste (e.g. a log file) is a real risk to local-context latency, and a
+  silent cut would let the model reason from an incomplete document
+  without anyone knowing.
+- `main.py`'s `Orchestrator` gained a shared `_start_turn()` path used by
+  both audio (`on_utterance`) and clipboard (`on_clipboard`) turns,
+  instead of a second parallel implementation. Clipboard turns record the
+  *real* submitted text in `ConversationHistory` (the first non-
+  placeholder user text in v1.0/v1.1) and never attach the pending
+  screenshot from `capture.py` - a screenshot taken "for" a voice
+  question should not silently attach to an unrelated pasted-code
+  question that happens to arrive first (see the story's Open decisions).
+- `config.sound_cues` gained `clipboard` (clean submission) and
+  `input_error` (truncated or empty clipboard - distinct from the
+  existing generic `error`, which covers backend/TTS failures) fields.
+  The real `SoundCuePlayer`/`ensure_generated()` don't reference these
+  yet and `config.example.toml` doesn't list them - that wiring is
+  task-10's job.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by
