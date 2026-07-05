@@ -40,6 +40,9 @@ class HotkeySettings:
     screenshot_full: str = "ctrl+alt+s"
     screenshot_region: str = "ctrl+alt+r"
     shutdown: str = "ctrl+alt+q"
+    # mic_sleep_toggle added for task-09 (v1.1); registering the real
+    # listener is task-10's job, per the v1.1 story's task split.
+    mic_sleep_toggle: str = "ctrl+alt+m"
 
 
 @dataclass(frozen=True)
@@ -66,11 +69,14 @@ class SoundCueSettings:
     thinking: str = "sounds/thinking.wav"
     speaking: str = "sounds/speaking.wav"
     error: str = "sounds/error.wav"
-    # clipboard/input_error added for task-08 (v1.1); the real
-    # SoundCuePlayer/ensure_generated() don't reference these yet - that
-    # wiring is task-10's job, per the v1.1 story's task split.
+    # clipboard/input_error/mic_sleep/mic_wake added for task-08/task-09
+    # (v1.1); the real SoundCuePlayer/ensure_generated() don't reference
+    # these yet - that wiring is task-10's job, per the v1.1 story's task
+    # split.
     clipboard: str = "sounds/clipboard.wav"
     input_error: str = "sounds/input_error.wav"
+    mic_sleep: str = "sounds/mic_sleep.wav"
+    mic_wake: str = "sounds/mic_wake.wav"
 
 
 @dataclass(frozen=True)

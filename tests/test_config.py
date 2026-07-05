@@ -6,6 +6,7 @@ from config import (
     BackendSettings,
     ClipboardSettings,
     ConfigError,
+    HotkeySettings,
     Settings,
     load_settings,
 )
@@ -175,3 +176,44 @@ def test_sound_cues_clipboard_and_input_error_fields_parse(tmp_path):
 
     assert settings.sound_cues.clipboard == "sounds/custom_clipboard.wav"
     assert settings.sound_cues.input_error == "sounds/custom_input_error.wav"
+
+
+# --- task-09: mic_sleep_toggle hotkey and new sound cue fields ---------------
+
+
+def test_hotkeys_mic_sleep_toggle_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [hotkeys]
+        mic_sleep_toggle = "ctrl+alt+p"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.hotkeys.mic_sleep_toggle == "ctrl+alt+p"
+
+
+def test_hotkeys_mic_sleep_toggle_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.hotkeys == HotkeySettings()
+
+
+def test_sound_cues_mic_sleep_and_mic_wake_fields_parse(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [sound_cues]
+        mic_sleep = "sounds/custom_mic_sleep.wav"
+        mic_wake = "sounds/custom_mic_wake.wav"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.sound_cues.mic_sleep == "sounds/custom_mic_sleep.wav"
+    assert settings.sound_cues.mic_wake == "sounds/custom_mic_wake.wav"
