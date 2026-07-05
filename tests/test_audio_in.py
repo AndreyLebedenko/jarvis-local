@@ -24,7 +24,7 @@ class _AlwaysSpeechModel:
 
 
 def test_a1_fixtures_internal_breath_pause_is_merged_by_default(vad_model):
-    """a1.wav has an internal ~0.3 s pause (Silero returns it as two raw
+    """a1.wav is a synthetic TTS fixture with an internal pause (Silero returns it as two raw
     segments). With the default request_end_pause_seconds (2.0 s), that
     pause is a mid-request breath, not the end of the request, so it must
     be merged into a single utterance."""
@@ -34,12 +34,12 @@ def test_a1_fixtures_internal_breath_pause_is_merged_by_default(vad_model):
     chunks = chunker.chunk(samples)
 
     assert len(chunks) == 1
-    assert chunks[0].start_seconds == pytest.approx(0.1, abs=0.05)
-    assert chunks[0].end_seconds == pytest.approx(5.6, abs=0.05)
+    assert chunks[0].start_seconds == pytest.approx(0.5, abs=0.05)
+    assert chunks[0].end_seconds == pytest.approx(10.4, abs=0.05)
 
 
 def test_a1_fixture_stays_split_with_a_short_pause_threshold(vad_model):
-    """With a request_end_pause_seconds shorter than a1's internal ~0.3 s
+    """With a request_end_pause_seconds shorter than a1's internal pause
     gap, the two raw segments must NOT be merged - confirms merging is
     genuinely driven by config, not hardcoded."""
     samples = read_audio("audio/a1.wav", sampling_rate=SAMPLE_RATE)
@@ -48,10 +48,10 @@ def test_a1_fixture_stays_split_with_a_short_pause_threshold(vad_model):
     chunks = chunker.chunk(samples)
 
     assert len(chunks) == 2
-    assert chunks[0].start_seconds == pytest.approx(0.1, abs=0.05)
-    assert chunks[0].end_seconds == pytest.approx(2.8, abs=0.05)
-    assert chunks[1].start_seconds == pytest.approx(3.1, abs=0.05)
-    assert chunks[1].end_seconds == pytest.approx(5.6, abs=0.05)
+    assert chunks[0].start_seconds == pytest.approx(0.5, abs=0.05)
+    assert chunks[0].end_seconds == pytest.approx(5.2, abs=0.05)
+    assert chunks[1].start_seconds == pytest.approx(6.5, abs=0.05)
+    assert chunks[1].end_seconds == pytest.approx(10.4, abs=0.05)
 
 
 def test_a2_fixture_produces_expected_utterance_boundaries(vad_model):
@@ -61,8 +61,8 @@ def test_a2_fixture_produces_expected_utterance_boundaries(vad_model):
     chunks = chunker.chunk(samples)
 
     assert len(chunks) == 1
-    assert chunks[0].start_seconds == pytest.approx(0.1, abs=0.05)
-    assert chunks[0].end_seconds == pytest.approx(5.1, abs=0.05)
+    assert chunks[0].start_seconds == pytest.approx(0.3, abs=0.05)
+    assert chunks[0].end_seconds == pytest.approx(4.7, abs=0.05)
 
 
 def test_silence_only_produces_zero_chunks(vad_model):
@@ -112,7 +112,7 @@ async def test_publish_from_samples_publishes_expected_chunks(vad_model):
     await audio_input.publish_from_samples(samples)
 
     assert len(received) == 1
-    assert received[0].start_seconds == pytest.approx(0.1, abs=0.05)
+    assert received[0].start_seconds == pytest.approx(0.3, abs=0.05)
     assert isinstance(received[0].wav_bytes, bytes)
     assert len(received[0].wav_bytes) > 0
 
