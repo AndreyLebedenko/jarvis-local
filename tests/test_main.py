@@ -1,7 +1,8 @@
 import asyncio
 import base64
+import logging
 
-from audio_in import UtteranceChunk
+from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
 from backend import LatencyMetrics, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
@@ -13,8 +14,11 @@ from main import (
     ConversationHistory,
     Orchestrator,
     _on_full_response_complete,
+    _on_mic_sleep_toggled,
     build_app,
     is_elevated,
+    run_clipboard_hotkey_listener,
+    run_mic_sleep_hotkey_listener,
     run_until_shutdown,
     unwire,
     wire,
@@ -87,10 +91,12 @@ def test_history_messages_include_media_when_provided():
 # --- Orchestrator --------------------------------------------------------
 
 
-def _orchestrator(chat_impl=None) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
+def _orchestrator(
+    chat_impl=None, audio_input=None
+) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
-    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues)
+    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues, audio_input=audio_input)
     return orchestrator, backend, sound_cues
 
 
@@ -336,6 +342,61 @@ async def test_finish_turn_cooldown_rejects_a_self_heard_echo():
     assert len(backend.calls) == 2
 
 
+# --- mic auto-pause during speech (task-10, layered on the cooldown above) --
+
+
+class _FakeAudioInputForEcho:
+    """Records calls only - the "must not override an explicit user
+    privacy sleep" guarantee no longer lives in Orchestrator (see
+    audio_in.py's AudioInput.auto_pause_for_speech()/
+    auto_resume_after_speech(), which own that composition themselves
+    now, per task-10's review). Orchestrator just calls these
+    unconditionally around a turn's speech."""
+
+    def __init__(self) -> None:
+        self.auto_pause_calls = 0
+        self.auto_resume_calls = 0
+
+    async def auto_pause_for_speech(self) -> None:
+        self.auto_pause_calls += 1
+
+    async def auto_resume_after_speech(self) -> None:
+        self.auto_resume_calls += 1
+
+
+async def test_speaking_auto_pauses_mic_and_resumes_after_cooldown():
+    audio_input = _FakeAudioInputForEcho()
+    orchestrator, _backend, _sound_cues = _orchestrator(audio_input=audio_input)
+
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+    await orchestrator.on_response_token(ResponseToken(text="Привет"))
+
+    assert audio_input.auto_pause_calls == 1
+    assert audio_input.auto_resume_calls == 0
+
+    finish_task = asyncio.create_task(orchestrator.finish_turn(cooldown_seconds=0.05))
+    await asyncio.sleep(0)
+    assert audio_input.auto_resume_calls == 0  # still within the cooldown
+
+    await finish_task
+
+    assert audio_input.auto_resume_calls == 1
+
+
+async def test_turn_with_no_speech_does_not_auto_pause_or_resume():
+    """A turn that never produces a response token (e.g. an empty
+    response) never starts speaking, so there is nothing for the mic
+    auto-pause to do either."""
+    audio_input = _FakeAudioInputForEcho()
+    orchestrator, _backend, _sound_cues = _orchestrator(audio_input=audio_input)
+
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+    await orchestrator.finish_turn()  # no response token in this turn
+
+    assert audio_input.auto_pause_calls == 0
+    assert audio_input.auto_resume_calls == 1  # finish_turn() always resumes - harmless no-op
+
+
 async def test_error_during_chat_plays_error_cue_and_clears_busy():
     async def failing_chat() -> None:
         raise ValueError("boom")
@@ -398,14 +459,17 @@ def test_wire_registers_expected_subscriptions():
 
     assert event_types.count(UtteranceChunk) == 1
     assert event_types.count(ScreenshotCaptured) == 1
+    assert event_types.count(ClipboardSubmitted) == 1
     assert event_types.count(ResponseToken) == 2  # tts_output + orchestrator
     # A single coordinating handler, not three concurrent subscribers -
     # see _on_full_response_complete's docstring for why that mattered.
     assert event_types.count(ResponseComplete) == 1
+    assert event_types.count(MicSleepToggled) == 1
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
     assert app.orchestrator.on_screenshot in handlers
+    assert app.orchestrator.on_clipboard in handlers
 
 
 async def test_unwire_removes_all_subscriptions():
@@ -444,6 +508,119 @@ async def test_run_until_shutdown_cancels_tasks_and_unsubscribes():
         UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
     )
     assert app.backend.calls == []
+
+
+class _FakeKeyboardModuleForShutdownTest:
+    def __init__(self) -> None:
+        self.removed_handles: list[object] = []
+
+    def add_hotkey(self, binding, callback):
+        return object()
+
+    def remove_hotkey(self, handle) -> None:
+        self.removed_handles.append(handle)
+
+
+async def test_run_until_shutdown_cancels_clipboard_and_mic_sleep_hotkey_listeners():
+    """Same shape as test_run_until_shutdown_cancels_tasks_and_unsubscribes,
+    but with the real task-10 listener coroutines instead of arbitrary fake
+    tasks - confirms run()'s pattern of handing these to run_until_shutdown
+    actually cancels them and runs their cleanup (kb.remove_hotkey)."""
+    app = _fake_app()
+    subscriptions = wire(app)
+    shutdown_event = asyncio.Event()
+
+    fake_kb_clipboard = _FakeKeyboardModuleForShutdownTest()
+    fake_kb_mic_sleep = _FakeKeyboardModuleForShutdownTest()
+    mic_sleep_audio_input = AudioInput(bus=app.bus, chunker=None)
+
+    background_tasks = [
+        asyncio.create_task(
+            run_clipboard_hotkey_listener(
+                app.bus,
+                app.settings.hotkeys,
+                app.settings.clipboard,
+                keyboard_module=fake_kb_clipboard,
+            )
+        ),
+        asyncio.create_task(
+            run_mic_sleep_hotkey_listener(
+                mic_sleep_audio_input, app.settings.hotkeys, keyboard_module=fake_kb_mic_sleep
+            )
+        ),
+    ]
+    await asyncio.sleep(0)  # let both listeners register their hotkeys
+
+    shutdown_event.set()
+    await asyncio.wait_for(
+        run_until_shutdown(app, subscriptions, shutdown_event, background_tasks),
+        timeout=2,
+    )
+
+    assert all(task.cancelled() for task in background_tasks)
+    assert len(fake_kb_clipboard.removed_handles) == 1
+    assert len(fake_kb_mic_sleep.removed_handles) == 1
+
+
+# --- mic sleep/wake sound cue (task-10) -------------------------------------
+
+
+async def test_on_mic_sleep_toggled_plays_mic_sleep_cue_when_asleep():
+    sound_cues = _FakeSoundCues()
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=sound_cues,
+        settings=_settings(),
+    )
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
+
+    assert sound_cues.played == ["mic_sleep"]
+
+
+async def test_on_mic_sleep_toggled_plays_mic_wake_cue_when_awake():
+    sound_cues = _FakeSoundCues()
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=sound_cues,
+        settings=_settings(),
+    )
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=True))
+
+    assert sound_cues.played == ["mic_wake"]
+
+
+async def test_on_mic_sleep_toggled_logs_an_info_message(caplog):
+    """Observability follow-up from task-10's human review: INFO-level
+    logging was silently dropped everywhere (nothing in the process
+    configured a handler for it), making state transitions like this one
+    impossible to confirm from the console."""
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        settings=_settings(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="main"):
+        await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
+
+    assert any("asleep" in record.message for record in caplog.records)
 
 
 # --- elevation check -------------------------------------------------------

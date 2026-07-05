@@ -1,4 +1,4 @@
-# Jarvis v1.0 example configuration.
+# Jarvis example configuration (v1.0 base + v1.1 controlled input).
 #
 # Copy this file to config.toml and edit as needed. config.toml is
 # gitignored so personal tweaks (hotkeys, voice, sound cue paths) never
@@ -26,6 +26,13 @@ read_timeout_seconds = 120.0
 screenshot_full = "ctrl+alt+s"
 screenshot_region = "ctrl+alt+r"
 shutdown = "ctrl+alt+q"
+# v1.1: toggles microphone capture on/off (privacy pause) - a single
+# toggle, not separate sleep/wake bindings. See PROJECT.md's Architecture
+# v1.1 section.
+mic_sleep_toggle = "ctrl+alt+m"
+# v1.1: reads the current clipboard and submits it as a prompt, in place
+# of a spoken question.
+clipboard_submit = "ctrl+alt+v"
 
 [vad]
 threshold = 0.5
@@ -52,8 +59,22 @@ rate = 1.0
 [capture]
 default_mode = "full"
 
+[clipboard]
+# 20000 chars (~5000 tokens at a rough 4 chars/token estimate): a
+# conservative cap against an accidental huge paste (e.g. a log file)
+# blowing up local-context latency. Text over this is truncated with a
+# visible in-band marker, never silently cut.
+max_chars = 20000
+
 [sound_cues]
 listening = "sounds/listening.wav"
 thinking = "sounds/thinking.wav"
 speaking = "sounds/speaking.wav"
 error = "sounds/error.wav"
+# v1.1: clipboard submission accepted / rejected (truncated or empty -
+# distinct from the generic error above, which covers backend/TTS
+# failures), and microphone sleep/wake.
+clipboard = "sounds/clipboard.wav"
+input_error = "sounds/input_error.wav"
+mic_sleep = "sounds/mic_sleep.wav"
+mic_wake = "sounds/mic_wake.wav"

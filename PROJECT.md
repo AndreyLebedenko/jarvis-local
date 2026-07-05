@@ -81,6 +81,45 @@ architectural decisions; update it when a decision changes.
   reverb could still exceed the cooldown); true echo cancellation would
   be the complete fix, and is not attempted in v1.0.
 
+  Task-10 (v1.1) layers a second mitigation on top, using task-09's mic
+  sleep/wake primitive: `Orchestrator` now pauses `AudioInput` the moment
+  a turn starts actually speaking (`on_response_token`'s first token) and
+  resumes it after `finish_turn()`'s existing cooldown - the mic is not
+  merely ignored during this window, it stops capturing at the device
+  level, same as the user-triggered privacy sleep. This does not replace
+  the busy-cooldown (still the fallback for anything the pause misses,
+  e.g. a turn that produces no speech at all) and still is not full echo
+  cancellation - room reverb after the cooldown/wake could still be
+  picked up. Explicit human decision (2026-07-05, task-10): implement
+  this now rather than defer, given task-09's primitive already existed
+  and the implementation cost was low.
+
+  Privacy guard, redesigned after a human review caught two real bugs in
+  the first version (which tracked a single `Orchestrator`-side
+  `_mic_paused_by_us` boolean plus a single `AudioInput.is_awake` bit):
+  (1) pressing the privacy hotkey while `Orchestrator`'s auto-pause was
+  active could be misread as "wake" instead of the user's actual "sleep"
+  request, since the hotkey callback decided which action to take from
+  the same bit the auto-pause was also flipping; (2) `finish_turn()`
+  could wake a mic the user had put to sleep independently (e.g. a
+  clipboard turn submitted while asleep, then answered aloud). Fixed by
+  moving this composition into `AudioInput` itself, which now tracks two
+  independent flags ANDed into the actual capture state: the user's own
+  requested state (`toggle_user_sleep()`, the only method that publishes
+  `MicSleepToggled`/drives the privacy cues) and `Orchestrator`'s
+  auto-pause (`auto_pause_for_speech()`/`auto_resume_after_speech()`,
+  silent - not a user-visible privacy action, so it must not sound like
+  one on every spoken response). `Orchestrator` now calls the auto-pause
+  methods unconditionally around a turn's speech and no longer needs to
+  reason about the user's state at all.
+
+  The same review also caught a related hotkey race (two rapid presses
+  could both read a stale pre-toggle state and schedule the same action
+  twice instead of toggling twice): the decision now happens entirely
+  inside `toggle_user_sleep()` on the event loop, never in the keyboard
+  callback thread. All three fixes have regression tests confirmed to
+  fail without the fix and pass with it.
+
 ## Open questions (unverified - do not assume an answer)
 
 - **Resolved (task-07, human decision): history is text-only in v1.0.**
@@ -206,7 +245,11 @@ Task-09 landed second:
   `asyncio.Event`) and a `stream_factory` constructor seam (defaults to
   the real `sd.InputStream`, injectable for tests) - no hotkey-listening
   code lives here either, matching task-08's pattern; the real global
-  hotkey binding is task-10's job.
+  hotkey binding is task-10's job. (Superseded by task-10's review: see
+  below - `sleep()`/`wake()` were replaced by `toggle_user_sleep()` plus
+  the separate `auto_pause_for_speech()`/`auto_resume_after_speech()`
+  pair, since a single awake bit could not represent the user's privacy
+  intent and the internal echo-mitigation pause independently.)
 - `run_microphone_loop()` reuses the *same* `sd.InputStream` across
   sleep/wake cycles via its own `.stop()`/`.start()` rather than
   reconstructing it (avoids wake-up latency), and blocks on
@@ -227,6 +270,63 @@ Task-09 landed second:
   task-08's new sound cue fields, nothing wires these to the real
   hotkey listener or `SoundCuePlayer` yet, and `config.example.toml`
   doesn't list them - task-10's job.
+
+Task-10 landed third, wiring task-08/task-09 end to end:
+
+- `clipboard_input.py` gained `run_hotkey_listener()`, binding the new
+  `hotkeys.clipboard_submit` (default `ctrl+alt+v`) - mirrors
+  `capture.py`'s listener shape (config-driven binding, injectable
+  `keyboard_module`/`read_clipboard`).
+- `audio_in.py` gained `run_hotkey_listener()` for `hotkeys.
+  mic_sleep_toggle`, calling `AudioInput.toggle_user_sleep()` on every
+  press, and a `MicSleepToggled(is_awake: bool)` bus event that method
+  publishes (only that method - see the Verified facts entry above for
+  why the internal auto-pause deliberately does not). `main.py`'s
+  `wire()` subscribes to it and plays `mic_sleep`/`mic_wake` - the same
+  "input module publishes, main.py decides what to do about it" split
+  already used for every other cue, so `audio_in.py` still has no
+  dependency on `SoundCuePlayer`.
+- `main.py`'s `wire()` now also subscribes `ClipboardSubmitted ->
+  orchestrator.on_clipboard` (task-08 built the handler but never
+  wired it) and the new `MicSleepToggled` handler. `run()` starts both
+  new hotkey listeners as background tasks alongside the existing
+  audio/capture ones, cancelled/awaited on shutdown the same way.
+- `sound_cues.py` gained tone generators and `_paths`/`_GENERATORS`
+  entries for `clipboard`/`input_error`/`mic_sleep`/`mic_wake` - these
+  config fields existed since task-08/task-09 but `SoundCuePlayer`/
+  `ensure_generated()` never referenced them, so `sound_cues.play(...)`
+  for any of them was silently a no-op (logged a warning) until now.
+- `config.example.toml` gained entries for every new v1.1 field
+  (`hotkeys.clipboard_submit`, `hotkeys.mic_sleep_toggle`,
+  `clipboard.max_chars`, the four new `sound_cues` paths).
+- System prompt left unchanged: pasted clipboard text arrives as an
+  ordinary user message (task-08's `on_clipboard()` already sends the
+  real text, not a placeholder), so the model does not need to be told
+  the input came from the clipboard rather than speech to answer it
+  well - there is nothing input-modality-specific for it to react to.
+
+Human manual-testing review of task-10 found two more issues, both fixed:
+
+- **No logging was configured anywhere in the process** (verified: a
+  grep for `basicConfig`/`setLevel` across every module found nothing).
+  Every existing `logger.info(...)` call project-wide (e.g. the busy-
+  guard "ignoring ..." messages) was silently dropped - Python's logging
+  module only auto-prints WARNING+ without configuration. This is what
+  made the `input_error` cue issue below hard to diagnose from the
+  console. Fixed: `run()` now calls `logging.basicConfig(level=INFO,
+  format="%(asctime)s %(levelname)s %(name)s: %(message)s")` at
+  startup, and `SoundCuePlayer.play()`/`_on_mic_sleep_toggled()` now log
+  an INFO line naming the cue/state so cue-related activity is visible
+  with a timestamp, as requested during review.
+- **The `input_error` cue was not reliably audible.** Its original tone
+  (a single 240 Hz, 0.1 s blip) was quieter/shorter than every other
+  v1.1 cue (all multi-segment). Fixed: redesigned as two same-pitch
+  blips separated by a silent gap (`sound_cues.py::_cue_input_error()`),
+  clearly longer and rhythmically distinct from the generic two-tone
+  *falling* `error` cue. Since `ensure_generated()` only creates a cue
+  file if it does not already exist, anyone who already ran task-10's
+  build must delete their stale `sounds/input_error.wav` for the new
+  tone to take effect on next launch.
 
 ## Working agreements (for the agent)
 
@@ -269,7 +369,10 @@ Task-09 landed second:
    OCR questions are targeted rather than bulk extraction (see Open
    questions - OCR confabulation).
 7. Real echo cancellation for audio_in.py, replacing v1.0's busy-cooldown
-   mitigation for Jarvis hearing its own TTS output (see Verified facts).
+   mitigation *and* v1.1/task-10's mic-pause-during-speech mitigation for
+   Jarvis hearing its own TTS output (see Verified facts) - both are
+   still timing-window mitigations, not a device-level fix for reverb
+   that outlasts the cooldown.
 
 ## Day-0 artifacts
 

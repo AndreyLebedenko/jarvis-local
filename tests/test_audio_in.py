@@ -9,9 +9,16 @@ import soundfile as sf
 import torch
 from silero_vad import load_silero_vad, read_audio
 
-from audio_in import SAMPLE_RATE, AudioInput, UtteranceChunk, VadChunker
+from audio_in import (
+    SAMPLE_RATE,
+    AudioInput,
+    MicSleepToggled,
+    UtteranceChunk,
+    VadChunker,
+    run_hotkey_listener,
+)
 from bus import EventBus
-from config import VadSettings
+from config import HotkeySettings, VadSettings
 
 
 @pytest.fixture(scope="module")
@@ -235,10 +242,11 @@ async def test_sleeping_stops_new_reads_from_the_stream():
     await asyncio.sleep(0.05)
     assert fake_stream.read_calls > 0
 
-    await audio_input.sleep()
-    # Let any read already in flight when sleep() was called complete, and
-    # the sleep branch run (the awake-check happens once per iteration,
-    # before the read call, so one in-flight read can still land here).
+    await audio_input.toggle_user_sleep()
+    # Let any read already in flight when toggle_user_sleep() was called
+    # complete, and the sleep branch run (the awake-check happens once
+    # per iteration, before the read call, so one in-flight read can
+    # still land here).
     await asyncio.sleep(0.05)
     reads_once_asleep = fake_stream.read_calls
     await asyncio.sleep(0.05)
@@ -254,7 +262,7 @@ async def test_asleep_loop_never_reads_and_blocks_without_busy_polling():
     audio_input = AudioInput(
         bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
     )
-    await audio_input.sleep()
+    await audio_input.toggle_user_sleep()
 
     task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
     await asyncio.sleep(0.05)
@@ -277,11 +285,11 @@ async def test_waking_resumes_capture_on_the_same_stream_instance():
     task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
     await asyncio.sleep(0.02)
 
-    await audio_input.sleep()
+    await audio_input.toggle_user_sleep()
     await asyncio.sleep(0.02)
     assert fake_stream.stop_calls >= 1
 
-    await audio_input.wake()
+    await audio_input.toggle_user_sleep()
     await asyncio.sleep(0.02)
 
     assert len(factory_calls) == 1
@@ -402,7 +410,7 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     await _wait_until_read_pending(fake_stream)
     assert received == []
 
-    await audio_input.sleep()
+    await audio_input.toggle_user_sleep()
 
     # This queued read is the one the loop was already parked on above; it
     # completes as if still awake (the awake-check only runs once per
@@ -415,7 +423,7 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     )
     assert received == []  # a2 + short filler is still short of the 2.0s pause
 
-    await audio_input.wake()
+    await audio_input.toggle_user_sleep()
 
     # Read #3: a1's whole clip, into what must now be a fresh buffer.
     await _wait_until_read_pending(fake_stream)
@@ -437,3 +445,198 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     assert len(received) == 1
     assert received[0].start_seconds == pytest.approx(0.5, abs=0.05)
     assert received[0].end_seconds == pytest.approx(10.4, abs=0.05)
+
+
+# --- task-10: MicSleepToggled event and real hotkey listener -----------------
+
+
+async def test_toggle_user_sleep_publishes_mic_sleep_toggled():
+    bus = EventBus()
+    received = []
+
+    async def on_event(event: MicSleepToggled) -> None:
+        received.append(event)
+
+    bus.subscribe(MicSleepToggled, on_event)
+    audio_input = AudioInput(bus=bus, chunker=_FakeChunker())
+
+    await audio_input.toggle_user_sleep()
+    await audio_input.toggle_user_sleep()
+
+    assert received == [MicSleepToggled(is_awake=False), MicSleepToggled(is_awake=True)]
+
+
+async def test_auto_pause_and_resume_do_not_publish_mic_sleep_toggled():
+    """The internal echo mitigation is not a user-visible privacy action
+    (task-10 review finding): it must not fire the event that drives the
+    mic_sleep/mic_wake cues, or every spoken response would sound like
+    the user's own privacy toggle."""
+    bus = EventBus()
+    received = []
+
+    async def on_event(event: MicSleepToggled) -> None:
+        received.append(event)
+
+    bus.subscribe(MicSleepToggled, on_event)
+    audio_input = AudioInput(bus=bus, chunker=_FakeChunker())
+
+    await audio_input.auto_pause_for_speech()
+    await audio_input.auto_resume_after_speech()
+
+    assert received == []
+
+
+async def test_auto_pause_does_not_wake_a_user_requested_sleep():
+    """Regression for the P1 bug found in task-10 review: a single
+    is_awake bit could not represent "user wants privacy" and "Jarvis is
+    auto-pausing for its own speech" independently, so auto-resume could
+    wake the mic against an explicit user sleep (e.g. a clipboard turn
+    submitted while asleep, then answered aloud)."""
+    audio_input = AudioInput(bus=EventBus(), chunker=_FakeChunker())
+
+    await audio_input.toggle_user_sleep()  # user explicitly wants privacy
+    assert audio_input.is_awake is False
+
+    await audio_input.auto_pause_for_speech()
+    assert audio_input.is_awake is False
+
+    await audio_input.auto_resume_after_speech()
+    assert audio_input.is_awake is False  # still asleep - the user never asked to wake
+
+
+async def test_user_toggle_during_auto_pause_reflects_intent_not_current_capture_state():
+    """Regression for the other half of the same P1 bug: pressing the
+    privacy hotkey while auto-paused (e.g. mid-speech) must register
+    the user's actual request, not get reinterpreted based on whatever
+    the combined capture state happens to be at that instant."""
+    bus = EventBus()
+    received = []
+
+    async def on_event(event: MicSleepToggled) -> None:
+        received.append(event)
+
+    bus.subscribe(MicSleepToggled, on_event)
+    audio_input = AudioInput(bus=bus, chunker=_FakeChunker())
+
+    await audio_input.auto_pause_for_speech()  # e.g. Jarvis started speaking
+    assert audio_input.is_awake is False
+
+    # User presses the privacy hotkey while auto-paused, wanting sleep -
+    # must be registered as such, not skipped just because capture is
+    # already (coincidentally) off.
+    await audio_input.toggle_user_sleep()
+    assert received == [MicSleepToggled(is_awake=False)]
+
+    await audio_input.auto_resume_after_speech()  # Jarvis stops speaking
+    assert audio_input.is_awake is False  # the user's own sleep request stands
+
+
+class _FakeKeyboardModule:
+    """Mirrors capture.py's test fake and the real keyboard package's
+    contract: remove_hotkey() must be called with the value add_hotkey()
+    returned, not the original binding string."""
+
+    def __init__(self) -> None:
+        self.registered: dict[str, callable] = {}
+        self.removed_handles: list[object] = []
+        self._handle_by_binding: dict[str, object] = {}
+
+    def add_hotkey(self, binding, callback):
+        self.registered[binding] = callback
+        handle = object()
+        self._handle_by_binding[binding] = handle
+        return handle
+
+    def remove_hotkey(self, handle) -> None:
+        valid_handles = set(self._handle_by_binding.values())
+        assert handle in valid_handles, (
+            f"remove_hotkey called with {handle!r}, which is not a handle "
+            "add_hotkey returned"
+        )
+        self.removed_handles.append(handle)
+
+    def handle_for(self, binding: str) -> object:
+        return self._handle_by_binding[binding]
+
+
+async def test_mic_sleep_hotkey_listener_registers_binding_from_config():
+    hotkeys = HotkeySettings(mic_sleep_toggle="ctrl+alt+z")
+    fake_kb = _FakeKeyboardModule()
+    audio_input = AudioInput(bus=EventBus(), chunker=_FakeChunker())
+
+    task = asyncio.create_task(
+        run_hotkey_listener(audio_input, hotkeys, keyboard_module=fake_kb)
+    )
+    await asyncio.sleep(0)
+
+    assert set(fake_kb.registered) == {"ctrl+alt+z"}
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert fake_kb.removed_handles == [fake_kb.handle_for("ctrl+alt+z")]
+
+
+async def test_mic_sleep_hotkey_callback_toggles_awake_state():
+    hotkeys = HotkeySettings(mic_sleep_toggle="ctrl+alt+z")
+    fake_kb = _FakeKeyboardModule()
+    audio_input = AudioInput(bus=EventBus(), chunker=_FakeChunker())
+    assert audio_input.is_awake is True
+
+    task = asyncio.create_task(
+        run_hotkey_listener(audio_input, hotkeys, keyboard_module=fake_kb)
+    )
+    await asyncio.sleep(0)
+
+    fake_kb.registered["ctrl+alt+z"]()
+    await asyncio.sleep(0.05)
+    assert audio_input.is_awake is False
+
+    fake_kb.registered["ctrl+alt+z"]()
+    await asyncio.sleep(0.05)
+    assert audio_input.is_awake is True
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_two_rapid_hotkey_presses_toggle_twice_not_the_same_action_twice():
+    """Regression for the P2 bug found in task-10 review: an earlier
+    version read audio_input.is_awake in the keyboard callback (on a
+    different thread than the event loop) to decide whether to schedule
+    sleep() or wake(), before the first press's mutation had actually run
+    - two presses in quick succession could both read the same stale
+    value and schedule the *same* action twice instead of toggling twice.
+    Invoking the callback twice back-to-back here, before yielding to the
+    loop, reproduces that scheduling order; toggle_user_sleep() reads and
+    flips the state on the event loop with no intervening await, so it is
+    always the current value when each scheduled call actually runs."""
+    hotkeys = HotkeySettings(mic_sleep_toggle="ctrl+alt+z")
+    fake_kb = _FakeKeyboardModule()
+    bus = EventBus()
+    received = []
+
+    async def on_event(event: MicSleepToggled) -> None:
+        received.append(event)
+
+    bus.subscribe(MicSleepToggled, on_event)
+    audio_input = AudioInput(bus=bus, chunker=_FakeChunker())
+    assert audio_input.is_awake is True
+
+    task = asyncio.create_task(
+        run_hotkey_listener(audio_input, hotkeys, keyboard_module=fake_kb)
+    )
+    await asyncio.sleep(0)
+
+    fake_kb.registered["ctrl+alt+z"]()
+    fake_kb.registered["ctrl+alt+z"]()  # back-to-back, before either has run yet
+    await asyncio.sleep(0.05)
+
+    assert audio_input.is_awake is True  # toggled twice: back to the original state
+    assert [event.is_awake for event in received] == [False, True]
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
