@@ -2,7 +2,11 @@
 
 Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks short Russian answers through local TTS.
 
-Runtime is designed to work offline after the one-time model setup steps are complete.
+Jarvis core is designed to run without network access after the one-time setup
+steps are complete. The LLM backend is a separate component: the default
+supported backend is a local Ollama server on the same machine, but the selected
+backend, model installation, updates, or any future non-local provider may have
+their own network requirements.
 
 [Russian README](README.ru.md)
 
@@ -21,7 +25,7 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Hotkey and sound-cue interface, no GUI.
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration.
-- Runtime offline mode after models are downloaded.
+- Jarvis core runtime has no network dependency after models are downloaded.
 
 ## Requirements
 

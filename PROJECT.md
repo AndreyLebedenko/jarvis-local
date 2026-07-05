@@ -1,9 +1,11 @@
 # Project: Jarvis — Local Voice/Vision Assistant
 
 Owner: private. Workdir: repository root. Windows 11, local consumer GPU.
-Goal: a fast, fully offline voice interface to a local LLM, with on-demand screen
-capture. No network dependency at runtime. This file is the single source of
-truth for architectural decisions; update it when a decision changes.
+Goal: a fast local voice interface to an LLM, with on-demand screen capture.
+Jarvis core has no runtime network dependency. The supported v1.0 backend is a
+local Ollama endpoint; backend/model installation and non-local providers are
+outside Jarvis core guarantees. This file is the single source of truth for
+architectural decisions; update it when a decision changes.
 
 ## Verified facts (day-0 experiments, July 2026 — do not re-litigate)
 
