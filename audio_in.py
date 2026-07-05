@@ -24,10 +24,27 @@ used by the fixture tests, per this module's task card. It uses the same
 request_end_pause_seconds threshold to decide when a merged utterance is
 safe to finalize and publish (no further speech can still be merged into
 it once that much trailing buffer has passed with no new segment).
+
+Sleep mode (task-09, v1.1): AudioInput.sleep()/wake() toggle a privacy
+pause driven from outside the module (a hotkey, wired in task-10) - a
+genuine capture pause, not just discarding results while still listening.
+run_microphone_loop() reuses the same sd.InputStream across sleep/wake
+cycles via its own .stop()/.start() (reconstructing it would add
+wake-latency and is unnecessary), blocks efficiently on an asyncio.Event
+while asleep (no busy-polling), and resets the accumulated buffer on the
+sleep transition: without that reset, speech captured just before sleep
+could still be sitting in the buffer, unconfirmed, when new speech
+arrives after wake, and the VAD/merge pipeline could stitch them into one
+utterance spanning a real gap where nothing was actually being captured.
+Any not-yet-confirmed audio in the buffer at the moment sleep triggers is
+therefore discarded, not published - consistent with sleep being a
+privacy pause, not a "flush first" action.
 """
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 import sounddevice as sd
@@ -39,6 +56,26 @@ from bus import EventBus
 from config import VadSettings
 
 SAMPLE_RATE = 16000
+
+
+class InputStreamLike(Protocol):
+    """Shape of sd.InputStream that run_microphone_loop() relies on -
+    lets tests inject a fake without a type-erasing Any."""
+
+    def __enter__(self) -> "InputStreamLike": ...
+    def __exit__(self, *exc_info: object) -> bool | None: ...
+    def read(self, frames: int) -> tuple[np.ndarray, bool]: ...
+    def stop(self) -> None: ...
+    def start(self) -> None: ...
+
+
+StreamFactory = Callable[[int], InputStreamLike]
+
+
+def _default_stream_factory(block_samples: int) -> InputStreamLike:
+    return sd.InputStream(
+        samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=block_samples
+    )
 
 
 @dataclass(frozen=True)
@@ -109,9 +146,27 @@ class VadChunker:
 
 
 class AudioInput:
-    def __init__(self, bus: EventBus, chunker: VadChunker) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        chunker: VadChunker,
+        stream_factory: StreamFactory | None = None,
+    ) -> None:
         self._bus = bus
         self._chunker = chunker
+        self._stream_factory = stream_factory or _default_stream_factory
+        self._awake = asyncio.Event()
+        self._awake.set()
+
+    @property
+    def is_awake(self) -> bool:
+        return self._awake.is_set()
+
+    async def sleep(self) -> None:
+        self._awake.clear()
+
+    async def wake(self) -> None:
+        self._awake.set()
 
     async def publish_from_samples(self, samples: torch.Tensor) -> None:
         for chunk in self._chunker.chunk(samples):
@@ -124,16 +179,26 @@ class AudioInput:
         settings.request_end_pause_seconds of buffered audio with no
         further speech merged into it (confirming it has actually ended,
         not just paused mid-request). Runs until cancelled.
+
+        While asleep, the loop blocks on self._awake.wait() instead of
+        reading the stream, and the buffer is dropped on the sleep
+        transition (see module docstring for why).
         """
         request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
         buffer = np.zeros(0, dtype=np.float32)
         published_end_seconds = 0.0
         block_samples = int(SAMPLE_RATE * poll_interval_seconds)
 
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=block_samples
-        ) as stream:
+        with self._stream_factory(block_samples) as stream:
             while True:
+                if not self._awake.is_set():
+                    await asyncio.to_thread(stream.stop)
+                    buffer = np.zeros(0, dtype=np.float32)
+                    published_end_seconds = 0.0
+                    await self._awake.wait()
+                    await asyncio.to_thread(stream.start)
+                    continue
+
                 data, _ = await asyncio.to_thread(stream.read, block_samples)
                 buffer = np.concatenate([buffer, data[:, 0]])
                 buffer_duration = len(buffer) / SAMPLE_RATE

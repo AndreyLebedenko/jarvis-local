@@ -200,6 +200,34 @@ Task-08 landed first:
   yet and `config.example.toml` doesn't list them - that wiring is
   task-10's job.
 
+Task-09 landed second:
+
+- `AudioInput` gained `sleep()`/`wake()` (backed by an internal
+  `asyncio.Event`) and a `stream_factory` constructor seam (defaults to
+  the real `sd.InputStream`, injectable for tests) - no hotkey-listening
+  code lives here either, matching task-08's pattern; the real global
+  hotkey binding is task-10's job.
+- `run_microphone_loop()` reuses the *same* `sd.InputStream` across
+  sleep/wake cycles via its own `.stop()`/`.start()` rather than
+  reconstructing it (avoids wake-up latency), and blocks on
+  `self._awake.wait()` while asleep instead of busy-polling.
+- The accumulated capture buffer is dropped on the sleep transition.
+  Without this, audio captured but not yet confirmed as a complete
+  utterance when sleep is triggered could still be sitting in the
+  buffer when new audio arrives after wake, and the VAD/merge pipeline
+  could stitch the two together into one utterance spanning a real gap
+  where nothing was actually being captured. Consequence: any
+  unconfirmed audio in the buffer at the moment sleep triggers is
+  discarded, not published - sleep is a privacy pause, not a "flush
+  first" action. Verified via a fixture test (speech, sleep before
+  confirmation, wake, different speech) that the reset is what prevents
+  the two from merging (test fails without the reset, passes with it).
+- `config.hotkeys` gained `mic_sleep_toggle` (default `ctrl+alt+m`) and
+  `config.sound_cues` gained `mic_sleep`/`mic_wake` fields. As with
+  task-08's new sound cue fields, nothing wires these to the real
+  hotkey listener or `SoundCuePlayer` yet, and `config.example.toml`
+  doesn't list them - task-10's job.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by

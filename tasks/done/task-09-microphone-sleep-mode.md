@@ -1,6 +1,14 @@
 # Task: Microphone sleep mode (audio_in.py)
 
-Status: Draft.
+Status: Completed.
+
+Review found one typing issue, fixed: the `StreamFactory` seam used
+`Callable[[int], Any]`, erasing the stream's type; replaced with a
+`Protocol` (`InputStreamLike`) declaring `read`/`stop`/`start`/
+`__enter__`/`__exit__`, so `StreamFactory = Callable[[int], InputStreamLike]`.
+Automated tests (118 passed) and the manual handoff (sleep/wake toggle via
+a throwaway console script, Windows mic-in-use indicator confirmed off
+while asleep) both verified.
 
 Story: [story-v1.1-controlled-input.md](story-v1.1-controlled-input.md)
 
