@@ -1,0 +1,379 @@
+"""Process entry point: wires every module together via bus.py, authors
+the system prompt, and drives sound cues for state transitions -
+PROJECT.md's "hotkeys + sound cues only, no GUI" interaction model.
+
+History (v1.0 decision, see PROJECT.md's Open questions section):
+text-only. Media (audio, screenshot) is attached only to the current
+turn's message, never resent in history. ConversationHistory's Turn
+already carries a media_b64 field so a later release can start passing
+media into history without restructuring anything here - v1.0 code
+simply never populates it.
+
+Warm-up (task-07 backlog note from task-03): a throwaway request runs
+BEFORE wire() subscribes tts_output/orchestrator to the bus, so its
+response tokens are published to zero subscribers (bus.py: publishing
+with no subscribers is a no-op) rather than spoken aloud or recorded
+into history.
+
+Malformed stream line policy (task-07 backlog note from task-03):
+backend.py's chat() lets a json.loads failure on a malformed line raise
+uncaught. Resolved here, not in backend.py: Orchestrator.on_utterance's
+try/except around backend.chat() already catches any such exception,
+plays the error cue, and lets the process keep running - no backend.py
+change needed.
+"""
+
+import asyncio
+import base64
+import ctypes
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
+from audio_in import AudioInput, UtteranceChunk, VadChunker
+from backend import OllamaBackend, ResponseComplete, ResponseToken
+from bus import EventBus
+from capture import CaptureEngine, CaptureInput, ScreenshotCaptured, run_hotkey_listener
+from config import Settings, load_settings
+from sound_cues import SoundCuePlayer, ensure_generated
+from tts import TtsOutput
+
+logger = logging.getLogger(__name__)
+
+SYSTEM_PROMPT = (
+    "Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай "
+    "по-русски, если пользователь явно не попросил другой язык. Отвечай "
+    "коротко и по существу: одно-два предложения, если не попросили "
+    "подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока "
+    "он прозвучит. Если вместе с голосовым сообщением пришёл скриншот "
+    "экрана пользователя, отвечай с учётом того, что на нём видно."
+)
+
+
+def is_elevated() -> bool:
+    """Windows-only: True if the process has Administrator privileges.
+    Global hotkeys (capture.py, the shutdown hotkey here) only work
+    system-wide when elevated - verified live, see PROJECT.md's Verified
+    facts. Not elevated is not fatal; hotkeys just degrade to only firing
+    while this process's own window has focus.
+    """
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
+@dataclass(frozen=True)
+class Turn:
+    role: str
+    text: str
+    media_b64: tuple[str, ...] = ()  # always empty in v1.0 - see module docstring
+
+
+class ConversationHistory:
+    """Text-only for v1.0. Turn already carries media_b64 so a later
+    release can extend this without restructuring anything - see module
+    docstring."""
+
+    def __init__(self) -> None:
+        self._turns: list[Turn] = []
+
+    def add(self, role: str, text: str, media_b64: tuple[str, ...] = ()) -> None:
+        self._turns.append(Turn(role=role, text=text, media_b64=media_b64))
+
+    def as_messages(self) -> list[dict[str, object]]:
+        messages = []
+        for turn in self._turns:
+            message: dict[str, object] = {"role": turn.role, "content": turn.text}
+            if turn.media_b64:
+                message["images"] = list(turn.media_b64)
+            messages.append(message)
+        return messages
+
+
+class Orchestrator:
+    """Owns the per-turn state machine: correlates the latest screenshot
+    with the next utterance, calls backend.chat(), builds history, and
+    drives the thinking/speaking/error sound cues (listening is driven
+    separately, once TTS finishes speaking - see wire())."""
+
+    def __init__(
+        self,
+        backend: OllamaBackend,
+        history: ConversationHistory,
+        sound_cues: SoundCuePlayer,
+        system_prompt: str = SYSTEM_PROMPT,
+    ) -> None:
+        self._backend = backend
+        self._history = history
+        self._sound_cues = sound_cues
+        self._system_prompt = system_prompt
+        self._pending_screenshot_b64: str | None = None
+        self._response_tokens: list[str] = []
+        self._spoke_this_turn = False
+        self._busy = False
+
+    async def on_screenshot(self, event: ScreenshotCaptured) -> None:
+        self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
+
+    async def on_utterance(self, event: UtteranceChunk) -> None:
+        if self._busy:
+            logger.info("Ignoring utterance: previous request still in flight")
+            return
+        self._busy = True
+        await self._sound_cues.play("thinking")
+
+        media = [base64.b64encode(event.wav_bytes).decode()]
+        if self._pending_screenshot_b64 is not None:
+            media.append(self._pending_screenshot_b64)
+            self._pending_screenshot_b64 = None
+
+        messages = [{"role": "system", "content": self._system_prompt}]
+        messages.extend(self._history.as_messages())
+        messages.append({"role": "user", "content": "[голосовое сообщение]"})
+
+        self._response_tokens = []
+        self._spoke_this_turn = False
+        try:
+            await self._backend.chat(messages, images_b64=media)
+        except Exception:
+            logger.exception("Request failed")
+            await self._sound_cues.play("error")
+            self._busy = False
+
+    async def on_response_token(self, event: ResponseToken) -> None:
+        self._response_tokens.append(event.text)
+        if not self._spoke_this_turn:
+            self._spoke_this_turn = True
+            await self._sound_cues.play("speaking")
+
+    async def on_response_complete(self, event: ResponseComplete) -> None:
+        """Records this turn's history. Does not clear the busy flag -
+        see finish_turn(), which must run only once all of this turn's
+        speech has actually finished playing (see wire()'s
+        on_full_response_complete)."""
+        full_text = "".join(self._response_tokens)
+        self._history.add("user", "[голосовое сообщение]")
+        self._history.add("assistant", full_text)
+
+    async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
+        """Clears the busy flag, optionally after a cooldown.
+
+        Verified live: after Jarvis stops speaking, audio_in.py's own
+        VAD/merge pipeline has been continuously buffering the whole
+        time it was talking (it has no notion of "busy" at all - it
+        just watches the microphone). If the mic picks up Jarvis's own
+        voice from the speakers (no echo cancellation - not attempted in
+        v1.0), audio_in.py needs its own request_end_pause_seconds of
+        silence after Jarvis stops before it decides that "utterance" is
+        finished and publishes it. If busy had already cleared by then
+        (which it does almost immediately once wait_for_pending()
+        returns), that self-heard chunk is accepted as a genuine new
+        utterance and answered - the process is talking to itself. The
+        cooldown keeps busy True for roughly as long as audio_in.py's own
+        confirmation delay, so that self-heard tail is rejected by the
+        same busy-guard that already ignores utterances mid-turn, rather
+        than needing echo cancellation or a cross-module mute signal
+        into audio_in.py.
+        """
+        if cooldown_seconds > 0:
+            await asyncio.sleep(cooldown_seconds)
+        self._busy = False
+
+
+@dataclass
+class App:
+    bus: EventBus
+    backend: OllamaBackend
+    audio_input: AudioInput
+    tts_output: TtsOutput
+    capture_input: CaptureInput
+    orchestrator: Orchestrator
+    sound_cues: SoundCuePlayer
+    settings: Settings
+
+
+def build_app(
+    settings: Settings,
+    bus: EventBus | None = None,
+    backend: OllamaBackend | None = None,
+    audio_input: AudioInput | None = None,
+    tts_output: TtsOutput | None = None,
+    capture_input: CaptureInput | None = None,
+) -> App:
+    """Constructs every module. Does not subscribe anything to the bus -
+    see wire(). Hardware-touching modules (audio_input, tts_output,
+    capture_input) are injectable so tests can substitute fakes."""
+    bus = bus or EventBus()
+    backend = backend or OllamaBackend(bus, settings.backend)
+    audio_input = audio_input or AudioInput(bus, VadChunker(settings.vad))
+    # Shared so a sound cue and a spoken sentence can never physically
+    # overlap on the output device - see tts.py/sound_cues.py docstrings
+    # for why (sounddevice's play()/wait() share one implicit stream per
+    # process; concurrent calls stop/replace each other, not mix).
+    playback_lock = asyncio.Lock()
+    tts_output = tts_output or TtsOutput(settings.tts, playback_lock=playback_lock)
+    capture_input = capture_input or CaptureInput(bus, CaptureEngine())
+    sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
+    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues)
+    return App(
+        bus=bus,
+        backend=backend,
+        audio_input=audio_input,
+        tts_output=tts_output,
+        capture_input=capture_input,
+        orchestrator=orchestrator,
+        sound_cues=sound_cues,
+        settings=settings,
+    )
+
+
+Subscription = tuple[type, Callable]
+
+
+async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
+    """The single handler for ResponseComplete - deliberately NOT split
+    across separate concurrent bus subscribers (bus.py delivers
+    subscribers of the same event via asyncio.gather, concurrently, not
+    in sequence). An earlier version subscribed tts_output, orchestrator,
+    and a "replay listening cue" closure separately to ResponseComplete;
+    that let the listening cue play before the flushed trailing sentence
+    had actually finished (or even started) playing - and, worse, let a
+    new turn's "thinking" cue start while the previous turn's trailing
+    speech was still on the speaker, corrupting playback (verified live:
+    audible crackling/tempo artifacts from two sd.play() calls landing on
+    the shared device at once). Doing all four steps in order, in one
+    coroutine, makes both bugs structurally impossible.
+
+    finish_turn() runs in a finally block: if flushing the trailing
+    sentence or waiting for pending speech raises (model/cache/audio-
+    device failure), the busy flag must still clear - otherwise every
+    later utterance is ignored as "previous request still in flight"
+    forever, wedging the process on a single failed turn (exactly what
+    task-07's top-level error handling requirement rules out; bus.py
+    only logs a subscriber's exception, it does not restart or retry
+    this handler).
+
+    finish_turn() also gets a cooldown equal to
+    config.vad.request_end_pause_seconds - see its docstring for why:
+    audio_in.py can still be sitting on a self-heard "utterance"
+    (Jarvis's own voice, picked up by the mic with no echo cancellation)
+    for up to that long after Jarvis stops talking.
+    """
+    try:
+        await app.tts_output.on_response_complete(event)  # flushes trailing sentence
+        await app.orchestrator.on_response_complete(event)  # records history
+        await app.tts_output.wait_for_pending()  # waits for ALL of this turn's speech
+    except Exception:
+        logger.exception("Response completion failed")
+        await app.sound_cues.play("error")
+        return
+    finally:
+        await app.orchestrator.finish_turn(
+            cooldown_seconds=app.settings.vad.request_end_pause_seconds
+        )
+    await app.sound_cues.play("listening")
+
+
+def wire(app: App) -> list[Subscription]:
+    """Subscribes every module to the bus events it consumes. Returns the
+    (event_type, handler) pairs so shutdown can unsubscribe them - see
+    unwire()."""
+
+    async def on_full_response_complete(event: ResponseComplete) -> None:
+        await _on_full_response_complete(app, event)
+
+    subscriptions: list[Subscription] = [
+        (UtteranceChunk, app.orchestrator.on_utterance),
+        (ScreenshotCaptured, app.orchestrator.on_screenshot),
+        (ResponseToken, app.tts_output.on_token),
+        (ResponseToken, app.orchestrator.on_response_token),
+        (ResponseComplete, on_full_response_complete),
+    ]
+    for event_type, handler in subscriptions:
+        app.bus.subscribe(event_type, handler)
+    return subscriptions
+
+
+def unwire(app: App, subscriptions: list[Subscription]) -> None:
+    for event_type, handler in subscriptions:
+        app.bus.unsubscribe(event_type, handler)
+
+
+async def warm_up(backend: OllamaBackend) -> None:
+    """Fires a throwaway request before the process signals it is ready
+    to listen, so the first real user turn doesn't pay Ollama's cold-load
+    penalty (measured 4.2 s vs 0.3 s warm - task-07 backlog note from
+    task-03). Must run before wire() - see module docstring.
+    """
+    try:
+        await backend.chat([{"role": "user", "content": "Привет"}])
+    except Exception:
+        logger.exception("Warm-up request failed; continuing anyway")
+
+
+async def run_until_shutdown(
+    app: App,
+    subscriptions: list[Subscription],
+    shutdown_event: asyncio.Event,
+    background_tasks: list[asyncio.Task],
+) -> None:
+    """Waits for shutdown_event, then cancels background_tasks, lets any
+    in-flight speech finish, and unsubscribes everything. Testable in
+    isolation with fake background tasks instead of real mic/hotkey
+    hardware."""
+    try:
+        await shutdown_event.wait()
+    finally:
+        for task in background_tasks:
+            task.cancel()
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+        await app.tts_output.wait_for_pending()
+        await app.sound_cues.wait_for_pending()
+        unwire(app, subscriptions)
+
+
+async def run(settings: Settings | None = None) -> None:
+    settings = settings or load_settings()
+    ensure_generated(settings.sound_cues)
+
+    if not is_elevated():
+        print(
+            "WARNING: not running as Administrator - global hotkeys will "
+            "only work while this window has focus, not from other "
+            "applications. See PROJECT.md's Verified facts."
+        )
+
+    app = build_app(settings)
+    await warm_up(app.backend)
+    subscriptions = wire(app)
+
+    import keyboard
+
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def on_shutdown_hotkey() -> None:
+        loop.call_soon_threadsafe(shutdown_event.set)
+
+    shutdown_handle = keyboard.add_hotkey(settings.hotkeys.shutdown, on_shutdown_hotkey)
+
+    background_tasks = [
+        asyncio.create_task(app.audio_input.run_microphone_loop()),
+        asyncio.create_task(run_hotkey_listener(app.capture_input, settings.hotkeys)),
+    ]
+
+    await app.sound_cues.play("listening")
+    print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
+
+    try:
+        await run_until_shutdown(app, subscriptions, shutdown_event, background_tasks)
+    finally:
+        keyboard.remove_hotkey(shutdown_handle)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("\nStopped.")

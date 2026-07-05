@@ -17,6 +17,14 @@ by the model (rather than ignored, or erroring) has never been verified
 against live Ollama: day-0 only covers single-turn media. See PROJECT.md's
 "Open questions" section; this is task-07's decision to make, not this
 module's.
+
+Verified live (task-07 manual handoff): httpx's default timeout (~5 s
+total) is too short for a true cold Ollama start - PROJECT.md's "load
+~0.3 s warm" / "4.2 s cold" day-0 numbers were themselves measured on an
+already-touched model; a genuinely cold start (fresh boot, first request
+ever) took longer than 5 s and hit httpx.ReadTimeout. settings.
+read_timeout_seconds (default 120 s) gives real headroom; connect/write/
+pool stay short since this is all localhost traffic.
 """
 
 import json
@@ -57,7 +65,10 @@ class OllamaBackend:
     ) -> None:
         self._bus = bus
         self._settings = settings
-        self._client = client or httpx.AsyncClient(base_url=settings.endpoint)
+        self._client = client or httpx.AsyncClient(
+            base_url=settings.endpoint,
+            timeout=httpx.Timeout(10.0, read=settings.read_timeout_seconds),
+        )
 
     def build_payload(
         self,

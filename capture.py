@@ -107,6 +107,14 @@ def select_region_interactively() -> Region | None:
         start["x"], start["y"] = event.x, event.y
 
     def on_drag(event: "tk.Event") -> None:
+        # Verified live: a release/drag can arrive without a preceding
+        # press having set `start` (suspected Tk thread-safety issue -
+        # see tasks/bug_reports/ - this overlay runs on the keyboard
+        # library's callback thread, not the main thread Tkinter expects).
+        # Ignoring an out-of-sequence event is harmless: worst case the
+        # user's drag doesn't show a rectangle for one frame.
+        if "x" not in start:
+            return
         if rect_id[0] is not None:
             canvas.delete(rect_id[0])
         rect_id[0] = canvas.create_rectangle(
@@ -114,6 +122,8 @@ def select_region_interactively() -> Region | None:
         )
 
     def on_release(event: "tk.Event") -> None:
+        if "x" not in start:
+            return
         x0, y0 = start["x"], start["y"]
         x1, y1 = event.x, event.y
         result["region"] = {

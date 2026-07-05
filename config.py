@@ -32,6 +32,7 @@ class BackendSettings:
     model: str = "gemma4:12b-it-qat"
     endpoint: str = "http://localhost:11434"
     num_ctx: int = 65536
+    read_timeout_seconds: float = 120.0
 
 
 @dataclass(frozen=True)

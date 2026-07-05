@@ -1,6 +1,6 @@
 # Task: Main wiring and system prompt (main.py)
 
-Status: Not started.
+Status: Completed.
 
 Story: [story-jarvis-v1.0.md](story-jarvis-v1.0.md)
 
@@ -41,42 +41,37 @@ Out of scope:
 
 All prior task cards (task-01 through task-06).
 
-## Open question inherited from task-03
+## Open question inherited from task-03 - resolved
 
-PROJECT.md's "Open questions" section flags two unresolved items that this
-task's history-wiring design must settle, not assume:
+Human decision: history is text-only in v1.0. Media is attached only to
+the current turn's message; `ConversationHistory`/`Turn` in main.py carry
+a `media_b64` field precisely so a later release can start resending
+media in history without restructuring this abstraction - v1.0 code
+simply never populates it. This sidesteps both originally-open items
+(unverified non-final-message media behavior; prefill-cost/retention
+policy) rather than resolving them - they remain genuinely unverified and
+would need addressing if a future release changes this decision. Recorded
+in PROJECT.md's "Open questions" section.
 
-- Whether media on a non-final message in a multi-turn `messages` array is
-  actually used by `gemma4:12b-it-qat`, or silently ignored/erroring -
-  never verified against live Ollama (day-0 only covered single-turn
-  media). May need a day-0-style experiment before this task relies on
-  resending media in history.
-- The prefill-cost/history-retention policy for accumulated media across
-  turns (trim to the latest turn's media, replace older turns with a
-  text-only summary, or something else).
-
-Resolve both before or during this task's implementation and update
-PROJECT.md's "Open questions" section with the answer, per CLAUDE.md's
-"Project context" rule 2.
-
-## Backlog notes inherited from task-03, task-04, and task-06
+## Backlog notes inherited from task-03, task-04, and task-06 - resolved
 
 Implementation decisions surfaced while building backend.py, audio_in.py,
 and capture.py, deferred to this task since they belong to process
 startup / wiring, not the individual adapters:
 
-- **Warm-up request at startup.** Cold load measured at 4.2 s vs 0.3 s
-  warm. Given the ~3 s end-to-end latency target (see PROJECT.md's
-  Architecture v1.0 section and the story card), the first real user
-  request cannot absorb a cold-load penalty. Fire a throwaway warm-up
-  request to Ollama during startup, before the process signals it is
-  ready to listen.
-- **Malformed stream line policy.** backend.py's `chat()` currently lets a
-  `json.loads` failure on a malformed stream line raise out of `chat()`
-  uncaught. Acceptable for v1.0 as built, but this task must decide
-  explicitly whether to catch it (log and skip the line, or surface an
-  error event on the bus) rather than let it silently remain an
-  unhandled-exception path into whatever calls `chat()`.
+- **Warm-up request at startup - resolved.** Cold load measured at 4.2 s
+  vs 0.3 s warm. main.py's `warm_up()` fires a throwaway `backend.chat()`
+  call *before* `wire()` subscribes anything to the bus, so the response
+  tokens are published to zero subscribers (bus.py: publishing with no
+  subscribers is a no-op) rather than spoken aloud or recorded into
+  history - no unsubscribe/resubscribe dance needed.
+- **Malformed stream line policy - resolved, no backend.py change.**
+  backend.py's `chat()` still lets a `json.loads` failure on a malformed
+  stream line raise out of `chat()` uncaught. `Orchestrator.on_utterance`'s
+  try/except around the `backend.chat()` call already catches this (or
+  any other exception from that call), logs it, plays the error cue, and
+  clears the busy flag so the process keeps running - task-07's own
+  top-level error handling requirement covers this directly.
 - **Resolved: the ~3 s target is measured from audio_in.py's publish, not
   from the literal instant speech physically stopped.** `vad.
   request_end_pause_seconds` (audio_in.py) is a separate, tunable cost
@@ -100,11 +95,11 @@ startup / wiring, not the individual adapters:
   live: without elevation, hotkeys only fire while Jarvis's own window
   has focus - defeating the point of a hotkey-driven background
   assistant, since the whole idea is triggering it while some other app
-  is focused. This task's process-startup step should check for
-  elevation and print a clear warning (or refuse to start) if not
-  elevated, rather than silently degrading to "only works when focused"
-  with no explanation. Document the elevation requirement in whatever
-  launch instructions this task produces.
+  is focused. **Resolved:** main.py's `is_elevated()` checks at startup
+  and prints a clear warning (chosen over refusing to start, so the
+  process still stays usable for local testing/development without
+  elevation) - see the manual handoff for confirming the warning appears
+  correctly when not elevated.
 
 ## Acceptance criteria
 
@@ -120,7 +115,10 @@ Automated tests (fakes/mocks for hardware-touching modules):
 
 Manual handoff (full hardware stack, human runs and reports):
 
-- Exact command to launch the assembled process.
+- Exact command to launch the assembled process: `python main.py`. Run it
+  from a non-elevated terminal at least once to confirm the elevation
+  warning prints; run it elevated (as Administrator) for the rest of this
+  handoff so hotkeys work globally.
 - Script: speak a question, optionally trigger a screenshot capture, and
   time from the end of your utterance (VAD end-of-speech, i.e. the point
   audio_in.py publishes the finished chunk) to the first audio out of the
@@ -135,3 +133,29 @@ Manual handoff (full hardware stack, human runs and reports):
   in PROJECT.md still hold; report any deviation rather than accepting it
   silently (PROJECT.md instructs a rerun after any backend/model/driver
   change - a fresh full build qualifies).
+
+Manual handoff findings, all fixed and re-verified by the human on the
+final pass (tests green, cold start clean, sound quality good, English
+text recognized and spoken well via `transliterate_latin()` including
+loanwords like "calvados" with expected pronunciation nuances, no further
+remarks):
+
+- Cold-start `httpx.ReadTimeout` on the warm-up call - fixed via
+  `config.backend.read_timeout_seconds` (see Verified facts).
+- Audible crackling/tempo artifacts from a sound cue and TTS speech
+  overlapping on the output device - fixed via a shared playback lock
+  (see Verified facts).
+- Latin-script words (e.g. "gemma") silently unvoiced by Silero - fixed
+  via `tts.py`'s `transliterate_latin()` (see Verified facts).
+- Jarvis responding to its own TTS output picked up by the microphone (no
+  echo cancellation) - mitigated via `Orchestrator.finish_turn()`'s
+  cooldown (see Verified facts; full fix is Roadmap item 7).
+- `KeyError` crash in capture.py's region-select overlay (suspected
+  Tkinter thread-safety issue) - defensive guard added; see
+  `tasks/bug_reports/capture-region-select-tkinter-thread-safety.md` for
+  the full writeup, since the suspected root cause is not fully resolved.
+
+Manual handoff passed: end-to-end timing, sound cues at all transitions,
+and a `day0_checks.py` rerun were all covered across this task's manual
+handoff rounds with no outstanding remarks. Human sign-off: "Замечаний
+нет. Закрывай задачу... как успешную."

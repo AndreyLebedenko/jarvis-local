@@ -1,6 +1,6 @@
 # Story: Jarvis v1.0 - Local Voice/Vision Assistant
 
-Status: Not started.
+Status: Completed.
 
 ## Goal (user-facing)
 

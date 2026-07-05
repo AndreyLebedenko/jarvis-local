@@ -11,6 +11,7 @@ from tts import (
     TtsOutput,
     _ensure_model_cached,
     normalize_numbers,
+    transliterate_latin,
 )
 
 
@@ -107,6 +108,35 @@ def test_normalize_numbers_converts_integer_to_words():
 def test_normalize_numbers_leaves_text_without_digits_unchanged():
     text = "тут нет цифр вообще"
     assert normalize_numbers(text) == text
+
+
+# --- transliterate_latin -----------------------------------------------------
+
+
+def test_transliterate_latin_converts_a_simple_word():
+    """Regression test for a real bug (task-07 manual handoff): asked to
+    say the English word "gemma4" aloud, Silero spoke the digit ("four",
+    via normalize_numbers) but silently dropped "gemma" entirely - its
+    v3_1_ru symbol set has no Latin characters at all, same root cause
+    class as the earlier digit-stripping bug."""
+    assert transliterate_latin("gemma") == "гемма"
+
+
+def test_transliterate_latin_handles_common_digraphs():
+    assert transliterate_latin("sushi") == "суши"
+    assert transliterate_latin("photo") == "фото"
+
+
+def test_transliterate_latin_is_case_insensitive():
+    assert transliterate_latin("GEMMA") == "гемма"
+
+
+def test_transliterate_latin_leaves_cyrillic_and_digits_unchanged():
+    assert transliterate_latin("привет 42") == "привет 42"
+
+
+def test_transliterate_latin_only_touches_latin_runs_within_a_sentence():
+    assert transliterate_latin("модель gemma работает") == "модель гемма работает"
 
 
 # --- SentenceBuffer -----------------------------------------------------

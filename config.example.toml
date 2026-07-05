@@ -16,6 +16,11 @@ num_ctx = 65536
 # If VRAM pressure appears, PROJECT.md's fallback is
 # OLLAMA_KV_CACHE_TYPE=q8_0, then num_ctx = 32768 (applied by the human,
 # not automatically by this config).
+# httpx's own default timeout (~5 s) is too short for a genuinely cold
+# Ollama start (verified live - longer than the day-0 "4.2 s cold" figure,
+# which was itself measured on an already-touched model). Only the read
+# timeout is this generous; connect/write/pool stay short (localhost).
+read_timeout_seconds = 120.0
 
 [hotkeys]
 screenshot_full = "ctrl+alt+s"

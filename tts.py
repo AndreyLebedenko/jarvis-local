@@ -114,6 +114,46 @@ def normalize_numbers(text: str) -> str:
 
     return _NUMBER_RE.sub(replace, text)
 
+
+_LATIN_RUN_RE = re.compile(r"[a-zA-Z]+")
+
+_LATIN_DIGRAPHS = {"sh": "ш", "ch": "ч", "ck": "к", "ph": "ф", "qu": "кв", "th": "т"}
+
+_LATIN_LETTERS = {
+    "a": "а", "b": "б", "c": "к", "d": "д", "e": "е", "f": "ф", "g": "г",
+    "h": "х", "i": "и", "j": "дж", "k": "к", "l": "л", "m": "м", "n": "н",
+    "o": "о", "p": "п", "q": "к", "r": "р", "s": "с", "t": "т", "u": "у",
+    "v": "в", "w": "в", "x": "кс", "y": "й", "z": "з",
+}
+
+
+def transliterate_latin(text: str) -> str:
+    """Best-effort phonetic transliteration of Latin-script runs into
+    Cyrillic, e.g. "gemma" -> "гемма". Crude per-letter/digraph mapping,
+    not linguistically rigorous (English spelling isn't phonetic) - done
+    because the alternative is worse: verified live, Silero's v3_1_ru
+    symbol set (model.symbols) has no Latin characters at all, so without
+    this, Latin-script words are silently stripped and never voiced
+    ("gemma4" - the digit was spoken via normalize_numbers, the word
+    was not, same root cause as the digit-stripping bug)."""
+
+    def replace(match: re.Match) -> str:
+        word = match.group().lower()
+        pieces = []
+        i = 0
+        while i < len(word):
+            digraph = word[i : i + 2]
+            if digraph in _LATIN_DIGRAPHS:
+                pieces.append(_LATIN_DIGRAPHS[digraph])
+                i += 2
+                continue
+            pieces.append(_LATIN_LETTERS.get(word[i], word[i]))
+            i += 1
+        return "".join(pieces)
+
+    return _LATIN_RUN_RE.sub(replace, text)
+
+
 # Common Russian abbreviations that end in a period but do not end a
 # sentence. Not exhaustive - deliberately biased toward under-splitting:
 # a missed boundary just merges two sentences into one slightly longer
@@ -189,10 +229,19 @@ class TtsOutput:
         settings: TtsSettings,
         synthesize: Callable[[str], Awaitable[bytes]] | None = None,
         play: Callable[[bytes], Awaitable[None]] | None = None,
+        playback_lock: asyncio.Lock | None = None,
     ) -> None:
         self._settings = settings
         self._buffer = SentenceBuffer()
         self._synthesize = synthesize or self._default_synthesize
+        # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
+        # cue can never physically overlap a spoken sentence on the
+        # output device: sounddevice's play()/wait() convenience API
+        # shares one implicit default stream per process, and two
+        # concurrent play() calls stop/replace each other rather than
+        # mixing - the cause of audible crackling/tempo artifacts if
+        # cues and speech land at the same time (verified live).
+        self._playback_lock = playback_lock or asyncio.Lock()
         self._playback = OrderedPlayback(play or self._default_play)
         self._next_index = 0
         self._model = None
@@ -229,7 +278,7 @@ class TtsOutput:
         model = await self._ensure_model()
         audio_tensor = await asyncio.to_thread(
             model.apply_tts,
-            text=normalize_numbers(sentence),
+            text=transliterate_latin(normalize_numbers(sentence)),
             speaker=self._settings.voice,
             sample_rate=SAMPLE_RATE,
         )
@@ -248,10 +297,10 @@ class TtsOutput:
         model, _ = silero.silero_tts(language="ru", speaker="v3_1_ru")
         return model
 
-    @staticmethod
-    async def _default_play(wav_bytes: bytes) -> None:
+    async def _default_play(self, wav_bytes: bytes) -> None:
         import io
 
         data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        await asyncio.to_thread(sd.play, data, sample_rate)
-        await asyncio.to_thread(sd.wait)
+        async with self._playback_lock:
+            await asyncio.to_thread(sd.play, data, sample_rate)
+            await asyncio.to_thread(sd.wait)

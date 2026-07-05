@@ -46,6 +46,17 @@ def test_payload_uses_model_and_num_ctx_from_settings():
     assert payload["options"]["num_ctx"] == 1234
 
 
+def test_default_client_uses_configured_read_timeout():
+    """Regression test: httpx's own default timeout (~5 s total) is too
+    short for a genuinely cold Ollama start - verified live, it raised
+    httpx.ReadTimeout. settings.read_timeout_seconds must actually reach
+    the client this class constructs when no client is injected."""
+    settings = BackendSettings(read_timeout_seconds=42.0)
+    backend = OllamaBackend(bus=EventBus(), settings=settings)
+
+    assert backend._client.timeout.read == 42.0
+
+
 def _ndjson_fixture_body() -> bytes:
     lines = [
         {"message": {"content": "Hello"}, "done": False},
