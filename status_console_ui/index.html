@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-state="idle">
+<html lang="ru" data-state="idle" data-visibility="open">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,9 +13,15 @@
     <div class="brand-mark">J</div>
     <div class="brand-name">JARVIS <span>Status Console</span></div>
   </div>
-  <div class="locality-badge" id="localityBadge" data-locality="local">
-    <span class="locality-dot"></span>
-    <span class="locality-label">Локально</span>
+  <div class="topbar-right">
+    <div class="locality-badge" id="localityBadge" data-locality="local">
+      <span class="locality-dot"></span>
+      <span class="locality-label">Локально</span>
+    </div>
+    <div class="visibility-toggle" id="visibilityToggle">
+      <button data-mode="open" class="sel" onclick="setVisibilityMode('open')">Open</button>
+      <button data-mode="hidden" onclick="setVisibilityMode('hidden')">Hidden</button>
+    </div>
   </div>
 </div>
 

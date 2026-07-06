@@ -570,6 +570,53 @@ first JS -> Python direction of the bridge (`pywebview`'s `js_api`,
   turn; does not touch `Orchestrator`'s own busy/pending-screenshot state,
   which is unrelated to conversation history).
 
+Task-ui-05 landed fifth: the `Open`/`Hidden` system visibility mode toggle.
+
+- **Open Question, resolved (human decision):** the story's own open
+  question ("does `Hidden` mute TTS globally or only for UI-triggered
+  turns?") and task-ui-05's own blocking question ("should Hidden suppress
+  spoken TTS from ordinary voice turns?") are both answered the same way:
+  **neither - in v1, `Hidden` only changes what the Status Console UI
+  itself displays.** It never touches `audio_in.py`/`tts.py`/
+  `Orchestrator`; ordinary voice turns speak normally regardless of Open/
+  Hidden. `tasks/task-ui-privacy-and-touchstrip-requirements.md`'s earlier
+  "TTS muted/text-only" line was early UI planning, not this decision -
+  that file has been corrected to match.
+- `visibility_mode.py` - `VisibilityModeState`/`VisibilityModeChanged`,
+  mirroring `thinking_mode.py`'s shape (bus-publishing state owner) but
+  with no hotkey listener (task-ui-05's Scope only asks for a UI-level
+  control) and a `set_mode(mode)` two-state setter rather than a binary
+  `toggle()` - redundantly setting the already-active mode is a real,
+  expected UI input (clicking "Open" while already Open) and is a no-op
+  (no publish), not a spurious "changed" event.
+- `status_console.py`'s `StatusConsoleApi` gained `set_visibility_mode
+  (mode_value)`, the same `js_api`/`run_coroutine_threadsafe` pattern as
+  `toggle_thinking()`/`reset_context()`. It publishes an `INFO` `SystemEvent`
+  only when the mode actually changes (mirroring `VisibilityModeState`'s
+  own no-op-on-redundant-call rule, so the two can't disagree about what
+  counts as "changed").
+- Front-end: a two-button `Open`/`Hidden` toggle in the topbar (`--cyan`
+  for Open, `--violet` for Hidden - never `--amber`, which is reserved for
+  warning/cloud/warmup-adjacent states per the privacy doc, so Hidden can
+  never look like a cloud/error indicator) sits next to, but visually
+  distinct from, the data-locality badge - clicking it never touches
+  `#localityBadge`/`applyDataLocality()` (task-ui-05 AC: "Hidden does not
+  imply cloud/offline status"), verified both structurally (a test parses
+  `app.js`'s `applyVisibilityMode()` body) and live via the Preview tools.
+  The one concrete Hidden behavior implemented: the vision/screen chip's
+  detail text is replaced with a generic placeholder while Hidden is
+  active (last real value remembered, restored on Open) - the only surface
+  in the current UI that could carry a sensitive screen-capture detail.
+- **Review finding, fixed:** `manual_check_status_console.py`'s first
+  version subscribed `SystemEvent`/`ThinkingModeToggled` but never
+  `VisibilityModeChanged`, so a real click in the actual window would have
+  updated state and logged an event while leaving the toggle/vision-chip
+  text unchanged - the manual handoff would not have proven what it
+  claimed to. Fixed by adding the missing subscription;
+  `tests/test_manual_check_status_console.py` now exercises this file's
+  bus-wiring directly (fake console, real bus, no window) so a future
+  missing subscription here fails an automated test.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by

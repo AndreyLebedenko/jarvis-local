@@ -89,6 +89,12 @@ body {
 .brand-name { font-weight: 600; font-size: 15.5px; letter-spacing: 0.4px; }
 .brand-name span { color: var(--text-dim); font-weight: 400; font-size: 13px; margin-left: 6px; }
 
+/* Grouped so data locality and visibility mode are placed apart from each
+   other within this group (task-ui-privacy-and-touchstrip-requirements.md:
+   "Data locality визуально отделена от visibility mode цветом, текстом и
+   расположением") while still living in the topbar together. */
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+
 .locality-badge {
   display: flex; align-items: center; gap: 6px;
   font-size: 10.5px; letter-spacing: 0.4px; text-transform: uppercase;
@@ -99,6 +105,25 @@ body {
   border-color: var(--amber-dim); background: var(--amber-tint); color: var(--amber);
 }
 .locality-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* task-ui-05: system visibility mode. Open reuses cyan (calm/default,
+   shared with data locality's "local" color by design - both represent the
+   unremarkable case, per the privacy doc's color plan); Hidden uses violet
+   (protective), matching the Think switch's --violet, not amber (amber is
+   reserved for warning/cloud/warmup-adjacent per that same doc, so Hidden
+   must never look like a cloud/error state). */
+.visibility-toggle {
+  display: flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); border-radius: 20px; padding: 3px;
+  background: var(--panel-2);
+}
+.visibility-toggle button {
+  border: none; background: none; color: var(--text-dim);
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
+  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.5px;
+}
+.visibility-toggle button.sel[data-mode="open"] { background: var(--cyan); color: var(--bg); }
+.visibility-toggle button.sel[data-mode="hidden"] { background: var(--violet); color: var(--bg); }
 
 /* ===== MAIN ===== */
 .main {

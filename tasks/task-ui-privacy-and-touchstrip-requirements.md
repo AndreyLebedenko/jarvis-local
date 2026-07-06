@@ -24,9 +24,15 @@
   рабочий вариант для следующих мокапов: `Open / Hidden`.
 - `Open`: обычная работа, голосовой ответ и screen preview разрешены согласно
   текущей конфигурации.
-- `Hidden`: Jarvis минимизирует внешнюю заметность: TTS muted/text-only,
-  screen previews hidden by default, sensitive snippets not shown on small
-  surfaces. Это не меняет data locality и не означает cloud/offline status.
+- `Hidden`: Jarvis минимизирует внешнюю заметность в UI: screen previews
+  hidden by default, sensitive snippets not shown on small surfaces. Это не
+  меняет data locality и не означает cloud/offline status.
+  **Уточнено человеком при реализации task-ui-05:** Hidden влияет только на
+  отображение в UI (лейблы, module chips, screen preview) и не трогает
+  голосовой pipeline - обычные голосовые ответы звучат как обычно независимо
+  от Hidden/Open. Более ранняя формулировка этого файла ("TTS muted/
+  text-only") была ранним UI-планированием, а не финальным решением;
+  описанное здесь - актуальное состояние v1.
 - Цветовая семантика: `Open` использует спокойный cyan/teal как штатный local
   режим; `Hidden` использует приглушенный violet/slate как защитный режим.
   Amber оставить для warning/cloud/warmup-adjacent состояний, чтобы Hidden не
