@@ -83,6 +83,18 @@ copy config.example.toml config.toml
 python main.py
 ```
 
+Запуск с живым Status Console UI:
+
+```bash
+python main.py --status-console
+```
+
+Только desktop-консоль, без touchstrip-окна:
+
+```bash
+python main.py --status-console --no-touchstrip
+```
+
 Чтобы глобальные горячие клавиши работали из любого приложения Windows, запускайте терминал от администратора. Без elevation горячие клавиши могут срабатывать только когда окно терминала Jarvis находится в фокусе.
 
 Горячие клавиши по умолчанию:

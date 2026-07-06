@@ -83,6 +83,18 @@ Run from the repository root:
 python main.py
 ```
 
+Run with the live Status Console UI:
+
+```bash
+python main.py --status-console
+```
+
+To open only the desktop console, without the touchstrip window:
+
+```bash
+python main.py --status-console --no-touchstrip
+```
+
 For global hotkeys to work from any application on Windows, run the terminal as Administrator. Without elevation, hotkeys may only fire while the app's own terminal window has focus.
 
 Default hotkeys:

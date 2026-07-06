@@ -21,7 +21,9 @@ from main import (
     _on_mic_sleep_toggled,
     _on_thinking_mode_toggled,
     build_app,
+    create_live_status_console,
     is_elevated,
+    parse_args,
     run_clipboard_hotkey_listener,
     run_mic_sleep_hotkey_listener,
     run_thinking_hotkey_listener,
@@ -29,10 +31,21 @@ from main import (
     unwire,
     warm_up,
     wire,
+    wire_status_console,
 )
 from sound_cues import SoundCuePlayer
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
-from ui_contract import EventLevel, SystemEvent
+from ui_contract import (
+    DataLocality,
+    EventLevel,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+    VisibilityMode,
+)
+from visibility_mode import VisibilityModeChanged
 
 
 class _FakeBackend:
@@ -639,7 +652,7 @@ async def test_warm_up_publishes_warn_system_event_and_still_logs_exception_on_f
 
 
 class _FakeAudioInput:
-    pass
+    is_awake = True
 
 
 class _FakeTtsOutput:
@@ -655,6 +668,43 @@ class _FakeTtsOutput:
 
 class _FakeCaptureInput:
     pass
+
+
+class _FakeStatusSurface:
+    def __init__(self) -> None:
+        self.created_with_api: object | None = None
+        self.runtime_states: list[tuple[RuntimeState, str | None]] = []
+        self.model_labels: list[str] = []
+        self.localities: list[DataLocality] = []
+        self.thinking_modes: list[bool] = []
+        self.visibility_modes: list[VisibilityMode] = []
+        self.system_events: list[SystemEvent] = []
+        self.module_health: list[ModuleHealth] = []
+
+    def create(self, js_api: object | None = None) -> object:
+        self.created_with_api = js_api
+        return object()
+
+    def push_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
+        self.runtime_states.append((state, substatus))
+
+    def push_model_label(self, label: str) -> None:
+        self.model_labels.append(label)
+
+    def push_data_locality(self, locality: DataLocality) -> None:
+        self.localities.append(locality)
+
+    def push_thinking_mode(self, is_enabled: bool) -> None:
+        self.thinking_modes.append(is_enabled)
+
+    def push_visibility_mode(self, mode: VisibilityMode) -> None:
+        self.visibility_modes.append(mode)
+
+    def push_system_event(self, event: SystemEvent) -> None:
+        self.system_events.append(event)
+
+    def push_module_health(self, health: ModuleHealth) -> None:
+        self.module_health.append(health)
 
 
 def _settings() -> Settings:
@@ -704,6 +754,119 @@ def test_wire_registers_expected_subscriptions():
     assert app.orchestrator.on_utterance in handlers
     assert app.orchestrator.on_screenshot in handlers
     assert app.orchestrator.on_clipboard in handlers
+
+
+def test_create_live_status_console_shares_one_api_between_surfaces():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+
+    assert live_console.api is console.created_with_api
+    assert live_console.api is touchstrip.created_with_api
+
+
+async def test_wire_status_console_pushes_initial_state_and_live_events():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    assert console.model_labels == [app.settings.backend.model]
+    assert touchstrip.model_labels == [app.settings.backend.model]
+    assert console.localities == [DataLocality.LOCAL]
+    assert touchstrip.localities == [DataLocality.LOCAL]
+    assert console.thinking_modes == [False]
+    assert touchstrip.thinking_modes == [False]
+    assert console.visibility_modes == [VisibilityMode.OPEN]
+    assert touchstrip.visibility_modes == [VisibilityMode.OPEN]
+    assert console.module_health == [
+        ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает")
+    ]
+    assert touchstrip.module_health == [
+        ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает")
+    ]
+    assert console.runtime_states == [(RuntimeState.WARMING, "Прогреваю модель...")]
+
+    await app.bus.publish(
+        SystemEvent,
+        SystemEvent(timestamp=1, source="ENGINE", level=EventLevel.INFO, message="ok"),
+    )
+    await app.bus.publish(
+        VisibilityModeChanged, VisibilityModeChanged(mode=VisibilityMode.HIDDEN)
+    )
+    await app.bus.publish(ResponseToken, ResponseToken(text="Привет"))
+
+    assert [event.message for event in console.system_events] == ["ok"]
+    assert touchstrip.system_events == []
+    assert console.visibility_modes[-1] is VisibilityMode.HIDDEN
+    assert touchstrip.visibility_modes[-1] is VisibilityMode.HIDDEN
+    assert console.runtime_states[-1] == (RuntimeState.SPEAKING, "Произношу ответ...")
+    assert touchstrip.runtime_states[-1] == (RuntimeState.SPEAKING, "Произношу ответ...")
+
+    unwire(app, subscriptions)
+
+
+async def test_wire_status_console_updates_microphone_chip_from_mic_sleep_events():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
+    await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
+
+    expected = [
+        ModuleHealth(
+            module=ModuleId.MICROPHONE,
+            status=HealthStatus.OK,
+            detail="слушает",
+        ),
+        ModuleHealth(
+            module=ModuleId.MICROPHONE,
+            status=HealthStatus.UNAVAILABLE,
+            detail="усыплён",
+        ),
+        ModuleHealth(
+            module=ModuleId.MICROPHONE,
+            status=HealthStatus.OK,
+            detail="слушает",
+        ),
+    ]
+    assert console.module_health == expected
+    assert touchstrip.module_health == expected
+
+    unwire(app, subscriptions)
+
+
+async def test_wire_with_live_status_console_reports_thinking_before_accepted_turn():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    live_console = create_live_status_console(app, console=console, include_touchstrip=False)
+    wire(app, live_console)
+
+    await app.bus.publish(
+        UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
+    )
+
+    assert console.runtime_states == [(RuntimeState.THINKING, "Обрабатываю голос...")]
+
+
+def test_parse_args_enables_status_console_without_touchstrip():
+    args = parse_args(["--status-console", "--no-touchstrip"])
+
+    assert args.status_console is True
+    assert args.no_touchstrip is True
 
 
 async def test_unwire_removes_all_subscriptions():

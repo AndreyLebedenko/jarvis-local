@@ -24,6 +24,7 @@ change needed.
 """
 
 import asyncio
+import argparse
 import base64
 import ctypes
 import logging
@@ -45,11 +46,21 @@ from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
+from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
 from tts import TtsOutput
-from ui_contract import EventLevel
+from ui_contract import (
+    DataLocality,
+    EventLevel,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+)
+from visibility_mode import VisibilityModeChanged, VisibilityModeState
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +177,10 @@ class Orchestrator:
         self._spoke_this_turn = False
         self._busy = False
         self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
+
+    @property
+    def is_busy(self) -> bool:
+        return self._busy
 
     async def on_screenshot(self, event: ScreenshotCaptured) -> None:
         self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
@@ -293,6 +308,8 @@ class App:
     sound_cues: SoundCuePlayer
     thinking_mode: ThinkingModeState
     settings: Settings
+    visibility_mode: VisibilityModeState | None = None
+    history: ConversationHistory | None = None
 
 
 def build_app(
@@ -318,8 +335,10 @@ def build_app(
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
     thinking_mode = ThinkingModeState(bus)
+    visibility_mode = VisibilityModeState(bus)
+    history = ConversationHistory()
     orchestrator = Orchestrator(
-        backend, ConversationHistory(), sound_cues, audio_input=audio_input, thinking_mode=thinking_mode
+        backend, history, sound_cues, audio_input=audio_input, thinking_mode=thinking_mode
     )
     return App(
         bus=bus,
@@ -330,11 +349,133 @@ def build_app(
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=thinking_mode,
+        visibility_mode=visibility_mode,
+        history=history,
         settings=settings,
     )
 
 
 Subscription = tuple[type, Callable]
+
+
+@dataclass
+class LiveStatusConsole:
+    console: StatusConsoleWindow
+    touchstrip: TouchstripWindow | None
+    api: StatusConsoleApi
+
+
+def _status_surfaces(live_console: LiveStatusConsole) -> tuple[StatusConsoleWindow, ...]:
+    if live_console.touchstrip is None:
+        return (live_console.console,)
+    return (live_console.console, live_console.touchstrip)
+
+
+def _push_runtime_state(
+    live_console: LiveStatusConsole, state: RuntimeState, substatus: str | None = None
+) -> None:
+    for surface in _status_surfaces(live_console):
+        surface.push_runtime_state(state, substatus)
+
+
+def _push_thinking_mode(live_console: LiveStatusConsole, is_enabled: bool) -> None:
+    for surface in _status_surfaces(live_console):
+        surface.push_thinking_mode(is_enabled)
+
+
+def _push_visibility_mode(live_console: LiveStatusConsole, event: VisibilityModeChanged) -> None:
+    for surface in _status_surfaces(live_console):
+        surface.push_visibility_mode(event.mode)
+
+
+def _push_module_health(live_console: LiveStatusConsole, health: ModuleHealth) -> None:
+    for surface in _status_surfaces(live_console):
+        surface.push_module_health(health)
+
+
+def _microphone_health(is_awake: bool) -> ModuleHealth:
+    return ModuleHealth(
+        module=ModuleId.MICROPHONE,
+        status=HealthStatus.OK if is_awake else HealthStatus.UNAVAILABLE,
+        detail="слушает" if is_awake else "усыплён",
+    )
+
+
+def create_live_status_console(
+    app: App,
+    *,
+    include_touchstrip: bool = True,
+    console: StatusConsoleWindow | None = None,
+    touchstrip: TouchstripWindow | None = None,
+) -> LiveStatusConsole:
+    if app.visibility_mode is None or app.history is None:
+        raise RuntimeError("live Status Console requires an App created by build_app()")
+    api = StatusConsoleApi(
+        thinking_mode=app.thinking_mode,
+        history=app.history,
+        bus=app.bus,
+        logger=logger,
+        visibility_mode=app.visibility_mode,
+    )
+    console = console or StatusConsoleWindow()
+    console.create(js_api=api)
+    if include_touchstrip:
+        touchstrip = touchstrip or TouchstripWindow()
+        touchstrip.create(js_api=api)
+    else:
+        touchstrip = None
+    return LiveStatusConsole(console=console, touchstrip=touchstrip, api=api)
+
+
+def wire_status_console(
+    app: App,
+    live_console: LiveStatusConsole,
+    loop: asyncio.AbstractEventLoop,
+) -> list[Subscription]:
+    """Connects the Status Console to real engine events.
+
+    The module-health source is intentionally absent here: story-status-
+    console-ui.md defers that authoritative signal, so this wiring pushes no
+    fake `OK` health snapshots.
+    """
+    live_console.api.set_loop(loop)
+    if app.visibility_mode is None:
+        raise RuntimeError("live Status Console requires an App created by build_app()")
+    for surface in _status_surfaces(live_console):
+        surface.push_model_label(app.settings.backend.model)
+        surface.push_data_locality(DataLocality.LOCAL)
+        surface.push_thinking_mode(app.thinking_mode.is_enabled)
+        surface.push_visibility_mode(app.visibility_mode.mode)
+        surface.push_module_health(_microphone_health(app.audio_input.is_awake))
+    _push_runtime_state(live_console, RuntimeState.WARMING, "Прогреваю модель...")
+
+    async def on_system_event(event: SystemEvent) -> None:
+        live_console.console.push_system_event(event)
+        if event.level is EventLevel.ERROR:
+            _push_runtime_state(live_console, RuntimeState.ERROR, event.message)
+
+    async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
+        _push_thinking_mode(live_console, event.is_enabled)
+
+    async def on_visibility_mode_changed(event: VisibilityModeChanged) -> None:
+        _push_visibility_mode(live_console, event)
+
+    async def on_response_token(event: ResponseToken) -> None:
+        _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
+
+    async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
+        _push_module_health(live_console, _microphone_health(event.is_awake))
+
+    subscriptions: list[Subscription] = [
+        (SystemEvent, on_system_event),
+        (ThinkingModeToggled, on_thinking_mode_toggled),
+        (VisibilityModeChanged, on_visibility_mode_changed),
+        (ResponseToken, on_response_token),
+        (MicSleepToggled, on_mic_sleep_toggled),
+    ]
+    for event_type, handler in subscriptions:
+        app.bus.subscribe(event_type, handler)
+    return subscriptions
 
 
 async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
@@ -424,7 +565,7 @@ async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> Non
     await app.sound_cues.play("thinking_on" if enabled else "thinking_off")
 
 
-def wire(app: App) -> list[Subscription]:
+def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscription]:
     """Subscribes every module to the bus events it consumes. Returns the
     (event_type, handler) pairs so shutdown can unsubscribe them - see
     unwire()."""
@@ -438,10 +579,23 @@ def wire(app: App) -> list[Subscription]:
     async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
         await _on_thinking_mode_toggled(app, event)
 
+    async def on_utterance(event: UtteranceChunk) -> None:
+        if live_console is not None and not app.orchestrator.is_busy:
+            _push_runtime_state(live_console, RuntimeState.THINKING, "Обрабатываю голос...")
+        await app.orchestrator.on_utterance(event)
+
+    async def on_clipboard(event: ClipboardSubmitted) -> None:
+        if live_console is not None and not app.orchestrator.is_busy and not event.is_empty:
+            _push_runtime_state(live_console, RuntimeState.THINKING, "Обрабатываю текст...")
+        await app.orchestrator.on_clipboard(event)
+
+    utterance_handler = on_utterance if live_console is not None else app.orchestrator.on_utterance
+    clipboard_handler = on_clipboard if live_console is not None else app.orchestrator.on_clipboard
+
     subscriptions: list[Subscription] = [
-        (UtteranceChunk, app.orchestrator.on_utterance),
+        (UtteranceChunk, utterance_handler),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
-        (ClipboardSubmitted, app.orchestrator.on_clipboard),
+        (ClipboardSubmitted, clipboard_handler),
         (ResponseToken, app.tts_output.on_token),
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
@@ -516,7 +670,11 @@ async def run_until_shutdown(
         unwire(app, subscriptions)
 
 
-async def run(settings: Settings | None = None) -> None:
+async def run(
+    settings: Settings | None = None,
+    app: App | None = None,
+    live_console: LiveStatusConsole | None = None,
+) -> None:
     # No logging was configured anywhere in the process before this (verified:
     # grep found no basicConfig/setLevel calls), so every existing INFO-level
     # log call (e.g. the busy-guard "ignoring ..." messages) was silently
@@ -539,9 +697,17 @@ async def run(settings: Settings | None = None) -> None:
             "applications. See PROJECT.md's Verified facts."
         )
 
-    app = build_app(settings)
+    app = app or build_app(settings)
+    if live_console is not None:
+        status_console_subscriptions = wire_status_console(
+            app, live_console, asyncio.get_running_loop()
+        )
+    else:
+        status_console_subscriptions = []
     await warm_up(app.backend, app.bus)
-    subscriptions = wire(app)
+    if live_console is not None:
+        _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
+    subscriptions = [*status_console_subscriptions, *wire(app, live_console)]
 
     import keyboard
 
@@ -564,6 +730,8 @@ async def run(settings: Settings | None = None) -> None:
     ]
 
     await app.sound_cues.play("listening")
+    if live_console is not None:
+        _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
     print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
 
     try:
@@ -572,8 +740,46 @@ async def run(settings: Settings | None = None) -> None:
         keyboard.remove_hotkey(shutdown_handle)
 
 
+def run_with_status_console(
+    settings: Settings | None = None, *, include_touchstrip: bool = True
+) -> None:
+    settings = settings or load_settings()
+    app = build_app(settings)
+    live_console = create_live_status_console(app, include_touchstrip=include_touchstrip)
+
+    def start_jarvis() -> None:
+        asyncio.run(run(settings=settings, app=app, live_console=live_console))
+
+    import webview
+
+    webview.start(start_jarvis)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Jarvis.")
+    parser.add_argument(
+        "--status-console",
+        action="store_true",
+        help="open the local Status Console UI and run Jarvis in the same process",
+    )
+    parser.add_argument(
+        "--no-touchstrip",
+        action="store_true",
+        help="with --status-console, open only the desktop console window",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    if args.status_console:
+        run_with_status_console(include_touchstrip=not args.no_touchstrip)
+    else:
+        asyncio.run(run())
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(run())
+        main()
     except KeyboardInterrupt:
         print("\nStopped.")

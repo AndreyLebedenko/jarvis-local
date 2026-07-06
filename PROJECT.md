@@ -699,14 +699,29 @@ tasks/done/story-status-console-ui.md.
   already-recorded human decision: `Hidden` never touches audio output in
   v1, so there is nothing to manually verify there.
 - **Global hotkey interaction** was not re-tested against a live `main.py`
-  process - `main.py` and the Status Console windows still do not share a
-  process in v1 (see task-ui-03's "deliberately not done" note), so there
-  is no new integration surface to test yet. The narrower, real question -
-  does a WebView2 window merely being open interfere with this project's
-  existing global hotkeys - reduces to the already-verified fact above
-  this entry (`keyboard`-package hotkeys are global system-wide once
-  elevated, regardless of which window has focus); no code here changes
-  that.
+  process during task-ui-07 because `main.py` and the Status Console windows
+  still did not share a process then (see task-ui-03's "deliberately not
+  done" note). That became the separate task-ui-08 follow-up below.
+
+Task-ui-08 is the follow-up live integration task for the already-completed
+Status Console story.
+
+- `python main.py --status-console` launches Jarvis and the Status Console in
+  one process using the same `pywebview.start(callback)` ordering verified by
+  `manual_check_status_console.py`: windows and their shared
+  `StatusConsoleApi` are created before `webview.start()`, then the callback
+  creates the real `asyncio` runtime and calls `StatusConsoleApi.set_loop()`.
+  The old headless launch path remains `python main.py`; `--no-touchstrip`
+  opens only the desktop console.
+- Live wiring intentionally pushes only state with an authoritative source:
+  model label from config, `DataLocality.LOCAL`, current Think state, current
+  Open/Hidden visibility state, `SystemEvent`s, and coarse runtime states
+  (`WARMING`, `LISTENING`, `THINKING`, `SPEAKING`, `ERROR`). It does not
+  invent module health snapshots - the story's deferred question about the
+  authoritative `ModuleHealth` source remains deferred.
+- The desktop console receives `SystemEvent` entries; the touchstrip shares
+  Think/Open-Hidden/runtime state through the same `StatusConsoleApi` but still
+  has no dense event log, matching task-ui-06's boundary.
 
 ## Working agreements (for the agent)
 
