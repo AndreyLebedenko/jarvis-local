@@ -103,6 +103,13 @@ class ConversationHistory:
             messages.append(message)
         return messages
 
+    def clear(self) -> None:
+        """Drops every recorded turn (task-ui-04's global context reset).
+        Does not touch anything else about a turn in flight - Orchestrator's
+        own busy/pending-screenshot state is unrelated to conversation
+        history and is not this method's concern."""
+        self._turns = []
+
 
 VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
 
