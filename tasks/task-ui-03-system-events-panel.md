@@ -1,4 +1,4 @@
-# Task UI-03: System events panel
+﻿# Task UI-03: System events panel
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -31,4 +31,3 @@ console output.
 
 If logs and bus events diverge as competing sources of truth, stop and define
 which layer owns UI-visible events before implementation.
-

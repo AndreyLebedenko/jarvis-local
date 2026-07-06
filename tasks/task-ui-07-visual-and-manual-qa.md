@@ -1,4 +1,4 @@
-# Task UI-07: Visual and manual QA for Status Console
+﻿# Task UI-07: Visual and manual QA for Status Console
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -35,4 +35,3 @@ behavior is involved.
 If visual QA reveals that the first shell cannot fit the required controls
 without redesign, stop and revise the UI task boundaries instead of adding
 workarounds.
-

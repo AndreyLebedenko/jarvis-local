@@ -1,4 +1,4 @@
-# Task UI-02: Desktop Status Console shell
+﻿# Task UI-02: Desktop Status Console shell
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -30,4 +30,3 @@ module chips and basic layout. This is a status surface, not a settings app.
 
 If choosing the GUI framework has architectural consequences not settled in
 PROJECT.md or story docs, stop and ask before implementing the shell.
-

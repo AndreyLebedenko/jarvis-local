@@ -1,4 +1,4 @@
-# Task UI-01: State and event contract for Status Console
+﻿# Task UI-01: State and event contract for Status Console
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -35,4 +35,3 @@ internals.
 
 If the existing event bus cannot express the UI contract without broad event
 schema changes, stop and update `PROJECT.md`/story boundaries before coding.
-

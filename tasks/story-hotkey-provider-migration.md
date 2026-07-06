@@ -1,4 +1,4 @@
-# Story: HotkeyProvider migration for privacy-first global shortcuts
+﻿# Story: HotkeyProvider migration for privacy-first global shortcuts
 
 **Статус:** Backlog
 **Родитель:** activation / privacy roadmap
@@ -54,4 +54,3 @@ global hotkeys Jarvis на него, начиная с Windows implementation ч
   `fallback` / `unavailable`?
 - Нужно ли менять дефолтные hotkeys, если Windows reserved combinations
   конфликтуют чаще, чем текущие `keyboard` bindings?
-

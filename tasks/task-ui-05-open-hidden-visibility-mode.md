@@ -1,4 +1,4 @@
-# Task UI-05: Open / Hidden visibility mode
+﻿# Task UI-05: Open / Hidden visibility mode
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -33,4 +33,3 @@ Implement the system visibility mode as a first-class UI and engine state.
 Should Hidden change only UI output, or should it also suppress spoken TTS from
 ordinary voice turns? This decision affects runtime behavior and must be made
 before implementation.
-

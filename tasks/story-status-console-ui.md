@@ -1,4 +1,4 @@
-# Story: Status Console UI
+﻿# Story: Status Console UI
 
 **Статус:** Backlog
 **Родитель:** future UI roadmap
@@ -91,4 +91,3 @@ Console: компактное окно состояния, минимальны�
 5. task-ui-05-open-hidden-visibility-mode.md
 6. task-ui-06-touchstrip-glance-surface.md
 7. task-ui-07-visual-and-manual-qa.md
-

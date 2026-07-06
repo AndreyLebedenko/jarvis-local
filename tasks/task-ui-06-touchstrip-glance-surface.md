@@ -1,4 +1,4 @@
-# Task UI-06: Touchstrip glance surface
+﻿# Task UI-06: Touchstrip glance surface
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -33,4 +33,3 @@ dashboard.
 If the chosen GUI framework cannot support this surface without a separate
 process or large architecture change, stop and split the touchstrip work into
 its own story.
-

@@ -1,4 +1,4 @@
-# Task UI-04: Think and reset controls
+﻿# Task UI-04: Think and reset controls
 
 **Story:** story-status-console-ui.md
 **Статус:** Backlog
@@ -32,4 +32,3 @@ per-module reset requests.
 
 If a module has no lifecycle/reset API, do not fake success in UI. Stop and
 record the missing engine capability.
-
