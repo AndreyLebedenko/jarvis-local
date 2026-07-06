@@ -46,6 +46,11 @@ class HotkeySettings:
     # clipboard_submit added for task-10 (v1.1): task-08 built the reader
     # and event but deliberately left the real hotkey out of scope.
     clipboard_submit: str = "ctrl+alt+v"
+    # thinking_toggle added for task-12 (thinking-mode story): toggles the
+    # persistent runtime state consumed by future turns, see
+    # thinking_mode.py. Real listener wired here; main.py wiring is
+    # task-13's job.
+    thinking_toggle: str = "ctrl+alt+t"
 
 
 @dataclass(frozen=True)
@@ -79,6 +84,12 @@ class SoundCueSettings:
     input_error: str = "sounds/input_error.wav"
     mic_sleep: str = "sounds/mic_sleep.wav"
     mic_wake: str = "sounds/mic_wake.wav"
+    # thinking_on/thinking_off added for task-12 (thinking-mode story):
+    # distinct from the existing "thinking" field above, which is the
+    # per-turn processing cue, not this reasoning-mode on/off toggle.
+    # Wiring into SoundCuePlayer/ensure_generated() is task-13's job.
+    thinking_on: str = "sounds/thinking_on.wav"
+    thinking_off: str = "sounds/thinking_off.wav"
 
 
 @dataclass(frozen=True)

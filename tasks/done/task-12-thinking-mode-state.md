@@ -1,6 +1,6 @@
 # Task: thinking mode state and hotkey input
 
-Status: Draft.
+Status: Completed.
 
 Story: [story-thinking-mode.md](story-thinking-mode.md)
 

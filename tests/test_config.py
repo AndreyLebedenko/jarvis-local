@@ -241,3 +241,52 @@ def test_hotkeys_clipboard_submit_defaults_when_section_omitted(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
     assert settings.hotkeys == HotkeySettings()
+
+
+# --- task-12: thinking_toggle hotkey and thinking_on/thinking_off cues ------
+
+
+def test_hotkeys_thinking_toggle_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [hotkeys]
+        thinking_toggle = "ctrl+alt+k"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.hotkeys.thinking_toggle == "ctrl+alt+k"
+
+
+def test_hotkeys_thinking_toggle_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.hotkeys == HotkeySettings()
+    assert settings.hotkeys.thinking_toggle == "ctrl+alt+t"
+
+
+def test_sound_cues_thinking_on_and_thinking_off_fields_parse(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [sound_cues]
+        thinking_on = "sounds/custom_thinking_on.wav"
+        thinking_off = "sounds/custom_thinking_off.wav"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.sound_cues.thinking_on == "sounds/custom_thinking_on.wav"
+    assert settings.sound_cues.thinking_off == "sounds/custom_thinking_off.wav"
+
+
+def test_sound_cues_thinking_on_and_thinking_off_default_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.sound_cues.thinking_on == "sounds/thinking_on.wav"
+    assert settings.sound_cues.thinking_off == "sounds/thinking_off.wav"
