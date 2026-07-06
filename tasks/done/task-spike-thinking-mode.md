@@ -1,6 +1,6 @@
 # Task: Thinking-mode spike
 
-Status: Draft.
+Status: Completed.
 
 Story: [story-v1.1-controlled-input.md](done/story-v1.1-controlled-input.md)
 

@@ -16,6 +16,21 @@ architectural decisions; update it when a decision changes.
   Ollama — never use it.
 - Audio input: max 30 s per clip, 16 kHz mono wav. Place media before text
   in the prompt.
+- **Ollama thinking mode is safe to wire only if reasoning tokens stay out
+  of `ResponseToken` consumers.** Verified locally on 2026-07-06 against
+  Ollama 0.31.1 and `gemma4:12b-it-qat`: `/api/chat` accepts top-level
+  `think: false` / `think: true`. With `think: true`, reasoning streamed in
+  `message.thinking` while final answer text streamed in `message.content`;
+  with `think: false`, no `message.thinking` chunks appeared. This held for
+  both text-only and image input through the existing `images` field. No
+  inline reasoning markers appeared in `message.content` in either variant,
+  so content tokens remained clean for TTS in the measured cases. Manual
+  timings: text off 7.47 s (cold-ish first request, load 7.15 s), text on
+  2.24 s; media off 0.79 s, media on 2.31 s. Warm generation cost increased
+  as expected because thinking produced many more tokens (media eval_count
+  10 off vs 161 on; text eval_count 13 off vs 163 on). Future runtime wiring
+  must discard or separately route `message.thinking`; reasoning tokens must
+  never be published as `ResponseToken` or reach the TTS pipeline.
 - Audio fidelity: verified — model transcribed Russian speech verbatim.
 - **Intonation/prosody classification is unreliable in this quant** (detects
   that deliveries differ, misclassifies which is which). Decision: v1.0 is
