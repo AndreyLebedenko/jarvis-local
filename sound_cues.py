@@ -86,6 +86,17 @@ def _cue_mic_wake() -> np.ndarray:
     return np.concatenate([_tone(500, 0.06), _tone(700, 0.08)])
 
 
+def _cue_thinking_on() -> np.ndarray:
+    # Three ascending pips - deliberately longer and rhythmically distinct
+    # from every other two-segment cue above, since this signals a
+    # persistent mode change (future turns), not a one-off per-turn event.
+    return np.concatenate([_tone(520, 0.06), _tone(660, 0.06), _tone(830, 0.08)])
+
+
+def _cue_thinking_off() -> np.ndarray:
+    return np.concatenate([_tone(830, 0.06), _tone(660, 0.06), _tone(520, 0.08)])
+
+
 _GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "listening": _cue_listening,
     "thinking": _cue_thinking,
@@ -95,6 +106,8 @@ _GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "input_error": _cue_input_error,
     "mic_sleep": _cue_mic_sleep,
     "mic_wake": _cue_mic_wake,
+    "thinking_on": _cue_thinking_on,
+    "thinking_off": _cue_thinking_off,
 }
 
 
@@ -109,6 +122,8 @@ def ensure_generated(settings: SoundCueSettings) -> None:
         "input_error": settings.input_error,
         "mic_sleep": settings.mic_sleep,
         "mic_wake": settings.mic_wake,
+        "thinking_on": settings.thinking_on,
+        "thinking_off": settings.thinking_off,
     }
     for cue, path_str in paths.items():
         path = Path(path_str)
@@ -134,6 +149,8 @@ class SoundCuePlayer:
             "input_error": settings.input_error,
             "mic_sleep": settings.mic_sleep,
             "mic_wake": settings.mic_wake,
+            "thinking_on": settings.thinking_on,
+            "thinking_off": settings.thinking_off,
         }
         self._playback_lock = playback_lock or asyncio.Lock()
         self._play_file = play_file or self._default_play_file

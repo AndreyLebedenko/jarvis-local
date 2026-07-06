@@ -45,6 +45,8 @@ from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
+from thinking_mode import ThinkingModeState, ThinkingModeToggled
+from thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
 from tts import TtsOutput
 
 logger = logging.getLogger(__name__)
@@ -142,12 +144,14 @@ class Orchestrator:
         sound_cues: SoundCuePlayer,
         system_prompt: str = SYSTEM_PROMPT,
         audio_input: AudioInput | None = None,
+        thinking_mode: ThinkingModeState | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
         self._sound_cues = sound_cues
         self._system_prompt = system_prompt
         self._audio_input = audio_input
+        self._thinking_mode = thinking_mode
         self._pending_screenshot_b64: str | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
@@ -205,8 +209,16 @@ class Orchestrator:
         self._current_turn_history_text = history_text
         self._response_tokens = []
         self._spoke_this_turn = False
+        # Sampled here, synchronously, with no `await` before it reaches
+        # backend.chat()'s argument list: a hotkey toggle that lands while
+        # this turn's request is already in flight cannot retroactively
+        # change what was already passed - see thinking_mode.py and the
+        # story's "sampled at turn start, not the live stream" decision.
+        thinking_enabled = self._thinking_mode.is_enabled if self._thinking_mode else False
         try:
-            await self._backend.chat(messages, images_b64=media_b64)
+            await self._backend.chat(
+                messages, images_b64=media_b64, thinking_enabled=thinking_enabled
+            )
         except Exception:
             logger.exception("Request failed")
             await self._sound_cues.play("error")
@@ -270,6 +282,7 @@ class App:
     capture_input: CaptureInput
     orchestrator: Orchestrator
     sound_cues: SoundCuePlayer
+    thinking_mode: ThinkingModeState
     settings: Settings
 
 
@@ -295,7 +308,10 @@ def build_app(
     tts_output = tts_output or TtsOutput(settings.tts, playback_lock=playback_lock)
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
-    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues, audio_input=audio_input)
+    thinking_mode = ThinkingModeState(bus)
+    orchestrator = Orchestrator(
+        backend, ConversationHistory(), sound_cues, audio_input=audio_input, thinking_mode=thinking_mode
+    )
     return App(
         bus=bus,
         backend=backend,
@@ -304,6 +320,7 @@ def build_app(
         capture_input=capture_input,
         orchestrator=orchestrator,
         sound_cues=sound_cues,
+        thinking_mode=thinking_mode,
         settings=settings,
     )
 
@@ -364,6 +381,16 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
     await app.sound_cues.play("mic_wake" if event.is_awake else "mic_sleep")
 
 
+async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> None:
+    """Plays the on/off cue and logs the new state - same split as every
+    other cue-driving event (thinking_mode.py only publishes what
+    happened; main.py decides what to do about it). The state itself is
+    read by Orchestrator._start_turn(), not here - this handler is purely
+    user feedback for the toggle."""
+    logger.info("Thinking mode %s", "enabled" if event.is_enabled else "disabled")
+    await app.sound_cues.play("thinking_on" if event.is_enabled else "thinking_off")
+
+
 def wire(app: App) -> list[Subscription]:
     """Subscribes every module to the bus events it consumes. Returns the
     (event_type, handler) pairs so shutdown can unsubscribe them - see
@@ -375,6 +402,9 @@ def wire(app: App) -> list[Subscription]:
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
 
+    async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
+        await _on_thinking_mode_toggled(app, event)
+
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
@@ -383,6 +413,7 @@ def wire(app: App) -> list[Subscription]:
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
         (MicSleepToggled, on_mic_sleep_toggled),
+        (ThinkingModeToggled, on_thinking_mode_toggled),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -471,6 +502,7 @@ async def run(settings: Settings | None = None) -> None:
             run_clipboard_hotkey_listener(app.bus, settings.hotkeys, settings.clipboard)
         ),
         asyncio.create_task(run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)),
+        asyncio.create_task(run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)),
     ]
 
     await app.sound_cues.play("listening")

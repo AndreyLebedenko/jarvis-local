@@ -343,6 +343,78 @@ Human manual-testing review of task-10 found two more issues, both fixed:
   build must delete their stale `sounds/input_error.wav` for the new
   tone to take effect on next launch.
 
+## Architecture v1.2 (thinking mode)
+
+See [tasks/done/story-thinking-mode.md](tasks/done/story-thinking-mode.md). Built on
+the day-0 spike recorded in this file's Verified facts (top-level `think`
+param; `message.thinking` isolated from `message.content`). Task-11 landed
+the backend contract, task-12 the runtime state/hotkey, task-13 the final
+`main.py` wiring:
+
+- Default mode is **off**. Thinking mode is an explicit, user-controlled
+  tool for occasional harder questions, not a new default answer style -
+  the spike measured substantially more generated tokens with thinking
+  enabled (media eval_count 161 vs 10; text 163 vs 13), and Jarvis's voice
+  UX depends on short latency.
+- `config.hotkeys.thinking_toggle` (default `ctrl+alt+t`) toggles the
+  mode. `config.sound_cues.thinking_on`/`thinking_off` are the distinct
+  feedback tones (`sound_cues.py::_cue_thinking_on()`/
+  `_cue_thinking_off()`) - not to be confused with the existing
+  `sound_cues.thinking` field, which is the unrelated per-turn "request in
+  flight" cue played on every turn regardless of this mode.
+- State owner: `thinking_mode.py`'s `ThinkingModeState`, holding a single
+  `is_enabled` bit and publishing `ThinkingModeToggled` on
+  `toggle()`. Mirrors `audio_in.py`'s `AudioInput.toggle_user_sleep()`
+  race-avoidance shape - `toggle()` reads and flips state with no `await`
+  in between, so two rapid hotkey presses (scheduled via
+  `run_coroutine_threadsafe` from the keyboard package's own thread) can
+  never both observe the same stale value and schedule the same
+  transition twice instead of toggling twice.
+- `main.py`'s `Orchestrator._start_turn()` is the sole consumer: it reads
+  `ThinkingModeState.is_enabled` synchronously (no `await` before the
+  value reaches `OllamaBackend.chat()`'s argument list) at the start of
+  each accepted turn and passes it as `thinking_enabled`. This is
+  deliberately **sampled at turn start, not the live stream** - a hotkey
+  press during an in-flight response affects only the next accepted turn.
+  Changing a live Ollama stream mid-response was explicitly out of scope
+  (cancellation/partial-output questions unrelated to this feature).
+- Exact backend parameter: `OllamaBackend.build_payload()`/`chat()` accept
+  `thinking_enabled: bool`, setting the top-level `think` field verified
+  by the spike.
+- **Hard reasoning-token isolation rule**: `message.thinking` is never
+  read by `backend.py`'s stream loop - only `message.content` becomes a
+  `ResponseToken`. This is enforced at the same point regardless of
+  `thinking_enabled`, so there is no separate code path that could leak
+  a reasoning chunk into `ResponseToken`, history, or TTS. A regression
+  test (`tests/test_main.py::
+  test_thinking_chunks_never_reach_tts_through_real_bus_wiring`) exercises
+  this through the real bus/`wire()` wiring, not just `backend.py` in
+  isolation.
+- `wire()` subscribes `ThinkingModeToggled`, plays the on/off cue, and
+  logs "Thinking mode enabled"/"disabled" at INFO level - the same
+  publish-then-main-decides split used for every other cue-driving event
+  (`MicSleepToggled`, etc.).
+- Reasoning traces are not displayed, logged, or otherwise exposed
+  anywhere in this story - out of scope by design (see the story card's
+  Open decisions). A later GUI/debug-console feature would need its own
+  story for the privacy/logging/transcript implications.
+- **Manual end-to-end verification (2026-07-06, human-run against a live
+  Ollama endpoint): passed.** Hotkey toggled thinking mode globally,
+  `thinking_on`/`thinking_off` cues were audible and distinct, the
+  console logged "Thinking mode enabled"/"disabled" on each toggle, and
+  reasoning was confirmed to never reach the spoken answer with thinking
+  on (voice, clipboard/text, and screenshot input) - the human explicitly
+  confirmed "поток рассуждения в голосовой ответ не лезет, тут всё ок."
+  The process stayed offline aside from the local Ollama endpoint.
+  One unrelated anomaly was observed during the same session (an extra,
+  unprompted turn on the same topic) and is tracked separately - see
+  [tasks/bug_reports/thinking-mode-mic-window-before-autopause.md](tasks/bug_reports/thinking-mode-mic-window-before-autopause.md).
+  It is not a regression in the reasoning-token isolation guarantee above;
+  it concerns `audio_in.py`'s pre-existing, already-documented lack of
+  full echo cancellation (see this file's other Verified facts entry on
+  that topic), which thinking mode measurably widens the risk window for
+  but does not itself cause.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by
