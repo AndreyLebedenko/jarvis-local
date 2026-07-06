@@ -124,6 +124,11 @@ This repository was built with an agent-assisted workflow: project facts were re
 ## Known Issues
 
 - Windows global hotkeys require Administrator privileges.
+- Live Status Console mode does not yet have a Shutdown control. In this mode,
+  `Ctrl+C` from the terminal is no longer a reliable stop path because
+  `pywebview` owns the foreground UI loop; until the planned Shutdown control
+  lands, stop Jarvis by terminating the Python process if the shutdown hotkey
+  is not available.
 - A true cold Ollama start can take long enough to require a generous read timeout.
 - There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
 - Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
