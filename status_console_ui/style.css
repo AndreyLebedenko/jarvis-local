@@ -153,7 +153,7 @@ body {
   margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* Reserved placeholders - task-ui-04/03 wire these for real; this shell
+/* Reserved placeholders - task-ui-04 wires these for real; this shell
    only proves the layout has room for them without overlap. */
 .placeholder-card {
   display: flex; align-items: center; gap: 16px;
@@ -188,6 +188,39 @@ body {
 .log-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
 .log-sub { font-size: 10.5px; color: var(--text-faint); font-family: "Consolas", "Cascadia Mono", monospace; margin-bottom: 14px; }
 .log-empty { font-size: 11.5px; color: var(--text-faint); margin-top: auto; margin-bottom: auto; text-align: center; }
+
+/* task-ui-03: real system events, newest first (#logList.prepend()). */
+#logList { display: flex; flex-direction: column; gap: 0; overflow-y: auto; flex: 1; }
+.log-entry {
+  display: flex; gap: 9px;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px;
+  padding: 7px 0; border-bottom: 1px solid var(--border-soft);
+  align-items: flex-start;
+}
+.log-time { color: var(--text-faint); flex-shrink: 0; }
+.log-src {
+  font-size: 9.5px; text-transform: uppercase; padding: 1px 5px; border-radius: 4px;
+  flex-shrink: 0; height: fit-content; background: var(--gray-tint); color: var(--text-dim);
+  min-width: 44px; text-align: center;
+}
+/* Long messages wrap instead of overflowing the panel (task-ui-02 AC,
+   extended here: "Event panel handles long messages without layout
+   breakage"). */
+.log-msg { color: var(--text-dim); min-width: 0; overflow-wrap: anywhere; }
+.log-entry[data-level="active"] .log-src { background: var(--cyan-tint); color: var(--cyan); }
+.log-entry[data-level="active"] .log-msg { color: var(--text); }
+.log-entry[data-level="warn"] .log-src { background: var(--amber-tint); color: var(--amber); }
+.log-entry[data-level="warn"] .log-msg { color: var(--amber); }
+.log-entry[data-level="error"] .log-src { background: var(--red-tint); color: var(--red); }
+.log-entry[data-level="error"] .log-msg { color: var(--red); }
+
+.legend {
+  display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; margin-top: auto;
+  border-top: 1px solid var(--border-soft); font-size: 10px; color: var(--text-faint);
+  font-family: "Consolas", "Cascadia Mono", monospace;
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.legend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 
 /* ===== RESPONSIVE ===== */
 /* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).

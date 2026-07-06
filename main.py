@@ -45,9 +45,11 @@ from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
+from system_log import publish_system_event
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
 from tts import TtsOutput
+from ui_contract import EventLevel
 
 logger = logging.getLogger(__name__)
 
@@ -376,9 +378,22 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
     """Plays the sleep/wake sound cue - the only feedback for this
     privacy toggle, per the "hotkeys + sound cues only" interaction
     model. Mirrors _on_full_response_complete's split: audio_in.py only
-    publishes what happened, main.py decides what to do about it."""
-    logger.info("Microphone %s", "awake" if event.is_awake else "asleep")
-    await app.sound_cues.play("mic_wake" if event.is_awake else "mic_sleep")
+    publishes what happened, main.py decides what to do about it.
+
+    Also publishes a SystemEvent (task-ui-03) so the Status Console's
+    events panel stays in sync with this console log line - see
+    system_log.py for why log_message/ui_message are two separate
+    strings rather than one reused verbatim."""
+    awake = event.is_awake
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="HOTKEY",
+        level=EventLevel.INFO,
+        log_message=f"Microphone {'awake' if awake else 'asleep'}",
+        ui_message="Микрофон разбужен" if awake else "Микрофон усыплён",
+    )
+    await app.sound_cues.play("mic_wake" if awake else "mic_sleep")
 
 
 async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> None:
@@ -386,9 +401,20 @@ async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> Non
     other cue-driving event (thinking_mode.py only publishes what
     happened; main.py decides what to do about it). The state itself is
     read by Orchestrator._start_turn(), not here - this handler is purely
-    user feedback for the toggle."""
-    logger.info("Thinking mode %s", "enabled" if event.is_enabled else "disabled")
-    await app.sound_cues.play("thinking_on" if event.is_enabled else "thinking_off")
+    user feedback for the toggle.
+
+    Also publishes a SystemEvent (task-ui-03) - see _on_mic_sleep_toggled
+    above and system_log.py for why."""
+    enabled = event.is_enabled
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="HOTKEY",
+        level=EventLevel.INFO,
+        log_message=f"Thinking mode {'enabled' if enabled else 'disabled'}",
+        ui_message="Режим мышления включён" if enabled else "Режим мышления выключен",
+    )
+    await app.sound_cues.play("thinking_on" if enabled else "thinking_off")
 
 
 def wire(app: App) -> list[Subscription]:
@@ -425,16 +451,41 @@ def unwire(app: App, subscriptions: list[Subscription]) -> None:
         app.bus.unsubscribe(event_type, handler)
 
 
-async def warm_up(backend: OllamaBackend) -> None:
+async def warm_up(backend: OllamaBackend, bus: EventBus) -> None:
     """Fires a throwaway request before the process signals it is ready
     to listen, so the first real user turn doesn't pay Ollama's cold-load
     penalty (measured 4.2 s vs 0.3 s warm - task-07 backlog note from
     task-03). Must run before wire() - see module docstring.
+
+    Publishes a SystemEvent either way (task-ui-03's "warmup success/
+    failure is visible" acceptance criterion) via publish_system_event()
+    on the given bus - safe even with zero subscribers (bus.py: publish
+    with no subscribers is a no-op), so this works whether or not a
+    Status Console window is attached yet. The failure branch keeps the
+    existing logger.exception() call for the full stack trace (developer
+    diagnostic detail) in addition to the concise SystemEvent.
     """
     try:
         await backend.chat([{"role": "user", "content": "Привет"}])
     except Exception:
         logger.exception("Warm-up request failed; continuing anyway")
+        await publish_system_event(
+            bus,
+            logger,
+            source="WARMUP",
+            level=EventLevel.WARN,
+            log_message="Warm-up request failed; continuing anyway",
+            ui_message="Прогрев модели не удался - первый ответ может быть медленным",
+        )
+    else:
+        await publish_system_event(
+            bus,
+            logger,
+            source="WARMUP",
+            level=EventLevel.INFO,
+            log_message="Warm-up request succeeded",
+            ui_message="Прогрев модели завершён",
+        )
 
 
 async def run_until_shutdown(
@@ -482,7 +533,7 @@ async def run(settings: Settings | None = None) -> None:
         )
 
     app = build_app(settings)
-    await warm_up(app.backend)
+    await warm_up(app.backend, app.bus)
     subscriptions = wire(app)
 
     import keyboard

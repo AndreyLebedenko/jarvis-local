@@ -469,10 +469,9 @@ wiring.
   window (injectable `window_factory`, mirroring `audio_in.py`'s
   `InputStreamLike` pattern, so tests need no real WebView2 install) and
   exposes `push_runtime_state()`/`push_module_health()`/
-  `push_data_locality()`/`push_model_label()`, each translating a
-  `ui_contract.py` value into JSON and calling the matching `app.js`
-  function via `evaluate_js`. No bus subscription here - a later task
-  wires these calls to real events.
+  `push_data_locality()`/`push_model_label()`/`push_system_event()`, each
+  translating a `ui_contract.py` value into JSON and calling the matching
+  `app.js` function via `evaluate_js`.
 - `WARMING`'s color is a distinct amber shade (`--amber-warm`) from
   `SPEAKING`'s `--amber`, plus its own dashed/faster ring animation and an
   explicit "(локально)" qualifier in the label text - so it cannot be
@@ -480,8 +479,47 @@ wiring.
   indicator to confuse it with yet (this task's acceptance criterion).
 - `manual_check_status_console.py` — hardware-dependent handoff (real
   window, real WebView2): pushes `config.py`'s real `backend.model` (no
-  hardcoded model name) and cycles every `RuntimeState` every 2 s for
-  visual review, per CLAUDE.md's testing protocol.
+  hardcoded model name), cycles every `RuntimeState`, and publishes sample
+  `SystemEvent`s through a real bus + `system_log.publish_system_event()`
+  for visual review, per CLAUDE.md's testing protocol.
+
+Task-ui-03 landed third: real system events, still with no live
+`StatusConsoleWindow` subscribed inside `main.py`'s actual `run()` (see
+below for why that remains deliberately out of scope).
+
+- **Stop Condition, resolved:** "if logs and bus events diverge as
+  competing sources of truth, stop and define which layer owns UI-visible
+  events." Resolution: `system_log.py`'s `publish_system_event(bus,
+  logger, source, level, log_message, ui_message, correlation_id=None)`
+  is the *only* place that decides a user-facing system event happened -
+  it always logs via the given logger AND publishes `ui_contract.py`'s
+  `SystemEvent` on the bus in the same call, so the console/file log and
+  the events panel can never disagree about whether something fired.
+  `log_message` (English, technical - matches this project's existing
+  console-log convention) and `ui_message` (Russian, matches the Status
+  Console's other user-facing text) are two different strings by design,
+  not one string forced to serve both audiences - see `system_log.py`'s
+  docstring.
+- `main.py`'s `warm_up()` (now takes `bus: EventBus`), `_on_mic_sleep_
+  toggled()`, and `_on_thinking_mode_toggled()` all call
+  `publish_system_event()` at their existing log call sites (source
+  `WARMUP`/`HOTKEY`) - this is safe today even though nothing in `main.py`
+  constructs a `StatusConsoleWindow` yet, since `bus.py` treats publishing
+  with zero subscribers as a no-op.
+- **Deliberately not done here:** wiring an actual `StatusConsoleWindow`
+  into `main.py`'s `App`/`run()`. `pywebview`'s `webview.start()` runs its
+  own GUI loop (typically expected on the main thread) alongside this
+  process's asyncio loop (`asyncio.run(run())`, also wanting the main
+  thread) - reconciling the two is a separate, larger concurrency question
+  than "system events panel," not assigned to any task card yet. Until
+  that lands, `manual_check_status_console.py` is the only place a real
+  `StatusConsoleWindow` and a real bus meet.
+- `status_console_ui/index.html`'s events panel (`#logList`) renders newest
+  first (`app.js`'s `appendSystemEvent()`, `Element.prepend()`), is capped
+  at `MAX_LOG_ENTRIES = 200` DOM nodes, and wraps long messages
+  (`overflow-wrap: anywhere`) instead of overflowing the panel.
+  `demo.html`/`demo.js` gained buttons for each `EventLevel` plus a
+  "+50 events" stress button for this.
 
 ## Working agreements (for the agent)
 

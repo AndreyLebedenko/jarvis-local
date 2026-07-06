@@ -9,8 +9,17 @@ from status_console import (
     data_locality_payload,
     module_health_payload,
     runtime_state_payload,
+    system_event_payload,
 )
-from ui_contract import DataLocality, HealthStatus, ModuleHealth, ModuleId, RuntimeState
+from ui_contract import (
+    DataLocality,
+    EventLevel,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+)
 
 
 @pytest.mark.parametrize("state", list(RuntimeState))
@@ -115,6 +124,35 @@ def test_push_model_label_evaluates_js_with_given_label():
     assert payload == {"label": "gemma4:12b-it-qat"}
 
 
+def test_system_event_payload_shape():
+    event = SystemEvent(
+        timestamp=1234.5, source="WARMUP", level=EventLevel.WARN, message="слишком долго"
+    )
+
+    assert system_event_payload(event) == {
+        "timestamp": 1234.5,
+        "source": "WARMUP",
+        "level": "warn",
+        "message": "слишком долго",
+        "correlation_id": None,
+    }
+
+
+def test_push_system_event_evaluates_js_with_contract_payload():
+    fake_window = _FakeWindow()
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+    console.create()
+
+    console.push_system_event(
+        SystemEvent(timestamp=1.0, source="ENGINE", level=EventLevel.INFO, message="ready")
+    )
+
+    assert fake_window.calls[0].startswith("appendSystemEvent(")
+    payload = json.loads(fake_window.calls[0][len("appendSystemEvent("):-1])
+    assert payload["source"] == "ENGINE"
+    assert payload["level"] == "info"
+
+
 def test_pushing_state_before_create_raises():
     console = StatusConsoleWindow(window_factory=_fake_factory_returning(_FakeWindow()))
 
@@ -175,3 +213,33 @@ def test_app_js_clears_module_detail_when_payload_detail_is_empty():
 
     assert "meta.textContent = payload.detail || \"\";" in js
     assert "if (payload.detail)" not in js
+
+
+def test_index_html_has_a_real_events_panel_not_a_placeholder():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="logList"' in html
+    assert "task-ui-03" not in html
+
+
+def test_app_js_caps_the_number_of_rendered_log_entries():
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "MAX_LOG_ENTRIES" in js
+    assert "while (list.children.length > MAX_LOG_ENTRIES)" in js
+    assert "list.removeChild(list.lastChild)" in js
+
+
+def test_style_css_gives_error_and_warn_log_levels_distinct_colors():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    def color_for_level(level: str) -> str:
+        marker = f'.log-entry[data-level="{level}"] .log-msg'
+        start = css.index(marker)
+        rule_start = css.index("{", start)
+        rule_end = css.index("}", rule_start)
+        rule = css[rule_start:rule_end]
+        color_start = rule.index("color:") + len("color:")
+        return rule[color_start : rule.index(";", color_start)].strip()
+
+    assert color_for_level("warn") != color_for_level("error")

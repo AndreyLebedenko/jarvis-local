@@ -46,6 +46,43 @@ function buildControls() {
     button.onclick = () => applyDataLocality({ locality });
     root.appendChild(button);
   }
+
+  const logGroup = document.createElement("span");
+  logGroup.textContent = "log event:";
+  root.appendChild(logGroup);
+  const sampleMessages = {
+    info: ["ENGINE", "Цикл завершён"],
+    active: ["LLM", "Запрос отправлен в Ollama"],
+    warn: ["WARMUP", "Прогрев не удался - первый ответ может быть медленным"],
+    error: ["TTS", "Устройство вывода звука не найдено"],
+  };
+  for (const level of EVENT_LEVELS) {
+    const [source, message] = sampleMessages[level];
+    const button = document.createElement("button");
+    button.textContent = level;
+    button.onclick = () =>
+      appendSystemEvent({ timestamp: Date.now() / 1000, source, level, message });
+    root.appendChild(button);
+  }
+
+  const stressButton = document.createElement("button");
+  stressButton.textContent = "+50 events";
+  stressButton.title = "Stress-test long-message wrapping and MAX_LOG_ENTRIES trimming";
+  stressButton.onclick = () => {
+    for (let i = 0; i < 50; i++) {
+      appendSystemEvent({
+        timestamp: Date.now() / 1000,
+        source: "ENGINE",
+        level: EVENT_LEVELS[i % EVENT_LEVELS.length],
+        message:
+          i % 7 === 0
+            ? "Очень длинное сообщение для проверки переноса строки в узкой панели событий без поломки раскладки: " +
+              "eval_count=163 prompt_eval_duration=1.2s load_duration=0.3s"
+            : `Событие #${i}`,
+      });
+    }
+  };
+  root.appendChild(stressButton);
 }
 
 buildControls();

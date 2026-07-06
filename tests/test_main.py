@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+from collections.abc import Callable
 
 import httpx
 
@@ -26,10 +27,12 @@ from main import (
     run_thinking_hotkey_listener,
     run_until_shutdown,
     unwire,
+    warm_up,
     wire,
 )
 from sound_cues import SoundCuePlayer
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
+from ui_contract import EventLevel, SystemEvent
 
 
 class _FakeBackend:
@@ -560,6 +563,67 @@ async def test_on_thinking_mode_toggled_logs_an_info_message(caplog):
     assert any("disabled" in record.message for record in caplog.records)
 
 
+async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(caplog):
+    """task-ui-03: the Status Console's events panel gets this through the
+    bus, not by scraping the log line above."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = App(
+        bus=bus,
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
+        settings=_settings(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="main"):
+        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+
+    assert len(received) == 1
+    assert received[0].source == "HOTKEY"
+    assert received[0].level is EventLevel.INFO
+    assert "включ" in received[0].message
+
+
+# --- warm-up SystemEvent (task-ui-03) ---------------------------------------
+
+
+async def test_warm_up_publishes_info_system_event_on_success():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+
+    await warm_up(_FakeBackend(), bus)
+
+    assert len(received) == 1
+    assert received[0].source == "WARMUP"
+    assert received[0].level is EventLevel.INFO
+
+
+async def test_warm_up_publishes_warn_system_event_and_still_logs_exception_on_failure(caplog):
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+
+    async def failing_chat() -> None:
+        raise RuntimeError("Ollama unreachable")
+
+    backend = _FakeBackend(chat_impl=failing_chat)
+
+    with caplog.at_level(logging.ERROR, logger="main"):
+        await warm_up(backend, bus)
+
+    assert any(record.levelno == logging.ERROR for record in caplog.records)  # logger.exception
+    assert len(received) == 1
+    assert received[0].source == "WARMUP"
+    assert received[0].level is EventLevel.WARN
+
+
 # --- wiring --------------------------------------------------------------
 
 
@@ -584,6 +648,16 @@ class _FakeCaptureInput:
 
 def _settings() -> Settings:
     return Settings()
+
+
+def _collecting_subscriber(items: list) -> Callable:
+    """bus.py awaits every handler, so a plain list.append cannot be
+    subscribed directly (it isn't a coroutine function) - wrap it."""
+
+    async def on_event(event) -> None:
+        items.append(event)
+
+    return on_event
 
 
 def _fake_app() -> App:
@@ -781,6 +855,32 @@ async def test_on_mic_sleep_toggled_logs_an_info_message(caplog):
         await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
 
     assert any("asleep" in record.message for record in caplog.records)
+
+
+async def test_on_mic_sleep_toggled_publishes_a_system_event_for_the_ui():
+    """task-ui-03: the Status Console's events panel gets this through the
+    bus, not by scraping the log line above."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = App(
+        bus=bus,
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
+        settings=_settings(),
+    )
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
+
+    assert len(received) == 1
+    assert received[0].source == "HOTKEY"
+    assert received[0].level is EventLevel.INFO
+    assert "усыпл" in received[0].message
 
 
 # --- elevation check -------------------------------------------------------
