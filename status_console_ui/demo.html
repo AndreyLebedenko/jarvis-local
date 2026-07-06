@@ -17,7 +17,18 @@
     border-radius: 14px; padding: 4px 10px; cursor: pointer;
   }
   .demo-controls button:hover { color: var(--text); border-color: var(--cyan-dim); }
+  /* Adds a "demo" row on top of style.css's own grid-template-areas rather
+     than replacing it outright at every width: an earlier version hardcoded
+     the wide-layout "main log" two-column areas unconditionally, which won
+     the cascade over style.css's own @media (max-width: 720px) override
+     (same specificity, declared later in the document) - demo.html silently
+     never actually exercised the responsive stacked layout it was meant to
+     help verify, squeezing .main to ~83px wide at 360px instead of
+     stacking. Found during task-ui-07's consolidated QA pass. */
   body { grid-template-rows: 40px 56px 1fr; grid-template-areas: "demo demo" "top top" "main log"; }
+  @media (max-width: 720px) {
+    body { grid-template-rows: 40px 56px 1fr auto; grid-template-areas: "demo" "top" "main" "log"; }
+  }
 </style>
 </head>
 <body>
