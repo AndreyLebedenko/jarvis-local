@@ -49,6 +49,13 @@ reset_module() never claims success. It honestly publishes a WARN
 SystemEvent reporting the gap instead of faking a reset; a future task
 that adds a real per-module reset API replaces only that method's body,
 not the button/wiring around it.
+
+task-ui-05 adds set_visibility_mode(), the same js_api pattern as
+toggle_thinking()/reset_context(). Human decision recorded in task-ui-05's
+card: in v1, Open/Hidden only changes what the Status Console UI itself
+displays - it does not touch audio_in.py/tts.py/Orchestrator, so this
+method needs no engine-side consumer beyond VisibilityModeState itself and
+a SystemEvent for visibility.
 """
 
 import asyncio
@@ -61,7 +68,16 @@ from typing import Protocol
 from bus import EventBus
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState
-from ui_contract import DataLocality, EventLevel, ModuleHealth, ModuleId, RuntimeState, SystemEvent
+from ui_contract import (
+    DataLocality,
+    EventLevel,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+    VisibilityMode,
+)
+from visibility_mode import VisibilityModeState
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
@@ -112,6 +128,10 @@ def system_event_payload(event: SystemEvent) -> dict:
 
 def thinking_mode_payload(is_enabled: bool) -> dict:
     return {"is_enabled": is_enabled}
+
+
+def visibility_mode_payload(mode: VisibilityMode) -> dict:
+    return {"mode": mode.value}
 
 
 class WindowLike(Protocol):
@@ -168,6 +188,9 @@ class StatusConsoleWindow:
 
     def push_thinking_mode(self, is_enabled: bool) -> None:
         self._evaluate("applyThinkingMode", thinking_mode_payload(is_enabled))
+
+    def push_visibility_mode(self, mode: VisibilityMode) -> None:
+        self._evaluate("applyVisibilityMode", visibility_mode_payload(mode))
 
     def _evaluate(self, js_function: str, payload: dict) -> None:
         if self._window is None:
@@ -226,6 +249,7 @@ class StatusConsoleApi:
         history: ClearableHistory,
         bus: EventBus,
         logger: logging.Logger,
+        visibility_mode: VisibilityModeState | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         self._loop = loop
@@ -233,6 +257,7 @@ class StatusConsoleApi:
         self._history = history
         self._bus = bus
         self._logger = logger
+        self._visibility_mode = visibility_mode or VisibilityModeState(bus)
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -280,5 +305,33 @@ class StatusConsoleApi:
             ui_message=(
                 f"Сброс {_MODULE_LABELS_RU[module]} запрошен, но пока не "
                 "поддерживается движком"
+            ),
+        )
+
+    def set_visibility_mode(self, mode_value: str) -> None:
+        mode = VisibilityMode(mode_value)
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._set_visibility_mode_async(mode), self._loop)
+
+    async def _set_visibility_mode_async(self, mode: VisibilityMode) -> None:
+        previous_mode = self._visibility_mode.mode
+        await self._visibility_mode.set_mode(mode)
+        if mode == previous_mode:
+            # VisibilityModeState.set_mode() already no-ops on a redundant
+            # call (no VisibilityModeChanged) - matching that here too, so
+            # clicking the already-active mode does not also produce a
+            # misleading "changed" SystemEvent.
+            return
+        await publish_system_event(
+            self._bus,
+            self._logger,
+            source="ENGINE",
+            level=EventLevel.INFO,
+            log_message=f"Visibility mode set to {mode.value}",
+            ui_message=(
+                "Режим Hidden активирован: превью экрана скрыто"
+                if mode is VisibilityMode.HIDDEN
+                else "Режим Open восстановлен"
             ),
         )

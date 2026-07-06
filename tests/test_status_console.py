@@ -15,6 +15,7 @@ from status_console import (
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
+    visibility_mode_payload,
 )
 from thinking_mode import ThinkingModeState
 from ui_contract import (
@@ -25,7 +26,9 @@ from ui_contract import (
     ModuleId,
     RuntimeState,
     SystemEvent,
+    VisibilityMode,
 )
+from visibility_mode import VisibilityModeState
 
 logger = logging.getLogger("test_status_console")
 
@@ -190,6 +193,21 @@ def test_create_passes_js_api_through_to_the_window_factory():
     assert factory.kwargs["js_api"] is sentinel_api
 
 
+def test_visibility_mode_payload_shape():
+    assert visibility_mode_payload(VisibilityMode.HIDDEN) == {"mode": "hidden"}
+
+
+def test_push_visibility_mode_evaluates_js_with_contract_payload():
+    fake_window = _FakeWindow()
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+    console.create()
+
+    console.push_visibility_mode(VisibilityMode.OPEN)
+
+    payload = json.loads(fake_window.calls[0][len("applyVisibilityMode("):-1])
+    assert payload == {"mode": "open"}
+
+
 # --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
 
 
@@ -288,6 +306,56 @@ async def test_reset_module_never_claims_success_and_reports_a_warn_event(module
     assert len(received) == 1
     assert received[0].level is EventLevel.WARN
     assert "успеш" not in received[0].message.lower()
+
+
+async def test_set_visibility_mode_changes_state_and_publishes_a_system_event():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+
+    async def on_event(event: SystemEvent) -> None:
+        received.append(event)
+
+    bus.subscribe(SystemEvent, on_event)
+    visibility_mode = VisibilityModeState(bus=bus)
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        visibility_mode=visibility_mode,
+    )
+
+    api.set_visibility_mode("hidden")
+    await asyncio.sleep(0.05)
+
+    assert visibility_mode.mode is VisibilityMode.HIDDEN
+    assert len(received) == 1
+    assert received[0].level is EventLevel.INFO
+
+
+async def test_set_visibility_mode_to_the_current_mode_does_not_publish():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+
+    async def on_event(event: SystemEvent) -> None:
+        received.append(event)
+
+    bus.subscribe(SystemEvent, on_event)
+    visibility_mode = VisibilityModeState(bus=bus)  # starts OPEN
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        visibility_mode=visibility_mode,
+    )
+
+    api.set_visibility_mode("open")  # already OPEN
+    await asyncio.sleep(0.05)
+
+    assert received == []
 
 
 def test_index_html_has_no_hardcoded_model_name():
@@ -397,3 +465,43 @@ def test_index_html_global_reset_requires_confirmation_before_the_api_call():
     assert 'id="confirmRow"' in html
     assert "showResetConfirm()" in html
     assert "confirmContextReset()" in html
+
+
+def test_index_html_uses_open_hidden_labels_not_the_old_ones():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert ">Open<" in html
+    assert ">Hidden<" in html
+    assert "Приватно" not in html
+    assert "На людях" not in html
+    assert "task-ui-05" not in html
+
+
+def test_app_js_visibility_mode_never_touches_the_locality_badge():
+    """task-ui-05 AC: 'Hidden does not imply cloud/offline status' - data
+    locality and visibility mode must stay structurally independent, not
+    just independent by convention."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    apply_visibility_start = js.index("function applyVisibilityMode")
+    apply_visibility_end = js.index("\n}\n", apply_visibility_start)
+    body = js[apply_visibility_start:apply_visibility_end]
+    code_lines = [line for line in body.splitlines() if not line.strip().startswith("//")]
+    code_only = "\n".join(code_lines)
+
+    assert 'getElementById("localityBadge")' not in code_only
+    assert "applyDataLocality(" not in code_only
+
+
+def test_style_css_hidden_uses_violet_not_amber():
+    """Amber is reserved for warning/cloud/warmup-adjacent per
+    tasks/task-ui-privacy-and-touchstrip-requirements.md - Hidden must not
+    look like a cloud/error state."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    marker = '.visibility-toggle button.sel[data-mode="hidden"]'
+    start = css.index(marker)
+    rule = css[start : css.index("}", start)]
+
+    assert "var(--violet)" in rule
+    assert "var(--amber)" not in rule

@@ -97,6 +97,27 @@ function buildControls() {
     button.onclick = () => applyThinkingMode({ is_enabled: isEnabled });
     root.appendChild(button);
   }
+
+  // Same reasoning as the think-switch buttons above: the real
+  // #visibilityToggle buttons call setVisibilityMode(), a guarded no-op
+  // here without window.pywebview - these call applyVisibilityMode()
+  // directly to exercise the toggle/vision-chip-hiding visuals.
+  const visibilityGroup = document.createElement("span");
+  visibilityGroup.textContent = "visibility:";
+  root.appendChild(visibilityGroup);
+  for (const mode of VISIBILITY_MODES) {
+    const button = document.createElement("button");
+    button.textContent = mode;
+    button.onclick = () => applyVisibilityMode({ mode });
+    root.appendChild(button);
+  }
+
+  const visionDetailButton = document.createElement("button");
+  visionDetailButton.textContent = "set vision detail";
+  visionDetailButton.title = "Simulate a real capture detail arriving, to check Hidden hides it";
+  visionDetailButton.onclick = () =>
+    applyModuleHealth({ module: "vision", status: "ok", detail: "1200x800 @ 14:22:07" });
+  root.appendChild(visionDetailButton);
 }
 
 buildControls();

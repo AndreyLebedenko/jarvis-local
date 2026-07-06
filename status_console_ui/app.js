@@ -6,20 +6,33 @@
 // reads engine state on its own - status_console.py pushes it in via
 // pywebview's evaluate_js bridge (in-process IPC, no network).
 //
-// toggleThinking()/requestModuleReset()/requestContextReset() are the other
-// direction (JS -> Python, pywebview's js_api - see status_console.py's
-// StatusConsoleApi). They deliberately do not optimistically update the DOM
-// themselves: the switch/chips only ever change via applyThinkingMode()/
-// appendSystemEvent(), driven by the real engine event coming back through
-// evaluate_js, so the UI can never show a state the engine hasn't actually
-// confirmed. window.pywebview is undefined outside a real pywebview window
-// (e.g. demo.html opened in an ordinary browser), so every call is guarded -
-// visibility mode is still a reserved placeholder, task-ui-05's job.
+// toggleThinking()/requestModuleReset()/requestContextReset()/
+// setVisibilityMode() are the other direction (JS -> Python, pywebview's
+// js_api - see status_console.py's StatusConsoleApi). They deliberately do
+// not optimistically update the DOM themselves: the switch/chips/visibility
+// toggle only ever change via applyThinkingMode()/appendSystemEvent()/
+// applyVisibilityMode(), driven by the real engine event coming back
+// through evaluate_js, so the UI can never show a state the engine hasn't
+// actually confirmed. window.pywebview is undefined outside a real
+// pywebview window (e.g. demo.html opened in an ordinary browser), so every
+// call is guarded.
 
 const RUNTIME_STATES = ["idle", "warming", "listening", "thinking", "speaking", "error"];
 const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision"];
 const HEALTH_STATUSES = ["ok", "degraded", "error", "unavailable"];
 const EVENT_LEVELS = ["info", "active", "warn", "error"];
+const VISIBILITY_MODES = ["open", "hidden"];
+
+// task-ui-05 (human decision): Hidden only changes what this UI shows - it
+// never touches audio_in.py/tts.py/Orchestrator. The one concrete UI-level
+// behavior it drives here: the vision/screen chip's detail text (which
+// could carry a captured region size/timestamp once a real capture-health
+// signal exists) is replaced with a generic placeholder while Hidden is
+// active, regardless of what was last pushed - "screen previews hidden by
+// default, sensitive snippets not shown" from tasks/task-ui-privacy-and-
+// touchstrip-requirements.md. The real detail is remembered so switching
+// back to Open restores it without needing another push from Python.
+let _lastVisionDetail = "";
 
 // Caps DOM growth for a long-running process feeding a live-appending log
 // (task-ui-03's Scope: "recent events", not an unbounded transcript).
@@ -48,8 +61,20 @@ function applyModuleHealth(payload) {
   if (!chip) return;
   chip.setAttribute("data-status", payload.status);
   chip.querySelector(".chip-dot").setAttribute("data-status", payload.status);
+  if (payload.module === "vision") {
+    _lastVisionDetail = payload.detail || "";
+    _renderVisionChipMeta();
+    return;
+  }
   const meta = chip.querySelector(".chip-meta");
   meta.textContent = payload.detail || "";
+}
+
+function _renderVisionChipMeta() {
+  const isHidden = document.documentElement.getAttribute("data-visibility") === "hidden";
+  document.getElementById("chip-vision").querySelector(".chip-meta").textContent = isHidden
+    ? "превью скрыто (Hidden)"
+    : _lastVisionDetail;
 }
 
 function applyDataLocality(payload) {
@@ -139,4 +164,23 @@ function confirmContextReset() {
   hideResetConfirm();
   const api = _pywebviewApi();
   if (api) api.reset_context();
+}
+
+function applyVisibilityMode(payload) {
+  if (!VISIBILITY_MODES.includes(payload.mode)) {
+    throw new Error("Unknown visibility mode: " + payload.mode);
+  }
+  // Deliberately does not touch #localityBadge/applyDataLocality - data
+  // locality and visibility mode are independent axes (task-ui-05 AC:
+  // "Hidden does not imply cloud/offline status").
+  document.documentElement.setAttribute("data-visibility", payload.mode);
+  document
+    .querySelectorAll("#visibilityToggle button")
+    .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
+  _renderVisionChipMeta();
+}
+
+function setVisibilityMode(modeValue) {
+  const api = _pywebviewApi();
+  if (api) api.set_visibility_mode(modeValue);
 }
