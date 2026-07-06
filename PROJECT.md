@@ -415,6 +415,30 @@ the backend contract, task-12 the runtime state/hotkey, task-13 the final
   that topic), which thinking mode measurably widens the risk window for
   but does not itself cause.
 
+## Architecture v1.3 (Status Console contract, in progress)
+
+See [tasks/story-status-console-ui.md](tasks/story-status-console-ui.md).
+Task-ui-01 landed first, defining the backend-to-UI contract before any
+screen is built:
+
+- `ui_contract.py` — pure data module (enums + frozen dataclasses), no bus
+  wiring, no GUI framework dependency: `RuntimeState` (six states, including
+  `WARMING` as a runtime activation state, not a privacy/cloud indicator),
+  `ModuleId`/`HealthStatus`/`ModuleHealth` for the five module chips
+  (backend, microphone, TTS, memory, vision), `EventLevel`/`SystemEvent` for
+  the system events panel, and `VisibilityMode`/`DataLocality` as two
+  independent axes (system visibility vs. where inference runs - v1.0 only
+  ever reports `DataLocality.LOCAL`).
+- No new bus events are published yet. `tasks/task-ui-01-state-and-event-
+  contract.md` maps existing events (`ResponseToken`, `ResponseComplete`,
+  `MicSleepToggled`, `ThinkingModeToggled`, `ScreenshotCaptured`,
+  `ClipboardSubmitted`) onto this contract and lists the events that do not
+  exist yet and are required by later task cards (turn-lifecycle event for
+  `THINKING`/`LISTENING`, a warm-up event for `WARMING`, a structured error
+  event, and hardware/model availability signals for microphone/TTS/backend/
+  vision) - none of it implemented here, to keep this task card scoped to
+  the contract itself.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by
