@@ -1,16 +1,22 @@
+import asyncio
 import json
+import logging
 
 import pytest
 
+from bus import EventBus
 from status_console import (
     INDEX_HTML,
     UI_DIR,
+    StatusConsoleApi,
     StatusConsoleWindow,
     data_locality_payload,
     module_health_payload,
     runtime_state_payload,
     system_event_payload,
+    thinking_mode_payload,
 )
+from thinking_mode import ThinkingModeState
 from ui_contract import (
     DataLocality,
     EventLevel,
@@ -20,6 +26,8 @@ from ui_contract import (
     RuntimeState,
     SystemEvent,
 )
+
+logger = logging.getLogger("test_status_console")
 
 
 @pytest.mark.parametrize("state", list(RuntimeState))
@@ -160,6 +168,128 @@ def test_pushing_state_before_create_raises():
         console.push_runtime_state(RuntimeState.IDLE)
 
 
+def test_push_thinking_mode_evaluates_js_with_contract_payload():
+    fake_window = _FakeWindow()
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+    console.create()
+
+    console.push_thinking_mode(True)
+
+    payload = json.loads(fake_window.calls[0][len("applyThinkingMode("):-1])
+    assert payload == {"is_enabled": True}
+
+
+def test_create_passes_js_api_through_to_the_window_factory():
+    fake_window = _FakeWindow()
+    factory = _fake_factory_returning(fake_window)
+    console = StatusConsoleWindow(window_factory=factory)
+    sentinel_api = object()
+
+    console.create(js_api=sentinel_api)
+
+    assert factory.kwargs["js_api"] is sentinel_api
+
+
+# --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
+
+
+class _FakeHistory:
+    def __init__(self) -> None:
+        self.cleared = False
+
+    def clear(self) -> None:
+        self.cleared = True
+
+
+async def test_api_methods_are_a_no_op_before_set_loop_is_called():
+    """Chicken-and-egg ordering (see StatusConsoleApi's docstring):
+    pywebview.create_window(js_api=...) needs this object before the real
+    asyncio loop exists. Nothing should raise, and nothing should happen,
+    until set_loop() runs."""
+    thinking_mode = ThinkingModeState(bus=EventBus())
+    api = StatusConsoleApi(
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.toggle_thinking()
+    api.reset_context()
+    api.reset_module("backend")
+    api.reset_module("not-a-real-module")  # invalid id, still a no-op pre-set_loop
+    await asyncio.sleep(0.05)
+
+    assert thinking_mode.is_enabled is False
+
+
+async def test_toggle_thinking_schedules_a_real_toggle_after_set_loop():
+    bus = EventBus()
+    thinking_mode = ThinkingModeState(bus=bus)
+    api = StatusConsoleApi(
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+    api.set_loop(asyncio.get_running_loop())
+
+    api.toggle_thinking()
+    await asyncio.sleep(0.05)
+
+    assert thinking_mode.is_enabled is True
+
+
+async def test_reset_context_clears_history_and_publishes_an_info_event():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+
+    async def on_event(event: SystemEvent) -> None:
+        received.append(event)
+
+    bus.subscribe(SystemEvent, on_event)
+    history = _FakeHistory()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=history,
+        bus=bus,
+        logger=logger,
+    )
+
+    api.reset_context()
+    await asyncio.sleep(0.05)
+
+    assert history.cleared is True
+    assert len(received) == 1
+    assert received[0].level is EventLevel.INFO
+
+
+@pytest.mark.parametrize("module", list(ModuleId))
+async def test_reset_module_never_claims_success_and_reports_a_warn_event(module):
+    bus = EventBus()
+    received: list[SystemEvent] = []
+
+    async def on_event(event: SystemEvent) -> None:
+        received.append(event)
+
+    bus.subscribe(SystemEvent, on_event)
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+    )
+
+    api.reset_module(module.value)
+    await asyncio.sleep(0.05)
+
+    assert len(received) == 1
+    assert received[0].level is EventLevel.WARN
+    assert "успеш" not in received[0].message.lower()
+
+
 def test_index_html_has_no_hardcoded_model_name():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
@@ -243,3 +373,27 @@ def test_style_css_gives_error_and_warn_log_levels_distinct_colors():
         return rule[color_start : rule.index(";", color_start)].strip()
 
     assert color_for_level("warn") != color_for_level("error")
+
+
+def test_index_html_has_a_real_think_toggle_not_a_disabled_placeholder():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="thinkSwitch"' in html
+    assert "task-ui-04" not in html
+    assert "placeholder-switch" not in html
+    assert "disabled" not in html
+
+
+def test_index_html_has_a_reset_button_for_every_module():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    for module in ModuleId:
+        assert f"requestModuleReset('{module.value}')" in html
+
+
+def test_index_html_global_reset_requires_confirmation_before_the_api_call():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="confirmRow"' in html
+    assert "showResetConfirm()" in html
+    assert "confirmContextReset()" in html

@@ -521,6 +521,55 @@ below for why that remains deliberately out of scope).
   `demo.html`/`demo.js` gained buttons for each `EventLevel` plus a
   "+50 events" stress button for this.
 
+Task-ui-04 landed fourth: the Think toggle and reset controls, and the
+first JS -> Python direction of the bridge (`pywebview`'s `js_api`,
+`evaluate_js`'s counterpart).
+
+- **Stop Condition, resolved:** "if a module has no lifecycle/reset API,
+  do not fake success in UI. Stop and record the missing engine
+  capability." No module (backend, microphone, TTS, memory, vision) has
+  one today. Resolution, directly answering the story's own open question
+  ("should reset module actions start as log-visible requests only?"):
+  yes - `StatusConsoleApi.reset_module()` always publishes a `WARN`
+  `SystemEvent` honestly reporting "no engine reset API exists yet" for
+  every module, never a fake success. Only the two controls that *do* have
+  a real, small engine capability are fully wired: the Think toggle
+  (`ThinkingModeState.toggle()`, already existed) and the global context
+  reset (`ConversationHistory.clear()`, added by this task - a genuinely
+  implementable, narrowly-scoped capability, not blocked by the Stop
+  Condition).
+- `status_console.py` gained `StatusConsoleApi`, exposed to the front-end
+  as `window.pywebview.api` (`js_api=` on `webview.create_window()`).
+  Every public method is a plain sync callable scheduling its real async
+  work via `asyncio.run_coroutine_threadsafe()` onto a given loop - the
+  same race-avoidance pattern this project's hotkey listeners already use
+  (`thinking_mode.py`/`audio_in.py`'s `run_hotkey_listener`), since
+  `pywebview` invokes `js_api` methods from its own GUI thread, not the
+  asyncio loop's thread. `loop` is optional at construction and set later
+  via `set_loop()` (every method is a no-op before that): `create_window
+  (js_api=...)` needs the object before `webview.start()` runs the GUI
+  loop, but the real asyncio loop this object schedules onto is typically
+  created *inside* the callback `webview.start()` invokes - see
+  `manual_check_status_console.py` for the real ordering.
+- The front-end deliberately does not optimistically flip the Think switch
+  on click: `toggleThinking()` only calls the `js_api`; the switch's
+  visual only ever changes via `applyThinkingMode()`, called back from the
+  real `ThinkingModeToggled` event - the UI never shows a state the engine
+  has not actually confirmed (story's Key Decision: "UI consumes engine
+  state through explicit events/snapshots"). `window.pywebview` is
+  `undefined` outside a real `pywebview` window, so every `js_api` call in
+  `app.js` is guarded - `demo.html` exercises the switch/reset-confirm
+  visuals directly via `applyThinkingMode()`/`showResetConfirm()` without
+  a live backend.
+- Global context reset requires confirmation before the destructive
+  action (`showResetConfirm()`/`hideResetConfirm()` are pure local UI
+  state; only `confirmContextReset()` calls `reset_context()`). Per-module
+  reset buttons (chip `⟲` icons) have no confirmation step, since they
+  never do anything destructive yet.
+- `main.py`'s `ConversationHistory` gained `clear()` (drops every recorded
+  turn; does not touch `Orchestrator`'s own busy/pending-screenshot state,
+  which is unrelated to conversation history).
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by

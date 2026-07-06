@@ -30,17 +30,38 @@ something happens (see main.py's _on_mic_sleep_toggled/
 _on_thinking_mode_toggled/warm_up) - publishing to the bus is safe with
 zero subscribers (bus.py: a no-op) - and whichever future task wires a
 live StatusConsoleWindow into main.py's App only needs to subscribe
-push_system_event to that same SystemEvent. Think/reset controls and
-visibility mode are still reserved placeholders - task-ui-04/task-ui-05's
-job. See story-status-console-ui.md's task-ui-02/task-ui-03 cards.
+push_system_event to that same SystemEvent. Visibility mode is still a
+reserved placeholder - task-ui-05's job. See story-status-console-ui.md's
+task-ui-02/task-ui-03 cards.
+
+task-ui-04 adds the reverse direction: StatusConsoleApi is exposed to the
+front-end as pywebview's js_api (JS -> Python), for the Think toggle and
+reset controls. Its methods are plain sync callables that schedule work
+onto a given asyncio loop via run_coroutine_threadsafe - the exact same
+race-avoidance pattern this project's hotkey listeners already use
+(thinking_mode.py/audio_in.py's run_hotkey_listener), since pywebview
+invokes js_api methods from its own GUI thread, not the asyncio loop's
+thread.
+
+Stop Condition (task-ui-04): no module (backend, microphone, TTS, memory,
+vision) has a lifecycle/reset API today (see PROJECT.md) - so
+reset_module() never claims success. It honestly publishes a WARN
+SystemEvent reporting the gap instead of faking a reset; a future task
+that adds a real per-module reset API replaces only that method's body,
+not the button/wiring around it.
 """
 
+import asyncio
 import json
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from ui_contract import DataLocality, ModuleHealth, RuntimeState, SystemEvent
+from bus import EventBus
+from system_log import publish_system_event
+from thinking_mode import ThinkingModeState
+from ui_contract import DataLocality, EventLevel, ModuleHealth, ModuleId, RuntimeState, SystemEvent
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
@@ -89,6 +110,10 @@ def system_event_payload(event: SystemEvent) -> dict:
     }
 
 
+def thinking_mode_payload(is_enabled: bool) -> dict:
+    return {"is_enabled": is_enabled}
+
+
 class WindowLike(Protocol):
     """Shape of the pywebview window object this class relies on - lets
     tests inject a fake, mirroring audio_in.py's InputStreamLike pattern."""
@@ -115,13 +140,14 @@ class StatusConsoleWindow:
 
         return webview.create_window(**kwargs)
 
-    def create(self) -> WindowLike:
+    def create(self, js_api: object | None = None) -> WindowLike:
         self._window = self._window_factory(
             title="Jarvis - Status Console",
             url=str(INDEX_HTML),
             width=960,
             height=640,
             min_size=(480, 420),
+            js_api=js_api,
         )
         return self._window
 
@@ -140,7 +166,119 @@ class StatusConsoleWindow:
     def push_system_event(self, event: SystemEvent) -> None:
         self._evaluate("appendSystemEvent", system_event_payload(event))
 
+    def push_thinking_mode(self, is_enabled: bool) -> None:
+        self._evaluate("applyThinkingMode", thinking_mode_payload(is_enabled))
+
     def _evaluate(self, js_function: str, payload: dict) -> None:
         if self._window is None:
             raise RuntimeError("create() must be called before pushing state")
         self._window.evaluate_js(f"{js_function}({json.dumps(payload)})")
+
+
+class ClearableHistory(Protocol):
+    """Shape StatusConsoleApi.reset_context() relies on - deliberately not
+    main.py's concrete ConversationHistory, so this module never depends on
+    the top-level wiring module (main.py may need to depend on this one
+    later, when a live window is finally wired in - see this module's
+    docstring)."""
+
+    def clear(self) -> None: ...
+
+
+_MODULE_RESET_SOURCE: dict[ModuleId, str] = {
+    ModuleId.BACKEND: "LLM",
+    ModuleId.MICROPHONE: "STT",
+    ModuleId.TTS: "TTS",
+    ModuleId.MEMORY: "ENGINE",
+    ModuleId.VISION: "CAPTURE",
+}
+
+_MODULE_LABELS_RU: dict[ModuleId, str] = {
+    ModuleId.BACKEND: "модели/backend",
+    ModuleId.MICROPHONE: "микрофона",
+    ModuleId.TTS: "TTS",
+    ModuleId.MEMORY: "памяти",
+    ModuleId.VISION: "vision/экрана",
+}
+
+
+class StatusConsoleApi:
+    """Exposed to the front-end as window.pywebview.api (pywebview's own
+    JS -> Python bridge) - see this module's docstring for the threading
+    rationale. Every public method here is a plain sync callable, never
+    awaited directly by pywebview; each schedules its real async work onto
+    the given loop instead.
+
+    loop is optional at construction time and settable later via
+    set_loop(): pywebview.create_window(js_api=...) must receive this
+    object before webview.start() runs the GUI loop, but the real asyncio
+    loop this object needs to schedule onto typically does not exist until
+    the code running inside webview.start()'s own callback creates one
+    (see manual_check_status_console.py) - a real chicken-and-egg ordering
+    constraint, not an oversight. Every public method is a no-op until
+    set_loop() has been called (a user cannot click a control before the
+    window has actually opened, by which point the loop already exists in
+    every real run)."""
+
+    def __init__(
+        self,
+        thinking_mode: ThinkingModeState,
+        history: ClearableHistory,
+        bus: EventBus,
+        logger: logging.Logger,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ) -> None:
+        self._loop = loop
+        self._thinking_mode = thinking_mode
+        self._history = history
+        self._bus = bus
+        self._logger = logger
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def toggle_thinking(self) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._thinking_mode.toggle(), self._loop)
+
+    def reset_context(self) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._reset_context_async(), self._loop)
+
+    async def _reset_context_async(self) -> None:
+        self._history.clear()
+        await publish_system_event(
+            self._bus,
+            self._logger,
+            source="ENGINE",
+            level=EventLevel.INFO,
+            log_message="Conversation context reset by user",
+            ui_message="Контекст диалога сброшен",
+        )
+
+    def reset_module(self, module_id: str) -> None:
+        if self._loop is None:
+            return
+        module = ModuleId(module_id)
+        asyncio.run_coroutine_threadsafe(self._reset_module_async(module), self._loop)
+
+    async def _reset_module_async(self, module: ModuleId) -> None:
+        """Stop Condition (task-ui-04): never claims success - see this
+        module's docstring. A future task adding a real per-module reset
+        API replaces only this body."""
+        await publish_system_event(
+            self._bus,
+            self._logger,
+            source=_MODULE_RESET_SOURCE[module],
+            level=EventLevel.WARN,
+            log_message=(
+                f"Reset requested for module {module.value}, but no engine "
+                "reset API exists yet"
+            ),
+            ui_message=(
+                f"Сброс {_MODULE_LABELS_RU[module]} запрошен, но пока не "
+                "поддерживается движком"
+            ),
+        )

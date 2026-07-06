@@ -83,6 +83,20 @@ function buildControls() {
     }
   };
   root.appendChild(stressButton);
+
+  // window.pywebview does not exist in a plain browser, so toggleThinking()'s
+  // real click handler (index.html/app.js) is a guarded no-op here - these
+  // buttons call applyThinkingMode() directly to exercise the switch's
+  // visual/animation without a live backend.
+  const thinkGroup = document.createElement("span");
+  thinkGroup.textContent = "think switch:";
+  root.appendChild(thinkGroup);
+  for (const isEnabled of [true, false]) {
+    const button = document.createElement("button");
+    button.textContent = isEnabled ? "on" : "off";
+    button.onclick = () => applyThinkingMode({ is_enabled: isEnabled });
+    root.appendChild(button);
+  }
 }
 
 buildControls();

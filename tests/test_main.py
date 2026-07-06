@@ -99,6 +99,17 @@ def test_history_messages_include_media_when_provided():
     assert message["images"] == ["base64data"]
 
 
+def test_clear_drops_every_recorded_turn():
+    """task-ui-04's global context reset."""
+    history = ConversationHistory()
+    history.add("user", "привет")
+    history.add("assistant", "привет!")
+
+    history.clear()
+
+    assert history.as_messages() == []
+
+
 # --- Orchestrator --------------------------------------------------------
 
 

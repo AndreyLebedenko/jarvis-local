@@ -55,34 +55,46 @@
     <div class="chip" id="chip-backend" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">Модель</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Запросить сброс модели/backend" onclick="requestModuleReset('backend')">&#8635;</button>
     </div>
     <div class="chip" id="chip-microphone" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">Микрофон</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Запросить сброс микрофона" onclick="requestModuleReset('microphone')">&#8635;</button>
     </div>
     <div class="chip" id="chip-tts" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">TTS</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Запросить сброс TTS" onclick="requestModuleReset('tts')">&#8635;</button>
     </div>
     <div class="chip" id="chip-memory" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">Память</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Запросить сброс памяти" onclick="requestModuleReset('memory')">&#8635;</button>
     </div>
     <div class="chip" id="chip-vision" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">Vision</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Запросить сброс vision/экрана" onclick="requestModuleReset('vision')">&#8635;</button>
     </div>
   </div>
 
-  <div class="placeholder-card">
-    <div class="placeholder-switch"></div>
-    <div>
-      <div class="placeholder-title">Режим мышления</div>
-      <div class="placeholder-note">Управление появится в task-ui-04</div>
+  <div class="think-card">
+    <div class="switch" id="thinkSwitch" onclick="toggleThinking()"></div>
+    <div class="think-body">
+      <div class="think-title">Режим мышления <span class="think-tag" id="thinkTag">think: off</span></div>
+      <div class="think-status" id="thinkStatus">Быстрее, без рассуждения</div>
     </div>
   </div>
 
-  <button class="placeholder-reset" disabled>Сбросить контекст (task-ui-04)</button>
+  <div class="reset-zone">
+    <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Сбросить контекст</button>
+    <div class="confirm-row" id="confirmRow">
+      <span>Диалог и текущий контекст будут удалены. Отменить нельзя.</span>
+      <button onclick="hideResetConfirm()">Отмена</button>
+      <button class="danger" onclick="confirmContextReset()">Сбросить</button>
+    </div>
+  </div>
 </div>
 
 <div class="logpanel">

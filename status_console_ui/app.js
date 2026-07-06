@@ -1,11 +1,20 @@
-// Status Console shell rendering (task-ui-02/task-ui-03).
+// Status Console shell rendering (task-ui-02/task-ui-03/task-ui-04).
 //
-// Every function here takes a plain JSON object shaped like ui_contract.py's
-// dataclasses (converted to snake_case dicts by status_console.py's
-// *_payload() helpers) and updates the DOM. Nothing here reads engine state
-// on its own - status_console.py pushes it in via pywebview's evaluate_js
-// bridge (in-process IPC, no network). Think/reset controls and visibility
-// mode are still reserved placeholders - task-ui-04/task-ui-05's job.
+// Every apply*/appendSystemEvent function takes a plain JSON object shaped
+// like ui_contract.py's dataclasses (converted to snake_case dicts by
+// status_console.py's *_payload() helpers) and updates the DOM. Nothing here
+// reads engine state on its own - status_console.py pushes it in via
+// pywebview's evaluate_js bridge (in-process IPC, no network).
+//
+// toggleThinking()/requestModuleReset()/requestContextReset() are the other
+// direction (JS -> Python, pywebview's js_api - see status_console.py's
+// StatusConsoleApi). They deliberately do not optimistically update the DOM
+// themselves: the switch/chips only ever change via applyThinkingMode()/
+// appendSystemEvent(), driven by the real engine event coming back through
+// evaluate_js, so the UI can never show a state the engine hasn't actually
+// confirmed. window.pywebview is undefined outside a real pywebview window
+// (e.g. demo.html opened in an ordinary browser), so every call is guarded -
+// visibility mode is still a reserved placeholder, task-ui-05's job.
 
 const RUNTIME_STATES = ["idle", "warming", "listening", "thinking", "speaking", "error"];
 const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision"];
@@ -90,4 +99,44 @@ function appendSystemEvent(payload) {
   while (list.children.length > MAX_LOG_ENTRIES) {
     list.removeChild(list.lastChild);
   }
+}
+
+function applyThinkingMode(payload) {
+  const enabled = payload.is_enabled;
+  document.getElementById("thinkSwitch").classList.toggle("on", enabled);
+  document.getElementById("thinkTag").textContent = "think: " + (enabled ? "on" : "off");
+  document.getElementById("thinkStatus").textContent = enabled
+    ? "Глубже, медленнее - с расширенной обработкой запроса"
+    : "Быстрее, без рассуждения";
+}
+
+function _pywebviewApi() {
+  return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+}
+
+function toggleThinking() {
+  const api = _pywebviewApi();
+  if (api) api.toggle_thinking();
+}
+
+function requestModuleReset(moduleId) {
+  if (!MODULE_IDS.includes(moduleId)) {
+    throw new Error("Unknown module id: " + moduleId);
+  }
+  const api = _pywebviewApi();
+  if (api) api.reset_module(moduleId);
+}
+
+function showResetConfirm() {
+  document.getElementById("confirmRow").classList.add("show");
+}
+
+function hideResetConfirm() {
+  document.getElementById("confirmRow").classList.remove("show");
+}
+
+function confirmContextReset() {
+  hideResetConfirm();
+  const api = _pywebviewApi();
+  if (api) api.reset_context();
 }

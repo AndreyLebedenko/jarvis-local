@@ -152,29 +152,61 @@ body {
   font-size: 10.5px; font-family: "Consolas", "Cascadia Mono", monospace; color: var(--text-dim);
   margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.chip-reset {
+  width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border);
+  background: none; color: var(--text-faint); cursor: pointer; font-size: 12px;
+  flex-shrink: 0; transition: all 0.15s;
+}
+.chip-reset:hover { color: var(--cyan); border-color: var(--cyan-dim); background: var(--cyan-tint); }
 
-/* Reserved placeholders - task-ui-04 wires these for real; this shell
-   only proves the layout has room for them without overlap. */
-.placeholder-card {
+/* task-ui-04: Think toggle. Clicking calls toggleThinking() (app.js), which
+   only requests a toggle via pywebview's js_api - the switch's visual state
+   changes only when applyThinkingMode() is called back from the real
+   ThinkingModeToggled event, never optimistically on click. */
+.think-card {
   display: flex; align-items: center; gap: 16px;
-  background: var(--panel-2); border: 1px dashed var(--border); border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 18px; width: 100%; max-width: 420px;
-  color: var(--text-faint);
 }
-.placeholder-card .placeholder-title { font-size: 13.5px; font-weight: 600; color: var(--text-dim); }
-.placeholder-card .placeholder-note { font-size: 12px; margin-top: 2px; }
-.placeholder-switch {
+.switch {
   width: 38px; height: 21px; border-radius: 12px; background: var(--border);
-  position: relative; flex-shrink: 0;
+  position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s;
 }
-.placeholder-switch::after {
+.switch::after {
   content: ""; position: absolute; top: 2px; left: 2px;
   width: 17px; height: 17px; border-radius: 50%; background: var(--text-faint);
+  transition: transform 0.2s, background 0.2s;
 }
-.placeholder-reset {
-  font-size: 11.5px; letter-spacing: 0.4px; padding: 9px 20px; border-radius: 8px;
-  border: 1px dashed var(--border); background: none; color: var(--text-faint);
+.switch.on { background: var(--violet-tint); border: 1px solid var(--violet-dim); }
+.switch.on::after { transform: translateX(17px); background: var(--violet); }
+.think-body { flex: 1; min-width: 0; }
+.think-title { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.think-tag { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9px; color: var(--text-faint); }
+.think-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+/* task-ui-04: global context reset. Requires confirmation before the
+   destructive action (Scope: "requires confirmation") - showResetConfirm()/
+   hideResetConfirm() only toggle this row's visibility locally; only
+   confirmContextReset() calls back into the engine. */
+.reset-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.btn-reset-global {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
+  padding: 9px 20px; border-radius: 8px; border: 1px solid var(--amber-dim);
+  background: var(--amber-tint); color: var(--amber); cursor: pointer; transition: all 0.15s;
 }
+.btn-reset-global:hover { filter: brightness(1.1); }
+.confirm-row {
+  display: none; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--red-dim); border-radius: 8px;
+  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim);
+}
+.confirm-row.show { display: flex; }
+.confirm-row button {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px;
+  padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text-dim); cursor: pointer;
+}
+.confirm-row button.danger { background: var(--red); border-color: var(--red); color: #1a0d0d; }
 
 /* ===== LOG PANEL (reserved, task-ui-03 wires the real feed) ===== */
 .logpanel {
