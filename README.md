@@ -10,9 +10,19 @@ their own network requirements.
 
 [Russian README](README.ru.md)
 
+## Status Console UI
+
+v1.2 adds a local desktop Status Console for runtime state, system events,
+Think mode, Open/Hidden visibility mode, context reset, and a compact
+touchstrip glance surface.
+
+![Jarvis Status Console](docs/screenshots/status-console.png)
+
+![Jarvis Touchstrip](docs/screenshots/touchstrip.png)
+
 ## Status
 
-This is a v1.0 hobby/research release. It is usable, but intentionally honest about its limits: no full echo cancellation, Russian-only Silero TTS, rough Latin transliteration, and imperfect OCR on dense screenshots.
+This is a v1.2 hobby/research release. It is usable, but intentionally honest about its limits: no full echo cancellation, Russian-only Silero TTS, rough Latin transliteration, and imperfect OCR on dense screenshots.
 
 Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
@@ -22,7 +32,9 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Voice input with Silero VAD.
 - Sentence-level streaming TTS for low perceived latency.
 - Full-screen and region screenshot capture.
-- Hotkey and sound-cue interface, no GUI.
+- Hotkey and sound-cue interface.
+- Local Status Console UI with system events, Think mode, Open/Hidden mode,
+  context reset, and touchstrip glance surface.
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration.
 - Jarvis core runtime has no network dependency after models are downloaded.

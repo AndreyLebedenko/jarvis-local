@@ -3,7 +3,7 @@ __pycache__/
 .pytest_cache/
 config.toml
 .idea/
-screenshots/
+/screenshots/
 manual_check_audio_out/
 manual_check_capture_out/
 sounds/
