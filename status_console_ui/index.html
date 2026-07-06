@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru" data-state="idle">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis - Status Console</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">J</div>
+    <div class="brand-name">JARVIS <span>Status Console</span></div>
+  </div>
+  <div class="locality-badge" id="localityBadge" data-locality="local">
+    <span class="locality-dot"></span>
+    <span class="locality-label">Локально</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="orb-wrap">
+    <div class="ring" id="ring" data-anim="normal"></div>
+    <div class="orb-core"><div class="orb-glyph">J</div></div>
+  </div>
+  <div style="text-align: center; margin-top: -10px;">
+    <div class="orb-state" id="orbState">Ожидание</div>
+    <div class="orb-sub" id="orbSub"></div>
+  </div>
+
+  <div class="chip-row">
+    <div class="chip" id="chip-backend" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body">
+        <div class="chip-label">Модель</div>
+        <div class="chip-meta">...</div>
+      </div>
+    </div>
+    <div class="chip" id="chip-microphone" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body">
+        <div class="chip-label">Микрофон</div>
+        <div class="chip-meta">...</div>
+      </div>
+    </div>
+    <div class="chip" id="chip-tts" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body">
+        <div class="chip-label">TTS</div>
+        <div class="chip-meta">...</div>
+      </div>
+    </div>
+    <div class="chip" id="chip-memory" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body">
+        <div class="chip-label">Память</div>
+        <div class="chip-meta">...</div>
+      </div>
+    </div>
+    <div class="chip" id="chip-vision" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body">
+        <div class="chip-label">Vision</div>
+        <div class="chip-meta">...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="placeholder-card">
+    <div class="placeholder-switch"></div>
+    <div>
+      <div class="placeholder-title">Режим мышления</div>
+      <div class="placeholder-note">Управление появится в task-ui-04</div>
+    </div>
+  </div>
+
+  <button class="placeholder-reset" disabled>Сбросить контекст (task-ui-04)</button>
+
+</div>
+
+<div class="logpanel">
+  <div class="log-title">События системы</div>
+  <div class="log-sub">Панель появится в task-ui-03</div>
+  <div class="log-empty">Пока нет событий</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

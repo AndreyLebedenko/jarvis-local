@@ -1,0 +1,208 @@
+/* Status Console shell styles (task-ui-02). System font stack only - no
+   Google Fonts, no CDN, no bundled font files: Segoe UI/Consolas ship with
+   Windows 11 (see PROJECT.md's supported OS), so the "no network-loaded
+   assets" acceptance criterion holds without adding font-licensing scope. */
+
+:root {
+  --bg: #0A0D14;
+  --panel: #0E121B;
+  --panel-2: #121724;
+  --border: #1C2433;
+  --border-soft: #161C29;
+  --text: #DCE3ED;
+  --text-dim: #8993A5;
+  --text-faint: #4A5568;
+
+  --cyan: #3FE0D0;
+  --cyan-dim: #1E5C56;
+  --cyan-tint: rgba(63, 224, 208, 0.09);
+  --violet: #9A8CFB;
+  --violet-dim: #3E3878;
+  --violet-tint: rgba(154, 140, 251, 0.1);
+  --amber: #F0B15A;
+  --amber-dim: #6B4E1E;
+  --amber-tint: rgba(240, 177, 90, 0.1);
+  /* Distinct shade for WARMING: same amber family (deliberately, per
+     PROJECT.md's "amber reserved for warning/cloud/warmup-adjacent"), but a
+     visibly different hue from SPEAKING's --amber so the two orb states are
+     not confusable at a glance, on top of the differing ring animation. */
+  --amber-warm: #E8853F;
+  --amber-warm-dim: #6B3E1E;
+  --amber-warm-tint: rgba(232, 133, 63, 0.1);
+  --red: #E85B5B;
+  --red-dim: #7A2E2E;
+  --red-tint: rgba(232, 91, 91, 0.1);
+  --gray: #6B7684;
+  --gray-tint: rgba(107, 118, 132, 0.08);
+}
+
+/* Runtime-state color mapping. WARMING deliberately reuses amber (see
+   PROJECT.md/tasks/task-ui-privacy-and-touchstrip-requirements.md: amber is
+   reserved for warning/cloud/warmup-adjacent states) but with its own
+   animation shape (see .ring[data-anim="warm"]) and an explicit "locally"
+   qualifier in the label text, so it cannot be misread as a data-locality
+   warning even though no cloud indicator exists yet in v1.0. */
+html[data-state="idle"] { --live: var(--gray); --live-dim: var(--border); --live-tint: var(--gray-tint); }
+html[data-state="warming"] { --live: var(--amber-warm); --live-dim: var(--amber-warm-dim); --live-tint: var(--amber-warm-tint); }
+html[data-state="listening"] { --live: var(--cyan); --live-dim: var(--cyan-dim); --live-tint: var(--cyan-tint); }
+html[data-state="thinking"] { --live: var(--violet); --live-dim: var(--violet-dim); --live-tint: var(--violet-tint); }
+html[data-state="speaking"] { --live: var(--amber); --live-dim: var(--amber-dim); --live-tint: var(--amber-tint); }
+html[data-state="error"] { --live: var(--red); --live-dim: var(--red-dim); --live-tint: var(--red-tint); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+.mono { font-family: "Consolas", "Cascadia Mono", monospace; }
+
+body {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas: "top top" "main log";
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== TOP BAR ===== */
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 24px; height: 24px;
+  border: 1.5px solid var(--cyan); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 12px; color: var(--cyan);
+}
+.brand-name { font-weight: 600; font-size: 15.5px; letter-spacing: 0.4px; }
+.brand-name span { color: var(--text-dim); font-weight: 400; font-size: 13px; margin-left: 6px; }
+
+.locality-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; letter-spacing: 0.4px; text-transform: uppercase;
+  border: 1px solid var(--cyan-dim); background: var(--cyan-tint); color: var(--cyan);
+  border-radius: 20px; padding: 5px 12px;
+}
+.locality-badge[data-locality="external"] {
+  border-color: var(--amber-dim); background: var(--amber-tint); color: var(--amber);
+}
+.locality-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* ===== MAIN ===== */
+.main {
+  grid-area: main;
+  padding: 26px 34px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 26px;
+}
+
+.orb-wrap { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
+.ring {
+  position: absolute; width: 132px; height: 132px; border-radius: 50%;
+  border: 1px solid var(--live-dim);
+  animation: spin 12s linear infinite;
+  transition: border-color 0.3s;
+}
+.ring[data-anim="warm"] { border-style: dashed; animation-duration: 3s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.orb-core {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--live-tint), var(--bg) 70%);
+  border: 1.5px solid var(--live);
+  box-shadow: 0 0 22px var(--live-tint), inset 0 0 16px var(--live-tint);
+  display: flex; align-items: center; justify-content: center;
+  animation: breathe 2.4s ease-in-out infinite;
+  transition: border-color 0.3s;
+}
+@keyframes breathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
+.orb-glyph { font-weight: 700; font-size: 20px; color: var(--live); transition: color 0.3s; }
+
+.orb-state { font-size: 19px; font-weight: 600; color: var(--live); text-align: center; transition: color 0.3s; }
+.orb-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); text-align: center; max-width: 420px; min-height: 16px; }
+
+.chip-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
+.chip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 10px 12px; min-width: 150px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.chip[data-status="error"] { border-color: var(--red-dim); background: var(--red-tint); }
+.chip[data-status="degraded"] { border-color: var(--amber-dim); background: var(--amber-tint); }
+.chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.chip-dot[data-status="ok"] { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+.chip-dot[data-status="unavailable"] { background: var(--text-faint); }
+.chip-dot[data-status="degraded"] { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+.chip-dot[data-status="error"] { background: var(--red); box-shadow: 0 0 5px var(--red); }
+.chip-body { flex: 1; min-width: 0; }
+.chip-label { font-size: 12.5px; font-weight: 600; }
+.chip-meta {
+  font-size: 10.5px; font-family: "Consolas", "Cascadia Mono", monospace; color: var(--text-dim);
+  margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Reserved placeholders - task-ui-04/03 wire these for real; this shell
+   only proves the layout has room for them without overlap. */
+.placeholder-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--panel-2); border: 1px dashed var(--border); border-radius: 10px;
+  padding: 14px 18px; width: 100%; max-width: 420px;
+  color: var(--text-faint);
+}
+.placeholder-card .placeholder-title { font-size: 13.5px; font-weight: 600; color: var(--text-dim); }
+.placeholder-card .placeholder-note { font-size: 12px; margin-top: 2px; }
+.placeholder-switch {
+  width: 38px; height: 21px; border-radius: 12px; background: var(--border);
+  position: relative; flex-shrink: 0;
+}
+.placeholder-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 17px; height: 17px; border-radius: 50%; background: var(--text-faint);
+}
+.placeholder-reset {
+  font-size: 11.5px; letter-spacing: 0.4px; padding: 9px 20px; border-radius: 8px;
+  border: 1px dashed var(--border); background: none; color: var(--text-faint);
+}
+
+/* ===== LOG PANEL (reserved, task-ui-03 wires the real feed) ===== */
+.logpanel {
+  grid-area: log;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  padding: 18px 16px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.log-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+.log-sub { font-size: 10.5px; color: var(--text-faint); font-family: "Consolas", "Cascadia Mono", monospace; margin-bottom: 14px; }
+.log-empty { font-size: 11.5px; color: var(--text-faint); margin-top: auto; margin-bottom: auto; text-align: center; }
+
+/* ===== RESPONSIVE ===== */
+/* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).
+   Below this, drop the fixed two-column grid and stack top-to-bottom so
+   chip/orb text never gets squeezed against the log panel. */
+@media (max-width: 720px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px 1fr auto;
+    grid-template-areas: "top" "main" "log";
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .logpanel { border-left: none; border-top: 1px solid var(--border); max-height: 220px; }
+  .topbar { flex-wrap: wrap; height: auto; padding: 10px 16px; gap: 8px; }
+  .chip { min-width: 130px; }
+}
