@@ -617,6 +617,58 @@ Task-ui-05 landed fifth: the `Open`/`Hidden` system visibility mode toggle.
   bus-wiring directly (fake console, real bus, no window) so a future
   missing subscription here fails an automated test.
 
+Task-ui-06 landed sixth: the touchstrip glance surface, a second window
+sharing the desktop window's engine state.
+
+- **Stop Condition, evaluated:** "if the chosen GUI framework cannot
+  support this surface without a separate process or large architecture
+  change, stop and split the touchstrip work into its own story." Not
+  triggered - `pywebview` supports creating multiple windows in one
+  process before a single `webview.start()` call, so `TouchstripWindow`
+  needed no new process or architecture change.
+- `status_console.py`'s `StatusConsoleWindow` gained constructor
+  parameters (`title`/`url`/`width`/`height`/`min_size`/`resizable`,
+  all defaulting to the existing desktop values) so `TouchstripWindow`
+  could subclass it with different defaults
+  (`status_console_ui/touchstrip.html`, ~900x230, non-resizable - a real
+  touch-strip device does not resize) instead of duplicating every
+  `push_*()` method. `TouchstripWindow` overrides only
+  `push_system_event()`, which raises `NotImplementedError` - Scope
+  explicitly excludes a dense event log from this surface, and
+  `touchstrip.js` has no `appendSystemEvent()` to call.
+- **Both windows can share one `StatusConsoleApi` instance** (`pywebview`
+  allows binding the same `js_api` object to more than one
+  `create_window()` call) - toggling Think mode or Open/Hidden on either
+  surface is one real engine state change, not two independently-tracked
+  copies. `manual_check_status_console.py` now opens both windows this
+  way.
+- `status_console_ui/contract.js` - the `RUNTIME_STATES`/`MODULE_IDS`/
+  `HEALTH_STATUSES`/`EVENT_LEVELS`/`VISIBILITY_MODES` arrays, extracted
+  out of `app.js` and loaded before both `app.js` and the new
+  `touchstrip.js` (task-ui-06's AC: "Same state contract as desktop
+  Status Console is reused" - now structurally true at the JS layer too,
+  not just because `ui_contract.py` is the one Python source). Color CSS
+  custom properties were *not* extracted the same way (kept duplicated in
+  `touchstrip.css`) - they are static constants with no behavior to drift,
+  unlike the JS validation arrays that actively gate rendering.
+- `touchstrip.js`/`touchstrip.html` expose the same `applyRuntimeState()`/
+  `applyModuleHealth()`/`applyModelLabel()`/`applyDataLocality()`/
+  `applyThinkingMode()`/`applyVisibilityMode()` function names as `app.js`,
+  so `status_console.py`'s `push_*()` methods work against either window
+  unmodified - only the rendering differs (two paginated glance/actions
+  screens, module status as small dots instead of chip cards, model label
+  and data locality combined into one line, no event log). Context reset
+  requires a 1s pointer hold (`RESET_HOLD_MS`) instead of the desktop's
+  tap-then-confirm-row, matching a touch glance surface where a modal
+  confirm dialog would be too much chrome; releasing early cancels
+  cleanly. The Open/Hidden badge on the glance page is itself tappable
+  (calling the same `set_visibility_mode()`), unlike the desktop's
+  separate two-button toggle - a deliberate touch-surface simplification,
+  not a second implementation of the same control.
+- Deferred, per Scope's own wording ("optional... after warmup story
+  lands"): an activation trigger through the orb/touch affordance -
+  story-voice-trigger-warmup.md has not landed yet.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by

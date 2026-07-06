@@ -1,34 +1,37 @@
 #!/usr/bin/env python3
-"""Manual handoff for task-ui-02/task-ui-03/task-ui-04/task-ui-05: real
-pywebview/WebView2 window check, including live system events and the
-Think/reset/visibility-mode controls' real JS -> Python round trip.
+"""Manual handoff for task-ui-02 through task-ui-06: real pywebview/
+WebView2 window check, including live system events, the Think/reset/
+visibility-mode controls' real JS -> Python round trip, and the touchstrip
+glance surface sharing the same engine state as the desktop window.
 
 Not an automated test - a real GUI window on a real display/WebView2
 runtime is hardware/environment-dependent per CLAUDE.md's testing
-protocol, so this is run by hand. Opens the actual Status Console shell
-window, pushes the real backend.model from config (proving the "no
-hardcoded model name" acceptance criterion end-to-end), cycles through
-every RuntimeState/HealthStatus/DataLocality combination, publishes a
-handful of SystemEvents through the real bus + system_log.
-publish_system_event(), and wires a real StatusConsoleApi so clicking the
-Think switch/reset buttons/Open-Hidden toggle in the actual window
-exercises the real ThinkingModeState/ConversationHistory/
-VisibilityModeState - not demo.html's synthetic button clicks.
+protocol, so this is run by hand. Opens both the desktop Status Console
+window and the touchstrip window side by side, pushes the real
+backend.model from config (proving the "no hardcoded model name"
+acceptance criterion end-to-end), cycles through every RuntimeState/
+HealthStatus/DataLocality combination on both windows, publishes a handful
+of SystemEvents through the real bus + system_log.publish_system_event()
+(desktop only - the touchstrip has no event log by design), and wires a
+real StatusConsoleApi, shared by both windows, so clicking the Think
+switch/reset controls/Open-Hidden toggle on *either* window is reflected
+on the other.
 
 Usage:
   python manual_check_status_console.py
-  (a window opens; states/events cycle automatically; click the Think
-  switch, reset buttons, and Open/Hidden toggle to confirm the real round
-  trip - Hidden should replace the vision chip's detail text and never
-  change the locality badge; close the window to stop)
+  (two windows open; states/events cycle automatically; click the Think
+  switch, reset buttons, and Open/Hidden toggle on either window and
+  confirm the other one updates too - Hidden should replace the desktop's
+  vision chip detail text and never change either window's locality
+  display; close both windows to stop)
 
 Note: Ctrl+C in the terminal will not reliably stop this script.
 webview.start()'s native GUI loop (WebView2/EdgeChromium via pythonnet on
 Windows) owns the main thread and does not hand control back to the
 Python interpreter between messages, so there is no point at which
 SIGINT gets checked - a CPython/embedded-native-loop limitation, not a
-bug in this script. Close the window itself (or use Task Manager if it
-is unresponsive) instead of relying on Ctrl+C.
+bug in this script. Close the windows themselves (or use Task Manager if
+unresponsive) instead of relying on Ctrl+C.
 """
 
 import asyncio
@@ -38,7 +41,7 @@ from dataclasses import dataclass
 from bus import EventBus
 from config import load_settings
 from main import ConversationHistory
-from status_console import StatusConsoleApi, StatusConsoleWindow
+from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from ui_contract import (
@@ -69,6 +72,7 @@ _SAMPLE_EVENTS = [
 @dataclass
 class DemoContext:
     console: StatusConsoleWindow
+    touchstrip: TouchstripWindow
     api: StatusConsoleApi
     bus: EventBus
     thinking_mode: ThinkingModeState
@@ -81,36 +85,42 @@ async def _run_demo_cycle_async(ctx: DemoContext) -> None:
     ctx.api.set_loop(asyncio.get_running_loop())
 
     async def on_system_event(event: SystemEvent) -> None:
-        ctx.console.push_system_event(event)
+        ctx.console.push_system_event(event)  # touchstrip has no event log
 
     async def on_thinking_toggled(event: ThinkingModeToggled) -> None:
         ctx.console.push_thinking_mode(event.is_enabled)
+        ctx.touchstrip.push_thinking_mode(event.is_enabled)
 
     async def on_visibility_mode_changed(event: VisibilityModeChanged) -> None:
         ctx.console.push_visibility_mode(event.mode)
+        ctx.touchstrip.push_visibility_mode(event.mode)
 
     ctx.bus.subscribe(SystemEvent, on_system_event)
     ctx.bus.subscribe(ThinkingModeToggled, on_thinking_toggled)
     ctx.bus.subscribe(VisibilityModeChanged, on_visibility_mode_changed)
 
     settings = load_settings()
-    ctx.console.push_model_label(settings.backend.model)
-    for module in ModuleId:
-        ctx.console.push_module_health(ModuleHealth(module=module, status=HealthStatus.OK))
-    ctx.console.push_data_locality(DataLocality.LOCAL)
-    ctx.console.push_thinking_mode(ctx.thinking_mode.is_enabled)
-    ctx.console.push_visibility_mode(ctx.visibility_mode.mode)
-    # A fake capture detail, so clicking Hidden in the real window has
-    # something visible to replace (see app.js's _renderVisionChipMeta()).
+    for window in (ctx.console, ctx.touchstrip):
+        window.push_model_label(settings.backend.model)
+        for module in ModuleId:
+            window.push_module_health(ModuleHealth(module=module, status=HealthStatus.OK))
+        window.push_data_locality(DataLocality.LOCAL)
+        window.push_thinking_mode(ctx.thinking_mode.is_enabled)
+        window.push_visibility_mode(ctx.visibility_mode.mode)
+    # A fake capture detail, so clicking Hidden on the desktop window has
+    # something visible to replace (see app.js's _renderVisionChipMeta()) -
+    # the touchstrip never shows per-module detail text at all.
     ctx.console.push_module_health(
         ModuleHealth(module=ModuleId.VISION, status=HealthStatus.OK, detail="1200x800 @ демо")
     )
 
-    print("Cycling RuntimeState + sample SystemEvents every 2s.")
-    print("Click the Think switch / reset buttons / Open-Hidden toggle to test the real round trip.")
+    print("Cycling RuntimeState + sample SystemEvents every 2s on both windows.")
+    print("Click Think / reset / Open-Hidden on either window and confirm the other updates too.")
     i = 0
     while True:
-        ctx.console.push_runtime_state(STATE_CYCLE[i % len(STATE_CYCLE)])
+        state = STATE_CYCLE[i % len(STATE_CYCLE)]
+        ctx.console.push_runtime_state(state)
+        ctx.touchstrip.push_runtime_state(state)
         source, level, log_message, ui_message = _SAMPLE_EVENTS[i % len(_SAMPLE_EVENTS)]
         await publish_system_event(ctx.bus, logger, source, level, log_message, ui_message)
         i += 1
@@ -138,8 +148,16 @@ def main() -> None:
 
     console = StatusConsoleWindow()
     console.create(js_api=api)
+    touchstrip = TouchstripWindow()
+    touchstrip.create(js_api=api)  # same api instance - one shared engine state
+
     ctx = DemoContext(
-        console=console, api=api, bus=bus, thinking_mode=thinking_mode, visibility_mode=visibility_mode
+        console=console,
+        touchstrip=touchstrip,
+        api=api,
+        bus=bus,
+        thinking_mode=thinking_mode,
+        visibility_mode=visibility_mode,
     )
     webview.start(_run_demo_cycle, ctx)
 

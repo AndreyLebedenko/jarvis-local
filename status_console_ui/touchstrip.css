@@ -1,0 +1,141 @@
+/* Touchstrip glance surface (task-ui-06). Its own layout rules, not a
+   compressed copy of style.css's desktop grid (Scope: "Design the narrow
+   touch surface as its own UI, not a compressed desktop dashboard").
+   Color tokens are intentionally duplicated from style.css rather than
+   sharing one file at build time: they are static constants (no
+   behavior/logic to drift), unlike contract.js's enum lists, which is
+   where this task's "same state contract" AC actually lives. System font
+   stack only - same "no Google Fonts/CDN" rule as the desktop shell. */
+
+:root {
+  --bg: #0A0D14;
+  --panel: #121724;
+  --border: #1C2433;
+  --text: #DCE3ED;
+  --text-dim: #8993A5;
+  --text-faint: #4A5568;
+
+  --cyan: #3FE0D0;
+  --cyan-dim: #1E5C56;
+  --cyan-tint: rgba(63, 224, 208, 0.1);
+  --violet: #9A8CFB;
+  --violet-dim: #3E3878;
+  --violet-tint: rgba(154, 140, 251, 0.12);
+  --amber: #F0B15A;
+  --amber-dim: #6B4E1E;
+  --amber-tint: rgba(240, 177, 90, 0.1);
+  --red: #E85B5B;
+  --red-dim: #7A2E2E;
+  --gray: #6B7684;
+}
+
+html[data-state="idle"] { --live: var(--gray); --live-dim: var(--border); --live-tint: rgba(107, 118, 132, 0.08); }
+html[data-state="warming"] { --live: #E8853F; --live-dim: #6B3E1E; --live-tint: rgba(232, 133, 63, 0.1); }
+html[data-state="listening"] { --live: var(--cyan); --live-dim: var(--cyan-dim); --live-tint: var(--cyan-tint); }
+html[data-state="thinking"] { --live: var(--violet); --live-dim: var(--violet-dim); --live-tint: var(--violet-tint); }
+html[data-state="speaking"] { --live: var(--amber); --live-dim: var(--amber-dim); --live-tint: var(--amber-tint); }
+html[data-state="error"] { --live: var(--red); --live-dim: var(--red-dim); --live-tint: rgba(232, 91, 91, 0.1); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  width: 100%; height: 100%;
+  overflow: hidden;
+}
+
+.mono { font-family: "Consolas", "Cascadia Mono", monospace; }
+
+.screen { position: relative; width: 100%; height: 100%; }
+
+/* Two full-screen pages, swapped by tapping a paging dot - no swipe-gesture
+   detection (out of scope: unverifiable without real touch hardware, and
+   Scope marks the richer activation-trigger work optional/deferred). */
+.page {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.page.show { opacity: 1; pointer-events: auto; }
+
+/* ===== GLANCE PAGE ===== */
+#pageGlance { justify-content: space-between; }
+.g-left { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.orb-wrap { position: relative; width: 72px; height: 72px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ring { position: absolute; width: 72px; height: 72px; border-radius: 50%; border: 1px solid var(--live-dim); animation: ts-spin 12s linear infinite; }
+.ring[data-anim="warm"] { border-style: dashed; animation-duration: 3s; }
+@keyframes ts-spin { to { transform: rotate(360deg); } }
+.orb-core {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--live-tint), var(--bg) 70%);
+  border: 1.5px solid var(--live); box-shadow: 0 0 14px var(--live-tint);
+  animation: ts-breathe 2.4s ease-in-out infinite;
+}
+@keyframes ts-breathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.2); } }
+
+.g-textblock { min-width: 0; }
+.g-state { font-weight: 600; font-size: 22px; color: var(--live); }
+.g-sub {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; color: var(--text-dim);
+  margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;
+}
+.g-model {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px; color: var(--text-faint);
+  margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;
+}
+.g-visibility {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px;
+  padding: 6px 12px; border-radius: 12px; cursor: pointer;
+  background: var(--cyan-tint); color: var(--cyan); border: 1px solid var(--cyan-dim);
+  transition: all 0.15s;
+}
+html[data-visibility="hidden"] .g-visibility { background: var(--violet-tint); color: var(--violet); border-color: var(--violet-dim); }
+
+.g-chips { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+.g-chip { display: flex; align-items: center; gap: 8px; font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; color: var(--text-dim); }
+.g-dot { width: 7px; height: 7px; border-radius: 50%; }
+.g-dot[data-status="ok"] { background: var(--cyan); box-shadow: 0 0 4px var(--cyan); }
+.g-dot[data-status="unavailable"] { background: var(--text-faint); }
+.g-dot[data-status="degraded"] { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
+.g-dot[data-status="error"] { background: var(--red); box-shadow: 0 0 4px var(--red); }
+
+/* ===== ACTIONS PAGE ===== */
+#pageActions { gap: 16px; }
+.act-btn {
+  flex: 1; height: 150px; border-radius: 16px; border: 1px solid var(--border);
+  background: var(--panel); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  transition: all 0.15s; user-select: none; -webkit-user-select: none;
+}
+.act-btn:active { transform: scale(0.97); }
+.act-label { font-weight: 600; font-size: 15px; color: var(--text); }
+.act-sub { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px; color: var(--text-dim); }
+#thinkBtn.on { border-color: var(--violet-dim); background: var(--violet-tint); }
+#thinkBtn.on .act-label { color: var(--violet); }
+#resetBtn { border-color: var(--amber-dim); }
+#resetBtn .act-label { color: var(--amber); }
+/* Fills left-to-right while the reset button is held, so the touch target
+   itself is the confirmation progress indicator (Scope: "hold-to-confirm",
+   AC: "Reset requires hold or equivalent confirmation"). */
+#resetBtn .act-hold-fill {
+  position: absolute; inset: 0; border-radius: inherit;
+  background: var(--amber-tint); transform-origin: left; transform: scaleX(0);
+  pointer-events: none;
+}
+#resetBtn { position: relative; overflow: hidden; }
+#resetBtn.holding .act-hold-fill { transition: transform 1s linear; transform: scaleX(1); }
+
+/* Paging dots - deliberately large tap targets (each dot is 8px, but the
+   button padding brings the real hit area to ~32px, per the AC "touch
+   targets are large enough for finger input"). */
+.dots { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; }
+.page-dot {
+  border: none; background: none; padding: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.page-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.page-dot.on::after { background: var(--live); }
