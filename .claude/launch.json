@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "status-console-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8531"],
+      "port": 8531
+    }
+  ]
+}

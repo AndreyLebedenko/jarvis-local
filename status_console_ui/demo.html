@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru" data-state="idle">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis - Status Console (demo/QA harness)</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .demo-controls {
+    grid-column: 1 / -1; grid-row: 1;
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    padding: 8px 16px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+    font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px;
+  }
+  .demo-controls button {
+    border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
+    border-radius: 14px; padding: 4px 10px; cursor: pointer;
+  }
+  .demo-controls button:hover { color: var(--text); border-color: var(--cyan-dim); }
+  body { grid-template-rows: 40px 56px 1fr; grid-template-areas: "demo demo" "top top" "main log"; }
+</style>
+</head>
+<body>
+
+<!-- Demo/QA-only harness (not part of the real product surface): exercises
+     every RuntimeState/ModuleHealth/DataLocality combination from
+     ui_contract.py against the same index.html markup, so task-ui-01's
+     contract states can be checked in an ordinary browser without a live
+     engine or a pywebview window. Superseded by task-ui-07's real visual/
+     manual QA pass; this is a dev aid for task-ui-02 itself. -->
+<div class="demo-controls" id="demoControls"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">J</div>
+    <div class="brand-name">JARVIS <span>Status Console - DEMO</span></div>
+  </div>
+  <div class="locality-badge" id="localityBadge" data-locality="local">
+    <span class="locality-dot"></span>
+    <span class="locality-label">Локально</span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="orb-wrap">
+    <div class="ring" id="ring" data-anim="normal"></div>
+    <div class="orb-core"><div class="orb-glyph">J</div></div>
+  </div>
+  <div style="text-align: center; margin-top: -10px;">
+    <div class="orb-state" id="orbState">Ожидание</div>
+    <div class="orb-sub" id="orbSub"></div>
+  </div>
+
+  <div class="chip-row">
+    <div class="chip" id="chip-backend" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body"><div class="chip-label">Модель</div><div class="chip-meta">...</div></div>
+    </div>
+    <div class="chip" id="chip-microphone" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body"><div class="chip-label">Микрофон</div><div class="chip-meta">...</div></div>
+    </div>
+    <div class="chip" id="chip-tts" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body"><div class="chip-label">TTS</div><div class="chip-meta">...</div></div>
+    </div>
+    <div class="chip" id="chip-memory" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body"><div class="chip-label">Память</div><div class="chip-meta">...</div></div>
+    </div>
+    <div class="chip" id="chip-vision" data-status="unavailable">
+      <span class="chip-dot" data-status="unavailable"></span>
+      <div class="chip-body"><div class="chip-label">Vision</div><div class="chip-meta">...</div></div>
+    </div>
+  </div>
+
+  <div class="placeholder-card">
+    <div class="placeholder-switch"></div>
+    <div>
+      <div class="placeholder-title">Режим мышления</div>
+      <div class="placeholder-note">Управление появится в task-ui-04</div>
+    </div>
+  </div>
+
+  <button class="placeholder-reset" disabled>Сбросить контекст (task-ui-04)</button>
+</div>
+
+<div class="logpanel">
+  <div class="log-title">События системы</div>
+  <div class="log-sub">Панель появится в task-ui-03</div>
+  <div class="log-empty">Пока нет событий</div>
+</div>
+
+<script src="app.js"></script>
+<script src="demo.js"></script>
+</body>
+</html>

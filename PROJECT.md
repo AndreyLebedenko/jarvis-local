@@ -429,15 +429,59 @@ screen is built:
   the system events panel, and `VisibilityMode`/`DataLocality` as two
   independent axes (system visibility vs. where inference runs - v1.0 only
   ever reports `DataLocality.LOCAL`).
-- No new bus events are published yet. `tasks/task-ui-01-state-and-event-
-  contract.md` maps existing events (`ResponseToken`, `ResponseComplete`,
-  `MicSleepToggled`, `ThinkingModeToggled`, `ScreenshotCaptured`,
-  `ClipboardSubmitted`) onto this contract and lists the events that do not
-  exist yet and are required by later task cards (turn-lifecycle event for
-  `THINKING`/`LISTENING`, a warm-up event for `WARMING`, a structured error
-  event, and hardware/model availability signals for microphone/TTS/backend/
-  vision) - none of it implemented here, to keep this task card scoped to
-  the contract itself.
+- No new bus events are published yet. `tasks/done/task-ui-01-state-and-
+  event-contract.md` maps existing events (`ResponseToken`,
+  `ResponseComplete`, `MicSleepToggled`, `ThinkingModeToggled`,
+  `ScreenshotCaptured`, `ClipboardSubmitted`) onto this contract and lists
+  the events that do not exist yet and are required by later task cards
+  (turn-lifecycle event for `THINKING`/`LISTENING`, a warm-up event for
+  `WARMING`, a structured error event, and hardware/model availability
+  signals for microphone/TTS/backend/vision) - none of it implemented here,
+  to keep this task card scoped to the contract itself.
+
+Task-ui-02 landed second: the desktop shell itself, still with no live bus
+wiring.
+
+- **GUI framework decision (human, this task's stop condition):**
+  `pywebview` over a local HTML/CSS/JS front-end, not a native widget
+  toolkit. Windows backend is WebView2 (pre-installed on Windows 11); a
+  future Linux backend would be QtWebEngine via PySide6 - a `pywebview`
+  GUI-backend argument, not a UI rewrite. Chosen because it lets the
+  existing `.planning/UI/mock-ups/jarvis_status_console_v1.html` visual
+  language become the real UI with minimal rewrite while keeping every
+  asset local. The UI stays a thin client over engine state delivered
+  through `pywebview`'s own in-process `evaluate_js` bridge; a networked
+  WebSocket transport is deferred to whichever later task needs cross-
+  device delivery (task-ui-06's touchstrip, if it runs on a separate
+  device) - `bus.py` itself is unaffected either way.
+- `status_console_ui/` — the front-end: `index.html` (production shell:
+  orb, five module chips, data-locality badge, disabled placeholders for
+  the Think toggle/reset button/system-events panel that task-ui-04/03
+  wire for real), `style.css` (system font stack only - Segoe UI/Consolas,
+  no Google Fonts/CDN/bundled font files - and the responsive rule below
+  720px width), `app.js` (pure DOM-update functions keyed to
+  `ui_contract.py`'s JSON shapes: `applyRuntimeState`/`applyModuleHealth`/
+  `applyDataLocality`/`applyModelLabel`). `demo.html`/`demo.js` are a
+  dev-only QA harness (buttons exercising every state/health/locality
+  value against the same markup) - not part of the production surface,
+  reused by task-ui-07's manual QA pass.
+- `status_console.py` — `StatusConsoleWindow` launches the `pywebview`
+  window (injectable `window_factory`, mirroring `audio_in.py`'s
+  `InputStreamLike` pattern, so tests need no real WebView2 install) and
+  exposes `push_runtime_state()`/`push_module_health()`/
+  `push_data_locality()`/`push_model_label()`, each translating a
+  `ui_contract.py` value into JSON and calling the matching `app.js`
+  function via `evaluate_js`. No bus subscription here - a later task
+  wires these calls to real events.
+- `WARMING`'s color is a distinct amber shade (`--amber-warm`) from
+  `SPEAKING`'s `--amber`, plus its own dashed/faster ring animation and an
+  explicit "(локально)" qualifier in the label text - so it cannot be
+  misread as a cloud/data-locality warning even though v1.0 has no cloud
+  indicator to confuse it with yet (this task's acceptance criterion).
+- `manual_check_status_console.py` — hardware-dependent handoff (real
+  window, real WebView2): pushes `config.py`'s real `backend.model` (no
+  hardcoded model name) and cycles every `RuntimeState` every 2 s for
+  visual review, per CLAUDE.md's testing protocol.
 
 ## Working agreements (for the agent)
 
