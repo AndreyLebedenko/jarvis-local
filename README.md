@@ -16,7 +16,9 @@ v1.2 adds a local desktop Status Console for runtime state, system events,
 Think mode, Open/Hidden visibility mode, context reset, and a compact
 touchstrip glance surface.
 
-![Jarvis Status Console](docs/screenshots/status-console.png)
+![Jarvis Status Console thinking state](docs/screenshots/status-console-thinking.png)
+
+![Jarvis Status Console events state](docs/screenshots/status-console.png)
 
 ![Jarvis Touchstrip](docs/screenshots/touchstrip.png)
 
