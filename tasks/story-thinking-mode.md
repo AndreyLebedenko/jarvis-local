@@ -59,7 +59,7 @@ Out of scope:
 
 ## Task-card sequence (implementation order)
 
-1. [task-11-thinking-backend-contract.md](task-11-thinking-backend-contract.md)
+1. [task-11-thinking-backend-contract.md](done/task-11-thinking-backend-contract.md)
    - backend payload/stream support and isolation tests.
 2. [task-12-thinking-mode-state.md](task-12-thinking-mode-state.md)
    - runtime toggle state, hotkey input, config schema, and pure wiring

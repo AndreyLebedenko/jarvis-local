@@ -1,6 +1,6 @@
 # Task: thinking backend contract
 
-Status: Draft.
+Status: Completed.
 
 Story: [story-thinking-mode.md](story-thinking-mode.md)
 
