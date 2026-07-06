@@ -105,6 +105,24 @@ picked up.
   trigger should instead fire at turn start (`_start_turn()`) rather than
   first spoken token, closing the reasoning-phase gap - this would be a
   behavioral change to task-10's existing mitigation and needs its own
-  review given it affects every turn, not just thinking-mode ones.
+  review given it affects every turn, not just thinking-mode ones. This
+  is the more targeted option for the mechanism suspected above (widened
+  pre-auto-pause window), since it removes the gap itself rather than
+  filtering its symptoms.
+- Considered and explicitly rejected as *the* fix for this specific
+  symptom (though still possibly worth adding as an independent
+  defensive measure): a minimum-duration filter in `VadChunker` rejecting
+  segments shorter than some threshold, to guard against hardware
+  pops/clicks on `stream.start()` being misread as speech. This would
+  not explain or prevent the 31 ms gap on its own - `run_microphone_loop`
+  requires `request_end_pause_seconds` (2.0 s default) of trailing buffer
+  past a segment's end before publishing it *regardless of the segment's
+  own duration*, so whatever fired here had already cleared that gate by
+  the time it could be evaluated, not slipped through a too-short-segment
+  gap. Still a reasonable, cheap addition on its own general merits if
+  short-blip false positives are ever confirmed separately.
+- Neither of the two options above has been implemented - this report
+  only records them as candidate follow-up work for whoever picks up
+  roadmap item 7 (or an earlier dedicated task if the anomaly recurs).
 - Out of scope for this report: the reasoning-token isolation guarantee
   itself, which was confirmed correct in the same manual test session.
