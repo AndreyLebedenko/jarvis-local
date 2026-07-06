@@ -21,11 +21,18 @@ and translating ui_contract.py's dataclasses into the JSON payloads that
 app.js's functions expect - the *_payload() functions below are the pure,
 testable half of that translation.
 
-No live engine wiring yet: nothing here subscribes to bus.py. Later task
-cards do that (task-ui-03 system events, task-ui-04 think/reset,
-task-ui-05 visibility mode) - this module only proves the shell can render
-every state task-ui-01's contract defines. See
-tasks/task-ui-02-desktop-status-console-shell.md.
+Nothing here subscribes to bus.py directly - that would require deciding
+how pywebview's own GUI loop (webview.start(), typically main-thread) and
+this process's asyncio loop share the main thread, which is a separate,
+larger concern than either this module or task-ui-03 owns. Instead,
+main.py's handlers call system_log.publish_system_event() at the point
+something happens (see main.py's _on_mic_sleep_toggled/
+_on_thinking_mode_toggled/warm_up) - publishing to the bus is safe with
+zero subscribers (bus.py: a no-op) - and whichever future task wires a
+live StatusConsoleWindow into main.py's App only needs to subscribe
+push_system_event to that same SystemEvent. Think/reset controls and
+visibility mode are still reserved placeholders - task-ui-04/task-ui-05's
+job. See story-status-console-ui.md's task-ui-02/task-ui-03 cards.
 """
 
 import json
@@ -33,7 +40,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from ui_contract import DataLocality, ModuleHealth, RuntimeState
+from ui_contract import DataLocality, ModuleHealth, RuntimeState, SystemEvent
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
@@ -70,6 +77,16 @@ def module_health_payload(health: ModuleHealth) -> dict:
 
 def data_locality_payload(locality: DataLocality) -> dict:
     return {"locality": locality.value}
+
+
+def system_event_payload(event: SystemEvent) -> dict:
+    return {
+        "timestamp": event.timestamp,
+        "source": event.source,
+        "level": event.level.value,
+        "message": event.message,
+        "correlation_id": event.correlation_id,
+    }
 
 
 class WindowLike(Protocol):
@@ -119,6 +136,9 @@ class StatusConsoleWindow:
 
     def push_model_label(self, label: str) -> None:
         self._evaluate("applyModelLabel", {"label": label})
+
+    def push_system_event(self, event: SystemEvent) -> None:
+        self._evaluate("appendSystemEvent", system_event_payload(event))
 
     def _evaluate(self, js_function: str, payload: dict) -> None:
         if self._window is None:

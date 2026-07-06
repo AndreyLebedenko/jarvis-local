@@ -87,8 +87,16 @@
 
 <div class="logpanel">
   <div class="log-title">События системы</div>
-  <div class="log-sub">Панель появится в task-ui-03</div>
-  <div class="log-empty">Пока нет событий</div>
+  <div class="log-sub">engine log - реальное время</div>
+  <div id="logList">
+    <div class="log-empty" id="logEmpty">Пока нет событий</div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--gray)"></i>инфо</span>
+    <span><i style="background:var(--cyan)"></i>активно</span>
+    <span><i style="background:var(--amber)"></i>предупреждение</span>
+    <span><i style="background:var(--red)"></i>ошибка</span>
+  </div>
 </div>
 
 <script src="app.js"></script>
