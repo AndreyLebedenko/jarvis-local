@@ -33,6 +33,10 @@ mic_sleep_toggle = "ctrl+alt+m"
 # v1.1: reads the current clipboard and submits it as a prompt, in place
 # of a spoken question.
 clipboard_submit = "ctrl+alt+v"
+# Thinking mode: toggles a persistent runtime state applied to future
+# turns (not the current in-flight one). Off by default - see PROJECT.md's
+# thinking-mode architecture section.
+thinking_toggle = "ctrl+alt+t"
 
 [vad]
 threshold = 0.5
@@ -78,3 +82,8 @@ clipboard = "sounds/clipboard.wav"
 input_error = "sounds/input_error.wav"
 mic_sleep = "sounds/mic_sleep.wav"
 mic_wake = "sounds/mic_wake.wav"
+# Thinking-mode toggle on/off - distinct from the generic "thinking" cue
+# above, which plays per-turn while a request is in flight regardless of
+# this mode.
+thinking_on = "sounds/thinking_on.wav"
+thinking_off = "sounds/thinking_off.wav"

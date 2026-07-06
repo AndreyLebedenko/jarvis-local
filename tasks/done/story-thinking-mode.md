@@ -1,6 +1,6 @@
 # Story: Thinking mode
 
-Status: Draft.
+Status: Completed.
 
 ## Goal (user-facing)
 
@@ -59,9 +59,9 @@ Out of scope:
 
 ## Task-card sequence (implementation order)
 
-1. [task-11-thinking-backend-contract.md](done/task-11-thinking-backend-contract.md)
+1. [task-11-thinking-backend-contract.md](task-11-thinking-backend-contract.md)
    - backend payload/stream support and isolation tests.
-2. [task-12-thinking-mode-state.md](done/task-12-thinking-mode-state.md)
+2. [task-12-thinking-mode-state.md](task-12-thinking-mode-state.md)
    - runtime toggle state, hotkey input, config schema, and pure wiring
    tests that do not touch hardware.
 3. [task-13-thinking-mode-main-wiring.md](task-13-thinking-mode-main-wiring.md)
@@ -70,7 +70,7 @@ Out of scope:
 
 ## Prior verified fact
 
-[task-spike-thinking-mode.md](done/task-spike-thinking-mode.md) verified
+[task-spike-thinking-mode.md](task-spike-thinking-mode.md) verified
 locally against Ollama 0.31.1 and `gemma4:12b-it-qat` that `/api/chat`
 accepts top-level `think: false` / `think: true`; with thinking enabled,
 reasoning streams in `message.thinking` while final answer text remains in

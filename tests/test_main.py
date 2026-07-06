@@ -1,9 +1,12 @@
 import asyncio
 import base64
+import json
 import logging
 
+import httpx
+
 from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
-from backend import LatencyMetrics, ResponseComplete, ResponseToken
+from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
 from config import Settings, VadSettings
@@ -15,24 +18,29 @@ from main import (
     Orchestrator,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
+    _on_thinking_mode_toggled,
     build_app,
     is_elevated,
     run_clipboard_hotkey_listener,
     run_mic_sleep_hotkey_listener,
+    run_thinking_hotkey_listener,
     run_until_shutdown,
     unwire,
     wire,
 )
 from sound_cues import SoundCuePlayer
+from thinking_mode import ThinkingModeState, ThinkingModeToggled
 
 
 class _FakeBackend:
     def __init__(self, chat_impl=None) -> None:
         self.calls: list[tuple[list[dict], list[str] | None]] = []
+        self.thinking_enabled_calls: list[bool] = []
         self._chat_impl = chat_impl
 
-    async def chat(self, messages, images_b64=None) -> None:
+    async def chat(self, messages, images_b64=None, thinking_enabled=False) -> None:
         self.calls.append((messages, images_b64))
+        self.thinking_enabled_calls.append(thinking_enabled)
         if self._chat_impl is not None:
             await self._chat_impl()
 
@@ -92,11 +100,13 @@ def test_history_messages_include_media_when_provided():
 
 
 def _orchestrator(
-    chat_impl=None, audio_input=None
+    chat_impl=None, audio_input=None, thinking_mode=None
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
-    orchestrator = Orchestrator(backend, ConversationHistory(), sound_cues, audio_input=audio_input)
+    orchestrator = Orchestrator(
+        backend, ConversationHistory(), sound_cues, audio_input=audio_input, thinking_mode=thinking_mode
+    )
     return orchestrator, backend, sound_cues
 
 
@@ -412,6 +422,144 @@ async def test_error_during_chat_plays_error_cue_and_clears_busy():
     assert len(backend.calls) == 2
 
 
+# --- thinking mode (task-13) ------------------------------------------------
+#
+# Orchestrator samples ThinkingModeState.is_enabled at turn start (in
+# _start_turn(), synchronously with no `await` before the value reaches
+# backend.chat()) and passes it through, per the story's decision that a
+# hotkey toggle applies to the next accepted turn, not any request already
+# in flight.
+
+
+async def test_start_turn_passes_thinking_enabled_false_by_default():
+    thinking_mode = ThinkingModeState(bus=EventBus())
+    orchestrator, backend, _sound_cues = _orchestrator(thinking_mode=thinking_mode)
+
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+
+    assert backend.thinking_enabled_calls == [False]
+
+
+async def test_start_turn_passes_thinking_enabled_true_after_toggle():
+    thinking_mode = ThinkingModeState(bus=EventBus())
+    orchestrator, backend, _sound_cues = _orchestrator(thinking_mode=thinking_mode)
+
+    await thinking_mode.toggle()
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+
+    assert backend.thinking_enabled_calls == [True]
+
+
+async def test_toggle_while_busy_does_not_affect_the_in_flight_turn():
+    """Regression guard for the story's explicit boundary: changing a live
+    Ollama stream mid-response is out of scope. A toggle that lands while
+    a turn's backend.chat() call is already in flight must not retroactively
+    change what was already passed for that call - only the next accepted
+    turn should see the new value."""
+    still_busy = asyncio.Event()
+
+    async def slow_chat() -> None:
+        await still_busy.wait()
+
+    thinking_mode = ThinkingModeState(bus=EventBus())
+    orchestrator, backend, _sound_cues = _orchestrator(chat_impl=slow_chat, thinking_mode=thinking_mode)
+
+    first = asyncio.create_task(
+        orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+    )
+    await asyncio.sleep(0)  # let the first call start and sample thinking_enabled=False
+
+    await thinking_mode.toggle()  # toggled to True while the first call is in flight
+
+    still_busy.set()
+    await first
+
+    assert backend.thinking_enabled_calls == [False]  # the in-flight call was unaffected
+
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1))
+
+    assert backend.thinking_enabled_calls == [False, True]  # next accepted turn sees the new value
+
+
+async def test_start_turn_with_no_thinking_mode_defaults_to_false():
+    """Orchestrator can be constructed without a thinking_mode (e.g. older
+    tests/callers) - must not crash, and must behave as if thinking is
+    permanently disabled."""
+    orchestrator, backend, _sound_cues = _orchestrator()
+
+    await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
+
+    assert backend.thinking_enabled_calls == [False]
+
+
+# --- thinking mode cue/log wiring (task-13) ---------------------------------
+
+
+async def test_on_thinking_mode_toggled_plays_thinking_on_cue_when_enabled():
+    sound_cues = _FakeSoundCues()
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=sound_cues,
+        thinking_mode=None,
+        settings=_settings(),
+    )
+
+    await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+
+    assert sound_cues.played == ["thinking_on"]
+
+
+async def test_on_thinking_mode_toggled_plays_thinking_off_cue_when_disabled():
+    sound_cues = _FakeSoundCues()
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=sound_cues,
+        thinking_mode=None,
+        settings=_settings(),
+    )
+
+    await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=False))
+
+    assert sound_cues.played == ["thinking_off"]
+
+
+async def test_on_thinking_mode_toggled_logs_an_info_message(caplog):
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
+        settings=_settings(),
+    )
+
+    with caplog.at_level(logging.INFO, logger="main"):
+        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+
+    assert any("enabled" in record.message for record in caplog.records)
+
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="main"):
+        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=False))
+
+    assert any("disabled" in record.message for record in caplog.records)
+
+
 # --- wiring --------------------------------------------------------------
 
 
@@ -465,6 +613,7 @@ def test_wire_registers_expected_subscriptions():
     # see _on_full_response_complete's docstring for why that mattered.
     assert event_types.count(ResponseComplete) == 1
     assert event_types.count(MicSleepToggled) == 1
+    assert event_types.count(ThinkingModeToggled) == 1
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
@@ -521,17 +670,19 @@ class _FakeKeyboardModuleForShutdownTest:
         self.removed_handles.append(handle)
 
 
-async def test_run_until_shutdown_cancels_clipboard_and_mic_sleep_hotkey_listeners():
+async def test_run_until_shutdown_cancels_clipboard_mic_sleep_and_thinking_hotkey_listeners():
     """Same shape as test_run_until_shutdown_cancels_tasks_and_unsubscribes,
-    but with the real task-10 listener coroutines instead of arbitrary fake
-    tasks - confirms run()'s pattern of handing these to run_until_shutdown
-    actually cancels them and runs their cleanup (kb.remove_hotkey)."""
+    but with the real listener coroutines (task-10's clipboard/mic-sleep,
+    task-13's thinking-mode) instead of arbitrary fake tasks - confirms
+    run()'s pattern of handing these to run_until_shutdown actually cancels
+    them and runs their cleanup (kb.remove_hotkey)."""
     app = _fake_app()
     subscriptions = wire(app)
     shutdown_event = asyncio.Event()
 
     fake_kb_clipboard = _FakeKeyboardModuleForShutdownTest()
     fake_kb_mic_sleep = _FakeKeyboardModuleForShutdownTest()
+    fake_kb_thinking = _FakeKeyboardModuleForShutdownTest()
     mic_sleep_audio_input = AudioInput(bus=app.bus, chunker=None)
 
     background_tasks = [
@@ -548,8 +699,13 @@ async def test_run_until_shutdown_cancels_clipboard_and_mic_sleep_hotkey_listene
                 mic_sleep_audio_input, app.settings.hotkeys, keyboard_module=fake_kb_mic_sleep
             )
         ),
+        asyncio.create_task(
+            run_thinking_hotkey_listener(
+                app.thinking_mode, app.settings.hotkeys, keyboard_module=fake_kb_thinking
+            )
+        ),
     ]
-    await asyncio.sleep(0)  # let both listeners register their hotkeys
+    await asyncio.sleep(0)  # let all listeners register their hotkeys
 
     shutdown_event.set()
     await asyncio.wait_for(
@@ -560,6 +716,7 @@ async def test_run_until_shutdown_cancels_clipboard_and_mic_sleep_hotkey_listene
     assert all(task.cancelled() for task in background_tasks)
     assert len(fake_kb_clipboard.removed_handles) == 1
     assert len(fake_kb_mic_sleep.removed_handles) == 1
+    assert len(fake_kb_thinking.removed_handles) == 1
 
 
 # --- mic sleep/wake sound cue (task-10) -------------------------------------
@@ -575,6 +732,7 @@ async def test_on_mic_sleep_toggled_plays_mic_sleep_cue_when_asleep():
         capture_input=None,
         orchestrator=None,
         sound_cues=sound_cues,
+        thinking_mode=None,
         settings=_settings(),
     )
 
@@ -593,6 +751,7 @@ async def test_on_mic_sleep_toggled_plays_mic_wake_cue_when_awake():
         capture_input=None,
         orchestrator=None,
         sound_cues=sound_cues,
+        thinking_mode=None,
         settings=_settings(),
     )
 
@@ -614,6 +773,7 @@ async def test_on_mic_sleep_toggled_logs_an_info_message(caplog):
         capture_input=None,
         orchestrator=None,
         sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
         settings=_settings(),
     )
 
@@ -681,6 +841,7 @@ async def test_on_full_response_complete_plays_listening_only_after_trailing_spe
         capture_input=None,
         orchestrator=_FakeOrchestrator(),
         sound_cues=_FakeSoundCuesForOrdering(),
+        thinking_mode=None,
         settings=_settings(),
     )
 
@@ -721,6 +882,7 @@ async def test_on_full_response_complete_clears_busy_and_plays_error_when_tts_fa
         capture_input=None,
         orchestrator=orchestrator,
         sound_cues=sound_cues,
+        thinking_mode=None,
         # negligible cooldown - keeps this test fast; the real default
         # (2.0 s) is exercised by design, not by this test's timing
         settings=Settings(vad=VadSettings(request_end_pause_seconds=0.001)),
@@ -788,3 +950,62 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(tmp_path,
         tts_output._default_play(b"wav-bytes-placeholder"),
         sound_cues._default_play_file(str(cue_path)),
     )
+
+
+# --- thinking-token isolation through the real bus (task-13) ---------------
+
+
+def _client_with_ndjson_body(lines: list[dict]) -> httpx.AsyncClient:
+    body = "\n".join(json.dumps(line) for line in lines).encode() + b"\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://localhost:11434"
+    )
+
+
+class _RecordingTtsOutput:
+    """Records exactly what reaches on_token - the real regression check
+    for the story's hard rule (message.thinking must never reach TTS),
+    exercised through the real bus/wire() wiring rather than backend.py's
+    own unit tests, which only check backend.py in isolation."""
+
+    def __init__(self) -> None:
+        self.received_texts: list[str] = []
+
+    async def on_token(self, event: ResponseToken) -> None:
+        self.received_texts.append(event.text)
+
+    async def on_response_complete(self, event: ResponseComplete) -> None:
+        pass
+
+    async def wait_for_pending(self) -> None:
+        return None
+
+
+async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
+    lines = [
+        {"message": {"thinking": "reasoning step one", "content": ""}, "done": False},
+        {"message": {"thinking": "reasoning step two", "content": ""}, "done": False},
+        {"message": {"content": "Hello"}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    bus = EventBus()
+    backend = OllamaBackend(bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines))
+    tts_output = _RecordingTtsOutput()
+
+    app = build_app(
+        _settings(),
+        bus=bus,
+        backend=backend,
+        audio_input=_FakeAudioInput(),
+        tts_output=tts_output,
+        capture_input=_FakeCaptureInput(),
+    )
+    wire(app)
+
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
+
+    assert tts_output.received_texts == ["Hello"]

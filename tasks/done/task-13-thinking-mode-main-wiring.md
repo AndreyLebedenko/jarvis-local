@@ -1,6 +1,6 @@
 # Task: thinking mode main wiring and manual handoff
 
-Status: Draft.
+Status: Completed.
 
 Story: [story-thinking-mode.md](story-thinking-mode.md)
 
