@@ -74,6 +74,7 @@ class OllamaBackend:
         self,
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
+        thinking_enabled: bool = False,
     ) -> dict[str, Any]:
         messages = [dict(message) for message in messages]
         if images_b64:
@@ -82,6 +83,7 @@ class OllamaBackend:
             "model": self._settings.model,
             "messages": messages,
             "stream": True,
+            "think": thinking_enabled,
             "options": {"num_ctx": self._settings.num_ctx},
         }
 
@@ -89,13 +91,18 @@ class OllamaBackend:
         self,
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
+        thinking_enabled: bool = False,
     ) -> None:
-        payload = self.build_payload(messages, images_b64)
+        payload = self.build_payload(messages, images_b64, thinking_enabled)
         async with self._client.stream("POST", "/api/chat", json=payload) as response:
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
                 chunk = json.loads(line)
+                # message.thinking (reasoning trace, present when think=true) is
+                # deliberately never read here - PROJECT.md's isolation rule
+                # requires it stay out of ResponseToken/TTS. Only message.content
+                # is republished.
                 content = chunk.get("message", {}).get("content", "")
                 if content:
                     await self._bus.publish(ResponseToken, ResponseToken(text=content))

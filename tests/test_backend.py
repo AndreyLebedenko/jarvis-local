@@ -36,6 +36,24 @@ def test_payload_without_media_has_no_images_key():
     assert "images" not in payload["messages"][-1]
 
 
+def test_payload_defaults_to_thinking_disabled():
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert payload["think"] is False
+
+
+def test_payload_thinking_enabled_sets_think_true():
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+    )
+
+    assert payload["think"] is True
+
+
 def test_payload_uses_model_and_num_ctx_from_settings():
     settings = BackendSettings(model="custom-model", num_ctx=1234)
     backend = OllamaBackend(bus=EventBus(), settings=settings)
@@ -123,3 +141,58 @@ async def test_latency_metrics_parsed_and_published_on_completion():
             )
         )
     ]
+
+
+def _client_with_ndjson_body(lines: list[dict]) -> httpx.AsyncClient:
+    body = "\n".join(json.dumps(line) for line in lines).encode() + b"\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://localhost:11434"
+    )
+
+
+async def test_thinking_chunks_never_published_as_response_token():
+    bus = EventBus()
+    received = []
+
+    async def on_token(token: ResponseToken) -> None:
+        received.append(token.text)
+
+    bus.subscribe(ResponseToken, on_token)
+
+    lines = [
+        {"message": {"thinking": "reasoning step one", "content": ""}, "done": False},
+        {"message": {"thinking": "reasoning step two", "content": ""}, "done": False},
+        {"message": {"content": "Hello"}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    backend = OllamaBackend(
+        bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
+    )
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
+
+    assert received == ["Hello"]
+
+
+async def test_thinking_only_stream_publishes_no_response_token():
+    bus = EventBus()
+    received = []
+
+    async def on_token(token: ResponseToken) -> None:
+        received.append(token.text)
+
+    bus.subscribe(ResponseToken, on_token)
+
+    lines = [
+        {"message": {"thinking": "reasoning only", "content": ""}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    backend = OllamaBackend(
+        bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
+    )
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
+
+    assert received == []
