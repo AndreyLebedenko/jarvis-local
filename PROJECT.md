@@ -415,9 +415,9 @@ the backend contract, task-12 the runtime state/hotkey, task-13 the final
   that topic), which thinking mode measurably widens the risk window for
   but does not itself cause.
 
-## Architecture v1.3 (Status Console contract, in progress)
+## Architecture v1.3 (Status Console UI)
 
-See [tasks/story-status-console-ui.md](tasks/story-status-console-ui.md).
+See [tasks/done/story-status-console-ui.md](tasks/done/story-status-console-ui.md).
 Task-ui-01 landed first, defining the backend-to-UI contract before any
 screen is built:
 
@@ -668,6 +668,45 @@ sharing the desktop window's engine state.
 - Deferred, per Scope's own wording ("optional... after warmup story
   lands"): an activation trigger through the orb/touch affordance -
   story-voice-trigger-warmup.md has not landed yet.
+
+Task-ui-07 landed seventh and last: consolidated visual/manual QA across
+every prior task-ui-0X card together, closing
+tasks/done/story-status-console-ui.md.
+
+- **Real bug found and fixed:** `demo.html`'s inline `<style>` block set
+  `body{grid-template-areas}` to the wide "main log" two-column layout
+  unconditionally, which won the CSS cascade over `style.css`'s own
+  `@media (max-width: 720px)` override (equal selector specificity,
+  declared later in the document - the inline `<style>` tag follows
+  `style.css`'s `<link>`). `demo.html` never actually exercised the
+  responsive stacked layout at narrow widths - `.main` was silently
+  squeezed to ~83px wide instead of stacking full-width. `index.html` (the
+  real product surface) was unaffected and verified correct independently.
+  Caught by measuring live layout geometry via the Preview tools during
+  this task's consolidated pass, not by the existing "no horizontal
+  overflow" checks (which this bug did not trip - a cramped column is not
+  the same failure as literal overflow).
+- `tests/test_ui_qa.py` (new) adds the checks that only make sense with
+  every surface built: a directory-scan network-asset check covering every
+  file in `status_console_ui/` at once (so a future new file can't skip
+  the "no CDN" rule by never getting its own test), all six `RuntimeState`
+  colors present on *both* `style.css` and `touchstrip.css`, and that the
+  two files agree on every color (caught `touchstrip.css` inlining
+  `WARMING`'s hex literally instead of referencing a named
+  `--amber-warm` token - same color, but a real duplication smell fixed
+  during this pass).
+- **TTS/Hidden manual check (Scope item) is moot**, per task-ui-05's
+  already-recorded human decision: `Hidden` never touches audio output in
+  v1, so there is nothing to manually verify there.
+- **Global hotkey interaction** was not re-tested against a live `main.py`
+  process - `main.py` and the Status Console windows still do not share a
+  process in v1 (see task-ui-03's "deliberately not done" note), so there
+  is no new integration surface to test yet. The narrower, real question -
+  does a WebView2 window merely being open interfere with this project's
+  existing global hotkeys - reduces to the already-verified fact above
+  this entry (`keyboard`-package hotkeys are global system-wide once
+  elevated, regardless of which window has focus); no code here changes
+  that.
 
 ## Working agreements (for the agent)
 

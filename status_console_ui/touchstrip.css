@@ -17,20 +17,25 @@
 
   --cyan: #3FE0D0;
   --cyan-dim: #1E5C56;
-  --cyan-tint: rgba(63, 224, 208, 0.1);
+  --cyan-tint: rgba(63, 224, 208, 0.09);
   --violet: #9A8CFB;
   --violet-dim: #3E3878;
-  --violet-tint: rgba(154, 140, 251, 0.12);
+  --violet-tint: rgba(154, 140, 251, 0.1);
   --amber: #F0B15A;
   --amber-dim: #6B4E1E;
   --amber-tint: rgba(240, 177, 90, 0.1);
+  /* Same distinct-from-SPEAKING shade as style.css's --amber-warm - see
+     that file for why WARMING deliberately does not reuse plain --amber. */
+  --amber-warm: #E8853F;
+  --amber-warm-dim: #6B3E1E;
+  --amber-warm-tint: rgba(232, 133, 63, 0.1);
   --red: #E85B5B;
   --red-dim: #7A2E2E;
   --gray: #6B7684;
 }
 
 html[data-state="idle"] { --live: var(--gray); --live-dim: var(--border); --live-tint: rgba(107, 118, 132, 0.08); }
-html[data-state="warming"] { --live: #E8853F; --live-dim: #6B3E1E; --live-tint: rgba(232, 133, 63, 0.1); }
+html[data-state="warming"] { --live: var(--amber-warm); --live-dim: var(--amber-warm-dim); --live-tint: var(--amber-warm-tint); }
 html[data-state="listening"] { --live: var(--cyan); --live-dim: var(--cyan-dim); --live-tint: var(--cyan-tint); }
 html[data-state="thinking"] { --live: var(--violet); --live-dim: var(--violet-dim); --live-tint: var(--violet-tint); }
 html[data-state="speaking"] { --live: var(--amber); --live-dim: var(--amber-dim); --live-tint: var(--amber-tint); }
