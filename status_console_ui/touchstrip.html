@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru" data-state="idle" data-visibility="open" data-page="glance">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis - Touchstrip</title>
+<link rel="stylesheet" href="touchstrip.css">
+</head>
+<body>
+
+<div class="screen">
+
+  <div class="page show" id="pageGlance">
+    <div class="g-left">
+      <div class="orb-wrap">
+        <div class="ring" id="ring" data-anim="normal"></div>
+        <div class="orb-core"></div>
+      </div>
+      <div class="g-textblock">
+        <div class="g-state" id="gState">Ожидание</div>
+        <div class="g-sub" id="gSub"></div>
+        <div class="g-model" id="gModel">...</div>
+        <div class="g-visibility" id="gVisibility" onclick="toggleVisibilityFromGlance()">Open</div>
+      </div>
+    </div>
+    <div class="g-chips">
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-microphone"></span>Микрофон</div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-tts"></span>TTS</div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-memory"></span>Память</div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-vision"></span>Vision</div>
+    </div>
+  </div>
+
+  <div class="page" id="pageActions">
+    <div class="act-btn" id="thinkBtn" onclick="toggleThinking()">
+      <div class="act-label">Мышление</div>
+      <div class="act-sub" id="thinkSub">think: off</div>
+    </div>
+    <div
+      class="act-btn"
+      id="resetBtn"
+      onpointerdown="onResetHoldStart()"
+      onpointerup="onResetHoldEnd()"
+      onpointerleave="onResetHoldEnd()"
+      onpointercancel="onResetHoldEnd()"
+    >
+      <div class="act-hold-fill"></div>
+      <div class="act-label">Сбросить контекст</div>
+      <div class="act-sub" id="resetSub">удержать 1с для подтверждения</div>
+    </div>
+  </div>
+
+  <div class="dots">
+    <button class="page-dot on" onclick="showPage('glance')" aria-label="Glance"></button>
+    <button class="page-dot" onclick="showPage('actions')" aria-label="Actions"></button>
+  </div>
+</div>
+
+<script src="contract.js"></script>
+<script src="touchstrip.js"></script>
+</body>
+</html>

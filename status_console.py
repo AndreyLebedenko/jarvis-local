@@ -56,6 +56,17 @@ card: in v1, Open/Hidden only changes what the Status Console UI itself
 displays - it does not touch audio_in.py/tts.py/Orchestrator, so this
 method needs no engine-side consumer beyond VisibilityModeState itself and
 a SystemEvent for visibility.
+
+task-ui-06 adds TouchstripWindow, a second StatusConsoleWindow pointed at
+status_console_ui/touchstrip.html instead of index.html - same push_*()
+surface (task-ui-06's AC: "Same state contract as desktop Status Console
+is reused"), same StatusConsoleApi instance shared with the desktop
+window (pywebview allows binding the same js_api object to more than one
+window), so toggling Think/visibility mode on either surface is one real
+engine state, not two independently-tracked copies. Stop Condition
+evaluated: pywebview supports creating multiple windows in one process
+before webview.start() runs the GUI loop, so this needed no separate
+process or architecture change.
 """
 
 import asyncio
@@ -81,6 +92,7 @@ from visibility_mode import VisibilityModeState
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
+TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
 
 # Labels/default substatus text for each RuntimeState. Kept here (not in
 # app.js) so a later task can localize or reuse them without touching the
@@ -145,14 +157,36 @@ WindowFactory = Callable[..., WindowLike]
 
 
 class StatusConsoleWindow:
-    """Owns the pywebview window and translates ui_contract.py values into
-    evaluate_js calls against status_console_ui/app.js. window_factory is
-    injectable so tests never need a real pywebview/WebView2 install - see
-    manual_check_status_console.py for the real, hardware-dependent run."""
+    """Owns a pywebview window and translates ui_contract.py values into
+    evaluate_js calls against the matching front-end file (status_console_ui/
+    app.js for the desktop shell, touchstrip.js for TouchstripWindow below -
+    both expose the same apply*() function names, task-ui-06's "same state
+    contract" AC). window_factory is injectable so tests never need a real
+    pywebview/WebView2 install - see manual_check_status_console.py for the
+    real, hardware-dependent run.
 
-    def __init__(self, window_factory: WindowFactory | None = None) -> None:
+    title/url/width/height/min_size/resizable default to the desktop shell's
+    original values; TouchstripWindow below overrides them for a fixed-size,
+    non-resizable ~900x230 window matching a real touch-strip device."""
+
+    def __init__(
+        self,
+        window_factory: WindowFactory | None = None,
+        title: str = "Jarvis - Status Console",
+        url: Path = INDEX_HTML,
+        width: int = 960,
+        height: int = 640,
+        min_size: tuple[int, int] = (480, 420),
+        resizable: bool = True,
+    ) -> None:
         self._window_factory = window_factory or self._default_window_factory
         self._window: WindowLike | None = None
+        self._title = title
+        self._url = url
+        self._width = width
+        self._height = height
+        self._min_size = min_size
+        self._resizable = resizable
 
     @staticmethod
     def _default_window_factory(**kwargs) -> WindowLike:
@@ -162,11 +196,12 @@ class StatusConsoleWindow:
 
     def create(self, js_api: object | None = None) -> WindowLike:
         self._window = self._window_factory(
-            title="Jarvis - Status Console",
-            url=str(INDEX_HTML),
-            width=960,
-            height=640,
-            min_size=(480, 420),
+            title=self._title,
+            url=str(self._url),
+            width=self._width,
+            height=self._height,
+            min_size=self._min_size,
+            resizable=self._resizable,
             js_api=js_api,
         )
         return self._window
@@ -196,6 +231,36 @@ class StatusConsoleWindow:
         if self._window is None:
             raise RuntimeError("create() must be called before pushing state")
         self._window.evaluate_js(f"{js_function}({json.dumps(payload)})")
+
+
+class TouchstripWindow(StatusConsoleWindow):
+    """The touchstrip glance surface (task-ui-06): status_console_ui/
+    touchstrip.html instead of index.html, sized to a real touch-strip
+    device (~900x230, non-resizable - a physical device does not resize).
+    Every push_*() method except push_system_event() is inherited
+    unchanged, because touchstrip.js exposes the same apply*() function
+    names as app.js (task-ui-06's "same state contract" AC) - only the
+    rendering differs. push_system_event() is overridden to fail loudly:
+    Scope explicitly excludes a dense event log from this surface, and
+    touchstrip.js has no appendSystemEvent() to call."""
+
+    def __init__(self, window_factory: WindowFactory | None = None) -> None:
+        super().__init__(
+            window_factory=window_factory,
+            title="Jarvis - Touchstrip",
+            url=TOUCHSTRIP_HTML,
+            width=900,
+            height=230,
+            min_size=(900, 230),
+            resizable=False,
+        )
+
+    def push_system_event(self, event: SystemEvent) -> None:
+        raise NotImplementedError(
+            "TouchstripWindow has no system events panel by design (Scope: "
+            "'No dense event log on touchstrip') - push_system_event() is "
+            "only valid on the desktop StatusConsoleWindow."
+        )
 
 
 class ClearableHistory(Protocol):

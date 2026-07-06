@@ -48,11 +48,13 @@ class _FakeConsole:
         pass
 
 
-async def test_visibility_mode_change_is_pushed_back_to_the_console():
+async def test_visibility_mode_change_is_pushed_back_to_both_windows():
     bus = EventBus()
     console = _FakeConsole()
+    touchstrip = _FakeConsole()
     ctx = DemoContext(
         console=console,
+        touchstrip=touchstrip,
         api=_FakeApi(),
         bus=bus,
         thinking_mode=ThinkingModeState(bus=bus),
@@ -63,26 +65,32 @@ async def test_visibility_mode_change_is_pushed_back_to_the_console():
     try:
         await asyncio.sleep(0.05)  # let it subscribe and do its startup pushes
         console.visibility_calls.clear()  # ignore the initial push_visibility_mode(OPEN)
+        touchstrip.visibility_calls.clear()
 
         await bus.publish(VisibilityModeChanged, VisibilityModeChanged(mode=VisibilityMode.HIDDEN))
         await asyncio.sleep(0.05)
 
         assert console.visibility_calls == [VisibilityMode.HIDDEN]
+        assert touchstrip.visibility_calls == [VisibilityMode.HIDDEN]
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
 
 
-async def test_thinking_mode_toggle_is_pushed_back_to_the_console():
+async def test_thinking_mode_toggle_is_pushed_back_to_both_windows():
     """Same wiring check as above, for the sibling subscription that was
     already correct - regression coverage for both, not just the one the
-    review found missing."""
+    review found missing. Also covers task-ui-06: both windows share one
+    StatusConsoleApi/ThinkingModeState, so a toggle from either surface
+    must reach both."""
     bus = EventBus()
     console = _FakeConsole()
+    touchstrip = _FakeConsole()
     thinking_mode = ThinkingModeState(bus=bus)
     ctx = DemoContext(
         console=console,
+        touchstrip=touchstrip,
         api=_FakeApi(),
         bus=bus,
         thinking_mode=thinking_mode,
@@ -93,11 +101,13 @@ async def test_thinking_mode_toggle_is_pushed_back_to_the_console():
     try:
         await asyncio.sleep(0.05)
         console.thinking_calls.clear()  # ignore the initial push_thinking_mode(False)
+        touchstrip.thinking_calls.clear()
 
         await bus.publish(ThinkingModeToggled, ThinkingModeToggled(is_enabled=True))
         await asyncio.sleep(0.05)
 
         assert console.thinking_calls == [True]
+        assert touchstrip.thinking_calls == [True]
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):

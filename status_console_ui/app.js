@@ -16,12 +16,10 @@
 // actually confirmed. window.pywebview is undefined outside a real
 // pywebview window (e.g. demo.html opened in an ordinary browser), so every
 // call is guarded.
-
-const RUNTIME_STATES = ["idle", "warming", "listening", "thinking", "speaking", "error"];
-const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision"];
-const HEALTH_STATUSES = ["ok", "degraded", "error", "unavailable"];
-const EVENT_LEVELS = ["info", "active", "warn", "error"];
-const VISIBILITY_MODES = ["open", "hidden"];
+//
+// RUNTIME_STATES/MODULE_IDS/HEALTH_STATUSES/EVENT_LEVELS/VISIBILITY_MODES
+// live in contract.js (loaded before this file) - shared with
+// touchstrip.js, see that file's header comment (task-ui-06).
 
 // task-ui-05 (human decision): Hidden only changes what this UI shows - it
 // never touches audio_in.py/tts.py/Orchestrator. The one concrete UI-level
