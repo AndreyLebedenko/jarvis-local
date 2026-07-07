@@ -1,9 +1,9 @@
 # Task: Add pure CI workflow
 
 **Story:** `tasks/story-v1.2.2-project-verification-contract.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.2
-**Depends on:** `tasks/story-v1.2.2-task-1-update-verification-policy.md`
+**Depends on:** `tasks/done/story-v1.2.2-task-1-update-verification-policy.md`
 
 ## Summary
 
@@ -17,13 +17,13 @@ Add GitHub Actions for the pure automated test suite.
 
 ## Acceptance Criteria
 
-- [ ] A GitHub Actions workflow exists for push and pull request checks.
-- [ ] Workflow sets up Python 3.11.
-- [ ] Workflow installs `requirements.txt`.
-- [ ] Workflow runs `python -m pytest`.
-- [ ] Workflow does not start Ollama, download models, access secrets, or run
+- [x] A GitHub Actions workflow exists for push and pull request checks.
+- [x] Workflow sets up Python 3.11.
+- [x] Workflow installs `requirements.txt`.
+- [x] Workflow runs `python -m pytest`.
+- [x] Workflow does not start Ollama, download models, access secrets, or run
       manual check scripts.
-- [ ] Any CI-specific cache is dependency-cache only, not model-cache.
+- [x] Any CI-specific cache is dependency-cache only, not model-cache.
 
 ## Verification
 

@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    # Windows runner: matches the project's only verified target platform.
+    # audio_in.py/capture.py/main.py import sounddevice/mss/keyboard/
+    # pywebview at module scope, and those native libraries are only
+    # confirmed to import cleanly on Windows (see AGENTS.md tooling notes).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run pure automated test suite
+        run: python -m pytest
