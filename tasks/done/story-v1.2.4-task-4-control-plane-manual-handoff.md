@@ -53,6 +53,23 @@ visual/state-cycling checks only (task-ui-02 through task-ui-06) and is
 **not** the target of this handoff; clicking Shutdown there is a guarded
 no-op by design (no `shutdown_event` ever wired into that harness).
 
+**Update (2026-07-07): first real human run of step 1 found and fixed a
+genuine bug**, doing exactly what this handoff was for. The first
+Shutdown click worked correctly (silent, clean teardown, window left
+open but inert as documented) - but looked like nothing had happened, so
+a confused second click hit `StatusConsoleApi`'s now-closed `asyncio`
+loop and crashed pywebview's JS-API dispatch thread with `RuntimeError:
+Event loop is closed`. Fixed: every `StatusConsoleApi` method now treats
+an already-closed loop as a safe no-op (`_loop_is_usable()`), and the
+Shutdown button disables itself immediately on click as a cosmetic
+guard against the confusing repeat click in the first place. Full
+write-up in `PROJECT.md`'s Architecture v1.2.4 section. Regression test:
+`tests/test_status_console.py::
+test_api_methods_are_a_safe_no_op_after_the_loop_has_closed`. Step 1
+below is otherwise unchanged - the human should now see the button go
+disabled right after clicking "Завершить", and a second click (if
+attempted) should now be silently ignored rather than crash.
+
 ### Manual handoff (human-run)
 
 **Command:**

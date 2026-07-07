@@ -475,13 +475,26 @@ class StatusConsoleApi:
     def set_shutdown_event(self, shutdown_event: asyncio.Event) -> None:
         self._shutdown_event = shutdown_event
 
+    def _loop_is_usable(self) -> bool:
+        """False once main.py's run() has torn down its asyncio loop (e.g.
+        after a completed shutdown - see request_shutdown()) - the
+        pywebview window(s) are documented to stay open but inert after
+        that (this class's docstring), so every public method must treat
+        an already-closed loop the same as never having had one at all,
+        rather than crashing inside pywebview's own JS-API dispatch thread
+        (verified live: a second click on an already-shut-down Status
+        Console raised "RuntimeError: Event loop is closed" from
+        call_soon_threadsafe(), because only a None loop was ever
+        guarded against)."""
+        return self._loop is not None and not self._loop.is_closed()
+
     def toggle_thinking(self) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(self._thinking_mode.toggle(), self._loop)
 
     def reset_context(self) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(self._reset_context_async(), self._loop)
 
@@ -497,7 +510,7 @@ class StatusConsoleApi:
         )
 
     def reset_module(self, module_id: str) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         module = ModuleId(module_id)
         asyncio.run_coroutine_threadsafe(self._reset_module_async(module), self._loop)
@@ -523,7 +536,7 @@ class StatusConsoleApi:
 
     def set_visibility_mode(self, mode_value: str) -> None:
         mode = VisibilityMode(mode_value)
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(self._set_visibility_mode_async(mode), self._loop)
 
@@ -558,7 +571,7 @@ class StatusConsoleApi:
         shutdown_event.set) in run()) - this class does no teardown itself,
         it only requests it, so run_until_shutdown() remains the single
         clean-shutdown implementation regardless of which trigger fired it."""
-        if self._loop is None or self._shutdown_event is None:
+        if not self._loop_is_usable() or self._shutdown_event is None:
             return
         asyncio.run_coroutine_threadsafe(self._request_shutdown_async(), self._loop)
 
@@ -574,7 +587,7 @@ class StatusConsoleApi:
         self._shutdown_event.set()
 
     def request_model_options(self) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(self._request_model_options_async(), self._loop)
 
@@ -600,7 +613,7 @@ class StatusConsoleApi:
         )
 
     def request_microphone_options(self) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(
             self._request_microphone_options_async(), self._loop
@@ -633,7 +646,7 @@ class StatusConsoleApi:
         )
 
     def save_config_selection(self, model: str, microphone_device: str) -> None:
-        if self._loop is None:
+        if not self._loop_is_usable():
             return
         asyncio.run_coroutine_threadsafe(
             self._save_config_selection_async(model, microphone_device), self._loop

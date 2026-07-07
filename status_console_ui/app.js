@@ -180,6 +180,17 @@ function hideShutdownConfirm() {
 
 function confirmShutdown() {
   hideShutdownConfirm();
+  // Disabled immediately, not after some confirmation from the engine:
+  // there is no "shutdown complete" push to wait for (see the comment
+  // above), and the window is known to stay open but inert once teardown
+  // finishes (PROJECT.md's Architecture v1.2.4 section) - a confused
+  // repeat click while waiting is a real, observed failure mode (verified
+  // live, 2026-07-07: a second click after the engine had already shut
+  // down crashed pywebview's JS-API dispatch thread before status_
+  // console.py's StatusConsoleApi grew a closed-loop guard). Disabling
+  // the button is a purely cosmetic extra layer on top of that real fix,
+  // not a substitute for it.
+  document.getElementById("btnShutdown").disabled = true;
   const api = _pywebviewApi();
   if (api) api.request_shutdown();
 }

@@ -136,11 +136,20 @@ function onResetHoldEnd() {
 // history, so it deliberately takes longer to trigger by accident.
 const SHUTDOWN_HOLD_MS = 2000;
 let _shutdownHoldTimer = null;
+// Set once the hold actually completes and fires - see confirmShutdown()'s
+// comment in app.js for why: there is no "shutdown complete" push to wait
+// for, the window is known to stay open but inert afterward, and a
+// confused repeat hold is a real, observed failure mode (verified live,
+// 2026-07-07). Purely cosmetic on top of status_console.py's own
+// closed-loop guard, not a substitute for it.
+let _shutdownRequested = false;
 
 function onShutdownHoldStart() {
+  if (_shutdownRequested) return;
   document.getElementById("shutdownBtn").classList.add("holding");
   _shutdownHoldTimer = setTimeout(() => {
     _shutdownHoldTimer = null;
+    _shutdownRequested = true;
     document.getElementById("shutdownBtn").classList.remove("holding");
     const api = _pywebviewApi();
     if (api) api.request_shutdown();

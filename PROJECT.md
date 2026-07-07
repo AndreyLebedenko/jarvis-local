@@ -869,6 +869,38 @@ restart-to-apply):
   confirmation to wait for, unlike every other control here - nothing in
   the running process actually changes until the next start).
 
+**Human manual-testing review of task-1's shutdown control found a real
+bug, fixed (2026-07-07):** clicking the desktop Shutdown control the
+first time worked correctly end to end - engine teardown ran silently
+(no logging inside `run_until_shutdown()`'s cancel/unsubscribe steps by
+design), then `asyncio.run(run())` closed its loop, leaving the
+`pywebview` window open but inert exactly as documented above. From the
+outside this looked like nothing had happened, and the human's follow-up
+second click hit an unguarded case: `StatusConsoleApi._loop` still held a
+reference to the now-closed loop (nothing ever clears it), and every
+public method only ever checked `self._loop is None`, not whether it was
+*closed*. `asyncio.run_coroutine_threadsafe()` on a closed loop raises
+synchronously inside `call_soon_threadsafe()`, crashing pywebview's own
+JS-API dispatch thread with `RuntimeError: Event loop is closed` (visible
+in the terminal) instead of failing safely. Fixed by replacing every
+`if self._loop is None` guard (`toggle_thinking()`, `reset_context()`,
+`reset_module()`, `set_visibility_mode()`, `request_shutdown()`,
+`request_model_options()`, `request_microphone_options()`,
+`save_config_selection()`) with a shared `_loop_is_usable()` check
+(`self._loop is not None and not self._loop.is_closed()`) - any control
+clicked after the engine has already shut down is now a safe no-op
+everywhere, not just for shutdown specifically. As a cosmetic layer on
+top (not a substitute for the real fix above), `confirmShutdown()`
+(app.js) disables the desktop Shutdown button immediately on click, and
+`onShutdownHoldStart()` (touchstrip.js) ignores further holds via a
+`_shutdownRequested` flag, since there is no "shutdown complete" event to
+drive a real state change and a confused repeat click/hold is a real,
+observed failure mode. Regression test:
+`tests/test_status_console.py::
+test_api_methods_are_a_safe_no_op_after_the_loop_has_closed` (confirmed
+failing against the pre-fix guard, reproducing the exact live traceback,
+before passing against the fix).
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
