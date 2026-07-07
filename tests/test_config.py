@@ -18,14 +18,23 @@ from conftest import assert_stdlib_only_imports
 EXAMPLE_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.example.toml"
 
 
-def test_example_config_round_trips_without_error():
-    settings = load_settings(EXAMPLE_CONFIG_PATH)
+def _no_ui_layer(tmp_path) -> Path:
+    """A ui_path guaranteed not to exist - config.example.toml's own
+    directory is the real repo root, where a real config.ui.toml can
+    legitimately exist after following a manual handoff (e.g.
+    story-v1.2.4-task-4's), so tests asserting pure defaults must not
+    rely on load_settings()'s own default ui_path resolution here."""
+    return tmp_path / "no-such-config.ui.toml"
+
+
+def test_example_config_round_trips_without_error(tmp_path):
+    settings = load_settings(EXAMPLE_CONFIG_PATH, ui_path=_no_ui_layer(tmp_path))
 
     assert isinstance(settings, Settings)
 
 
-def test_example_config_matches_documented_defaults():
-    settings = load_settings(EXAMPLE_CONFIG_PATH)
+def test_example_config_matches_documented_defaults(tmp_path):
+    settings = load_settings(EXAMPLE_CONFIG_PATH, ui_path=_no_ui_layer(tmp_path))
 
     assert settings == Settings()
 
@@ -297,6 +306,38 @@ def test_sound_cues_thinking_on_and_thinking_off_default_when_section_omitted(tm
 
 # --- story-v1.2.4-task-2: config layering (defaults < config.toml <
 # config.ui.toml) ------------------------------------------------------------
+
+
+def test_default_ui_path_sits_next_to_the_given_base_path(tmp_path, monkeypatch):
+    """Regression: the default ui_path used to be an independently
+    cwd-relative constant (Path("config.ui.toml")), so a real
+    config.ui.toml sitting in the process's actual working directory
+    would silently apply to every load_settings(some_other_dir/config.
+    toml) call, even though it has nothing to do with that other
+    directory - exactly the risk a manual QA pass leaving a real
+    config.ui.toml in the repo root would create for any test not
+    explicitly passing ui_path. Proves the fix: the default is derived
+    from `path`'s own directory, not the cwd. monkeypatch.chdir() to a
+    directory with its own decoy config.ui.toml, distinct from tmp_path,
+    to make sure cwd is never consulted at all."""
+    decoy_cwd = tmp_path / "unrelated-cwd"
+    decoy_cwd.mkdir()
+    (decoy_cwd / "config.ui.toml").write_text(
+        '[backend]\nmodel = "decoy-from-cwd"\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(decoy_cwd)
+
+    real_dir = tmp_path / "real-config-dir"
+    real_dir.mkdir()
+    config_path = real_dir / "config.toml"
+    config_path.write_text('[backend]\nmodel = "base-model"\n', encoding="utf-8")
+    (real_dir / "config.ui.toml").write_text(
+        '[backend]\nmodel = "ui-model-next-to-base"\n', encoding="utf-8"
+    )
+
+    settings = load_settings(config_path)  # no ui_path given
+
+    assert settings.backend.model == "ui-model-next-to-base"
 
 
 def test_missing_ui_config_file_is_compatible_with_existing_behavior(tmp_path):

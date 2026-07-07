@@ -86,6 +86,20 @@ deferred no-echo-cancellation/self-hearing gap (Roadmap item 7,
 `tasks/bug_reports/thinking-mode-mic-window-before-autopause.md`), not
 changed here.
 
+**Code-review findings (2026-07-07), same session, both fixed before
+push:** (1) `load_settings()`'s default `ui_path` was cwd-relative and
+independent of `path`, so a real `config.ui.toml` left in the repo root
+by this handoff's own step 7 could silently leak into any test or caller
+loading a base config from elsewhere without explicitly passing
+`ui_path` - fixed to default alongside `path`'s own directory instead.
+(2) The config menu's "Применить" button had no guard against being
+clicked before its dropdowns actually loaded, which could save an empty
+`backend.model` and break the next restart - fixed with a front-end gate
+(disabled until both selectors load, visibly styled, re-armed on every
+reopen) plus a Python-side backstop rejecting an empty model. Full
+write-up and regression tests: `PROJECT.md`'s Architecture v1.2.4
+section.
+
 ### Manual handoff (human-run)
 
 **Command:**

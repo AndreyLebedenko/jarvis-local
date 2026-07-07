@@ -814,6 +814,27 @@ Task-2 landed the configuration layering contract - `config.py`'s
   `tests/test_config.py` against the already-existing `backend.model`/
   `backend.num_ctx` fields.
 
+**Code-review finding, fixed:** `load_settings()`'s `ui_path` originally
+defaulted to the independently cwd-relative `DEFAULT_UI_CONFIG_PATH`
+constant, not anything derived from `path`. A test (or any caller)
+loading a base config from one directory while a real `config.ui.toml`
+happened to sit in the process's actual working directory - exactly the
+state the repo root is left in after following story-v1.2.4-task-4's
+manual handoff - would silently pick up that unrelated file instead of
+getting pure defaults. Fixed: `ui_path` now defaults to
+`path.with_name("config.ui.toml")` (same directory as `path`, not the
+cwd); production's real zero-argument call (`load_settings()`) is
+unaffected, since `DEFAULT_CONFIG_PATH.with_name(...)` resolves to the
+exact same path as the old constant did. The two tests loading
+`config.example.toml` (whose own directory *is* the real repo root) now
+explicitly pass a guaranteed-nonexistent `ui_path`, since no directory-
+relative trick can isolate them from a real file that could legitimately
+exist right next to that particular path. Regression test:
+`tests/test_config.py::test_default_ui_path_sits_next_to_the_given_base_path`
+(monkeypatches `cwd` to a decoy directory with its own `config.ui.toml`
+to prove cwd is never consulted at all; confirmed failing against the
+old default, passing against the fix).
+
 Task-3 landed the configuration menu itself (model + microphone,
 restart-to-apply):
 
@@ -868,6 +889,29 @@ restart-to-apply):
   shows an amber pending-restart banner immediately (no engine
   confirmation to wait for, unlike every other control here - nothing in
   the running process actually changes until the next start).
+
+**Code-review finding, fixed:** both `<select>`s start empty (no
+`<option>`s) until `request_model_options()`/
+`request_microphone_options()` resolve, and "Применить" had no guard
+against being clicked before then - doing so read `modelSelect.value` as
+`""` and saved an empty `backend.model` into `config.ui.toml`, breaking
+the next restart. Fixed on both sides: `app.js`'s `#btnConfigApply`
+starts `disabled` in markup and only re-enables once both selectors have
+actually loaded real options since the panel was last opened (re-armed
+to disabled on every open, not just the first, since a fast reopen-then-
+click could otherwise race a fresh refetch); `style.css` gives the
+disabled state a visibly distinct look (dimmed, `cursor: not-allowed`) -
+a technically-inert button that looks identical to an enabled one gives
+no signal why clicking does nothing. `status_console.py`'s
+`_save_config_selection_async()` also rejects an empty/blank model as a
+Python-side backstop independent of the front-end guard (publishes a
+WARN `SystemEvent`, does not write); an empty microphone device is left
+unguarded, since `""` is `MicrophoneSettings.device`'s own legitimate
+"system default" sentinel, never invalid. Regression tests:
+`tests/test_status_console.py::test_save_config_selection_rejects_an_empty_model`,
+`::test_save_config_selection_allows_an_empty_microphone_device`, plus
+structural checks that the button starts disabled and only re-enables
+once both selectors report loaded.
 
 **Human manual-testing review of task-1's shutdown control found a real
 bug, fixed (2026-07-07):** clicking the desktop Shutdown control the

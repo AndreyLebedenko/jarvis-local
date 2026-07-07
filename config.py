@@ -216,10 +216,21 @@ def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
 
 def load_settings(
     path: str | Path = DEFAULT_CONFIG_PATH,
-    ui_path: str | Path = DEFAULT_UI_CONFIG_PATH,
+    ui_path: str | Path | None = None,
 ) -> Settings:
+    """ui_path defaults to sitting next to `path` (same directory,
+    `config.ui.toml`), not an independently cwd-relative constant -
+    otherwise a caller loading a base config from some other directory
+    (a test's tmp_path, or config.example.toml's real repo-root location)
+    would silently pick up an unrelated config.ui.toml from the process's
+    actual cwd instead of the one that actually belongs next to `path`.
+    Pass ui_path explicitly to point at a specific file regardless of
+    where `path` lives (e.g. to prove one truly does not exist)."""
     path = Path(path)
-    ui_path = Path(ui_path)
+    if ui_path is None:
+        ui_path = path.with_name(DEFAULT_UI_CONFIG_PATH.name)
+    else:
+        ui_path = Path(ui_path)
 
     base_raw = _read_toml_file(path)
     _validate_raw_config(base_raw, path)

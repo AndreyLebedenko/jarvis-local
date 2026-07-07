@@ -659,7 +659,26 @@ class StatusConsoleApi:
         this does not change anything about the currently running process
         - the new values take effect only the next time load_settings()
         runs (main.py's next startup), which is exactly what the
-        UiConfigSaved-driven pending-restart indicator communicates."""
+        UiConfigSaved-driven pending-restart indicator communicates.
+
+        Rejects an empty model (Python-side backstop, not just app.js's
+        own disabled-until-loaded guard on the "Применить" button - a
+        real live-session bug had the button clickable before either
+        <select> received real options, saving an empty backend.model
+        that broke the next startup). microphone_device has no such
+        guard: "" is the legitimate "system default device" sentinel
+        (MicrophoneSettings.device's own default), never invalid."""
+        if not model.strip():
+            self._logger.warning("Ignoring config menu save with an empty model")
+            await publish_system_event(
+                self._bus,
+                self._logger,
+                source="ENGINE",
+                level=EventLevel.WARN,
+                log_message="Config menu save rejected: model was empty",
+                ui_message="Сохранение отменено: модель не выбрана",
+            )
+            return
         write_ui_config(self._ui_config_path, model=model, microphone_device=microphone_device)
         await publish_system_event(
             self._bus,

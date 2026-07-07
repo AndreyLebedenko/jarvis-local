@@ -229,11 +229,32 @@ function setVisibilityMode(modeValue) {
 // wait for, since nothing changes in the running process at all until the
 // next start; applyPendingRestart() is shown immediately after a
 // successful save, not deferred to any engine event).
+// Regression guard (2026-07-07, real live-session bug): both <select>s
+// start empty (no <option>s) until request_model_options()/
+// request_microphone_options() resolve - a click on "Применить" before
+// then read modelSelect.value as "" and saved an empty model into
+// config.ui.toml, breaking the next restart. btnConfigApply now starts
+// disabled (see index.html) and only re-enables once both selectors have
+// actually received real options at least once since the panel was last
+// opened - re-armed to disabled on every open, not just the first,
+// since a fast reopen-then-click could otherwise race a fresh refetch
+// the same way.
+let _modelOptionsLoaded = false;
+let _microphoneOptionsLoaded = false;
+
+function _updateApplyButtonEnabled() {
+  document.getElementById("btnConfigApply").disabled =
+    !(_modelOptionsLoaded && _microphoneOptionsLoaded);
+}
+
 function toggleConfigMenu() {
   const panel = document.getElementById("configPanel");
   const opening = !panel.classList.contains("show");
   panel.classList.toggle("show");
   if (!opening) return;
+  _modelOptionsLoaded = false;
+  _microphoneOptionsLoaded = false;
+  _updateApplyButtonEnabled();
   const api = _pywebviewApi();
   if (api) {
     api.request_model_options();
@@ -254,10 +275,14 @@ function _renderOptions(select, options, current) {
 
 function applyModelOptions(payload) {
   _renderOptions(document.getElementById("modelSelect"), payload.options, payload.current);
+  _modelOptionsLoaded = true;
+  _updateApplyButtonEnabled();
 }
 
 function applyMicrophoneOptions(payload) {
   _renderOptions(document.getElementById("micSelect"), payload.options, payload.current);
+  _microphoneOptionsLoaded = true;
+  _updateApplyButtonEnabled();
 }
 
 function applyPendingRestart(payload) {
