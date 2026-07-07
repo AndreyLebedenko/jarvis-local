@@ -1,5 +1,11 @@
 httpx>=0.28
-torch>=2.8
+# torchaudio>=2.9 drops its built-in wav decoder in favor of the separate
+# torchcodec package - silero-vad's read_audio() (test fixture loading only)
+# then fails with "torchcodec is required". Capped below 2.9 to keep the
+# decoder torchaudio.load() already works with, matching the torch version
+# verified in PROJECT.md's day-0 environment.
+torch>=2.8,<2.9
+torchaudio>=2.8,<2.9
 silero-vad>=6.2
 soundfile>=0.14
 sounddevice>=0.5
