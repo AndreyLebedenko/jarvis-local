@@ -907,6 +907,37 @@ async def test_wire_with_live_status_console_reports_thinking_before_accepted_tu
     assert console.runtime_states == [(RuntimeState.THINKING, "Обрабатываю голос...")]
 
 
+async def test_wire_pushes_listening_state_after_response_complete():
+    """Regression for a real live-session bug (2026-07-07): RuntimeState
+    stayed stuck on SPEAKING ("Отвечаю") forever after the very first
+    turn - nothing ever pushed the orb back to LISTENING once
+    ResponseComplete fired, even though the engine kept handling later
+    turns correctly in the background (sound_cues' own "listening" cue
+    already played correctly every turn in _on_full_response_complete();
+    only the Status Console's own runtime-state push was missing). The
+    SPEAKING push itself is registered by wire_status_console(), not
+    wire() (this fix's home) - both run together in main.py's real run(),
+    so this test only needs to prove wire()'s own ResponseComplete
+    handler pushes LISTENING, independent of that other wiring."""
+    settings = Settings(vad=VadSettings(request_end_pause_seconds=0.001))
+    app = build_app(
+        settings,
+        backend=_FakeBackend(),
+        audio_input=_FakeAudioInputForEcho(),
+        tts_output=_FakeTtsOutput(),
+        capture_input=_FakeCaptureInput(),
+    )
+    console = _FakeStatusSurface()
+    live_console = create_live_status_console(app, console=console, include_touchstrip=False)
+    wire(app, live_console)
+
+    await app.bus.publish(
+        ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
+    )
+
+    assert console.runtime_states == [(RuntimeState.LISTENING, "Готов слушать")]
+
+
 def test_parse_args_enables_status_console_without_touchstrip():
     args = parse_args(["--status-console", "--no-touchstrip"])
 
