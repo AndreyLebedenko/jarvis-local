@@ -1,6 +1,6 @@
 # Task: Update project verification policy
 
-**Story:** `tasks/story-v1.2.2-project-verification-contract.md`
+**Story:** `tasks/done/story-v1.2.2-project-verification-contract.md`
 **Status:** Completed.
 **Release:** v1.2.2
 

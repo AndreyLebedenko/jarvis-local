@@ -1,6 +1,6 @@
 # Task: Document CI and manual check boundary
 
-**Story:** `tasks/story-v1.2.2-project-verification-contract.md`
+**Story:** `tasks/done/story-v1.2.2-project-verification-contract.md`
 **Status:** Completed.
 **Release:** v1.2.2
 **Depends on:** `tasks/done/story-v1.2.2-task-2-add-pure-ci-workflow.md`

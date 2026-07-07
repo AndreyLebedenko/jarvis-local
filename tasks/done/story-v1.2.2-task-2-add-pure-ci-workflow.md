@@ -1,6 +1,6 @@
 # Task: Add pure CI workflow
 
-**Story:** `tasks/story-v1.2.2-project-verification-contract.md`
+**Story:** `tasks/done/story-v1.2.2-project-verification-contract.md`
 **Status:** Completed.
 **Release:** v1.2.2
 **Depends on:** `tasks/done/story-v1.2.2-task-1-update-verification-policy.md`
