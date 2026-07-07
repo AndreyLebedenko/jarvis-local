@@ -7,6 +7,10 @@ local Ollama endpoint; backend/model installation and non-local providers are
 outside Jarvis core guarantees. This file is the single source of truth for
 architectural decisions; update it when a decision changes.
 
+Long-term product direction lives in [VISION.md](VISION.md). `PROJECT.md`
+records verified facts and current architecture; `VISION.md` records where the
+system is intended to grow.
+
 ## Verified facts (day-0 experiments, July 2026 — do not re-litigate)
 
 - Backend: **Ollama**, model **`gemma4:12b-it-qat`** (Gemma 4 12B, encoder-free
