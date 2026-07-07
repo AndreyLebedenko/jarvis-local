@@ -233,6 +233,20 @@ body {
 }
 .confirm-row button.danger { background: var(--red); border-color: var(--red); color: #1a0d0d; }
 
+/* story-v1.2.4-task-1: guarded Shutdown control. Deliberately red, not
+   amber like the reset button above - stopping the whole running engine
+   is a strictly bigger action than clearing conversation history, and
+   amber is already reserved for warning/cloud/warmup-adjacent states
+   project-wide (see PROJECT.md), so red keeps this visually the most
+   severe control on the page. */
+.shutdown-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.btn-shutdown {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
+  padding: 9px 20px; border-radius: 8px; border: 1px solid var(--red-dim);
+  background: var(--red-tint); color: var(--red); cursor: pointer; transition: all 0.15s;
+}
+.btn-shutdown:hover { filter: brightness(1.1); }
+
 /* ===== LOG PANEL (reserved, task-ui-03 wires the real feed) ===== */
 .logpanel {
   grid-area: log;

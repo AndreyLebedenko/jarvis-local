@@ -127,6 +127,34 @@ function onResetHoldEnd() {
   }
 }
 
+// story-v1.2.4-task-1: guarded Shutdown control. Same hold-to-confirm
+// pattern as context reset above (a modal confirm dialog would be too
+// much chrome on this narrow glance surface - see the reset comment), but
+// held twice as long (SHUTDOWN_HOLD_MS): stopping the whole running
+// engine from a compact touch surface meant to sit in reach in a room is
+// a strictly bigger, easier-to-regret action than clearing conversation
+// history, so it deliberately takes longer to trigger by accident.
+const SHUTDOWN_HOLD_MS = 2000;
+let _shutdownHoldTimer = null;
+
+function onShutdownHoldStart() {
+  document.getElementById("shutdownBtn").classList.add("holding");
+  _shutdownHoldTimer = setTimeout(() => {
+    _shutdownHoldTimer = null;
+    document.getElementById("shutdownBtn").classList.remove("holding");
+    const api = _pywebviewApi();
+    if (api) api.request_shutdown();
+  }, SHUTDOWN_HOLD_MS);
+}
+
+function onShutdownHoldEnd() {
+  document.getElementById("shutdownBtn").classList.remove("holding");
+  if (_shutdownHoldTimer !== null) {
+    clearTimeout(_shutdownHoldTimer);
+    _shutdownHoldTimer = null;
+  }
+}
+
 function showPage(page) {
   document.documentElement.setAttribute("data-page", page);
   document.getElementById("pageGlance").classList.toggle("show", page === "glance");

@@ -67,6 +67,17 @@ engine state, not two independently-tracked copies. Stop Condition
 evaluated: pywebview supports creating multiple windows in one process
 before webview.start() runs the GUI loop, so this needed no separate
 process or architecture change.
+
+story-v1.2.4-task-1 adds request_shutdown(), routed through the exact
+same shutdown_event that main.py's shutdown hotkey already sets (Boundary:
+"Shutdown must use the same clean path as the existing shutdown hotkey") -
+this class never cancels tasks or unsubscribes handlers itself; it only
+sets the event that run_until_shutdown() already waits on, so there is
+exactly one clean-shutdown implementation, not a second one reachable only
+from the UI. shutdown_event is optional at construction and settable later
+via set_shutdown_event(), the same chicken-and-egg ordering as set_loop()
+(this object is created before main.py's run() creates its real
+asyncio.Event()).
 """
 
 import asyncio
@@ -316,6 +327,7 @@ class StatusConsoleApi:
         logger: logging.Logger,
         visibility_mode: VisibilityModeState | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
+        shutdown_event: asyncio.Event | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -323,9 +335,13 @@ class StatusConsoleApi:
         self._bus = bus
         self._logger = logger
         self._visibility_mode = visibility_mode or VisibilityModeState(bus)
+        self._shutdown_event = shutdown_event
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
+
+    def set_shutdown_event(self, shutdown_event: asyncio.Event) -> None:
+        self._shutdown_event = shutdown_event
 
     def toggle_thinking(self) -> None:
         if self._loop is None:
@@ -400,3 +416,27 @@ class StatusConsoleApi:
                 else "Режим Open восстановлен"
             ),
         )
+
+    def request_shutdown(self) -> None:
+        """Guarded by the front-end's own confirm-before-destructive-action
+        step (showShutdownConfirm()/confirmShutdown() in app.js, hold-to-
+        confirm in touchstrip.js) - by the time this fires, the user has
+        already deliberately confirmed. Sets the same shutdown_event
+        main.py's shutdown hotkey sets (loop.call_soon_threadsafe(
+        shutdown_event.set) in run()) - this class does no teardown itself,
+        it only requests it, so run_until_shutdown() remains the single
+        clean-shutdown implementation regardless of which trigger fired it."""
+        if self._loop is None or self._shutdown_event is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._request_shutdown_async(), self._loop)
+
+    async def _request_shutdown_async(self) -> None:
+        await publish_system_event(
+            self._bus,
+            self._logger,
+            source="ENGINE",
+            level=EventLevel.INFO,
+            log_message="Shutdown requested via Status Console",
+            ui_message="Запрошено завершение работы Jarvis",
+        )
+        self._shutdown_event.set()

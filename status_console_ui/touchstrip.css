@@ -31,6 +31,7 @@
   --amber-warm-tint: rgba(232, 133, 63, 0.1);
   --red: #E85B5B;
   --red-dim: #7A2E2E;
+  --red-tint: rgba(232, 91, 91, 0.1);
   --gray: #6B7684;
 }
 
@@ -133,6 +134,20 @@ html[data-visibility="hidden"] .g-visibility { background: var(--violet-tint); c
 }
 #resetBtn { position: relative; overflow: hidden; }
 #resetBtn.holding .act-hold-fill { transition: transform 1s linear; transform: scaleX(1); }
+
+/* story-v1.2.4-task-1: guarded Shutdown control - red, not amber, matching
+   style.css's .btn-shutdown reasoning (stopping the whole engine is a
+   strictly bigger action than a context reset, so it gets the most
+   severe color on this surface). */
+#shutdownBtn { border-color: var(--red-dim); }
+#shutdownBtn .act-label { color: var(--red); }
+#shutdownBtn .act-hold-fill {
+  position: absolute; inset: 0; border-radius: inherit;
+  background: var(--red-tint); transform-origin: left; transform: scaleX(0);
+  pointer-events: none;
+}
+#shutdownBtn { position: relative; overflow: hidden; }
+#shutdownBtn.holding .act-hold-fill { transition: transform 2s linear; transform: scaleX(1); }
 
 /* Paging dots - deliberately large tap targets (each dot is 8px, but the
    button padding brings the real hit area to ~32px, per the AC "touch
