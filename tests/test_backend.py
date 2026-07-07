@@ -196,3 +196,48 @@ async def test_thinking_only_stream_publishes_no_response_token():
     await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
 
     assert received == []
+
+
+async def test_stream_ending_without_done_still_publishes_response_complete():
+    """Regression test: if Ollama's connection closes/ends the stream
+    without ever sending a `done: true` chunk, chat() must still publish
+    ResponseComplete - otherwise Orchestrator.finish_turn() (subscribed to
+    ResponseComplete, see main.py) never runs and _busy stays True forever,
+    permanently ignoring every later utterance/clipboard turn as "previous
+    request still in flight"."""
+    bus = EventBus()
+    received = []
+
+    async def on_complete(event: ResponseComplete) -> None:
+        received.append(event)
+
+    bus.subscribe(ResponseComplete, on_complete)
+
+    lines = [
+        {"message": {"content": "Hello"}, "done": False},
+        {"message": {"content": " world"}, "done": False},
+    ]
+    backend = OllamaBackend(
+        bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
+    )
+    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert received == [ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0))]
+
+
+async def test_stream_ending_without_done_still_republishes_seen_tokens():
+    bus = EventBus()
+    received = []
+
+    async def on_token(token: ResponseToken) -> None:
+        received.append(token.text)
+
+    bus.subscribe(ResponseToken, on_token)
+
+    lines = [{"message": {"content": "Hello"}, "done": False}]
+    backend = OllamaBackend(
+        bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
+    )
+    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert received == ["Hello"]
