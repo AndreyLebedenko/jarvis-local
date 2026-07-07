@@ -135,11 +135,17 @@ This repository was built with an agent-assisted workflow: project facts were re
 
 ## Tests
 
-Automated tests cover pure logic only. Hardware-dependent checks for microphone, speakers, global hotkeys, screenshots, VRAM, and a live Ollama endpoint are manual by project policy.
+Automated tests cover pure logic only: event bus behavior, sentence buffering, request payload construction, VAD chunking on prerecorded wav fixtures, config parsing, and similar. Run them locally with:
 
 ```bash
 python -m pytest
 ```
+
+The same command runs in GitHub Actions (`.github/workflows/ci.yml`) on push and pull request: install `requirements.txt`, then `python -m pytest`. CI does not start Ollama, download models, touch secrets, or exercise hardware.
+
+Hardware-dependent and live checks stay human-run manual handoffs, never CI jobs: microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView visual review, and the live Ollama endpoint. Use the `manual_check_*.py` scripts (`manual_check_audio_in.py`, `manual_check_backend.py`, `manual_check_capture.py`, `manual_check_status_console.py`, `manual_check_thinking_mode.py`, `manual_check_tts.py`) and `day0_checks.py` for those.
+
+A green CI run only proves the pure suite passes on a clean dependency install. It does not prove the running app stays free of network calls at run time - that is an architecture/code-review guarantee (see `PROJECT.md`), not something the pytest suite measures.
 
 ## Licensing
 

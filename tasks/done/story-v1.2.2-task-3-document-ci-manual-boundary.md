@@ -1,9 +1,9 @@
 # Task: Document CI and manual check boundary
 
 **Story:** `tasks/story-v1.2.2-project-verification-contract.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.2
-**Depends on:** `tasks/story-v1.2.2-task-2-add-pure-ci-workflow.md`
+**Depends on:** `tasks/done/story-v1.2.2-task-2-add-pure-ci-workflow.md`
 
 ## Summary
 
@@ -18,11 +18,11 @@ handoffs.
 
 ## Acceptance Criteria
 
-- [ ] README or project docs list CI-covered pure checks.
-- [ ] Docs list hardware/manual checks excluded from CI.
-- [ ] Docs point to the existing manual check scripts where appropriate.
-- [ ] Docs keep `python -m pytest` as the local automated test command.
-- [ ] Docs explain that CI does not prove untested runtime network absence.
+- [x] README or project docs list CI-covered pure checks.
+- [x] Docs list hardware/manual checks excluded from CI.
+- [x] Docs point to the existing manual check scripts where appropriate.
+- [x] Docs keep `python -m pytest` as the local automated test command.
+- [x] Docs explain that CI does not prove untested runtime network absence.
 
 ## Verification
 

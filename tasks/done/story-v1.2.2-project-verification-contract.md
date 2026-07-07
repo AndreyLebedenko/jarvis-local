@@ -1,6 +1,6 @@
 ﻿# Story v1.2.2: Project verification contract
 
-**Status:** Backlog.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.2
 
@@ -23,13 +23,13 @@ services.
 
 ## Acceptance Criteria
 
-- [ ] `AGENTS.md` no longer forbids CI categorically and instead separates
+- [x] `AGENTS.md` no longer forbids CI categorically and instead separates
       runtime locality from pure CI verification.
-- [ ] `PROJECT.md` records the same decision as an architectural project fact.
-- [ ] GitHub Actions runs the pure automated suite with `python -m pytest`.
-- [ ] CI documentation states which checks are deliberately excluded and why.
-- [ ] Hardware/manual check scripts remain human handoffs, not CI jobs.
-- [ ] No runtime network dependency is introduced.
+- [x] `PROJECT.md` records the same decision as an architectural project fact.
+- [x] GitHub Actions runs the pure automated suite with `python -m pytest`.
+- [x] CI documentation states which checks are deliberately excluded and why.
+- [x] Hardware/manual check scripts remain human handoffs, not CI jobs.
+- [x] No runtime network dependency is introduced.
 
 ## Task Card Sequence
 

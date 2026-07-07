@@ -136,11 +136,17 @@ python main.py --status-console --no-touchstrip
 
 ## Тесты
 
-Автоматические тесты покрывают только чистую логику. Проверки микрофона, колонок, глобальных hotkeys, screenshots, VRAM и live Ollama endpoint по проектной политике выполняются вручную.
+Автоматические тесты покрывают только чистую логику: поведение шины событий, буферизация предложений, построение запросов, VAD-нарезка на записанных wav-фикстурах, парсинг конфига и подобное. Запуск локально:
 
 ```bash
 python -m pytest
 ```
+
+Та же команда выполняется в GitHub Actions (`.github/workflows/ci.yml`) при push и pull request: установка `requirements.txt`, затем `python -m pytest`. CI не запускает Ollama, не скачивает модели, не трогает секреты и не задействует железо.
+
+Проверки, зависящие от железа и live-сервисов, остаются ручными и никогда не становятся CI-джобами: микрофон, колонки, глобальные hotkeys, screen capture, GPU/VRAM, визуальный обзор WebView и live Ollama endpoint. Для них используются скрипты `manual_check_*.py` (`manual_check_audio_in.py`, `manual_check_backend.py`, `manual_check_capture.py`, `manual_check_status_console.py`, `manual_check_thinking_mode.py`, `manual_check_tts.py`) и `day0_checks.py`.
+
+Зелёный прогон CI доказывает только то, что чистый набор тестов проходит при чистой установке зависимостей. Он не доказывает, что работающее приложение свободно от сетевых вызовов во время выполнения - это архитектурная гарантия, проверяемая код-ревью (см. `PROJECT.md`), а не то, что измеряет набор pytest.
 
 ## Лицензирование
 
