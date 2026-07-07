@@ -69,3 +69,10 @@ missing-ui-file compatibility, ui-overrides-base for the same key, per-key
 and unknown-section/unknown-key/malformed-TOML/wrong-type `ConfigError`
 cases for `config.ui.toml` specifically. `python -m pytest` passes
 (280 passed).
+
+**Code-review update (2026-07-07):** `ui_path`'s default was cwd-relative
+and independent of `path`, so a real `config.ui.toml` in the process's
+cwd (e.g. left behind after task-4's manual handoff) could silently leak
+into any `load_settings(path)` call that omitted `ui_path`. Fixed:
+default is now `path.with_name("config.ui.toml")` - see `PROJECT.md`'s
+Architecture v1.2.4 section for the full write-up and regression test.

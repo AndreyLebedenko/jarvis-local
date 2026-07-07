@@ -560,7 +560,14 @@ def test_index_html_has_a_real_think_toggle_not_a_disabled_placeholder():
     assert 'id="thinkSwitch"' in html
     assert "task-ui-04" not in html
     assert "placeholder-switch" not in html
-    assert "disabled" not in html
+    # Scoped to the think-card block, not the whole page: story-v1.2.4-
+    # task-3's Apply button is legitimately disabled elsewhere until its
+    # dropdowns actually load (a real fix, not a placeholder leftover) -
+    # a blanket "disabled" not in html check would misfire on that.
+    think_card_start = html.index('<div class="think-card">')
+    think_card_end = html.index("</div>", html.index("</div>", think_card_start) + 1)
+    think_card_html = html[think_card_start:think_card_end]
+    assert "disabled" not in think_card_html
 
 
 def test_index_html_has_a_reset_button_for_every_module():
@@ -815,6 +822,81 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
     assert base_config_path.read_text(encoding="utf-8") == '[backend]\nmodel = "do-not-touch"\n'
     assert len(saved_events) == 1
     assert len(system_events) == 1
+
+
+@pytest.mark.parametrize("empty_model", ["", "   "])
+async def test_save_config_selection_rejects_an_empty_model(tmp_path, empty_model):
+    """Regression for a real live-session bug (2026-07-07): app.js's
+    "Применить" button used to be clickable before either <select> ever
+    received real options, reading modelSelect.value as "" and saving an
+    empty backend.model that broke the next startup. app.js now disables
+    the button until both selectors load (front-end guard); this is the
+    Python-side backstop for any other caller that might not respect it -
+    an empty model must never reach write_ui_config()."""
+    bus = EventBus()
+    saved_events: list[UiConfigSaved] = []
+    system_events: list[SystemEvent] = []
+
+    async def on_saved(event: UiConfigSaved) -> None:
+        saved_events.append(event)
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    bus.subscribe(UiConfigSaved, on_saved)
+    bus.subscribe(SystemEvent, on_system_event)
+
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+
+    api.save_config_selection(empty_model, "USB Headset")
+    await asyncio.sleep(0.05)
+
+    assert not ui_config_path.exists()
+    assert saved_events == []
+    assert len(system_events) == 1
+    assert system_events[0].level is EventLevel.WARN
+
+
+async def test_save_config_selection_allows_an_empty_microphone_device(tmp_path):
+    """"" is the legitimate system-default sentinel for microphone
+    (MicrophoneSettings.device's own default) - only an empty model is
+    ever rejected."""
+    bus = EventBus()
+    saved_events: list[UiConfigSaved] = []
+    system_events: list[SystemEvent] = []
+
+    async def on_saved(event: UiConfigSaved) -> None:
+        saved_events.append(event)
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    bus.subscribe(UiConfigSaved, on_saved)
+    bus.subscribe(SystemEvent, on_system_event)
+
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+
+    api.save_config_selection("some-model", "")
+    await asyncio.sleep(0.05)
+
+    assert ui_config_path.exists()
+    assert len(saved_events) == 1
     assert system_events[0].level is EventLevel.INFO
 
 
@@ -854,6 +936,42 @@ def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
     assert "if (!opening) return;" in body
     assert "request_model_options" in body
     assert "request_microphone_options" in body
+    # Regression (2026-07-07): must re-arm the Apply button to disabled
+    # on every open, not just leave whatever loaded state survived from
+    # before - otherwise a fast reopen-then-click could apply stale/
+    # not-yet-refreshed selections as if they were current.
+    assert "_modelOptionsLoaded = false;" in body
+    assert "_microphoneOptionsLoaded = false;" in body
+
+
+def test_index_html_config_apply_button_starts_disabled():
+    """Regression for a real live-session bug (2026-07-07): the Apply
+    button used to be clickable immediately, before either <select> ever
+    received real options - clicking it then saved an empty
+    backend.model. Must start disabled in markup, not rely solely on JS
+    running first."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    apply_button_start = html.index('id="btnConfigApply"')
+    apply_button_tag = html[html.rindex("<button", 0, apply_button_start) : html.index(">", apply_button_start)]
+    assert "disabled" in apply_button_tag
+
+
+def test_app_js_only_enables_apply_once_both_selectors_have_loaded():
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    update_fn_start = js.index("function _updateApplyButtonEnabled")
+    update_fn_end = js.index("\n}\n", update_fn_start)
+    update_body = js[update_fn_start:update_fn_end]
+    assert "_modelOptionsLoaded && _microphoneOptionsLoaded" in update_body
+
+    model_fn_start = js.index("function applyModelOptions")
+    model_fn_end = js.index("\n}\n", model_fn_start)
+    assert "_modelOptionsLoaded = true;" in js[model_fn_start:model_fn_end]
+
+    mic_fn_start = js.index("function applyMicrophoneOptions")
+    mic_fn_end = js.index("\n}\n", mic_fn_start)
+    assert "_microphoneOptionsLoaded = true;" in js[mic_fn_start:mic_fn_end]
 
 
 def test_style_css_config_menu_uses_cyan_not_amber_or_red():
@@ -869,6 +987,18 @@ def test_style_css_config_menu_uses_cyan_not_amber_or_red():
     assert "var(--cyan)" in rule
     assert "var(--amber)" not in rule
     assert "var(--red)" not in rule
+
+
+def test_style_css_config_apply_button_looks_visibly_disabled():
+    """A technically-disabled button that looks identical to an enabled
+    one gives the user no signal for why clicking does nothing."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    marker = ".btn-config-apply:disabled {"
+    start = css.index(marker)
+    rule = css[start : css.index("}", start)]
+
+    assert "cursor: not-allowed" in rule
 
 
 def test_app_js_disables_shutdown_button_immediately_on_confirm():

@@ -119,6 +119,16 @@ section; `PROJECT.md`'s "Architecture v1.2.4" section gained a task-3
 entry; `README.md`/`README.ru.md` mention the new config menu in the
 Status Console overview and Features list.
 
+**Code-review update (2026-07-07):** both `<select>`s start empty until
+their async fetches resolve, and "Применить" had no guard - clicking it
+before then saved an empty `backend.model` into `config.ui.toml`,
+breaking the next restart. Fixed with a front-end gate (`#btnConfigApply`
+starts disabled, only re-enables once both selectors have loaded since
+the panel was last opened, visibly styled as disabled) plus a Python-side
+backstop in `_save_config_selection_async()` rejecting an empty model.
+See `PROJECT.md`'s Architecture v1.2.4 section for the full write-up and
+regression tests.
+
 ## Manual handoff (real source enumeration)
 
 Prepared here; not run by the agent (per CLAUDE.md's testing protocol -

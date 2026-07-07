@@ -266,6 +266,12 @@ body {
   background: var(--cyan-tint); color: var(--cyan); cursor: pointer; transition: all 0.15s;
 }
 .btn-config-apply:hover { filter: brightness(1.1); }
+/* Disabled until both selectors actually load real options (see app.js's
+   _updateApplyButtonEnabled()) - must look visibly inert, not just be
+   technically unclickable, or a user has no way to tell why nothing
+   happens on click. */
+.btn-config-apply:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-config-apply:disabled:hover { filter: none; }
 .pending-restart {
   display: none;
   font-size: 11.5px; color: var(--amber); border: 1px solid var(--amber-dim);
