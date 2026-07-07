@@ -1,7 +1,7 @@
-# Story v1.2.5: TTS engine foundation
+﻿# Story v1.2.5: TTS engine foundation
 
 **Status:** Backlog.
-**Roadmap:** `tasks/roadmap-v1.2-v1.3.md`
+**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.5
 
 ## User-facing goal
@@ -12,7 +12,8 @@ buffering and playback orchestration.
 
 ## Boundaries
 
-- The first task is a spike and handoff, not a migration.
+- The first task exposes Ollama attention/cache request options through config.
+- The second task is a spike and handoff, not a migration.
 - The agent writes measurement scripts but does not run live GPU/Ollama/audio
   measurements.
 - TTS engine refactor waits until spike results are recorded in `PROJECT.md`,
@@ -22,6 +23,8 @@ buffering and playback orchestration.
 
 ## Acceptance Criteria
 
+- [ ] Ollama `flash_attention` and `kv_cache_type` options are configurable and
+      included in backend request payloads before the spike runs.
 - [ ] A dedicated spike task produces `manual_check_tts_engines.py`.
 - [ ] The spike compares Silero, Piper, Kokoro, and XTTS-v2 where they can be
       installed locally.
@@ -39,27 +42,34 @@ buffering and playback orchestration.
 
 ## Task Card Sequence
 
-1. TTS engine timing and quality spike.
+1. Ollama attention and cache options.
+   - Add `flash_attention` and `kv_cache_type` to backend config.
+   - Include configured values in `/api/chat` `options`.
+   - Preserve current defaults unless `PROJECT.md` records a verified change.
+
+2. TTS engine timing and quality spike.
    - Write `manual_check_tts_engines.py`.
    - Include exact commands and expected output fields for the human handoff.
    - Stop after handoff.
 
-2. Record verified TTS facts.
+3. Record verified TTS facts.
    - Update `PROJECT.md` from human measurements.
    - Decide TTS host/model direction only after those facts exist.
 
-3. TTS engine boundary.
+4. TTS engine boundary.
    - Introduce `TtsEngine` and `SynthesisResult`.
    - Move Silero synthesis behind `SileroEngine`.
    - Keep existing behavior green.
 
-4. TTS config shape.
+5. TTS config shape.
    - Add `[tts] engine` and engine subsections.
    - Keep defaults equivalent to current Silero behavior.
 
 ## Stop Conditions
 
 - Stop if the spike requires runtime network access after one-time setup.
+- Stop if Ollama does not accept the attention/cache options per request in
+  the supported local version.
 - Stop if a candidate engine cannot be isolated behind a testable interface.
 - Stop if the refactor makes current Silero behavior harder to test.
 - Stop if measurements reveal non-obvious trade-offs with architectural

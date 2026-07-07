@@ -1,7 +1,7 @@
-# Story v1.2.2: Project verification contract
+﻿# Story v1.2.2: Project verification contract
 
 **Status:** Backlog.
-**Roadmap:** `tasks/roadmap-v1.2-v1.3.md`
+**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.2
 
 ## User-facing goal

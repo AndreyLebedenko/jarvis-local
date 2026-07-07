@@ -1,7 +1,7 @@
-# Story v1.2.7: Activation and warmup
+﻿# Story v1.2.7: Activation and warmup
 
 **Status:** Backlog.
-**Roadmap:** `tasks/roadmap-v1.2-v1.3.md`
+**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.7
 **Detailed story:** `tasks/story-voice-trigger-warmup.md`
 

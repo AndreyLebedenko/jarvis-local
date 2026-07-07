@@ -1,7 +1,7 @@
-# Story v1.3.0: Control Center
+﻿# Story v1.3.0: Control Center
 
 **Status:** Backlog, blocked by v1.2.x prerequisites.
-**Roadmap:** `tasks/roadmap-v1.2-v1.3.md`
+**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.3.0
 
 ## User-facing goal

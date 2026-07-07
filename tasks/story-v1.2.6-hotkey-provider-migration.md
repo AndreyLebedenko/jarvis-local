@@ -1,7 +1,7 @@
-# Story v1.2.6: HotkeyProvider migration release
+﻿# Story v1.2.6: HotkeyProvider migration release
 
 **Status:** Backlog.
-**Roadmap:** `tasks/roadmap-v1.2-v1.3.md`
+**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.6
 **Detailed story:** `tasks/story-hotkey-provider-migration.md`
 

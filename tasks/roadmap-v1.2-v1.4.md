@@ -1,17 +1,20 @@
-# Roadmap: v1.2.x stabilization toward v1.3 Control Center
+# Roadmap: v1.2.x stabilization toward v1.4 file attachments
 
 **Status:** Accepted roadmap.
 **Branch:** codex/roadmap-v1.2-v1.3.
+**Note:** roadmap scope now extends through v1.4.0; the branch name predates
+the v1.4 planning addition.
 **Context:** current release tag is already v1.2.1, so new roadmap work starts
 at v1.2.2.
 
 ## Goal
 
 Move Jarvis from the current v1.2.1 state toward a v1.3.0 Control Center
-release through small, dependency-ordered engineering releases. Each v1.2.x
-release should produce at most one major architectural output. If a second
-major architectural decision appears inside a release, split it into a later
-roadmap item instead of expanding scope.
+release and a later v1.4 file-attachment release through small,
+dependency-ordered engineering releases. Each v1.2.x release should produce at
+most one major architectural output. If a second major architectural decision
+appears inside a release, split it into a later roadmap item instead of
+expanding scope.
 
 Runtime locality remains a core product rule: Jarvis core must not require
 network access at runtime. The roadmap explicitly separates this from cloud CI
@@ -135,7 +138,13 @@ quality work is measured cleanly.
 
 Scope:
 
-- Add a dedicated spike task first: `manual_check_tts_engines.py`.
+- Expose Ollama attention/cache request options through backend config before
+  the spike:
+  - `flash_attention`;
+  - `kv_cache_type`;
+  - configured values must be sent in `/api/chat` `options` alongside
+    `num_ctx`.
+- Add a dedicated spike task next: `manual_check_tts_engines.py`.
 - The spike is a human-run measurement task, not an engine migration:
   - compare Silero, Piper, Kokoro, and XTTS-v2 where they can be installed
     locally;
@@ -164,6 +173,8 @@ Scope:
 
 Boundary:
 
+- Do not run the spike against ad-hoc environment-only Ollama settings if the
+  runtime path is meant to use request `options`.
 - Do not decide multilingual product behavior before the measurements land.
 - Do not implement "answer in the language of the request" in this release.
   Record that as deferred until the multilingual TTS path is chosen.
@@ -275,3 +286,40 @@ Boundary:
 
 Story/task readiness: not ready for implementation until the prerequisite
 v1.2.x work lands.
+
+## v1.4.0 - File attachments
+
+Purpose: add deliberate file input as a new turn source, including audio files,
+without weakening runtime locality or confusing file upload with live realtime
+listening.
+
+Preliminary scope:
+
+- Add a user-visible attachment/input path after the Control Center foundation
+  exists.
+- Treat file upload as a new turn source, separate from microphone and
+  clipboard turns.
+- Support an initial focused set of file classes:
+  - audio files, such as WAV/MP3/M4A, normalized and chunked into model-safe
+    audio clips;
+  - image files through the existing current-turn media path;
+  - text files with explicit size limits and visible truncation.
+- Keep media current-turn only unless a later verified design changes history
+  retention.
+- Preserve the verified Ollama media rule: audio and images go through the
+  `/api/chat` `images` field.
+- Add day0-style verification before treating uploaded audio-file behavior as a
+  project fact.
+
+Boundary:
+
+- Do not rely on the model's self-description as a verified capability.
+- Do not add broad document parsing, PDF/DOCX ingestion, or long-form media
+  summarization in the first iteration unless separate task cards establish
+  the boundaries.
+- Do not store uploaded binary media in conversation history by default.
+- Do not confuse uploaded audio-file processing with realtime microphone
+  listening.
+
+Story/task readiness: create a dedicated v1.4 story later. No v1.4 task cards
+are created in this planning pass.
