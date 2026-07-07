@@ -4,7 +4,6 @@
 **Status:** Backlog.
 **Release:** v1.2.7
 **Depends on:** `tasks/story-v1.2.7-task-2-warming-runtime-state.md`
-**Detailed card:** `tasks/task-04-orb-click-trigger.md`
 
 ## Summary
 
@@ -13,9 +12,10 @@ activation path as push-to-talk.
 
 ## Current Boundary
 
-- Follow `tasks/task-04-orb-click-trigger.md`.
 - No OS-level hotkey work.
 - No wake word work.
+- The orb click must call the same activation entry point as push-to-talk, not
+  duplicate activation/warmup logic.
 
 ## Acceptance Criteria
 

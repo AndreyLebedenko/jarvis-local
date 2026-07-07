@@ -3,7 +3,6 @@
 **Status:** Backlog.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.6
-**Detailed story:** `tasks/story-hotkey-provider-migration.md`
 
 ## User-facing goal
 
@@ -11,9 +10,14 @@ Remove the privacy and reliability debt from global hotkeys by routing all
 shortcut handling through a native provider abstraction instead of the current
 global key-hook dependency.
 
+Jarvis currently uses the Python `keyboard` package for global hotkeys. That is
+practical and testable through injectable fake modules, but it works as a
+global key hook and sees a broader keypress stream than Jarvis needs. A native
+provider based on registering concrete shortcuts is a better fit for the
+privacy-first direction.
+
 ## Boundaries
 
-- The detailed scope lives in `tasks/story-hotkey-provider-migration.md`.
 - Windows `RegisterHotKey` is the first provider.
 - Linux/X11/Wayland implementation is out of scope.
 - Manual global behavior verification remains a human handoff.
@@ -52,6 +56,15 @@ global key-hook dependency.
    - Administrator behavior.
    - Focus-independent hotkeys.
    - Conflict handling.
+
+## Open Questions
+
+- Is a temporary compatibility fallback to `keyboard` acceptable if
+  `RegisterHotKey` is unavailable or a combination is occupied?
+- Should the UI show provider status, such as `Global hotkeys: native`,
+  `fallback`, or `unavailable`?
+- Should default hotkeys change if Windows-reserved combinations conflict more
+  often than the current bindings?
 
 ## Stop Conditions
 

@@ -3,7 +3,7 @@
 **Status:** Backlog.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.4
-**Related:** `tasks/task-ui-09-status-console-shutdown-control.md`
+**Related:** `tasks/story-v1.2.4-task-1-shutdown-control.md`
 
 ## User-facing goal
 
@@ -23,7 +23,7 @@ configuration surface for model and microphone selection.
 
 ## Acceptance Criteria
 
-- [ ] `task-ui-09-status-console-shutdown-control.md` is completed.
+- [ ] `story-v1.2.4-task-1-shutdown-control.md` is completed.
 - [ ] Desktop Status Console exposes a guarded Shutdown control.
 - [ ] Shutdown request is visible in system events before teardown when the
       event panel is still available.

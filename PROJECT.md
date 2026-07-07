@@ -671,7 +671,7 @@ sharing the desktop window's engine state.
   not a second implementation of the same control.
 - Deferred, per Scope's own wording ("optional... after warmup story
   lands"): an activation trigger through the orb/touch affordance -
-  story-voice-trigger-warmup.md has not landed yet.
+  story-v1.2.7-activation-and-warmup.md has not landed yet.
 
 Task-ui-07 landed seventh and last: consolidated visual/manual QA across
 every prior task-ui-0X card together, closing

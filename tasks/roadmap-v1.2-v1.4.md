@@ -105,7 +105,7 @@ the first limited configuration surface.
 
 Scope:
 
-- Complete `tasks/task-ui-09-status-console-shutdown-control.md`.
+- Complete `tasks/story-v1.2.4-task-1-shutdown-control.md`.
 - Trigger the existing clean shutdown path from `StatusConsoleApi`, with a
   deliberate UI guard and visible system event when possible.
 - If the existing shutdown path cannot be exposed without circular dependency
@@ -191,7 +191,7 @@ Purpose: remove the privacy and reliability debt from global hotkey handling.
 
 Scope:
 
-- Complete `tasks/story-hotkey-provider-migration.md`.
+- Complete `tasks/story-v1.2.6-hotkey-provider-migration.md`.
 - Introduce a `HotkeyProvider` interface with no Windows-specific details.
 - Implement `WindowsHotkeyProvider` using `RegisterHotKey`.
 - Route all existing global hotkeys through the provider:
@@ -223,11 +223,11 @@ weakening privacy or complicating the voice pipeline.
 Scope:
 
 - Complete the existing activation/warmup cards:
-  - `tasks/task-01-ollama-keepalive-warmup.md`;
-  - `tasks/task-02-status-orb-warming-state.md`;
-  - `tasks/task-03-ptt-hotkey-provider.md`;
-  - `tasks/task-04-orb-click-trigger.md`;
-  - `tasks/task-05-day0-checks-extension.md`.
+  - `tasks/story-v1.2.7-task-1-ollama-keepalive-warmup.md`;
+  - `tasks/story-v1.2.7-task-2-warming-runtime-state.md`;
+  - `tasks/story-v1.2.7-task-3-ptt-hotkey-trigger.md`;
+  - `tasks/story-v1.2.7-task-4-orb-click-trigger.md`;
+  - `tasks/story-v1.2.7-task-5-day0-checks-extension.md`.
 - Add configurable Ollama `keep_alive`.
 - Add async `warm_up_model()` using the existing `OllamaBackend`/`httpx` stack.
 - Add WARMING state as a runtime activation state, not a privacy/cloud state.

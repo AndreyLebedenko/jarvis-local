@@ -82,9 +82,8 @@ must be built by the task card that needs them:
   nothing is published. Required for task-ui-02/03 to show `THINKING` at all.
 - **Warm-up start/end event** for `RuntimeState.WARMING`. `main.py`'s
   `warm_up()` runs once at startup and publishes nothing; the
-  story-voice-trigger-warmup.md backlog (`task-01-ollama-keepalive-warmup.md`,
-  `task-02-status-orb-warming-state.md`) has not landed yet either. Whichever
-  lands first should publish this.
+  story-v1.2.7 activation/warmup backlog has not landed yet either.
+  Whichever lands first should publish this.
 - **Structured error event.** Every current failure path
   (`Orchestrator._start_turn`'s `except Exception`,
   `_on_full_response_complete`'s `except Exception`) only calls

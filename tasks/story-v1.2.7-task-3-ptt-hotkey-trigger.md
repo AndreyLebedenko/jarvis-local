@@ -4,7 +4,6 @@
 **Status:** Backlog.
 **Release:** v1.2.7
 **Depends on:** `tasks/story-v1.2.7-task-2-warming-runtime-state.md`
-**Detailed card:** `tasks/task-03-ptt-hotkey-provider.md`
 
 ## Summary
 
@@ -12,9 +11,10 @@ Add push-to-talk activation through the unified HotkeyProvider path.
 
 ## Current Boundary
 
-- Follow `tasks/task-03-ptt-hotkey-provider.md`.
 - Use HotkeyProvider; do not add a separate hotkey mechanism.
 - Real global behavior is a human handoff.
+- The provider interface must not expose Windows-specific details to callers.
+- Linux provider implementation is out of scope.
 
 ## Acceptance Criteria
 
@@ -22,6 +22,8 @@ Add push-to-talk activation through the unified HotkeyProvider path.
 - [ ] Trigger calls the same activation path as other future triggers.
 - [ ] Registration conflict is visible in log/UI.
 - [ ] Callback schedules work onto the asyncio loop.
+- [ ] The task explicitly records any remaining `keyboard`-based listeners if
+      the v1.2.6 migration has not removed them yet.
 - [ ] Tests cover synthetic trigger behavior without real keyboard hardware.
 - [ ] `python -m pytest` passes.
 

@@ -2,7 +2,7 @@
 
 **Статус:** Backlog
 **Родитель:** future Status Console / UI roadmap
-**Связано с:** .planning/UI/mock-ups, story-voice-trigger-warmup.md
+**Связано с:** .planning/UI/mock-ups, story-v1.2.7-activation-and-warmup.md
 **Дата создания:** 2026-07-06
 
 ## Summary

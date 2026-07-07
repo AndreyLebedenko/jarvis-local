@@ -4,7 +4,6 @@
 **Status:** Backlog.
 **Release:** v1.2.7
 **Depends on:** `tasks/story-v1.2.7-task-1-ollama-keepalive-warmup.md`
-**Detailed card:** `tasks/task-02-status-orb-warming-state.md`
 
 ## Summary
 
@@ -13,9 +12,10 @@ error, and cloud/data-locality indicators.
 
 ## Current Boundary
 
-- Follow `tasks/task-02-status-orb-warming-state.md`.
 - WARMING is not a privacy state.
 - Final timeout calibration waits for measured data.
+- User speech during WARMING must be buffered by the VAD/request path, not
+  dropped and not submitted before the model is ready.
 
 ## Acceptance Criteria
 
@@ -36,3 +36,5 @@ error, and cloud/data-locality indicators.
 
 - Stop if WARMING requires larger state-machine redesign than the story allows.
 - Stop if buffering conflicts with existing VAD/request boundaries.
+- Stop if choosing a safe timeout requires human timing data that has not been
+  collected yet.

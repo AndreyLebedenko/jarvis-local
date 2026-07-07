@@ -3,7 +3,6 @@
 **Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
 **Status:** Backlog.
 **Release:** v1.2.6
-**Detailed story:** `tasks/story-hotkey-provider-migration.md`
 
 ## Summary
 
