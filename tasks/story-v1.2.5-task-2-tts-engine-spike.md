@@ -1,0 +1,46 @@
+# Task: TTS engine timing and quality spike
+
+**Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
+**Status:** Backlog.
+**Release:** v1.2.5
+**Depends on:** `tasks/story-v1.2.5-task-1-ollama-attention-cache-options.md`
+
+## Summary
+
+Create `manual_check_tts_engines.py` to measure local TTS candidates and
+Ollama KV-cache resource trade-offs on the human's machine.
+
+## Current Boundary
+
+- This is a spike and handoff only.
+- Do not refactor TTS engine code in this task.
+- Use the configured Ollama attention/cache options from task 1; do not rely
+  on ad-hoc environment variables for the measured runtime path.
+- The agent writes the script and exact commands, then stops.
+- The human runs live GPU/Ollama/audio measurements.
+
+## Acceptance Criteria
+
+- [ ] Script can compare Silero, Piper, Kokoro, and XTTS-v2 where installed
+      locally.
+- [ ] Script uses fixed Russian, English, mixed Latin, numbers, short answer,
+      and code-like phrases.
+- [ ] Script reports first-sentence latency from first token to audible
+      playback.
+- [ ] Script reports cold load time.
+- [ ] Script reports peak VRAM delta while Gemma remains resident.
+- [ ] Script compares Gemma 64K f16 KV cache and 64K q8_0 KV cache.
+- [ ] Handoff explains exact commands and expected output fields.
+
+## Verification
+
+- Run pure tests for script logic where possible.
+- Do not run live Ollama/GPU/audio measurements as the agent.
+- Human runs the script and reports results.
+
+## Stop Conditions
+
+- Stop if a candidate engine requires runtime network access after setup.
+- Stop if measuring a candidate needs a large dependency decision not covered
+  by the story.
+- Stop if the script cannot avoid live hardware during automated tests.
