@@ -3,7 +3,7 @@
 **Status:** Backlog.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.4
-**Related:** `tasks/story-v1.2.4-task-1-shutdown-control.md`
+**Related:** `tasks/done/story-v1.2.4-task-1-shutdown-control.md`
 
 ## User-facing goal
 
@@ -18,8 +18,10 @@ configuration surface for model and microphone selection.
 - The Status Console writes only the UI config layer.
 - Do not implement live reconfiguration.
 - Do not fake module reset success where no engine reset API exists.
-- A lifecycle controller is created only if `task-ui-09` hits its stop
-  condition; it is not assumed before implementation.
+- A lifecycle controller is created only if task-1 (shutdown control) hits
+  its stop condition; it is not assumed before implementation. (It did
+  not - see `tasks/done/story-v1.2.4-task-1-shutdown-control.md`'s
+  Resolution.)
 
 ## Acceptance Criteria
 
