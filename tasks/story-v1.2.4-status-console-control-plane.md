@@ -32,9 +32,12 @@ configuration surface for model and microphone selection.
 - [x] Clean shutdown cancels background tasks, awaits pending TTS/sound cues,
       unsubscribes bus handlers, and unregisters hotkeys.
 - [ ] Configuration menu iteration 1 supports model and microphone selection.
-- [ ] Config layering is documented and tested:
+- [x] Config layering is documented and tested:
       built-in defaults, `config.toml`, then `config.ui.toml`.
 - [ ] Restart-to-apply is visible in UI and recorded in `PROJECT.md`.
+      (Recorded - see `tasks/done/story-v1.2.4-task-2-config-layering-
+      contract.md`. Not yet visible in UI - that's task-3's pending-restart
+      indicator.)
 - [ ] Source unavailability degrades dropdowns to current configured values.
 
 ## Task Card Sequence
@@ -47,6 +50,7 @@ configuration surface for model and microphone selection.
      triggers.
 
 2. Configuration layering contract.
+   - See `tasks/done/story-v1.2.4-task-2-config-layering-contract.md`.
    - Define built-in, user config, and UI config precedence.
    - Record restart-to-apply behavior.
 

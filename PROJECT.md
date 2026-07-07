@@ -736,8 +736,8 @@ Status Console story.
 
 ## Architecture v1.2.4 (Status Console control plane)
 
-See `tasks/done/story-v1.2.4-status-console-control-plane.md`. Task-1 landed
-the guarded Shutdown control:
+See `tasks/story-v1.2.4-status-console-control-plane.md` (story in
+progress). Task-1 landed the guarded Shutdown control:
 
 - `status_console.py`'s `StatusConsoleApi` gained `request_shutdown()`/
   `set_shutdown_event()`, the same `js_api`/`run_coroutine_threadsafe`/
@@ -777,6 +777,42 @@ the guarded Shutdown control:
   condition, which it did not: routing shutdown through `StatusConsoleApi`
   needed no such controller, only the event-sharing above. README/
   README.ru document this window-stays-open caveat directly.
+
+Task-2 landed the configuration layering contract - `config.py`'s
+`load_settings()` now merges three sources, lowest to highest precedence:
+
+- Built-in defaults (each `*Settings` dataclass's own field defaults) <
+  `config.toml` (the human-edited file, unchanged from v1.0) <
+  `config.ui.toml` (a new, optional file - written only by the Status
+  Console, never by a human; added to `.gitignore` alongside `config.toml`
+  since both are machine-local, not committed).
+- Precedence is **per key, not per file**: `load_settings(path, ui_path)`
+  reads and independently validates both files' raw TOML (same
+  unknown-section/unknown-key/wrong-type `ConfigError` rules as always,
+  attributed to whichever file actually contains the offending key - not
+  a looser or differently-validated second source of truth), then merges
+  each section as `{**base_section, **ui_section}` before building the
+  dataclass. A key present in `config.toml` but absent from
+  `config.ui.toml` still applies - `config.ui.toml` overriding one field
+  in a section does not reset the rest of that section to built-in
+  defaults.
+- `config.ui.toml` is entirely optional; `load_settings()`'s existing
+  single-file behavior is unchanged when it is absent (the common case
+  today, since nothing writes it yet - that is task-3's job).
+- **Restart-to-apply, by construction, not by extra code:**
+  `load_settings()` runs exactly once at startup (`main.py`'s `run()`/
+  `run_with_status_console()`). Writing `config.ui.toml` while Jarvis is
+  already running has no live effect until the process is restarted -
+  there is no file-watching, polling, or hot-reload anywhere in this
+  path, matching the story's Boundary ("Do not implement live
+  reconfiguration"). No new mechanism was needed to guarantee this; it
+  falls directly out of `load_settings()` already only ever being called
+  once per process lifetime.
+- Menu UI, and the actual model/microphone fields `config.ui.toml` writes
+  in practice, are deliberately out of this task's scope (task-3's job) -
+  this task only proves the layering mechanism generically, exercised in
+  `tests/test_config.py` against the already-existing `backend.model`/
+  `backend.num_ctx` fields.
 
 ## Project verification contract (v1.2.2)
 
