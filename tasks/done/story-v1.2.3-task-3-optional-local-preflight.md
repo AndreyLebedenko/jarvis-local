@@ -1,6 +1,6 @@
 # Task: Optional local preflight
 
-**Story:** `tasks/story-v1.2.3-hygiene-and-known-debts.md`
+**Story:** `tasks/done/story-v1.2.3-hygiene-and-known-debts.md`
 **Status:** Completed (decision: not added).
 **Release:** v1.2.3
 

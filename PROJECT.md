@@ -184,8 +184,8 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   plus a logged warning) — `Orchestrator.finish_turn()` (main.py) only
   clears the busy flag off the back of that event, so a stream that
   silently ended without `done: true` would otherwise wedge the process
-  busy forever (v1.2.3, `tasks/done/story-v1.2.3-task-1-backend-stream-
-  completion.md`).
+  busy forever (v1.2.3, see
+  `tasks/done/story-v1.2.3-task-1-backend-stream-completion.md`).
 - `audio_utils.py` — shared wav-encoding helper. No project-module
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
