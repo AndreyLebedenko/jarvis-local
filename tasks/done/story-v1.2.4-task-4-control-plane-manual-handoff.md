@@ -70,6 +70,22 @@ below is otherwise unchanged - the human should now see the button go
 disabled right after clicking "Завершить", and a second click (if
 attempted) should now be silently ignored rather than crash.
 
+**Update (2026-07-07), same session: second finding, also fixed.** The
+orb stayed stuck on "Отвечаю" (`SPEAKING`) forever after the first turn,
+even while the engine kept handling later turns correctly in the
+background (log showed normal cycles; the orb just never visually
+updated). Root cause and fix: `PROJECT.md`'s Architecture v1.2.4 section.
+Not part of this story's own scope (a pre-existing gap from the earlier,
+already-completed Status Console UI story) but fixed here since it was
+found during this handoff's own verification and the fix is small and
+narrow. Regression test: `tests/test_main.py::
+test_wire_pushes_listening_state_after_response_complete`. The same
+report also mentioned a quick duplicate answer right before the stuck
+orb was noticed - that part is the already-documented, deliberately
+deferred no-echo-cancellation/self-hearing gap (Roadmap item 7,
+`tasks/bug_reports/thinking-mode-mic-window-before-autopause.md`), not
+changed here.
+
 ### Manual handoff (human-run)
 
 **Command:**

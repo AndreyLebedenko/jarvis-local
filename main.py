@@ -601,6 +601,17 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
 
     async def on_full_response_complete(event: ResponseComplete) -> None:
         await _on_full_response_complete(app, event)
+        # Live bug (2026-07-07): _push_runtime_state(SPEAKING) fires on
+        # the turn's first ResponseToken (on_response_token below), but
+        # nothing ever pushed the orb back afterward - it stayed stuck on
+        # "Отвечаю" forever after the very first turn, even though the
+        # engine kept handling later turns correctly in the background
+        # (sound_cues' own "listening" cue, played a few lines down in
+        # _on_full_response_complete, already did this correctly - the UI
+        # push was simply missing). Mirrors main.py's own startup push
+        # right after warm_up().
+        if live_console is not None:
+            _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
 
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)

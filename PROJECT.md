@@ -901,6 +901,36 @@ test_api_methods_are_a_safe_no_op_after_the_loop_has_closed` (confirmed
 failing against the pre-fix guard, reproducing the exact live traceback,
 before passing against the fix).
 
+**Second human manual-testing finding, same session (2026-07-07): the
+orb stayed stuck on `SPEAKING` ("Отвечаю") forever after the very first
+turn**, even though the engine kept handling later turns correctly in
+the background - the terminal log showed several complete listening ->
+thinking -> speaking cycles (audible cues, successful `/api/chat` calls)
+while the desktop orb never visually changed. Root cause: `wire_status_
+console()` pushes `RuntimeState.SPEAKING` on a turn's first
+`ResponseToken`, but nothing ever pushed the orb back afterward -
+`_on_full_response_complete()` already plays `sound_cues`' own
+"listening" cue correctly on every turn, but the equivalent Status
+Console push was simply never written when task-ui-08 wired runtime
+states live. Not related to the closed-loop crash above, and not a
+regression from this story's own work - a pre-existing gap in the
+already-completed Status Console UI story that this session's manual
+testing happened to surface. Fixed: `wire()`'s `on_full_response_
+complete` closure (`main.py`) now pushes `RuntimeState.LISTENING`
+("Готов слушать") right after `_on_full_response_complete()` completes,
+mirroring the same push already used right after `warm_up()` at startup.
+Regression test: `tests/test_main.py::
+test_wire_pushes_listening_state_after_response_complete` (confirmed
+failing without the fix, passing with it).
+
+The same report also mentioned a quick duplicate/repeated answer
+immediately before the stuck orb was noticed - this matches the already-
+documented, deliberately deferred self-hearing/no-echo-cancellation gap
+(see this file's Verified facts, and `tasks/bug_reports/thinking-mode-
+mic-window-before-autopause.md`), tracked as Roadmap item 7. No code
+change made for that part; this session's fix is scoped to the stuck-orb
+symptom only.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
