@@ -123,7 +123,24 @@ This repository was built with an agent-assisted workflow: project facts were re
 
 ## Known Issues
 
-- Windows global hotkeys require Administrator privileges.
+- Global hotkeys are implemented with the Python `keyboard` package, which
+  works as a global key hook: it sees the whole system keypress stream and
+  filters for the bound combinations, rather than registering only the
+  concrete shortcuts Jarvis actually needs with the OS. This is a real
+  privacy trade-off, not just an implementation detail - a future
+  `HotkeyProvider` migration (see `tasks/story-v1.2.6-hotkey-provider-
+  migration.md`) plans to move to Windows' native `RegisterHotKey`, which
+  only ever sees the specific combinations it registers. That migration has
+  not landed yet; this is the current, real behavior.
+- Windows global hotkeys require Administrator privileges: without an
+  elevated process, `keyboard`'s `add_hotkey` callbacks only fire while
+  Jarvis's own terminal window has focus, not globally from whatever
+  application the user is actually using - verified live (see
+  `PROJECT.md`'s Verified facts). Jarvis's entire interaction model
+  (hotkeys + sound cues) depends on global firing, so run the terminal as
+  Administrator; Jarvis still starts without elevation but only warns.
+  This limitation is specific to the current Windows/`keyboard` combination
+  and is not a statement about any other platform.
 - Live Status Console mode does not yet have a visible Shutdown control.
   Use `Ctrl+Alt+Q` to stop Jarvis cleanly; it now works correctly in this mode
   and follows the normal shutdown path. `Ctrl+C` from the terminal is still not
