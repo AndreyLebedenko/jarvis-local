@@ -10,7 +10,7 @@ from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
 from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
-from config import Settings, VadSettings
+from config import MicrophoneSettings, Settings, VadSettings
 from bus import EventBus
 from main import (
     SYSTEM_PROMPT,
@@ -34,6 +34,7 @@ from main import (
     wire_status_console,
 )
 from sound_cues import SoundCuePlayer
+from status_console import MicrophoneOptionsAvailable, ModelOptionsAvailable, UiConfigSaved
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from ui_contract import (
     DataLocality,
@@ -680,6 +681,9 @@ class _FakeStatusSurface:
         self.visibility_modes: list[VisibilityMode] = []
         self.system_events: list[SystemEvent] = []
         self.module_health: list[ModuleHealth] = []
+        self.model_options: list[tuple[list[str], str]] = []
+        self.microphone_options: list[tuple[list[str], str]] = []
+        self.pending_restart: list[bool] = []
 
     def create(self, js_api: object | None = None) -> object:
         self.created_with_api = js_api
@@ -705,6 +709,15 @@ class _FakeStatusSurface:
 
     def push_module_health(self, health: ModuleHealth) -> None:
         self.module_health.append(health)
+
+    def push_model_options(self, options: list[str], current: str) -> None:
+        self.model_options.append((options, current))
+
+    def push_microphone_options(self, options: list[str], current: str) -> None:
+        self.microphone_options.append((options, current))
+
+    def push_pending_restart(self, pending: bool) -> None:
+        self.pending_restart.append(pending)
 
 
 def _settings() -> Settings:
@@ -845,6 +858,38 @@ async def test_wire_status_console_updates_microphone_chip_from_mic_sleep_events
     ]
     assert console.module_health == expected
     assert touchstrip.module_health == expected
+
+    unwire(app, subscriptions)
+
+
+async def test_wire_status_console_routes_config_menu_events_to_desktop_only():
+    """story-v1.2.4-task-3: config menu is desktop-only (Scope decision) -
+    ModelOptionsAvailable/MicrophoneOptionsAvailable/UiConfigSaved must
+    reach console but never touchstrip, unlike most other state here."""
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    await app.bus.publish(
+        ModelOptionsAvailable,
+        ModelOptionsAvailable(options=["a", "b"], current="a"),
+    )
+    await app.bus.publish(
+        MicrophoneOptionsAvailable,
+        MicrophoneOptionsAvailable(options=["mic-1"], current="mic-1"),
+    )
+    await app.bus.publish(UiConfigSaved, UiConfigSaved())
+
+    assert console.model_options == [(["a", "b"], "a")]
+    assert console.microphone_options == [(["mic-1"], "mic-1")]
+    assert console.pending_restart == [True]
+    assert touchstrip.model_options == []
+    assert touchstrip.microphone_options == []
+    assert touchstrip.pending_restart == []
 
     unwire(app, subscriptions)
 
@@ -1179,6 +1224,19 @@ def test_build_app_shares_one_playback_lock_between_tts_and_sound_cues():
     app = build_app(_settings(), backend=_FakeBackend())
 
     assert app.tts_output._playback_lock is app.sound_cues._playback_lock
+
+
+def test_build_app_wires_the_configured_microphone_device_into_the_stream_factory():
+    """story-v1.2.4-task-3: restart-to-apply for microphone selection -
+    build_app() must bind settings.microphone.device into the real
+    AudioInput's stream_factory when audio_input is not injected. Never
+    calls the resulting factory (would try to open a real device) -
+    functools.partial inspection only, same as audio_in.py's own test."""
+    settings = Settings(microphone=MicrophoneSettings(device="USB Headset"))
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    assert app.audio_input._stream_factory.keywords == {"device": "USB Headset"}
 
 
 async def test_shared_playback_lock_prevents_overlapping_device_access(tmp_path, monkeypatch):

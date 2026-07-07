@@ -63,6 +63,15 @@ rate = 1.0
 [capture]
 default_mode = "full"
 
+[microphone]
+# "" means sounddevice's default input device. Also settable from the
+# live Status Console's configuration menu (Model/Microphone selectors) -
+# that writes config.ui.toml instead of this file, which takes precedence
+# over whatever is set here per-key (see PROJECT.md's Architecture v1.2.4
+# section). Restart-to-apply either way: takes effect on the next
+# `python main.py` start, not live.
+device = ""
+
 [clipboard]
 # 20000 chars (~5000 tokens at a rough 4 chars/token estimate): a
 # conservative cap against an accidental huge paste (e.g. a log file)

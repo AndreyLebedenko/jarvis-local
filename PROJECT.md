@@ -814,6 +814,61 @@ Task-2 landed the configuration layering contract - `config.py`'s
   `tests/test_config.py` against the already-existing `backend.model`/
   `backend.num_ctx` fields.
 
+Task-3 landed the configuration menu itself (model + microphone,
+restart-to-apply):
+
+- `config.py` gained `MicrophoneSettings` (`device: str = ""`, ""
+  meaning sounddevice's default input device) and `write_ui_config()`
+  - the write-side counterpart to `load_settings()`, and the *only*
+  writer of `config.ui.toml` anywhere in the project. It always rewrites
+  the whole file with exactly `[backend].model` and `[microphone].device`
+  (iteration 1 has nothing else to preserve there) and never opens
+  `config.toml` - structurally unable to overwrite the human-edited file
+  regardless of what path it is given. Values are `json.dumps()`-escaped
+  into TOML basic strings (stdlib `tomllib` is read-only, so this avoids
+  adding a TOML-writing dependency for two known-simple string fields).
+- `audio_in.py` gained `stream_factory_for_device(device)` - binds
+  `config.microphone.device` into a `StreamFactory` via
+  `functools.partial`, so `_default_stream_factory`'s new `device`
+  parameter never has to leak into `AudioInput`'s constructor or the
+  `StreamFactory` type every existing fake-injecting test already relies
+  on. `main.py`'s `build_app()` uses it whenever `audio_input` is not
+  injected - this is what makes microphone selection genuinely
+  restart-to-apply rather than a setting nothing reads. Model selection
+  needed no equivalent wiring: `backend.model` already flowed from
+  `load_settings()` into `OllamaBackend` before task-2 even existed.
+- `status_console.py`'s `StatusConsoleApi` gained
+  `request_model_options()`/`request_microphone_options()`/
+  `save_config_selection()`. Enumeration uses injectable async sources
+  (real defaults: local Ollama's `GET /api/tags` with a short 3 s timeout;
+  `sounddevice.query_devices()` off-loop via `asyncio.to_thread()`) and
+  degrades to just the current configured value on any exception - never
+  live Ollama or real devices in a pure test, and enumeration failure
+  never blocks the caller (Stop Conditions). Results never reach a window
+  directly from this class - matching every other piece of state here,
+  they are published as bus events (`ModelOptionsAvailable`/
+  `MicrophoneOptionsAvailable`) that `main.py`'s `wire_status_console()`
+  turns into `push_model_options()`/`push_microphone_options()` calls.
+  `save_config_selection()` writes via `write_ui_config()` and publishes
+  `UiConfigSaved`, which `wire_status_console()` turns into
+  `push_pending_restart(True)`.
+- **Desktop-only, by Scope decision**: the config menu (and its three new
+  `push_*()` methods) has no touchstrip equivalent - `TouchstripWindow`
+  overrides all three to raise `NotImplementedError`, the same pattern
+  already used for `push_system_event()`. The touchstrip glance surface
+  stays narrow by design; a settings menu does not fit its "glance/
+  actions only" boundary.
+- Front-end: `index.html`/`app.js`/`style.css` gained a collapsible
+  "⚙ Настройки" panel (cyan, not amber/red - saving here is not itself
+  destructive, only ever touching `config.ui.toml`, applied on next
+  restart). `toggleConfigMenu()` re-fetches both selectors' options every
+  time the panel opens (never on close); an empty-string microphone
+  option renders as "(системный микрофон по умолчанию)" in the dropdown,
+  matching `MicrophoneSettings.device`'s own "" sentinel. A saved config
+  shows an amber pending-restart banner immediately (no engine
+  confirmation to wait for, unlike every other control here - nothing in
+  the running process actually changes until the next start).
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

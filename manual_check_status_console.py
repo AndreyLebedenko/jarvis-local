@@ -138,12 +138,19 @@ def main() -> None:
     thinking_mode = ThinkingModeState(bus=bus)
     visibility_mode = VisibilityModeState(bus=bus)
     history = ConversationHistory()
+    # Real settings (not a fake/default Settings()) so the config menu's
+    # model selector points at the real local Ollama endpoint and the
+    # microphone selector's "current" reflects this machine's actual
+    # config.toml/config.ui.toml, matching a real python main.py
+    # --status-console run - see story-v1.2.4-task-3-config-menu-
+    # iteration-1.md's manual handoff.
     api = StatusConsoleApi(
         thinking_mode=thinking_mode,
         history=history,
         bus=bus,
         logger=logger,
         visibility_mode=visibility_mode,
+        settings=load_settings(),
     )
 
     console = StatusConsoleWindow()

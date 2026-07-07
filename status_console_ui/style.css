@@ -233,6 +233,46 @@ body {
 }
 .confirm-row button.danger { background: var(--red); border-color: var(--red); color: #1a0d0d; }
 
+/* story-v1.2.4-task-3: configuration menu (model + microphone,
+   restart-to-apply). Cyan, matching this project's "calm/default action"
+   color (same family as Open/data-locality) - unlike reset/shutdown below,
+   saving here is not itself destructive (it only ever touches
+   config.ui.toml, applied on next restart), so it does not need amber/red
+   severity coloring. */
+.config-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 420px; }
+.btn-config-toggle {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
+  padding: 9px 20px; border-radius: 8px; border: 1px solid var(--cyan-dim);
+  background: var(--cyan-tint); color: var(--cyan); cursor: pointer; transition: all 0.15s;
+}
+.btn-config-toggle:hover { filter: brightness(1.1); }
+.config-panel {
+  display: none; flex-direction: column; gap: 12px; width: 100%;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 18px;
+}
+.config-panel.show { display: flex; }
+.config-field { display: flex; flex-direction: column; gap: 4px; }
+.config-field label { font-size: 11.5px; color: var(--text-dim); }
+.config-field select {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 12px;
+  padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text);
+}
+.btn-config-apply {
+  align-self: flex-start;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; letter-spacing: 0.4px;
+  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--cyan-dim);
+  background: var(--cyan-tint); color: var(--cyan); cursor: pointer; transition: all 0.15s;
+}
+.btn-config-apply:hover { filter: brightness(1.1); }
+.pending-restart {
+  display: none;
+  font-size: 11.5px; color: var(--amber); border: 1px solid var(--amber-dim);
+  background: var(--amber-tint); border-radius: 6px; padding: 8px 12px;
+}
+.pending-restart.show { display: block; }
+
 /* story-v1.2.4-task-1: guarded Shutdown control. Deliberately red, not
    amber like the reset button above - stopping the whole running engine
    is a strictly bigger action than clearing conversation history, and

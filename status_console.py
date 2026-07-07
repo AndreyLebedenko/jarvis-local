@@ -78,16 +78,36 @@ from the UI. shutdown_event is optional at construction and settable later
 via set_shutdown_event(), the same chicken-and-egg ordering as set_loop()
 (this object is created before main.py's run() creates its real
 asyncio.Event()).
+
+story-v1.2.4-task-3 adds the configuration menu (model + microphone,
+restart-to-apply): request_model_options()/request_microphone_options()
+enumerate from injectable sources (real defaults: Ollama's GET /api/tags,
+sounddevice.query_devices() off-loop via asyncio.to_thread), degrading to
+just the current configured value on any failure rather than raising -
+never live Ollama or real devices in a pure test. Results reach the
+window(s) the same "publish an event, main.py's wire_status_console()
+pushes it" way as every other piece of state here (ModelOptionsAvailable/
+MicrophoneOptionsAvailable) - this class never holds a window reference
+itself. save_config_selection() writes only config.ui.toml (config.py's
+write_ui_config(), never config.toml) and publishes UiConfigSaved so the
+desktop window can show a pending-restart indicator; config.py's own
+load_settings() already only runs once at startup, so no live-reload
+mechanism is needed for "restart-to-apply" to actually be true.
 """
 
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+import httpx
+import sounddevice as sd
+
 from bus import EventBus
+from config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState
 from ui_contract import (
@@ -155,6 +175,38 @@ def thinking_mode_payload(is_enabled: bool) -> dict:
 
 def visibility_mode_payload(mode: VisibilityMode) -> dict:
     return {"mode": mode.value}
+
+
+@dataclass(frozen=True)
+class ModelOptionsAvailable:
+    """Published by StatusConsoleApi after request_model_options() resolves
+    - options always includes current (see _request_model_options_async()),
+    so the desktop dropdown never renders a selected value that is not
+    actually one of its own options."""
+
+    options: list[str]
+    current: str
+
+
+@dataclass(frozen=True)
+class MicrophoneOptionsAvailable:
+    options: list[str]
+    current: str
+
+
+@dataclass(frozen=True)
+class UiConfigSaved:
+    """Published after save_config_selection() writes config.ui.toml -
+    main.py's wire_status_console() reacts by showing the desktop's
+    pending-restart indicator. No payload: the indicator only needs to
+    know a save happened, not what changed."""
+
+
+def options_payload(options: list[str], current: str) -> dict:
+    """Shared shape for both the model and microphone selectors - a
+    generic "selectable list + current value" contract, not two
+    independently-maintained copies of the same dict literal."""
+    return {"options": options, "current": current}
 
 
 class WindowLike(Protocol):
@@ -238,6 +290,15 @@ class StatusConsoleWindow:
     def push_visibility_mode(self, mode: VisibilityMode) -> None:
         self._evaluate("applyVisibilityMode", visibility_mode_payload(mode))
 
+    def push_model_options(self, options: list[str], current: str) -> None:
+        self._evaluate("applyModelOptions", options_payload(options, current))
+
+    def push_microphone_options(self, options: list[str], current: str) -> None:
+        self._evaluate("applyMicrophoneOptions", options_payload(options, current))
+
+    def push_pending_restart(self, pending: bool) -> None:
+        self._evaluate("applyPendingRestart", {"pending": pending})
+
     def _evaluate(self, js_function: str, payload: dict) -> None:
         if self._window is None:
             raise RuntimeError("create() must be called before pushing state")
@@ -253,7 +314,12 @@ class TouchstripWindow(StatusConsoleWindow):
     names as app.js (task-ui-06's "same state contract" AC) - only the
     rendering differs. push_system_event() is overridden to fail loudly:
     Scope explicitly excludes a dense event log from this surface, and
-    touchstrip.js has no appendSystemEvent() to call."""
+    touchstrip.js has no appendSystemEvent() to call.
+
+    story-v1.2.4-task-3's config menu (model/microphone selectors, pending-
+    restart indicator) is desktop-only for the same reason - touchstrip.js
+    has none of applyModelOptions()/applyMicrophoneOptions()/
+    applyPendingRestart() either, so those three are overridden here too."""
 
     def __init__(self, window_factory: WindowFactory | None = None) -> None:
         super().__init__(
@@ -271,6 +337,24 @@ class TouchstripWindow(StatusConsoleWindow):
             "TouchstripWindow has no system events panel by design (Scope: "
             "'No dense event log on touchstrip') - push_system_event() is "
             "only valid on the desktop StatusConsoleWindow."
+        )
+
+    def push_model_options(self, options: list[str], current: str) -> None:
+        raise NotImplementedError(
+            "TouchstripWindow has no configuration menu by design - "
+            "push_model_options() is only valid on the desktop StatusConsoleWindow."
+        )
+
+    def push_microphone_options(self, options: list[str], current: str) -> None:
+        raise NotImplementedError(
+            "TouchstripWindow has no configuration menu by design - "
+            "push_microphone_options() is only valid on the desktop StatusConsoleWindow."
+        )
+
+    def push_pending_restart(self, pending: bool) -> None:
+        raise NotImplementedError(
+            "TouchstripWindow has no configuration menu by design - "
+            "push_pending_restart() is only valid on the desktop StatusConsoleWindow."
         )
 
 
@@ -300,6 +384,42 @@ _MODULE_LABELS_RU: dict[ModuleId, str] = {
     ModuleId.VISION: "vision/экрана",
 }
 
+ModelOptionsSource = Callable[[], Awaitable[list[str]]]
+MicrophoneOptionsSource = Callable[[], Awaitable[list[str]]]
+
+
+async def _default_model_options_source(endpoint: str) -> list[str]:
+    """Real source for the model selector: local Ollama's own GET
+    /api/tags - the same endpoint config.py's BackendSettings.endpoint
+    already points at, not a new network dependency (PROJECT.md: Jarvis's
+    only permitted network access is the configured local Ollama
+    endpoint). A short timeout (not backend.py's generous
+    read_timeout_seconds, meant for a genuinely cold model load) so a
+    stuck request degrades quickly rather than hanging the config menu -
+    request_model_options()'s caller degrades to the current value on any
+    exception here, including this timeout."""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        response = await client.get(f"{endpoint}/api/tags")
+        response.raise_for_status()
+        data = response.json()
+    return [
+        name
+        for entry in data.get("models", [])
+        if (name := entry.get("model") or entry.get("name"))
+    ]
+
+
+async def _default_microphone_options_source() -> list[str]:
+    """Real source for the microphone selector: sounddevice.query_devices()
+    is a blocking call, run off the asyncio loop via asyncio.to_thread()
+    so it cannot stall request_microphone_options()'s caller even though
+    it is local/offline (Stop Condition: "if source enumeration blocks
+    the UI thread")."""
+    devices = await asyncio.to_thread(sd.query_devices)
+    return [
+        device["name"] for device in devices if device.get("max_input_channels", 0) > 0
+    ]
+
 
 class StatusConsoleApi:
     """Exposed to the front-end as window.pywebview.api (pywebview's own
@@ -328,6 +448,10 @@ class StatusConsoleApi:
         visibility_mode: VisibilityModeState | None = None,
         loop: asyncio.AbstractEventLoop | None = None,
         shutdown_event: asyncio.Event | None = None,
+        settings: Settings | None = None,
+        ui_config_path: str | Path = DEFAULT_UI_CONFIG_PATH,
+        model_options_source: ModelOptionsSource | None = None,
+        microphone_options_source: MicrophoneOptionsSource | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -336,6 +460,14 @@ class StatusConsoleApi:
         self._logger = logger
         self._visibility_mode = visibility_mode or VisibilityModeState(bus)
         self._shutdown_event = shutdown_event
+        self._settings = settings or Settings()
+        self._ui_config_path = Path(ui_config_path)
+        self._model_options_source = model_options_source or (
+            lambda: _default_model_options_source(self._settings.backend.endpoint)
+        )
+        self._microphone_options_source = (
+            microphone_options_source or _default_microphone_options_source
+        )
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -440,3 +572,91 @@ class StatusConsoleApi:
             ui_message="Запрошено завершение работы Jarvis",
         )
         self._shutdown_event.set()
+
+    def request_model_options(self) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._request_model_options_async(), self._loop)
+
+    async def _request_model_options_async(self) -> None:
+        current = self._settings.backend.model
+        try:
+            options = await self._model_options_source()
+        except Exception:
+            self._logger.warning("Failed to enumerate Ollama models", exc_info=True)
+            await publish_system_event(
+                self._bus,
+                self._logger,
+                source="ENGINE",
+                level=EventLevel.WARN,
+                log_message="Failed to enumerate Ollama models; degrading to current value",
+                ui_message="Не удалось получить список моделей Ollama - показано текущее значение",
+            )
+            options = []
+        if current not in options:
+            options = [current, *options]
+        await self._bus.publish(
+            ModelOptionsAvailable, ModelOptionsAvailable(options=options, current=current)
+        )
+
+    def request_microphone_options(self) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._request_microphone_options_async(), self._loop
+        )
+
+    async def _request_microphone_options_async(self) -> None:
+        current = self._settings.microphone.device
+        try:
+            options = await self._microphone_options_source()
+        except Exception:
+            self._logger.warning("Failed to enumerate microphone devices", exc_info=True)
+            await publish_system_event(
+                self._bus,
+                self._logger,
+                source="STT",
+                level=EventLevel.WARN,
+                log_message=(
+                    "Failed to enumerate microphone devices; degrading to current value"
+                ),
+                ui_message=(
+                    "Не удалось получить список микрофонов - показано текущее значение"
+                ),
+            )
+            options = []
+        if current not in options:
+            options = [current, *options]
+        await self._bus.publish(
+            MicrophoneOptionsAvailable,
+            MicrophoneOptionsAvailable(options=options, current=current),
+        )
+
+    def save_config_selection(self, model: str, microphone_device: str) -> None:
+        if self._loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._save_config_selection_async(model, microphone_device), self._loop
+        )
+
+    async def _save_config_selection_async(self, model: str, microphone_device: str) -> None:
+        """Writes only config.ui.toml (config.py's write_ui_config() never
+        opens config.toml - see that function's docstring for why this
+        cannot risk overwriting the human-edited file). Restart-to-apply:
+        this does not change anything about the currently running process
+        - the new values take effect only the next time load_settings()
+        runs (main.py's next startup), which is exactly what the
+        UiConfigSaved-driven pending-restart indicator communicates."""
+        write_ui_config(self._ui_config_path, model=model, microphone_device=microphone_device)
+        await publish_system_event(
+            self._bus,
+            self._logger,
+            source="ENGINE",
+            level=EventLevel.INFO,
+            log_message=(
+                f"Config menu saved (model={model!r}, microphone={microphone_device!r}); "
+                "restart to apply"
+            ),
+            ui_message="Настройки сохранены - перезапустите Jarvis, чтобы применить",
+        )
+        await self._bus.publish(UiConfigSaved, UiConfigSaved())

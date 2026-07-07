@@ -36,6 +36,7 @@ from audio_in import (
     MicSleepToggled,
     UtteranceChunk,
     VadChunker,
+    stream_factory_for_device,
 )
 from audio_in import run_hotkey_listener as run_mic_sleep_hotkey_listener
 from backend import OllamaBackend, ResponseComplete, ResponseToken
@@ -46,7 +47,14 @@ from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
 from sound_cues import SoundCuePlayer, ensure_generated
-from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
+from status_console import (
+    MicrophoneOptionsAvailable,
+    ModelOptionsAvailable,
+    StatusConsoleApi,
+    StatusConsoleWindow,
+    TouchstripWindow,
+    UiConfigSaved,
+)
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
@@ -325,7 +333,11 @@ def build_app(
     capture_input) are injectable so tests can substitute fakes."""
     bus = bus or EventBus()
     backend = backend or OllamaBackend(bus, settings.backend)
-    audio_input = audio_input or AudioInput(bus, VadChunker(settings.vad))
+    audio_input = audio_input or AudioInput(
+        bus,
+        VadChunker(settings.vad),
+        stream_factory=stream_factory_for_device(settings.microphone.device),
+    )
     # Shared so a sound cue and a spoken sentence can never physically
     # overlap on the output device - see tts.py/sound_cues.py docstrings
     # for why (sounddevice's play()/wait() share one implicit stream per
@@ -416,6 +428,7 @@ def create_live_status_console(
         bus=app.bus,
         logger=logger,
         visibility_mode=app.visibility_mode,
+        settings=app.settings,
     )
     console = console or StatusConsoleWindow()
     console.create(js_api=api)
@@ -449,6 +462,19 @@ def wire_status_console(
         surface.push_module_health(_microphone_health(app.audio_input.is_awake))
     _push_runtime_state(live_console, RuntimeState.WARMING, "Прогреваю модель...")
 
+    async def on_model_options_available(event: ModelOptionsAvailable) -> None:
+        # Config menu is desktop-only (story-v1.2.4-task-3's Scope decision,
+        # matching push_system_event()'s existing touchstrip exclusion) -
+        # push straight to live_console.console, never looped via
+        # _status_surfaces().
+        live_console.console.push_model_options(event.options, event.current)
+
+    async def on_microphone_options_available(event: MicrophoneOptionsAvailable) -> None:
+        live_console.console.push_microphone_options(event.options, event.current)
+
+    async def on_ui_config_saved(event: UiConfigSaved) -> None:
+        live_console.console.push_pending_restart(True)
+
     async def on_system_event(event: SystemEvent) -> None:
         live_console.console.push_system_event(event)
         if event.level is EventLevel.ERROR:
@@ -472,6 +498,9 @@ def wire_status_console(
         (VisibilityModeChanged, on_visibility_mode_changed),
         (ResponseToken, on_response_token),
         (MicSleepToggled, on_mic_sleep_toggled),
+        (ModelOptionsAvailable, on_model_options_available),
+        (MicrophoneOptionsAvailable, on_microphone_options_available),
+        (UiConfigSaved, on_ui_config_saved),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)

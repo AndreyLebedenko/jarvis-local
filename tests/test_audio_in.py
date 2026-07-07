@@ -15,7 +15,9 @@ from audio_in import (
     MicSleepToggled,
     UtteranceChunk,
     VadChunker,
+    _default_stream_factory,
     run_hotkey_listener,
+    stream_factory_for_device,
 )
 from bus import EventBus
 from config import HotkeySettings, VadSettings
@@ -640,3 +642,22 @@ async def test_two_rapid_hotkey_presses_toggle_twice_not_the_same_action_twice()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+# --- story-v1.2.4-task-3: device-aware stream factory -----------------------
+
+
+def test_stream_factory_for_device_binds_the_device_argument_without_opening_a_stream():
+    """functools.partial inspection only - never call the resulting
+    factory here, since _default_stream_factory calls the real
+    sounddevice.InputStream and would try to touch real hardware."""
+    factory = stream_factory_for_device("USB Headset")
+
+    assert factory.func is _default_stream_factory
+    assert factory.keywords == {"device": "USB Headset"}
+
+
+def test_stream_factory_for_device_with_empty_string_means_system_default():
+    factory = stream_factory_for_device("")
+
+    assert factory.keywords == {"device": ""}

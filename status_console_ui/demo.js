@@ -118,6 +118,44 @@ function buildControls() {
   visionDetailButton.onclick = () =>
     applyModuleHealth({ module: "vision", status: "ok", detail: "1200x800 @ 14:22:07" });
   root.appendChild(visionDetailButton);
+
+  // story-v1.2.4-task-3: config menu. Same reasoning as the think-switch/
+  // visibility buttons above - the real request_model_options()/
+  // request_microphone_options()/save_config_selection() are guarded
+  // no-ops without window.pywebview, so these call the apply*() functions
+  // directly to exercise the dropdown-population and pending-restart
+  // visuals without a live Ollama endpoint or real audio devices.
+  const configGroup = document.createElement("span");
+  configGroup.textContent = "config menu:";
+  root.appendChild(configGroup);
+
+  const modelOptionsButton = document.createElement("button");
+  modelOptionsButton.textContent = "model options";
+  modelOptionsButton.onclick = () =>
+    applyModelOptions({ options: ["gemma4:12b-it-qat", "llama3:8b"], current: "gemma4:12b-it-qat" });
+  root.appendChild(modelOptionsButton);
+
+  const micOptionsButton = document.createElement("button");
+  micOptionsButton.textContent = "mic options";
+  micOptionsButton.onclick = () =>
+    applyMicrophoneOptions({ options: ["", "USB Headset", "Built-in Microphone"], current: "" });
+  root.appendChild(micOptionsButton);
+
+  const degradedOptionsButton = document.createElement("button");
+  degradedOptionsButton.textContent = "options degraded";
+  degradedOptionsButton.title = "Simulate enumeration failure - options collapse to current value only";
+  degradedOptionsButton.onclick = () => {
+    applyModelOptions({ options: ["gemma4:12b-it-qat"], current: "gemma4:12b-it-qat" });
+    applyMicrophoneOptions({ options: [""], current: "" });
+  };
+  root.appendChild(degradedOptionsButton);
+
+  for (const pending of [true, false]) {
+    const button = document.createElement("button");
+    button.textContent = "pending restart: " + pending;
+    button.onclick = () => applyPendingRestart({ pending });
+    root.appendChild(button);
+  }
 }
 
 buildControls();

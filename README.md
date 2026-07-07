@@ -13,8 +13,9 @@ their own network requirements.
 ## Status Console UI
 
 v1.2 adds a local desktop Status Console for runtime state, system events,
-Think mode, Open/Hidden visibility mode, context reset, and a compact
-touchstrip glance surface.
+Think mode, Open/Hidden visibility mode, context reset, a guarded Shutdown
+control, a restart-to-apply configuration menu (model and microphone
+selection), and a compact touchstrip glance surface.
 
 ![Jarvis Status Console thinking state](docs/screenshots/status-console-thinking.png)
 
@@ -36,7 +37,8 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Full-screen and region screenshot capture.
 - Hotkey and sound-cue interface.
 - Local Status Console UI with system events, Think mode, Open/Hidden mode,
-  context reset, and touchstrip glance surface.
+  context reset, guarded Shutdown, a restart-to-apply model/microphone
+  configuration menu, and touchstrip glance surface.
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration.
 - Jarvis core runtime has no network dependency after models are downloaded.
