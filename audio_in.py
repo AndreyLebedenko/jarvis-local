@@ -70,6 +70,7 @@ flags, ANDed into the actual capture state:
 """
 
 import asyncio
+import functools
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -100,10 +101,25 @@ class InputStreamLike(Protocol):
 StreamFactory = Callable[[int], InputStreamLike]
 
 
-def _default_stream_factory(block_samples: int) -> InputStreamLike:
+def _default_stream_factory(block_samples: int, device: str = "") -> InputStreamLike:
     return sd.InputStream(
-        samplerate=SAMPLE_RATE, channels=1, dtype="float32", blocksize=block_samples
+        samplerate=SAMPLE_RATE,
+        channels=1,
+        dtype="float32",
+        blocksize=block_samples,
+        device=device or None,
     )
+
+
+def stream_factory_for_device(device: str) -> StreamFactory:
+    """Binds a specific sounddevice device name (config.microphone.device,
+    "" for the system default - see config.py's MicrophoneSettings) into a
+    StreamFactory, so callers needing the real device selection (main.py's
+    build_app()) don't need to know _default_stream_factory's extra
+    parameter, and AudioInput's own constructor/StreamFactory type keep
+    their existing single-argument shape - no test-injection seam changes
+    for anything that already passes a fake stream_factory."""
+    return functools.partial(_default_stream_factory, device=device)
 
 
 @dataclass(frozen=True)

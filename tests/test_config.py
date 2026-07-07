@@ -7,9 +7,11 @@ from config import (
     ClipboardSettings,
     ConfigError,
     HotkeySettings,
+    MicrophoneSettings,
     Settings,
     VadSettings,
     load_settings,
+    write_ui_config,
 )
 from conftest import assert_stdlib_only_imports
 
@@ -434,3 +436,62 @@ def test_wrong_type_value_in_ui_config_raises_config_error(tmp_path):
 
     with pytest.raises(ConfigError):
         load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+
+# --- story-v1.2.4-task-3: MicrophoneSettings and write_ui_config ------------
+
+
+def test_microphone_device_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [microphone]
+        device = "USB Headset"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.microphone.device == "USB Headset"
+
+
+def test_microphone_device_defaults_to_empty_string_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.microphone == MicrophoneSettings()
+    assert settings.microphone.device == ""
+
+
+def test_write_ui_config_then_load_settings_round_trips(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(ui_config_path, model="custom-model", microphone_device="USB Headset")
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.backend.model == "custom-model"
+    assert settings.microphone.device == "USB Headset"
+
+
+def test_write_ui_config_never_touches_the_base_config_file(tmp_path):
+    base_config_path = tmp_path / "config.toml"
+    base_config_path.write_text('[backend]\nmodel = "do-not-touch"\n', encoding="utf-8")
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(ui_config_path, model="new-model", microphone_device="")
+
+    assert base_config_path.read_text(encoding="utf-8") == '[backend]\nmodel = "do-not-touch"\n'
+
+
+def test_write_ui_config_escapes_values_with_quotes_and_backslashes(tmp_path):
+    """A device name from a real driver can contain characters that would
+    corrupt the hand-written TOML if not escaped (e.g. a quote or
+    backslash) - round-tripping through load_settings() is the strongest
+    proof the written file is still valid, escaped TOML."""
+    ui_config_path = tmp_path / "config.ui.toml"
+    tricky_name = 'Mic "Pro" \\ Device'
+
+    write_ui_config(ui_config_path, model="model", microphone_device=tricky_name)
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.microphone.device == tricky_name

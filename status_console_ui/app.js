@@ -202,3 +202,60 @@ function setVisibilityMode(modeValue) {
   const api = _pywebviewApi();
   if (api) api.set_visibility_mode(modeValue);
 }
+
+// story-v1.2.4-task-3: configuration menu (model + microphone,
+// restart-to-apply). toggleConfigMenu() re-fetches both selectors' options
+// every time the panel is opened (never on close), so reopening it always
+// shows fresh enumeration rather than a stale snapshot from last time -
+// each fetch degrades to just the current configured value on failure
+// (status_console.py's request_model_options()/request_microphone_options(),
+// never invented or guessed here). Like every other control on this page,
+// selecting an option does not apply anything by itself - only
+// applyConfigSelection() (the "Применить" button) writes config.ui.toml,
+// and even that is restart-to-apply, not live (see confirmShutdown() and
+// the reset flow above for the same "engine confirms, UI never assumes"
+// shape - the difference here is there is no live confirmation event to
+// wait for, since nothing changes in the running process at all until the
+// next start; applyPendingRestart() is shown immediately after a
+// successful save, not deferred to any engine event).
+function toggleConfigMenu() {
+  const panel = document.getElementById("configPanel");
+  const opening = !panel.classList.contains("show");
+  panel.classList.toggle("show");
+  if (!opening) return;
+  const api = _pywebviewApi();
+  if (api) {
+    api.request_model_options();
+    api.request_microphone_options();
+  }
+}
+
+function _renderOptions(select, options, current) {
+  select.innerHTML = "";
+  for (const option of options) {
+    const el = document.createElement("option");
+    el.value = option;
+    el.textContent = option === "" ? "(системный микрофон по умолчанию)" : option;
+    if (option === current) el.selected = true;
+    select.appendChild(el);
+  }
+}
+
+function applyModelOptions(payload) {
+  _renderOptions(document.getElementById("modelSelect"), payload.options, payload.current);
+}
+
+function applyMicrophoneOptions(payload) {
+  _renderOptions(document.getElementById("micSelect"), payload.options, payload.current);
+}
+
+function applyPendingRestart(payload) {
+  document.getElementById("pendingRestart").classList.toggle("show", payload.pending);
+}
+
+function applyConfigSelection() {
+  const model = document.getElementById("modelSelect").value;
+  const microphone = document.getElementById("micSelect").value;
+  const api = _pywebviewApi();
+  if (api) api.save_config_selection(model, microphone);
+}

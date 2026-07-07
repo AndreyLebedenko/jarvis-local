@@ -5,13 +5,19 @@ import logging
 import pytest
 
 from bus import EventBus
+from config import Settings
 from status_console import (
     INDEX_HTML,
     UI_DIR,
+    MicrophoneOptionsAvailable,
+    ModelOptionsAvailable,
     StatusConsoleApi,
     StatusConsoleWindow,
+    TouchstripWindow,
+    UiConfigSaved,
     data_locality_payload,
     module_health_payload,
+    options_payload,
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
@@ -575,3 +581,256 @@ def test_style_css_hidden_uses_violet_not_amber():
 
     assert "var(--violet)" in rule
     assert "var(--amber)" not in rule
+
+
+# --- story-v1.2.4-task-3: configuration menu (model/microphone) ------------
+
+
+def test_options_payload_shape():
+    assert options_payload(["a", "b"], "a") == {"options": ["a", "b"], "current": "a"}
+
+
+def test_touchstrip_config_menu_pushes_are_not_implemented():
+    """Config menu is desktop-only (Scope decision, mirrors push_system_
+    event()'s existing touchstrip exclusion) - touchstrip.js has none of
+    these functions to call."""
+    touchstrip = TouchstripWindow(window_factory=_fake_factory_returning(_FakeWindow()))
+    touchstrip.create()
+
+    with pytest.raises(NotImplementedError):
+        touchstrip.push_model_options(["m"], "m")
+    with pytest.raises(NotImplementedError):
+        touchstrip.push_microphone_options(["d"], "d")
+    with pytest.raises(NotImplementedError):
+        touchstrip.push_pending_restart(True)
+
+
+async def test_request_model_options_publishes_current_plus_fetched_options():
+    bus = EventBus()
+    received: list[ModelOptionsAvailable] = []
+
+    async def on_event(event: ModelOptionsAvailable) -> None:
+        received.append(event)
+
+    bus.subscribe(ModelOptionsAvailable, on_event)
+
+    async def fake_source() -> list[str]:
+        return ["model-a", "model-b"]
+
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=Settings(),  # default backend.model is not in fake_source()'s list
+        model_options_source=fake_source,
+    )
+
+    api.request_model_options()
+    await asyncio.sleep(0.05)
+
+    assert len(received) == 1
+    assert received[0].current == Settings().backend.model
+    assert received[0].options == [Settings().backend.model, "model-a", "model-b"]
+
+
+async def test_request_model_options_degrades_to_current_value_on_failure():
+    """AC: 'Source failure degrades each selector to the current
+    configured value' - never live Ollama in a pure test, so the
+    injectable source simply raises to simulate a real network failure."""
+    bus = EventBus()
+    received: list[ModelOptionsAvailable] = []
+    system_events: list[SystemEvent] = []
+
+    async def on_options(event: ModelOptionsAvailable) -> None:
+        received.append(event)
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    bus.subscribe(ModelOptionsAvailable, on_options)
+    bus.subscribe(SystemEvent, on_system_event)
+
+    async def failing_source() -> list[str]:
+        raise ConnectionError("Ollama unreachable")
+
+    settings = Settings()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=settings,
+        model_options_source=failing_source,
+    )
+
+    api.request_model_options()
+    await asyncio.sleep(0.05)
+
+    assert received == [
+        ModelOptionsAvailable(options=[settings.backend.model], current=settings.backend.model)
+    ]
+    assert len(system_events) == 1
+    assert system_events[0].level is EventLevel.WARN
+
+
+async def test_request_microphone_options_publishes_current_plus_fetched_options():
+    bus = EventBus()
+    received: list[MicrophoneOptionsAvailable] = []
+
+    async def on_event(event: MicrophoneOptionsAvailable) -> None:
+        received.append(event)
+
+    bus.subscribe(MicrophoneOptionsAvailable, on_event)
+
+    async def fake_source() -> list[str]:
+        return ["Built-in Microphone", "USB Headset"]
+
+    settings = Settings()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=settings,
+        microphone_options_source=fake_source,
+    )
+
+    api.request_microphone_options()
+    await asyncio.sleep(0.05)
+
+    assert len(received) == 1
+    assert received[0].current == settings.microphone.device  # "" by default
+    assert received[0].options == ["", "Built-in Microphone", "USB Headset"]
+
+
+async def test_request_microphone_options_degrades_to_current_value_on_failure():
+    bus = EventBus()
+    received: list[MicrophoneOptionsAvailable] = []
+
+    async def on_event(event: MicrophoneOptionsAvailable) -> None:
+        received.append(event)
+
+    bus.subscribe(MicrophoneOptionsAvailable, on_event)
+
+    async def failing_source() -> list[str]:
+        raise OSError("no PortAudio backend")
+
+    settings = Settings()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=settings,
+        microphone_options_source=failing_source,
+    )
+
+    api.request_microphone_options()
+    await asyncio.sleep(0.05)
+
+    assert received == [
+        MicrophoneOptionsAvailable(
+            options=[settings.microphone.device], current=settings.microphone.device
+        )
+    ]
+
+
+async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_event(
+    tmp_path,
+):
+    bus = EventBus()
+    saved_events: list[UiConfigSaved] = []
+    system_events: list[SystemEvent] = []
+
+    async def on_saved(event: UiConfigSaved) -> None:
+        saved_events.append(event)
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    bus.subscribe(UiConfigSaved, on_saved)
+    bus.subscribe(SystemEvent, on_system_event)
+
+    ui_config_path = tmp_path / "config.ui.toml"
+    base_config_path = tmp_path / "config.toml"
+    base_config_path.write_text("[backend]\nmodel = \"do-not-touch\"\n", encoding="utf-8")
+
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+
+    api.save_config_selection("new-model", "USB Headset")
+    await asyncio.sleep(0.05)
+
+    assert ui_config_path.exists()
+    written = ui_config_path.read_text(encoding="utf-8")
+    assert "new-model" in written
+    assert "USB Headset" in written
+    # never touched the base config.toml-shaped file
+    assert base_config_path.read_text(encoding="utf-8") == '[backend]\nmodel = "do-not-touch"\n'
+    assert len(saved_events) == 1
+    assert len(system_events) == 1
+    assert system_events[0].level is EventLevel.INFO
+
+
+async def test_config_menu_methods_are_a_no_op_before_set_loop_is_called():
+    api = StatusConsoleApi(
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.request_model_options()
+    api.request_microphone_options()
+    api.save_config_selection("x", "y")
+    await asyncio.sleep(0.05)  # nothing should raise or run
+
+
+def test_index_html_has_a_real_config_menu_not_a_placeholder():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="modelSelect"' in html
+    assert 'id="micSelect"' in html
+    assert "toggleConfigMenu()" in html
+    assert "applyConfigSelection()" in html
+    assert "task-3" not in html
+
+
+def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
+    """toggleConfigMenu() must not fetch on close - re-fetching only makes
+    sense when the panel is becoming visible."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    start = js.index("function toggleConfigMenu")
+    end = js.index("\n}\n", start)
+    body = js[start:end]
+
+    assert "if (!opening) return;" in body
+    assert "request_model_options" in body
+    assert "request_microphone_options" in body
+
+
+def test_style_css_config_menu_uses_cyan_not_amber_or_red():
+    """Saving here is not itself destructive (restart-to-apply only) -
+    unlike reset (amber) and shutdown (red), it should not carry warning/
+    severity coloring."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    marker = ".btn-config-toggle {"
+    start = css.index(marker)
+    rule = css[start : css.index("}", start)]
+
+    assert "var(--cyan)" in rule
+    assert "var(--amber)" not in rule
+    assert "var(--red)" not in rule
