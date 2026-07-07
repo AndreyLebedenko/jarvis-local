@@ -28,6 +28,7 @@ pool stay short since this is all localhost traffic.
 """
 
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -36,6 +37,8 @@ import httpx
 
 from bus import EventBus
 from config import BackendSettings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -94,6 +97,7 @@ class OllamaBackend:
         thinking_enabled: bool = False,
     ) -> None:
         payload = self.build_payload(messages, images_b64, thinking_enabled)
+        saw_done = False
         async with self._client.stream("POST", "/api/chat", json=payload) as response:
             async for line in response.aiter_lines():
                 if not line.strip():
@@ -107,10 +111,24 @@ class OllamaBackend:
                 if content:
                     await self._bus.publish(ResponseToken, ResponseToken(text=content))
                 if chunk.get("done"):
+                    saw_done = True
                     await self._bus.publish(
                         ResponseComplete,
                         ResponseComplete(metrics=_parse_metrics(chunk)),
                     )
+        if not saw_done:
+            # The stream ended (connection closed / body exhausted) without
+            # ever sending a done:true chunk. Orchestrator.finish_turn() only
+            # runs off the back of ResponseComplete (see main.py) - without
+            # this, _busy would stay True forever and every later turn would
+            # be silently ignored as "previous request still in flight".
+            # Metrics are unavailable in this case, so publish zeros rather
+            # than inventing numbers.
+            logger.warning("Ollama stream ended without a done:true chunk")
+            await self._bus.publish(
+                ResponseComplete,
+                ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0)),
+            )
 
 
 def _parse_metrics(chunk: dict[str, Any]) -> LatencyMetrics:
