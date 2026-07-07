@@ -1,7 +1,7 @@
 # Task: Update project verification policy
 
 **Story:** `tasks/story-v1.2.2-project-verification-contract.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.2
 
 ## Summary
@@ -17,12 +17,12 @@ runtime locality guarantee remains intact.
 
 ## Acceptance Criteria
 
-- [ ] `AGENTS.md` distinguishes runtime locality from pure CI verification.
-- [ ] `PROJECT.md` records the same decision as project architecture.
-- [ ] Documentation says CI may install dependencies from the network.
-- [ ] Documentation says Jarvis runtime must not require network access beyond
+- [x] `AGENTS.md` distinguishes runtime locality from pure CI verification.
+- [x] `PROJECT.md` records the same decision as project architecture.
+- [x] Documentation says CI may install dependencies from the network.
+- [x] Documentation says Jarvis runtime must not require network access beyond
       the configured local Ollama endpoint.
-- [ ] Documentation excludes live Ollama, model downloads, secrets, hardware,
+- [x] Documentation excludes live Ollama, model downloads, secrets, hardware,
       GPU/VRAM, WebView visual review, microphone, speakers, global hotkeys,
       and screen capture from CI.
 

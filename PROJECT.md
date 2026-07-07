@@ -727,6 +727,26 @@ Status Console story.
   Think/Open-Hidden/runtime state through the same `StatusConsoleApi` but still
   has no dense event log, matching task-ui-06's boundary.
 
+## Project verification contract (v1.2.2)
+
+Runtime locality and CI verification are separate guarantees:
+
+- Jarvis runtime has no network dependency beyond the configured local
+  Ollama endpoint (see the top of this file). This is unconditional and is
+  not relaxed by anything below.
+- Cloud CI (GitHub Actions) is allowed, but only for the pure, hardware-free
+  automated suite: installing `requirements.txt` and running
+  `python -m pytest`. CI may reach the network to install dependencies.
+- CI must never run, and must never be extended to run: live Ollama calls,
+  model downloads, anything requiring secrets, or hardware-dependent checks
+  (GPU/VRAM, WebView visual review, microphone, speakers, global hotkeys,
+  screen capture). Those stay human-run manual handoffs, unchanged from the
+  Testing protocol in AGENTS.md.
+- A green CI run proves the pure automated suite passes on a clean
+  dependency install. It does not prove the runtime is free of network
+  calls at run time - that remains a code-review/architecture guarantee,
+  not something CI measures.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by

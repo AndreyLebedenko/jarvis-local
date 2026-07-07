@@ -73,12 +73,21 @@
 ## Tooling notes
 
 1. This is a Windows 11 setup. Python 3.11, asyncio.
-2. Everything runs locally on the human's machine. There is no CI, no cloud
-   runner, and none should be proposed or added. The runtime must not
-   require network access.
+2. Runtime locality and CI verification are separate guarantees:
+   - The Jarvis runtime must not require network access beyond the
+     configured local Ollama endpoint. This is unconditional and does not
+     change based on how the code was tested.
+   - Cloud CI is allowed, but only for the pure automated suite: installing
+     `requirements.txt` and running `python -m pytest`. CI may install
+     dependencies from the network.
+   - CI must not run, and must not be extended to run, anything requiring
+     live Ollama, model downloads, secrets, or hardware (GPU/VRAM, WebView
+     visual review, microphone, speakers, global hotkeys, screen capture).
+     Those stay human-run manual handoffs per the Testing protocol above.
 3. Install Python packages with `pip`; keep `requirements.txt` current in
    the same commit that introduces a dependency.
-4. Run automated tests as `python -m pytest`, not bare `pytest`.
+4. Run automated tests as `python -m pytest`, not bare `pytest`, both
+   locally and in CI.
 5. When reading project text files with PowerShell, pass `-Encoding UTF8`
    explicitly, e.g. `Get-Content -Raw -Encoding UTF8 PROJECT.md`.
 
