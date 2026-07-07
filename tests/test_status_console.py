@@ -248,6 +248,41 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     assert thinking_mode.is_enabled is False
 
 
+def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
+    """Regression for a real live-session bug (2026-07-07): after a
+    successful shutdown, main.py's asyncio.run(run()) closes its loop, but
+    the pywebview window (and this object's _loop reference) survive -
+    the window is documented to stay open but inert (request_shutdown()'s
+    docstring). A second click on any control there used to crash with
+    "RuntimeError: Event loop is closed" raised synchronously inside
+    pywebview's own JS-API dispatch thread (call_soon_threadsafe() ->
+    _check_closed()), because only a None loop was ever guarded against,
+    not an already-closed one. No await here: everything must return
+    immediately without ever touching the closed loop."""
+    closed_loop = asyncio.new_event_loop()
+    closed_loop.close()
+    thinking_mode = ThinkingModeState(bus=EventBus())
+    api = StatusConsoleApi(
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+        loop=closed_loop,
+        shutdown_event=asyncio.Event(),
+    )
+
+    api.toggle_thinking()
+    api.reset_context()
+    api.reset_module("backend")
+    api.set_visibility_mode("open")
+    api.request_shutdown()
+    api.request_model_options()
+    api.request_microphone_options()
+    api.save_config_selection("model", "device")
+
+    assert thinking_mode.is_enabled is False
+
+
 async def test_toggle_thinking_schedules_a_real_toggle_after_set_loop():
     bus = EventBus()
     thinking_mode = ThinkingModeState(bus=bus)
@@ -834,3 +869,30 @@ def test_style_css_config_menu_uses_cyan_not_amber_or_red():
     assert "var(--cyan)" in rule
     assert "var(--amber)" not in rule
     assert "var(--red)" not in rule
+
+
+def test_app_js_disables_shutdown_button_immediately_on_confirm():
+    """Regression for a real live-session bug (2026-07-07): with no
+    engine confirmation to wait for, a confused repeat click on Shutdown
+    used to crash pywebview's JS-API dispatch thread once the loop was
+    already closed. status_console.py now guards against a closed loop
+    (the real fix); disabling the button is the cosmetic layer on top
+    that keeps a user from triggering the (now-safe) no-op at all."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    start = js.index("function confirmShutdown")
+    end = js.index("\n}\n", start)
+    body = js[start:end]
+
+    assert 'getElementById("btnShutdown").disabled = true' in body
+
+
+def test_touchstrip_js_ignores_shutdown_hold_after_first_request():
+    js = (UI_DIR / "touchstrip.js").read_text(encoding="utf-8")
+
+    start = js.index("function onShutdownHoldStart")
+    end = js.index("\n}\n", start)
+    body = js[start:end]
+
+    assert "if (_shutdownRequested) return;" in body
+    assert "_shutdownRequested = true;" in body
