@@ -1,4 +1,4 @@
-"""Loads and validates Jarvis's settings from a single TOML file.
+"""Loads and validates Jarvis's settings, layered across two TOML files.
 
 Documented in PROJECT.md's Architecture v1.0 section as the settings home:
 model name, hotkeys, VAD/TTS parameters, loaded once at startup. Every
@@ -13,6 +13,21 @@ Policy (see tasks/done/task-02-config.md):
   ConfigError. Typos are caught rather than silently ignored.
 - A present section may omit keys; omitted keys fall back to their
   default value (partial overrides are allowed).
+
+Config layering (story-v1.2.4-status-console-control-plane.md, task-2):
+precedence, lowest to highest, is built-in defaults (each *Settings
+dataclass's own field defaults) < config.toml (the human-edited file) <
+config.ui.toml (written only by the Status Console - see
+status_console.py's StatusConsoleApi). Both files are parsed and
+validated through the exact same rules above - config.ui.toml is a
+higher-precedence layer over the same schema, never a second, looser
+source of truth, and precedence is per-key, not per-file: a key set in
+config.toml but omitted from config.ui.toml still applies. Restart-to-
+apply: load_settings() runs once at startup (main.py's run()/
+run_with_status_console()); writing config.ui.toml while Jarvis is
+already running has no live effect until the next start - there is no
+file-watching or hot-reload here, by design (see PROJECT.md's Architecture
+v1.2.4 section - "Do not implement live reconfiguration").
 """
 
 import tomllib
@@ -21,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
+DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
 
 
 class ConfigError(Exception):
@@ -155,25 +171,52 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
     return cls(**kwargs)
 
 
-def load_settings(path: str | Path = DEFAULT_CONFIG_PATH) -> Settings:
-    path = Path(path)
+def _read_toml_file(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return Settings()
-
+        return {}
     try:
         with path.open("rb") as config_file:
-            raw = tomllib.load(config_file)
+            return tomllib.load(config_file)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Malformed TOML in {path}: {exc}") from exc
 
+
+def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
+    """Unknown-section/unknown-key checks, run independently against each
+    file's own raw dict before the two are merged - so an unknown key is
+    always attributed to the file that actually contains it, not to
+    whichever file happened to be merged last."""
     unknown_sections = set(raw) - set(_SECTIONS)
     if unknown_sections:
         raise ConfigError(
-            f"Unknown section(s) in {path}: {', '.join(sorted(unknown_sections))}"
+            f"Unknown section(s) in {source}: {', '.join(sorted(unknown_sections))}"
         )
+    for section_name, cls in _SECTIONS.items():
+        known_fields = {f.name for f in fields(cls)}
+        unknown_keys = set(raw.get(section_name, {})) - known_fields
+        if unknown_keys:
+            raise ConfigError(
+                f"Unknown key(s) in [{section_name}] ({source}): "
+                f"{', '.join(sorted(unknown_keys))}"
+            )
+
+
+def load_settings(
+    path: str | Path = DEFAULT_CONFIG_PATH,
+    ui_path: str | Path = DEFAULT_UI_CONFIG_PATH,
+) -> Settings:
+    path = Path(path)
+    ui_path = Path(ui_path)
+
+    base_raw = _read_toml_file(path)
+    _validate_raw_config(base_raw, path)
+    ui_raw = _read_toml_file(ui_path)
+    _validate_raw_config(ui_raw, ui_path)
 
     kwargs = {
-        name: _build_section(name, cls, raw.get(name, {}))
+        name: _build_section(
+            name, cls, {**base_raw.get(name, {}), **ui_raw.get(name, {})}
+        )
         for name, cls in _SECTIONS.items()
     }
     return Settings(**kwargs)

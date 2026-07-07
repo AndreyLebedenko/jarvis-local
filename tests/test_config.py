@@ -8,6 +8,7 @@ from config import (
     ConfigError,
     HotkeySettings,
     Settings,
+    VadSettings,
     load_settings,
 )
 from conftest import assert_stdlib_only_imports
@@ -290,3 +291,146 @@ def test_sound_cues_thinking_on_and_thinking_off_default_when_section_omitted(tm
 
     assert settings.sound_cues.thinking_on == "sounds/thinking_on.wav"
     assert settings.sound_cues.thinking_off == "sounds/thinking_off.wav"
+
+
+# --- story-v1.2.4-task-2: config layering (defaults < config.toml <
+# config.ui.toml) ------------------------------------------------------------
+
+
+def test_missing_ui_config_file_is_compatible_with_existing_behavior(tmp_path):
+    """AC: 'Existing config behavior remains compatible when config.ui.toml
+    is absent.' Every other test in this file already calls load_settings()
+    with only a base path, relying on the default ui_path
+    (config.ui.toml) not existing next to an arbitrary tmp_path file - this
+    test makes that assumption explicit and pins it down with a real
+    config.toml override present, not just all-defaults."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        model = "custom-model"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=tmp_path / "does-not-exist-ui.toml")
+
+    assert settings.backend.model == "custom-model"
+    assert settings == load_settings(config_path)
+
+
+def test_ui_config_overrides_base_config_for_the_same_key(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        model = "from-base-config"
+        """,
+        encoding="utf-8",
+    )
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [backend]
+        model = "from-ui-config"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+
+    assert settings.backend.model == "from-ui-config"
+
+
+def test_ui_config_precedence_is_per_key_not_per_file(tmp_path):
+    """A key set in config.toml but left out of config.ui.toml must still
+    apply - config.ui.toml overriding one key in a section must not reset
+    the rest of that section back to built-in defaults."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        model = "from-base-config"
+        num_ctx = 1234
+        """,
+        encoding="utf-8",
+    )
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [backend]
+        model = "from-ui-config"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+
+    assert settings.backend.model == "from-ui-config"
+    assert settings.backend.num_ctx == 1234
+
+
+def test_ui_config_alone_still_falls_back_to_defaults_for_other_sections(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [backend]
+        model = "from-ui-config"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.backend.model == "from-ui-config"
+    assert settings.vad == VadSettings()
+
+
+def test_unknown_section_in_ui_config_raises_config_error(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [bogus_section]
+        key = "value"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+
+def test_unknown_key_in_ui_config_raises_config_error(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [backend]
+        typo_field = "oops"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+
+def test_malformed_ui_config_toml_raises_config_error(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text("this is not [ valid toml", encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+
+def test_wrong_type_value_in_ui_config_raises_config_error(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [backend]
+        num_ctx = "not-a-number"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)

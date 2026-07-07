@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 config.toml
+config.ui.toml
 .idea/
 /screenshots/
 manual_check_audio_out/
