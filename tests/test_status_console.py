@@ -236,6 +236,7 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     api.reset_context()
     api.reset_module("backend")
     api.reset_module("not-a-real-module")  # invalid id, still a no-op pre-set_loop
+    api.request_shutdown()
     await asyncio.sleep(0.05)
 
     assert thinking_mode.is_enabled is False
@@ -356,6 +357,75 @@ async def test_set_visibility_mode_to_the_current_mode_does_not_publish():
     await asyncio.sleep(0.05)
 
     assert received == []
+
+
+async def test_request_shutdown_sets_the_given_event_and_publishes_an_info_event():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+
+    async def on_event(event: SystemEvent) -> None:
+        received.append(event)
+
+    bus.subscribe(SystemEvent, on_event)
+    shutdown_event = asyncio.Event()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        shutdown_event=shutdown_event,
+    )
+
+    api.request_shutdown()
+    await asyncio.sleep(0.05)
+
+    assert shutdown_event.is_set()
+    assert len(received) == 1
+    assert received[0].level is EventLevel.INFO
+
+
+async def test_set_shutdown_event_wires_up_a_previously_unset_api():
+    """Mirrors set_loop()'s own chicken-and-egg ordering test: main.py's
+    real StatusConsoleApi is constructed (create_live_status_console())
+    before run() creates the real shutdown_event, so set_shutdown_event()
+    must be able to wire it up after construction, not only via the
+    constructor kwarg."""
+    shutdown_event = asyncio.Event()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.set_shutdown_event(shutdown_event)
+    api.request_shutdown()
+    await asyncio.sleep(0.05)
+
+    assert shutdown_event.is_set()
+
+
+async def test_request_shutdown_is_a_no_op_without_a_shutdown_event_even_with_a_loop():
+    """set_loop() alone is not enough - request_shutdown() must not raise
+    or silently swallow the request if set_shutdown_event() was never
+    called (e.g. a live_console built without going through main.py's
+    run()); it must simply do nothing, the same "no-op until fully wired"
+    rule set_loop()'s own docstring already promises for every method."""
+    shutdown_event_never_set = asyncio.Event()
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.request_shutdown()
+    await asyncio.sleep(0.05)
+
+    assert shutdown_event_never_set.is_set() is False
 
 
 def test_index_html_has_no_hardcoded_model_name():

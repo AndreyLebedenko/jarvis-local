@@ -112,6 +112,15 @@
       <button class="danger" onclick="confirmContextReset()">Сбросить</button>
     </div>
   </div>
+
+  <div class="shutdown-zone">
+    <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Завершить работу</button>
+    <div class="confirm-row" id="shutdownConfirmRow">
+      <span>Jarvis будет остановлен. Потребуется запустить процесс заново.</span>
+      <button onclick="hideShutdownConfirm()">Отмена</button>
+      <button class="danger" onclick="confirmShutdown()">Завершить</button>
+    </div>
+  </div>
 </div>
 
 <div class="logpanel">

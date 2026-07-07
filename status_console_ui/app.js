@@ -164,6 +164,26 @@ function confirmContextReset() {
   if (api) api.reset_context();
 }
 
+// story-v1.2.4-task-1: guarded Shutdown control - same confirm-before-
+// destructive-action shape as the context reset above (show/hide only
+// toggle local UI state; only confirmShutdown() calls back into the
+// engine). Unlike context reset, there is no applyShutdown() callback to
+// wait for: once request_shutdown() actually tears down the running
+// engine, there is nothing left running to push a confirmation back.
+function showShutdownConfirm() {
+  document.getElementById("shutdownConfirmRow").classList.add("show");
+}
+
+function hideShutdownConfirm() {
+  document.getElementById("shutdownConfirmRow").classList.remove("show");
+}
+
+function confirmShutdown() {
+  hideShutdownConfirm();
+  const api = _pywebviewApi();
+  if (api) api.request_shutdown();
+}
+
 function applyVisibilityMode(payload) {
   if (!VISIBILITY_MODES.includes(payload.mode)) {
     throw new Error("Unknown visibility mode: " + payload.mode);

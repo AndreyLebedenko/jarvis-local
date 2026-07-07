@@ -734,6 +734,50 @@ Status Console story.
   Think/Open-Hidden/runtime state through the same `StatusConsoleApi` but still
   has no dense event log, matching task-ui-06's boundary.
 
+## Architecture v1.2.4 (Status Console control plane)
+
+See `tasks/done/story-v1.2.4-status-console-control-plane.md`. Task-1 landed
+the guarded Shutdown control:
+
+- `status_console.py`'s `StatusConsoleApi` gained `request_shutdown()`/
+  `set_shutdown_event()`, the same `js_api`/`run_coroutine_threadsafe`/
+  chicken-and-egg-ordering pattern as `set_loop()` (constructed before
+  `main.py`'s `run()` creates the real `asyncio.Event`, wired up once it
+  exists). `request_shutdown()` does no teardown itself: it publishes an
+  `INFO` `SystemEvent` ("Shutdown requested via Status Console") and then
+  sets the *same* `shutdown_event` the existing `Ctrl+Alt+Q` hotkey already
+  sets - `run_until_shutdown()` remains the single clean-shutdown
+  implementation (cancels background tasks, awaits pending TTS/sound cues,
+  unsubscribes bus handlers, unregisters every hotkey listener) regardless
+  of which trigger fired it, per the story's Boundary ("Shutdown must use
+  the same clean path as the existing shutdown hotkey").
+- `main.py`'s `run()` now creates `shutdown_event` before
+  `wire_status_console()` runs (previously created later, only for the
+  hotkey) and calls `live_console.api.set_shutdown_event(shutdown_event)`
+  before that wiring, so both triggers reach the identical `asyncio.Event`.
+- Guarded, not a bare button: the desktop shell requires a click-then-
+  confirm row (`showShutdownConfirm()`/`confirmShutdown()` in `app.js`,
+  same shape as the existing context-reset confirm), and the touchstrip
+  requires a 2-second pointer hold (`onShutdownHoldStart()`/
+  `SHUTDOWN_HOLD_MS` in `touchstrip.js`) - deliberately twice the existing
+  1-second context-reset hold, and colored `--red` rather than reset's
+  `--amber` on both surfaces, since stopping the whole engine is a
+  strictly bigger, easier-to-regret action than clearing conversation
+  history (human decision, task-1: touchstrip gets a shutdown action too,
+  made hard to trigger accidentally, per the story's own "decide" framing
+  rather than leaving the two surfaces' capabilities to drift apart).
+- **Neither the hotkey nor the Status Console's Shutdown control closes
+  the `pywebview` window(s).** `webview.start()`'s native GUI loop owns
+  the main thread independently of the `asyncio` loop `run()` tears down;
+  once `run()` returns, the window is left open but inert (no engine
+  behind it) until the user closes it manually. Actually closing/
+  destroying the window from the asyncio side would need a lifecycle
+  controller bridging the two loops - the story's Stop Condition gates
+  that behind task-ui-09 (now this story's task-1) hitting its own stop
+  condition, which it did not: routing shutdown through `StatusConsoleApi`
+  needed no such controller, only the event-sharing above. README/
+  README.ru document this window-stays-open caveat directly.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

@@ -48,6 +48,18 @@
       <div class="act-label">Сбросить контекст</div>
       <div class="act-sub" id="resetSub">удержать 1с для подтверждения</div>
     </div>
+    <div
+      class="act-btn"
+      id="shutdownBtn"
+      onpointerdown="onShutdownHoldStart()"
+      onpointerup="onShutdownHoldEnd()"
+      onpointerleave="onShutdownHoldEnd()"
+      onpointercancel="onShutdownHoldEnd()"
+    >
+      <div class="act-hold-fill"></div>
+      <div class="act-label">Завершить работу</div>
+      <div class="act-sub" id="shutdownSub">удержать 2с для подтверждения</div>
+    </div>
   </div>
 
   <div class="dots">

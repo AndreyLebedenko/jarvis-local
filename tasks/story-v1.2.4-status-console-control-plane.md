@@ -23,11 +23,11 @@ configuration surface for model and microphone selection.
 
 ## Acceptance Criteria
 
-- [ ] `story-v1.2.4-task-1-shutdown-control.md` is completed.
-- [ ] Desktop Status Console exposes a guarded Shutdown control.
-- [ ] Shutdown request is visible in system events before teardown when the
+- [x] `story-v1.2.4-task-1-shutdown-control.md` is completed.
+- [x] Desktop Status Console exposes a guarded Shutdown control.
+- [x] Shutdown request is visible in system events before teardown when the
       event panel is still available.
-- [ ] Clean shutdown cancels background tasks, awaits pending TTS/sound cues,
+- [x] Clean shutdown cancels background tasks, awaits pending TTS/sound cues,
       unsubscribes bus handlers, and unregisters hotkeys.
 - [ ] Configuration menu iteration 1 supports model and microphone selection.
 - [ ] Config layering is documented and tested:
@@ -38,7 +38,9 @@ configuration surface for model and microphone selection.
 ## Task Card Sequence
 
 1. Status Console shutdown control.
-   - Start from existing `task-ui-09`.
+   - See `tasks/done/story-v1.2.4-task-1-shutdown-control.md` (this card's
+     content absorbed the old `task-ui-09-status-console-shutdown-control.md`
+     during an earlier task-card rename; that file no longer exists).
    - Stop and split lifecycle controller only if the card's stop condition
      triggers.
 

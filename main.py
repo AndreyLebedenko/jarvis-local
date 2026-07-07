@@ -698,7 +698,13 @@ async def run(
         )
 
     app = app or build_app(settings)
+    # Created before wire_status_console() so request_shutdown() (the
+    # Status Console's Shutdown control, story-v1.2.4-task-1) can be wired
+    # to the exact same event the shutdown hotkey below sets - one shutdown
+    # signal, two triggers, not two independent shutdown paths.
+    shutdown_event = asyncio.Event()
     if live_console is not None:
+        live_console.api.set_shutdown_event(shutdown_event)
         status_console_subscriptions = wire_status_console(
             app, live_console, asyncio.get_running_loop()
         )
@@ -711,7 +717,6 @@ async def run(
 
     import keyboard
 
-    shutdown_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
     def on_shutdown_hotkey() -> None:

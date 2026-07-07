@@ -141,10 +141,15 @@ This repository was built with an agent-assisted workflow: project facts were re
   Administrator; Jarvis still starts without elevation but only warns.
   This limitation is specific to the current Windows/`keyboard` combination
   and is not a statement about any other platform.
-- Live Status Console mode does not yet have a visible Shutdown control.
-  Use `Ctrl+Alt+Q` to stop Jarvis cleanly; it now works correctly in this mode
-  and follows the normal shutdown path. `Ctrl+C` from the terminal is still not
-  the reliable stop path while `pywebview` owns the foreground UI loop.
+- The Status Console has a guarded Shutdown control (desktop: click,
+  confirm; touchstrip: hold ~2s), routed through the same clean shutdown
+  path as the `Ctrl+Alt+Q` hotkey - both stop the engine (background
+  tasks, TTS/sound cues, bus subscriptions, hotkeys) the same way. Neither
+  one closes the WebView window(s) themselves: `pywebview`'s own GUI loop
+  keeps running on the main thread after the engine stops, so the window
+  is left open but inert - close it manually. `Ctrl+C` from the terminal
+  is still not a reliable stop path while `pywebview` owns the foreground
+  UI loop.
 - A true cold Ollama start can take long enough to require a generous read timeout.
 - There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
 - Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
