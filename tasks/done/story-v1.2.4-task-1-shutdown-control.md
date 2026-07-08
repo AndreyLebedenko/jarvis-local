@@ -1,6 +1,6 @@
 # Task: Status Console shutdown control
 
-**Story:** `tasks/story-v1.2.4-status-console-control-plane.md`
+**Story:** `tasks/done/story-v1.2.4-status-console-control-plane.md`
 **Status:** Completed.
 **Release:** v1.2.4
 

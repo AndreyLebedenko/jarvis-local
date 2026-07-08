@@ -741,8 +741,8 @@ Status Console story.
 
 ## Architecture v1.2.4 (Status Console control plane)
 
-See `tasks/story-v1.2.4-status-console-control-plane.md` (story in
-progress). Task-1 landed the guarded Shutdown control:
+See `tasks/done/story-v1.2.4-status-console-control-plane.md`. Task-1 landed
+the guarded Shutdown control:
 
 - `status_console.py`'s `StatusConsoleApi` gained `request_shutdown()`/
   `set_shutdown_event()`, the same `js_api`/`run_coroutine_threadsafe`/

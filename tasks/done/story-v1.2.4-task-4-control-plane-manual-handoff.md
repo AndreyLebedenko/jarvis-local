@@ -1,7 +1,7 @@
 # Task: Control plane manual verification handoff
 
-**Story:** `tasks/story-v1.2.4-status-console-control-plane.md`
-**Status:** Completed (handoff prepared; awaiting human verification report).
+**Story:** `tasks/done/story-v1.2.4-status-console-control-plane.md`
+**Status:** Completed.
 **Release:** v1.2.4
 **Depends on:** `tasks/done/story-v1.2.4-task-3-config-menu-iteration-1.md`
 
@@ -168,4 +168,25 @@ selected microphone device is the one actually captured from (speak into
 the new device specifically if more than one is available and compare
 against speaking into a different, non-selected device).
 
-Human report pending - do not close this story until reported.
+### Human verification report
+
+Reported by the human on 2026-07-08:
+
+- Desktop Status Console guarded shutdown was verified live. The shutdown
+  request stops Jarvis and closes the Status Console window.
+- The configuration menu was verified live in the normal case.
+- The model dropdown populated and contained the expected local Ollama models.
+- The microphone dropdown populated and contained the expected microphone
+  devices.
+
+Not re-run in this manual pass:
+
+- Touchstrip shutdown hold behavior.
+- Forced degraded-source behavior for unavailable Ollama/device enumeration.
+- Full restart-to-apply confirmation for a changed microphone.
+
+Decision: close v1.2.4. The implementation is complete, pure tests cover the
+config layering and guarded UI behavior, and the live human report confirms the
+main user-facing shutdown and source-enumeration paths. The omitted degraded
+and touchstrip checks remain acceptable residual manual-test coverage gaps, not
+open implementation work for this story.

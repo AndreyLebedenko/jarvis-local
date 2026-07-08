@@ -1,8 +1,6 @@
 ﻿# Story v1.2.4: Status Console control plane
 
-**Status:** Implementation complete - awaiting human manual verification
-report (see `tasks/done/story-v1.2.4-task-4-control-plane-manual-handoff.md`).
-Do not move this story to `tasks/done/` until that report lands.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.4
 **Related:** `tasks/done/story-v1.2.4-task-1-shutdown-control.md`
@@ -63,7 +61,8 @@ configuration surface for model and microphone selection.
    - See `tasks/done/story-v1.2.4-task-4-control-plane-manual-handoff.md`.
    - Real WebView shutdown.
    - Real model/microphone source degradation behavior where applicable.
-   - Human report pending - this story stays open until it lands.
+   - Human report landed on 2026-07-08; desktop shutdown and normal
+     model/microphone source enumeration were verified live.
 
 ## Stop Conditions
 

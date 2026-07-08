@@ -1,6 +1,6 @@
 # Task: Configuration layering contract
 
-**Story:** `tasks/story-v1.2.4-status-console-control-plane.md`
+**Story:** `tasks/done/story-v1.2.4-status-console-control-plane.md`
 **Status:** Completed.
 **Release:** v1.2.4
 **Depends on:** `tasks/done/story-v1.2.4-task-1-shutdown-control.md`
