@@ -94,7 +94,9 @@
    Generated graph data lives under `graphify-out/` and is not committed.
    Use the project wrapper for standard operations:
    - `tools/graphify.ps1 init` for the first graph build;
-   - `tools/graphify.ps1 update` after code changes when a graph exists;
+   - `tools/graphify.ps1 update` after source-code changes when a graph
+     exists; this is the source-code/AST-only path to use during normal
+     implementation work;
    - `tools/graphify.ps1 refresh` after meaningful changes to `PROJECT.md`,
      agent instructions, README/spec files, task cards, or bug reports;
    - `tools/graphify.ps1 label` to refresh community labels only;

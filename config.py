@@ -50,10 +50,20 @@ class BackendSettings:
     endpoint: str = "http://localhost:11434"
     num_ctx: int = 65536
     read_timeout_seconds: float = 120.0
-    # Optional Ollama tuning knobs for the spike. They default to None so the
-    # current runtime contract stays unchanged unless a config file sets them.
+    # Optional Ollama tuning knobs. They default to None so the current runtime
+    # contract stays unchanged unless a config file sets them.
     flash_attention: bool | None = None
     kv_cache_type: str | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    top_k: int | None = None
+    min_p: float | None = None
+    repeat_penalty: float | None = None
+    repeat_last_n: int | None = None
+    seed: int | None = None
+    num_predict: int | None = None
+    stop: list[str] | None = None
+    draft_num_predict: int | None = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +169,11 @@ _SECTIONS: dict[str, type] = {
 def _matches_type(value: Any, expected_type: type) -> bool:
     origin = get_origin(expected_type)
     if origin is not None:
+        if origin is list:
+            (item_type,) = get_args(expected_type)
+            return isinstance(value, list) and all(
+                _matches_type(item, item_type) for item in value
+            )
         return any(_matches_type(value, nested_type) for nested_type in get_args(expected_type))
     if isinstance(value, bool):
         return expected_type is bool

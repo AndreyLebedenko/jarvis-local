@@ -40,6 +40,22 @@ from config import BackendSettings
 
 logger = logging.getLogger(__name__)
 
+_OPTION_FIELDS = (
+    "num_ctx",
+    "flash_attention",
+    "kv_cache_type",
+    "temperature",
+    "top_p",
+    "top_k",
+    "min_p",
+    "repeat_penalty",
+    "repeat_last_n",
+    "seed",
+    "num_predict",
+    "stop",
+    "draft_num_predict",
+)
+
 
 @dataclass(frozen=True)
 class ResponseToken:
@@ -82,11 +98,11 @@ class OllamaBackend:
         messages = [dict(message) for message in messages]
         if images_b64:
             messages[-1] = {**messages[-1], "images": list(images_b64)}
-        options: dict[str, Any] = {"num_ctx": self._settings.num_ctx}
-        if self._settings.flash_attention is not None:
-            options["flash_attention"] = self._settings.flash_attention
-        if self._settings.kv_cache_type is not None:
-            options["kv_cache_type"] = self._settings.kv_cache_type
+        options = {
+            name: value
+            for name in _OPTION_FIELDS
+            if (value := getattr(self._settings, name)) is not None
+        }
         return {
             "model": self._settings.model,
             "messages": messages,

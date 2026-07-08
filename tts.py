@@ -37,7 +37,9 @@ the network at runtime.
 import asyncio
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import sounddevice as sd
 import soundfile as sf
@@ -61,6 +63,17 @@ _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 
 class TtsModelNotCachedError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class SynthesisResult:
+    audio_bytes: bytes
+    sample_rate: int
+
+
+class TtsEngine(Protocol):
+    async def synthesize(self, text: str) -> SynthesisResult:
+        pass
 
 
 def _ensure_model_cached(silero_module, repo_root: Path | None = None) -> None:
@@ -223,17 +236,53 @@ class OrderedPlayback:
                 self._next_index += 1
 
 
+class SileroEngine:
+    def __init__(self, settings: TtsSettings) -> None:
+        self._settings = settings
+        self._model = None
+
+    async def synthesize(self, text: str) -> SynthesisResult:
+        model = await self._ensure_model()
+        audio_tensor = await asyncio.to_thread(
+            model.apply_tts,
+            text=transliterate_latin(normalize_numbers(text)),
+            speaker=self._settings.voice,
+            sample_rate=SAMPLE_RATE,
+        )
+        return SynthesisResult(
+            audio_bytes=samples_to_wav_bytes(audio_tensor, SAMPLE_RATE),
+            sample_rate=SAMPLE_RATE,
+        )
+
+    async def _ensure_model(self):
+        if self._model is None:
+            self._model = await asyncio.to_thread(self._load_model)
+        return self._model
+
+    @staticmethod
+    def _load_model():
+        import silero
+
+        _ensure_model_cached(silero)
+        model, _ = silero.silero_tts(language="ru", speaker="v3_1_ru")
+        return model
+
+
 class TtsOutput:
     def __init__(
         self,
         settings: TtsSettings,
         synthesize: Callable[[str], Awaitable[bytes]] | None = None,
+        engine: TtsEngine | None = None,
         play: Callable[[bytes], Awaitable[None]] | None = None,
         playback_lock: asyncio.Lock | None = None,
     ) -> None:
         self._settings = settings
         self._buffer = SentenceBuffer()
-        self._synthesize = synthesize or self._default_synthesize
+        if synthesize is not None and engine is not None:
+            raise ValueError("Pass either synthesize or engine, not both")
+        self._engine = engine or SileroEngine(settings)
+        self._synthesize = synthesize
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
         # output device: sounddevice's play()/wait() convenience API
@@ -244,7 +293,6 @@ class TtsOutput:
         self._playback_lock = playback_lock or asyncio.Lock()
         self._playback = OrderedPlayback(play or self._default_play)
         self._next_index = 0
-        self._model = None
         self._pending_tasks: set[asyncio.Task] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
@@ -271,31 +319,12 @@ class TtsOutput:
         task.add_done_callback(self._pending_tasks.discard)
 
     async def _synthesize_and_submit(self, index: int, sentence: str) -> None:
-        audio = await self._synthesize(sentence)
+        if self._synthesize is not None:
+            audio = await self._synthesize(sentence)
+        else:
+            result = await self._engine.synthesize(sentence)
+            audio = result.audio_bytes
         await self._playback.submit(index, audio)
-
-    async def _default_synthesize(self, sentence: str) -> bytes:
-        model = await self._ensure_model()
-        audio_tensor = await asyncio.to_thread(
-            model.apply_tts,
-            text=transliterate_latin(normalize_numbers(sentence)),
-            speaker=self._settings.voice,
-            sample_rate=SAMPLE_RATE,
-        )
-        return samples_to_wav_bytes(audio_tensor, SAMPLE_RATE)
-
-    async def _ensure_model(self):
-        if self._model is None:
-            self._model = await asyncio.to_thread(self._load_model)
-        return self._model
-
-    @staticmethod
-    def _load_model():
-        import silero
-
-        _ensure_model_cached(silero)
-        model, _ = silero.silero_tts(language="ru", speaker="v3_1_ru")
-        return model
 
     async def _default_play(self, wav_bytes: bytes) -> None:
         import io

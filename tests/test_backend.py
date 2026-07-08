@@ -91,6 +91,58 @@ def test_payload_preserves_an_explicit_false_flash_attention_value():
     assert payload["options"]["flash_attention"] is False
 
 
+def test_payload_omits_unset_generation_options():
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert "temperature" not in payload["options"]
+    assert "stop" not in payload["options"]
+
+
+def test_payload_includes_configured_generation_options():
+    settings = BackendSettings(
+        temperature=0.2,
+        top_p=0.8,
+        top_k=40,
+        min_p=0.05,
+        repeat_penalty=1.1,
+        repeat_last_n=64,
+        seed=123,
+        num_predict=80,
+        stop=["</speak>", "\n\n"],
+        draft_num_predict=16,
+    )
+    backend = OllamaBackend(bus=EventBus(), settings=settings)
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert payload["options"] == {
+        "num_ctx": 65536,
+        "temperature": 0.2,
+        "top_p": 0.8,
+        "top_k": 40,
+        "min_p": 0.05,
+        "repeat_penalty": 1.1,
+        "repeat_last_n": 64,
+        "seed": 123,
+        "num_predict": 80,
+        "stop": ["</speak>", "\n\n"],
+        "draft_num_predict": 16,
+    }
+
+
+def test_payload_preserves_explicit_zero_generation_values():
+    settings = BackendSettings(temperature=0.0, seed=0, num_predict=0)
+    backend = OllamaBackend(bus=EventBus(), settings=settings)
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert payload["options"]["temperature"] == 0.0
+    assert payload["options"]["seed"] == 0
+    assert payload["options"]["num_predict"] == 0
+
+
 def test_default_client_uses_configured_read_timeout():
     """Regression test: httpx's own default timeout (~5 s total) is too
     short for a genuinely cold Ollama start - verified live, it raised

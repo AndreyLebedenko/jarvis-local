@@ -1,7 +1,7 @@
 # Task: Speech markup parser
 
 **Story:** `tasks/story-v1.2.8-multilingual-speech-markup.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.8
 
 ## Summary
@@ -20,24 +20,24 @@ metadata.
 
 ## Acceptance Criteria
 
-- [ ] A structured segment type exists with `language` and `text`.
-- [ ] Plain text parses as one default-language segment (`ru`).
-- [ ] Optional `<speak>` wrapper is accepted.
-- [ ] `<lang xml:lang="ru">...</lang>` creates Russian segments.
-- [ ] `<lang xml:lang="en">...</lang>` creates English segments.
-- [ ] Common region variants such as `ru-RU`, `ru_RU`, `en-US`, and `en_US`
+- [x] A structured segment type exists with `language` and `text`.
+- [x] Plain text parses as one default-language segment (`ru`).
+- [x] Optional `<speak>` wrapper is accepted.
+- [x] `<lang xml:lang="ru">...</lang>` creates Russian segments.
+- [x] `<lang xml:lang="en">...</lang>` creates English segments.
+- [x] Common region variants such as `ru-RU`, `ru_RU`, `en-US`, and `en_US`
       either normalize to `ru`/`en` or take a documented fallback path.
-- [ ] Text outside `<lang>` is preserved as default-language text.
-- [ ] Adjacent same-language segments are merged.
-- [ ] Punctuation-only segments are not emitted as standalone segments when
+- [x] Text outside `<lang>` is preserved as default-language text.
+- [x] Adjacent same-language segments are merged.
+- [x] Punctuation-only segments are not emitted as standalone segments when
       they can be safely attached to a neighboring segment.
-- [ ] Unsupported language tags use a documented soft fallback.
-- [ ] Malformed markup cannot result in spoken `<speak>`, `<lang>`, or
+- [x] Unsupported language tags use a documented soft fallback.
+- [x] Malformed markup cannot result in spoken `<speak>`, `<lang>`, or
       `xml:lang` control text.
-- [ ] Parser tests cover Russian-only, English-only, mixed language,
+- [x] Parser tests cover Russian-only, English-only, mixed language,
       identifiers, punctuation, adjacent same-language segments, unsupported
       language tags, text outside tags, and malformed markup.
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
 
 ## Verification
 

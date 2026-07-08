@@ -6,7 +6,10 @@ from backend import LatencyMetrics, ResponseComplete, ResponseToken
 from config import TtsSettings
 from tts import (
     OrderedPlayback,
+    SileroEngine,
     SentenceBuffer,
+    SynthesisResult,
+    TtsEngine,
     TtsModelNotCachedError,
     TtsOutput,
     _ensure_model_cached,
@@ -21,6 +24,21 @@ class _FakeSileroModule:
 
     def __init__(self, package_dir) -> None:
         self.__file__ = str(package_dir / "__init__.py")
+
+
+class _FakeEngine:
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    async def synthesize(self, text: str) -> SynthesisResult:
+        self.seen.append(text)
+        return SynthesisResult(audio_bytes=text.encode(), sample_rate=48000)
+
+
+def test_silero_engine_satisfies_tts_engine_protocol():
+    engine: TtsEngine = SileroEngine(TtsSettings())
+
+    assert engine is not None
 
 
 # --- _ensure_model_cached (offline preflight check) ------------------------
@@ -313,3 +331,27 @@ async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     await tts.wait_for_pending()
 
     assert played == ["Без точки в конце"]
+
+
+async def test_tts_output_uses_injected_engine_for_synthesis():
+    played = []
+    engine = _FakeEngine()
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=engine, play=fake_play)
+
+    await tts.on_token(ResponseToken(text="Фраза готова. "))
+    await tts.wait_for_pending()
+
+    assert engine.seen == ["Фраза готова."]
+    assert played == ["Фраза готова."]
+
+
+def test_tts_output_rejects_two_synthesis_injection_paths():
+    async def fake_synthesize(sentence: str) -> bytes:
+        return sentence.encode()
+
+    with pytest.raises(ValueError):
+        TtsOutput(TtsSettings(), synthesize=fake_synthesize, engine=_FakeEngine())

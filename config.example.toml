@@ -20,6 +20,18 @@ num_ctx = 65536
 # flash_attention = true
 # kv_cache_type = "q8_0"  # Ollama docs also list "f16" (default) and
 # "q4_0"; leave both fields unset to preserve current behavior.
+# Optional generation options. Leave unset to preserve current behavior;
+# no project defaults are chosen here without local measurements.
+# temperature = 0.2
+# top_p = 0.9
+# top_k = 40
+# min_p = 0.05
+# repeat_penalty = 1.1
+# repeat_last_n = 64
+# seed = 123
+# num_predict = 128
+# stop = ["</speak>"]
+# draft_num_predict = 16
 # httpx's own default timeout (~5 s) is too short for a genuinely cold
 # Ollama start (verified live - longer than the day-0 "4.2 s cold" figure,
 # which was itself measured on an already-touched model). Only the read

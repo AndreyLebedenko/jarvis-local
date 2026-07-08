@@ -204,10 +204,12 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   silently ended without `done: true` would otherwise wedge the process
   busy forever (v1.2.3, see
   `tasks/done/story-v1.2.3-task-1-backend-stream-completion.md`).
-  `BackendSettings` also carries optional `flash_attention` and
-  `kv_cache_type` request knobs for the v1.2.5 spike; they default to
-  omission so the current runtime contract stays unchanged unless a
-  config file explicitly sets them.
+  `BackendSettings` also carries optional `flash_attention`,
+  `kv_cache_type`, and generation request knobs (`temperature`, `top_p`,
+  `top_k`, `min_p`, `repeat_penalty`, `repeat_last_n`, `seed`,
+  `num_predict`, `stop`, `draft_num_predict`); they default to omission
+  so the current runtime contract stays unchanged unless a config file
+  explicitly sets them.
 - `audio_utils.py` — shared wav-encoding helper. No project-module
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
@@ -218,11 +220,16 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   blocking `stream.read()` running inside `asyncio.to_thread()` can return
   before `run_until_shutdown()` awaits all background tasks. Do not replace
   this with a teardown timeout that leaves background tasks alive.
-- `tts.py` — subscribes to response sentences; Silero TTS (Russian) for v1.0;
-  XTTS-v2 as a later quality upgrade. Sentence-level streaming is mandatory:
-  buffer LLM tokens to sentence boundary → synthesize → play, while
-  generation continues. Target end-to-end response start: within ~3 s of
-  audio_in.py publishing the finished utterance (i.e. after VAD's
+- `tts.py` — subscribes to response sentences; Silero TTS (Russian) remains
+  the default v1.0 runtime path, with XTTS-v2 as a later quality upgrade.
+  `TtsOutput` owns sentence buffering and ordered playback orchestration;
+  synthesis sits behind the `TtsEngine` protocol. The current Silero-specific
+  model loading, Russian number normalization, Latin transliteration, and
+  `apply_tts` call live in `SileroEngine`, which returns a structured
+  `SynthesisResult` carrying wav bytes and sample rate. Sentence-level
+  streaming is mandatory: buffer LLM tokens to sentence boundary -> synthesize
+  -> play, while generation continues. Target end-to-end response start:
+  within ~3 s of audio_in.py publishing the finished utterance (i.e. after VAD's
   request_end_pause_seconds confirm-delay - not from the literal instant
   speech physically stopped), covering audio prefill + first-sentence
   generation + TTS synthesis of that sentence. `request_end_pause_seconds`
@@ -239,6 +246,14 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   converts Latin-script text to a crude phonetic Cyrillic approximation
   before synthesis, since Silero's symbol set has no Latin characters at
   all (see Verified facts) - applied after `normalize_numbers()`.
+- `speech_markup.py` — pure parser for Jarvis's small SSML-inspired speech
+  markup subset. It accepts plain text as default Russian, optional `<speak>`,
+  and `<lang xml:lang="ru|en">` routing tags (including common region variants
+  normalized to `ru`/`en`). It merges adjacent same-language segments, smooths
+  punctuation-only fragments into neighboring text, and uses a soft fallback
+  for malformed or unsupported language markup so known control tags and
+  `xml:lang` attributes are never spoken. It is not wired into TTS playback
+  yet and is not full SSML compatibility.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `sound_cues.py` — synthesizes placeholder cue tones (pure math, offline,

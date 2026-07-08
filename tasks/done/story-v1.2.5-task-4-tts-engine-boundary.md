@@ -1,7 +1,7 @@
 # Task: TTS engine boundary
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.5
 **Depends on:** `tasks/story-v1.2.5-task-3-record-tts-verified-facts.md`
 
@@ -20,13 +20,13 @@ testable TTS engine boundary.
 
 ## Acceptance Criteria
 
-- [ ] A `TtsEngine` interface or protocol exists.
-- [ ] A structured `SynthesisResult` carries audio data and sample rate.
-- [ ] `SileroEngine` owns Silero synthesis details.
-- [ ] Silero-specific number normalization and Latin transliteration remain
+- [x] A `TtsEngine` interface or protocol exists.
+- [x] A structured `SynthesisResult` carries audio data and sample rate.
+- [x] `SileroEngine` owns Silero synthesis details.
+- [x] Silero-specific number normalization and Latin transliteration remain
       inside or near the Silero boundary.
-- [ ] Existing sentence buffering and playback tests remain meaningful.
-- [ ] `python -m pytest` passes.
+- [x] Existing sentence buffering and playback tests remain meaningful.
+- [x] `python -m pytest` passes.
 
 ## Verification
 

@@ -160,6 +160,97 @@ def test_kv_cache_type_wrong_type_raises_config_error(tmp_path):
         load_settings(config_path)
 
 
+def test_backend_generation_options_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        temperature = 0.2
+        top_p = 0.8
+        top_k = 40
+        min_p = 0.05
+        repeat_penalty = 1.1
+        repeat_last_n = 64
+        seed = 123
+        num_predict = 80
+        stop = ["</speak>", "\\n\\n"]
+        draft_num_predict = 16
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.backend.temperature == 0.2
+    assert settings.backend.top_p == 0.8
+    assert settings.backend.top_k == 40
+    assert settings.backend.min_p == 0.05
+    assert settings.backend.repeat_penalty == 1.1
+    assert settings.backend.repeat_last_n == 64
+    assert settings.backend.seed == 123
+    assert settings.backend.num_predict == 80
+    assert settings.backend.stop == ["</speak>", "\n\n"]
+    assert settings.backend.draft_num_predict == 16
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("temperature", '"low"'),
+        ("top_p", '"wide"'),
+        ("top_k", "0.5"),
+        ("min_p", '"small"'),
+        ("repeat_penalty", '"high"'),
+        ("repeat_last_n", "1.5"),
+        ("seed", '"random"'),
+        ("num_predict", "true"),
+        ("draft_num_predict", '"short"'),
+    ],
+)
+def test_backend_generation_option_wrong_type_raises_config_error(
+    tmp_path, field_name, bad_value
+):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+        [backend]
+        {field_name} = {bad_value}
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_backend_stop_must_be_a_list_of_strings(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        stop = "stop-here"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_backend_stop_rejects_non_string_list_items(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        stop = ["ok", 123]
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
 def test_missing_file_falls_back_to_defaults(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 

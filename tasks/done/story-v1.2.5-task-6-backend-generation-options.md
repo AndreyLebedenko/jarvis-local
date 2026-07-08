@@ -1,7 +1,7 @@
 # Task: Backend generation options
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.5
 
 ## Summary
@@ -46,19 +46,19 @@ Existing Jarvis options that must remain supported:
 
 ## Acceptance Criteria
 
-- [ ] `BackendSettings` exposes typed optional fields for supported generation
+- [x] `BackendSettings` exposes typed optional fields for supported generation
       options.
-- [ ] `load_settings()` validates option types without `any` or type erasure.
-- [ ] Unset options are omitted from `OllamaBackend.build_payload()`.
-- [ ] Set options are included under the `/api/chat` request `options` object.
-- [ ] Existing defaults are unchanged when config omits the new fields.
-- [ ] `config.example.toml` documents the new fields and keeps them commented
+- [x] `load_settings()` validates option types without `any` or type erasure.
+- [x] Unset options are omitted from `OllamaBackend.build_payload()`.
+- [x] Set options are included under the `/api/chat` request `options` object.
+- [x] Existing defaults are unchanged when config omits the new fields.
+- [x] `config.example.toml` documents the new fields and keeps them commented
       or unset unless a verified project default exists.
-- [ ] Tests cover parsing valid values for each option.
-- [ ] Tests cover rejecting wrong-type values.
-- [ ] Backend payload tests cover representative numeric, boolean/string-list,
+- [x] Tests cover parsing valid values for each option.
+- [x] Tests cover rejecting wrong-type values.
+- [x] Backend payload tests cover representative numeric, boolean/string-list,
       and explicit-zero values.
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
 
 ## Verification
 
