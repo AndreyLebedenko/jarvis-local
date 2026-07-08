@@ -47,6 +47,13 @@ used only for pure build/test verification.
    or repeated failed approach, the task stops. Do not silently turn a stop
    condition into an implementation workaround.
 
+6. Graphify documentation refresh is explicit.
+   Meaningful documentation/task-card changes should still be reflected in
+   graphify, but the docs refresh can be run as a separate step because semantic
+   extraction may take longer than normal code edits. For local documentation
+   refresh, `gpt-oss:20b` is an acceptable faster graphify model choice while
+   the team is still tuning the ritual.
+
 ## v1.2.2 - Project verification contract
 
 Purpose: legalize and introduce pure CI without weakening the local runtime
@@ -170,6 +177,10 @@ Scope:
   `SynthesisResult`.
 - Add config shape for `[tts] engine` and engine-specific subsections.
 - Preserve existing behavior under tests before running new experiments.
+- Expose typed optional Ollama generation options such as `temperature`,
+  `top_p`, `top_k`, `min_p`, `repeat_penalty`, `repeat_last_n`, `seed`,
+  `num_predict`, `stop`, and `draft_num_predict`, preserving existing behavior
+  when unset.
 
 Boundary:
 
@@ -181,6 +192,7 @@ Boundary:
 - Do not perform the TTS engine refactor until the spike results have been
   recorded in `PROJECT.md`, unless the human explicitly chooses to refactor the
   current Silero path first as a purely preparatory step.
+- Do not choose generation defaults without verified local measurements.
 
 Story/task readiness: enough data exists for a TTS foundation story; benchmark
 details should be included in that story.
@@ -248,6 +260,38 @@ Boundary:
   privacy debt.
 
 Story/task readiness: existing story and task cards are available.
+
+## v1.2.8 - Multilingual speech markup
+
+Purpose: prove a simple multilingual speech contract before changing the TTS
+engine.
+
+Scope:
+
+- Complete `tasks/story-v1.2.8-multilingual-speech-markup.md`.
+- Accept a small SSML-inspired markup contract from the LLM:
+  - optional `<speak>` wrapper;
+  - `<lang xml:lang="ru">...</lang>`;
+  - `<lang xml:lang="en">...</lang>`.
+- Parse markup into ordered language segments.
+- Treat Silero's unsupported `<lang>` tag as Jarvis routing metadata, never as
+  text passed directly to the TTS engine.
+- Merge adjacent same-language segments and smooth punctuation/connective-only
+  fragments so tiny markup spans do not produce unnatural standalone TTS calls.
+- Add pure parser tests before playback wiring.
+- Record manual Gemma4 markup-stability checks in `PROJECT.md`.
+
+Boundary:
+
+- Do not claim full SSML compatibility.
+- Do not migrate to XTTS-v2, Silero multilingual, or any other new production
+  TTS engine in this story.
+- Do not use automatic language detection as the primary source of truth.
+- Do not change display/history storage without resolving the story's open
+  question about raw tagged text versus clean text.
+
+Story/task readiness: story card exists; implementation task cards should be
+created before coding.
 
 ## v1.3.0 - Control Center
 

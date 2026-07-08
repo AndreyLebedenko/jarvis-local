@@ -65,6 +65,11 @@ buffering and playback orchestration.
    - Add `[tts] engine` and engine subsections.
    - Keep defaults equivalent to current Silero behavior.
 
+6. Backend generation options.
+   - Add typed optional config for Ollama generation sampling options.
+   - Include configured values in `/api/chat` `options`.
+   - Preserve current behavior when options are omitted.
+
 ## Stop Conditions
 
 - Stop if the spike requires runtime network access after one-time setup.
