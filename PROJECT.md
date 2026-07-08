@@ -190,7 +190,12 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
 - `audio_in.py` — microphone capture + silero-vad; end-of-utterance detection;
-  chunks ≤ 30 s; publishes wav chunks to the bus.
+  chunks <= 30 s; publishes wav chunks to the bus. `AudioInput.stop()` is the
+  cooperative shutdown path for the microphone loop: it sets the loop's stop
+  flag, wakes any sleep wait, and stops the active sounddevice stream so a
+  blocking `stream.read()` running inside `asyncio.to_thread()` can return
+  before `run_until_shutdown()` awaits all background tasks. Do not replace
+  this with a teardown timeout that leaves background tasks alive.
 - `tts.py` — subscribes to response sentences; Silero TTS (Russian) for v1.0;
   XTTS-v2 as a later quality upgrade. Sentence-level streaming is mandatory:
   buffer LLM tokens to sentence boundary → synthesize → play, while
@@ -766,17 +771,15 @@ progress). Task-1 landed the guarded Shutdown control:
   history (human decision, task-1: touchstrip gets a shutdown action too,
   made hard to trigger accidentally, per the story's own "decide" framing
   rather than leaving the two surfaces' capabilities to drift apart).
-- **Neither the hotkey nor the Status Console's Shutdown control closes
-  the `pywebview` window(s).** `webview.start()`'s native GUI loop owns
-  the main thread independently of the `asyncio` loop `run()` tears down;
-  once `run()` returns, the window is left open but inert (no engine
-  behind it) until the user closes it manually. Actually closing/
-  destroying the window from the asyncio side would need a lifecycle
-  controller bridging the two loops - the story's Stop Condition gates
-  that behind task-ui-09 (now this story's task-1) hitting its own stop
-  condition, which it did not: routing shutdown through `StatusConsoleApi`
-  needed no such controller, only the event-sharing above. README/
-  README.ru document this window-stays-open caveat directly.
+- The hotkey and the Status Console's Shutdown control both close the live
+  `pywebview` window(s) after the clean engine teardown completes.
+  `StatusConsoleApi.request_shutdown()` still does not destroy windows or
+  cancel tasks itself; it only sets the shared shutdown event. The lifecycle
+  boundary lives one layer up: `main.py` awaits `run_until_shutdown()` first
+  (background tasks, pending TTS/sound cues, bus subscriptions, hotkeys), then
+  calls `LiveStatusConsole.close()`, which destroys the desktop and touchstrip
+  windows. This makes "Завершить работу" mean the application exits, not just
+  that the engine stops behind an inert UI.
 
 Task-2 landed the configuration layering contract - `config.py`'s
 `load_settings()` now merges three sources, lowest to highest precedence:
@@ -914,13 +917,11 @@ structural checks that the button starts disabled and only re-enables
 once both selectors report loaded.
 
 **Human manual-testing review of task-1's shutdown control found a real
-bug, fixed (2026-07-07):** clicking the desktop Shutdown control the
-first time worked correctly end to end - engine teardown ran silently
-(no logging inside `run_until_shutdown()`'s cancel/unsubscribe steps by
-design), then `asyncio.run(run())` closed its loop, leaving the
-`pywebview` window open but inert exactly as documented above. From the
-outside this looked like nothing had happened, and the human's follow-up
-second click hit an unguarded case: `StatusConsoleApi._loop` still held a
+bug, fixed (2026-07-07):** before live-window lifecycle closing existed,
+clicking the desktop Shutdown control the first time stopped the engine but
+left the `pywebview` window open and inert. From the outside this looked like
+nothing had happened, and the human's follow-up second click hit an
+unguarded case: `StatusConsoleApi._loop` still held a
 reference to the now-closed loop (nothing ever clears it), and every
 public method only ever checked `self._loop is None`, not whether it was
 *closed*. `asyncio.run_coroutine_threadsafe()` on a closed loop raises

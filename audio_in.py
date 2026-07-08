@@ -208,6 +208,8 @@ class AudioInput:
         self._auto_paused_for_speech = False
         self._awake = asyncio.Event()
         self._awake.set()
+        self._stop_requested = False
+        self._active_stream: InputStreamLike | None = None
 
     @property
     def is_awake(self) -> bool:
@@ -239,6 +241,12 @@ class AudioInput:
         for chunk in self._chunker.chunk(samples):
             await self._bus.publish(UtteranceChunk, chunk)
 
+    async def stop(self) -> None:
+        self._stop_requested = True
+        self._awake.set()
+        if self._active_stream is not None:
+            await asyncio.to_thread(self._active_stream.stop)
+
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
         """Continuously records from the default input device at 16 kHz
         mono, re-running the chunker over the accumulated buffer every
@@ -256,34 +264,48 @@ class AudioInput:
         published_end_seconds = 0.0
         block_samples = int(SAMPLE_RATE * poll_interval_seconds)
 
+        self._stop_requested = False
         with self._stream_factory(block_samples) as stream:
-            while True:
-                if not self._awake.is_set():
-                    await asyncio.to_thread(stream.stop)
-                    buffer = np.zeros(0, dtype=np.float32)
-                    published_end_seconds = 0.0
-                    await self._awake.wait()
-                    await asyncio.to_thread(stream.start)
-                    continue
-
-                data, _ = await asyncio.to_thread(stream.read, block_samples)
-                buffer = np.concatenate([buffer, data[:, 0]])
-                buffer_duration = len(buffer) / SAMPLE_RATE
-
-                for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
-                    already_published = utterance.end_seconds <= published_end_seconds
-                    still_extending = (
-                        buffer_duration - utterance.end_seconds < request_end_pause_seconds
-                    )
-                    if already_published or still_extending:
+            self._active_stream = stream
+            try:
+                while not self._stop_requested:
+                    if not self._awake.is_set():
+                        await asyncio.to_thread(stream.stop)
+                        buffer = np.zeros(0, dtype=np.float32)
+                        published_end_seconds = 0.0
+                        await self._awake.wait()
+                        if self._stop_requested:
+                            break
+                        await asyncio.to_thread(stream.start)
                         continue
-                    await self._bus.publish(UtteranceChunk, utterance)
-                    published_end_seconds = utterance.end_seconds
 
-                trim_seconds = max(published_end_seconds - 1.0, 0.0)
-                if trim_seconds > 0:
-                    buffer = buffer[int(trim_seconds * SAMPLE_RATE):]
-                    published_end_seconds -= trim_seconds
+                    try:
+                        data, _ = await asyncio.to_thread(stream.read, block_samples)
+                    except Exception:
+                        if self._stop_requested:
+                            break
+                        raise
+                    if self._stop_requested:
+                        break
+                    buffer = np.concatenate([buffer, data[:, 0]])
+                    buffer_duration = len(buffer) / SAMPLE_RATE
+
+                    for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
+                        already_published = utterance.end_seconds <= published_end_seconds
+                        still_extending = (
+                            buffer_duration - utterance.end_seconds < request_end_pause_seconds
+                        )
+                        if already_published or still_extending:
+                            continue
+                        await self._bus.publish(UtteranceChunk, utterance)
+                        published_end_seconds = utterance.end_seconds
+
+                    trim_seconds = max(published_end_seconds - 1.0, 0.0)
+                    if trim_seconds > 0:
+                        buffer = buffer[int(trim_seconds * SAMPLE_RATE):]
+                        published_end_seconds -= trim_seconds
+            finally:
+                self._active_stream = None
 
 
 async def run_hotkey_listener(

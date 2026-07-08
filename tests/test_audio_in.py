@@ -200,6 +200,16 @@ class _FakeChunker:
         return []
 
 
+class _CountingFakeChunker(_FakeChunker):
+    def __init__(self, request_end_pause_seconds: float = 2.0) -> None:
+        super().__init__(request_end_pause_seconds)
+        self.chunk_calls = 0
+
+    def chunk(self, samples):
+        self.chunk_calls += 1
+        return []
+
+
 class _FreeRunningFakeStream:
     """Free-running fake sd.InputStream: read() returns immediately, so
     tests only need to bound real time loosely (asyncio.sleep windows),
@@ -347,6 +357,40 @@ class _SteppedFakeStream:
         self.start_calls += 1
 
 
+class _StopUnblocksFakeStream:
+    def __init__(self, block_samples: int) -> None:
+        self._block_samples = block_samples
+        self._stopped = threading.Event()
+        self._waiting = threading.Event()
+        self.read_calls = 0
+        self.stop_calls = 0
+        self.exited = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.exited = True
+        return False
+
+    def block_until_read_is_pending(self, timeout: float) -> None:
+        if not self._waiting.wait(timeout):
+            raise AssertionError("read() was never called")
+
+    def read(self, block_samples):
+        self._waiting.set()
+        self._stopped.wait()
+        self.read_calls += 1
+        return np.zeros((self._block_samples, 1), dtype=np.float32), False
+
+    def stop(self):
+        self.stop_calls += 1
+        self._stopped.set()
+
+    def start(self):
+        raise AssertionError("shutdown stop must not restart the stream")
+
+
 async def _wait_until_read_pending(fake_stream, timeout=2.0):
     await asyncio.to_thread(fake_stream.block_until_read_is_pending, timeout)
 
@@ -447,6 +491,23 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     assert len(received) == 1
     assert received[0].start_seconds == pytest.approx(0.5, abs=0.05)
     assert received[0].end_seconds == pytest.approx(10.4, abs=0.05)
+
+
+async def test_stop_unblocks_a_microphone_loop_waiting_inside_stream_read():
+    fake_stream = _StopUnblocksFakeStream(block_samples=160)
+    chunker = _CountingFakeChunker()
+    audio_input = AudioInput(bus=EventBus(), chunker=chunker, stream_factory=lambda bs: fake_stream)
+
+    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    await _wait_until_read_pending(fake_stream)
+
+    await audio_input.stop()
+    await asyncio.wait_for(task, timeout=2)
+
+    assert fake_stream.stop_calls >= 1
+    assert fake_stream.read_calls == 1
+    assert fake_stream.exited is True
+    assert chunker.chunk_calls == 0
 
 
 # --- task-10: MicSleepToggled event and real hotkey listener -----------------

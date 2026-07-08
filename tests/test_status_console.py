@@ -71,9 +71,13 @@ def test_data_locality_payload_shape():
 class _FakeWindow:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.destroy_calls = 0
 
     def evaluate_js(self, script: str) -> None:
         self.calls.append(script)
+
+    def destroy(self) -> None:
+        self.destroy_calls += 1
 
 
 def _fake_factory_returning(fake_window):
@@ -177,6 +181,19 @@ def test_pushing_state_before_create_raises():
         console.push_runtime_state(RuntimeState.IDLE)
 
 
+def test_close_destroys_the_created_window_and_is_idempotent():
+    fake_window = _FakeWindow()
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+    console.create()
+
+    console.close()
+    console.close()
+
+    assert fake_window.destroy_calls == 1
+    with pytest.raises(RuntimeError):
+        console.push_runtime_state(RuntimeState.IDLE)
+
+
 def test_push_thinking_mode_evaluates_js_with_contract_payload():
     fake_window = _FakeWindow()
     console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
@@ -250,15 +267,13 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
 
 def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
     """Regression for a real live-session bug (2026-07-07): after a
-    successful shutdown, main.py's asyncio.run(run()) closes its loop, but
-    the pywebview window (and this object's _loop reference) survive -
-    the window is documented to stay open but inert (request_shutdown()'s
-    docstring). A second click on any control there used to crash with
-    "RuntimeError: Event loop is closed" raised synchronously inside
-    pywebview's own JS-API dispatch thread (call_soon_threadsafe() ->
-    _check_closed()), because only a None loop was ever guarded against,
-    not an already-closed one. No await here: everything must return
-    immediately without ever touching the closed loop."""
+    successful shutdown, a duplicate UI call can still race with the
+    already-closed asyncio loop. This used to crash with "RuntimeError:
+    Event loop is closed" raised synchronously inside pywebview's own
+    JS-API dispatch thread (call_soon_threadsafe() -> _check_closed()),
+    because only a None loop was ever guarded against, not an already-
+    closed one. No await here: everything must return immediately without
+    ever touching the closed loop."""
     closed_loop = asyncio.new_event_loop()
     closed_loop.close()
     thinking_mode = ThinkingModeState(bus=EventBus())

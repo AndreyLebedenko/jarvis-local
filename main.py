@@ -376,6 +376,13 @@ class LiveStatusConsole:
     touchstrip: TouchstripWindow | None
     api: StatusConsoleApi
 
+    def close(self) -> None:
+        surfaces: list[StatusConsoleWindow] = [self.console]
+        if self.touchstrip is not None:
+            surfaces.append(self.touchstrip)
+        for surface in reversed(surfaces):
+            surface.close()
+
 
 def _status_surfaces(live_console: LiveStatusConsole) -> tuple[StatusConsoleWindow, ...]:
     if live_console.touchstrip is None:
@@ -695,19 +702,56 @@ async def run_until_shutdown(
     shutdown_event: asyncio.Event,
     background_tasks: list[asyncio.Task],
 ) -> None:
-    """Waits for shutdown_event, then cancels background_tasks, lets any
+    """Waits for shutdown_event, then stops the microphone loop
+    cooperatively, cancels background_tasks and awaits them ALL, lets any
     in-flight speech finish, and unsubscribes everything. Testable in
     isolation with fake background tasks instead of real mic/hotkey
-    hardware."""
+    hardware.
+
+    audio_input.stop() before the cancellations is load-bearing, not
+    belt-and-braces (real live-session hang, 2026-07-07: both shutdown
+    triggers set shutdown_event, the log stopped after "[ENGINE] Shutdown
+    requested via Status Console", and the process never exited until a
+    hard Ctrl+C). run_microphone_loop() spends most of its life inside
+    `await asyncio.to_thread(stream.read, ...)`; cancelling a task that
+    is awaiting a running executor future does NOT interrupt it - asyncio
+    cannot cancel a concurrent.futures future that has already started,
+    so the task only observes its CancelledError after the blocking
+    sounddevice read returns on its own, and a read that never returns
+    (PortAudio blocked on the device) means the old cancel-then-gather
+    sequence waited forever. stop() closes that hole from the other side:
+    it sets the loop's stop flag and calls the stream's own stop() on the
+    executor's thread, which makes a blocked PortAudio read return/raise
+    instead of hanging, letting the loop exit by returning normally -
+    cooperative shutdown, not abandonment. Every task is then still
+    awaited to full completion (the story's clean-shutdown contract:
+    cancel tasks, await pending TTS/sound cues, unsubscribe, unregister
+    hotkeys - never "give up waiting" with tasks still alive). Per-step
+    logging stays so any future hang names its exact step instead of
+    dying silently."""
     try:
         await shutdown_event.wait()
     finally:
+        logger.info("Shutdown: stopping microphone capture")
+        await app.audio_input.stop()
+        logger.info("Shutdown: cancelling %d background task(s)", len(background_tasks))
         for task in background_tasks:
             task.cancel()
-        await asyncio.gather(*background_tasks, return_exceptions=True)
+        results = await asyncio.gather(*background_tasks, return_exceptions=True)
+        for task, result in zip(background_tasks, results):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Shutdown: background task %s raised instead of exiting cleanly",
+                    task.get_name(),
+                    exc_info=result,
+                )
+        logger.info("Shutdown: background tasks finished, flushing pending TTS")
         await app.tts_output.wait_for_pending()
+        logger.info("Shutdown: flushing pending sound cues")
         await app.sound_cues.wait_for_pending()
+        logger.info("Shutdown: unwiring bus subscriptions")
         unwire(app, subscriptions)
+        logger.info("Shutdown: teardown complete")
 
 
 async def run(
@@ -782,7 +826,11 @@ async def run(
     try:
         await run_until_shutdown(app, subscriptions, shutdown_event, background_tasks)
     finally:
-        keyboard.remove_hotkey(shutdown_handle)
+        try:
+            keyboard.remove_hotkey(shutdown_handle)
+        finally:
+            if live_console is not None:
+                live_console.close()
 
 
 def run_with_status_console(

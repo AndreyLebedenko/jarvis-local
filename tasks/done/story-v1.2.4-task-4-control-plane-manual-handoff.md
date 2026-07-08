@@ -54,21 +54,18 @@ visual/state-cycling checks only (task-ui-02 through task-ui-06) and is
 no-op by design (no `shutdown_event` ever wired into that harness).
 
 **Update (2026-07-07): first real human run of step 1 found and fixed a
-genuine bug**, doing exactly what this handoff was for. The first
-Shutdown click worked correctly (silent, clean teardown, window left
-open but inert as documented) - but looked like nothing had happened, so
-a confused second click hit `StatusConsoleApi`'s now-closed `asyncio`
-loop and crashed pywebview's JS-API dispatch thread with `RuntimeError:
-Event loop is closed`. Fixed: every `StatusConsoleApi` method now treats
-an already-closed loop as a safe no-op (`_loop_is_usable()`), and the
-Shutdown button disables itself immediately on click as a cosmetic
-guard against the confusing repeat click in the first place. Full
-write-up in `PROJECT.md`'s Architecture v1.2.4 section. Regression test:
+genuine bug**, doing exactly what this handoff was for. Before the later
+lifecycle-controller fix, the first Shutdown click stopped the engine but
+left the window open and inert, so it looked like nothing had happened. A
+confused second click hit `StatusConsoleApi`'s now-closed `asyncio` loop
+and crashed pywebview's JS-API dispatch thread with `RuntimeError: Event
+loop is closed`. Fixed: every `StatusConsoleApi` method now treats an
+already-closed loop as a safe no-op (`_loop_is_usable()`), and the
+Shutdown button disables itself immediately on click as a cosmetic guard
+against the confusing repeat click in the first place. Full write-up in
+`PROJECT.md`'s Architecture v1.2.4 section. Regression test:
 `tests/test_status_console.py::
-test_api_methods_are_a_safe_no_op_after_the_loop_has_closed`. Step 1
-below is otherwise unchanged - the human should now see the button go
-disabled right after clicking "Завершить", and a second click (if
-attempted) should now be silently ignored rather than crash.
+test_api_methods_are_a_safe_no_op_after_the_loop_has_closed`.
 
 **Update (2026-07-07), same session: second finding, also fixed.** The
 orb stayed stuck on "Отвечаю" (`SPEAKING`) forever after the first turn,
@@ -115,16 +112,12 @@ this pass.)
 Click "Завершить работу" in the desktop window. Confirm the red confirm
 row appears with "Отмена"/"Завершить". Click "Отмена" once - confirm the
 row hides and nothing else happens. Repeat and click "Завершить" for
-real. Before the window goes inert, confirm a "Запрошено завершение
+real. Before teardown closes the window, confirm a "Запрошено завершение
 работы Jarvis" entry appeared in the events panel. Confirm the console
 log shows the same cancel/unsubscribe/unregister sequence the
 `Ctrl+Alt+Q` hotkey already produces (mic loop stopped, hotkeys
 unregistered, no further "listening" cue). Confirm the window itself
-stays open but inert afterward - this is expected (see PROJECT.md's
-Architecture v1.2.4 section and README's Known Issues: neither the
-hotkey nor this control closes the `pywebview` window, since its native
-GUI loop is independent of the `asyncio` loop that just tore down) -
-close it manually.
+closes after teardown completes.
 
 **2. Guarded shutdown - touchstrip.**
 On a fresh run, hold "Завершить работу" on the touchstrip's actions page

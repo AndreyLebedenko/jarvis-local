@@ -214,6 +214,7 @@ class WindowLike(Protocol):
     tests inject a fake, mirroring audio_in.py's InputStreamLike pattern."""
 
     def evaluate_js(self, script: str) -> object: ...
+    def destroy(self) -> None: ...
 
 
 WindowFactory = Callable[..., WindowLike]
@@ -298,6 +299,12 @@ class StatusConsoleWindow:
 
     def push_pending_restart(self, pending: bool) -> None:
         self._evaluate("applyPendingRestart", {"pending": pending})
+
+    def close(self) -> None:
+        if self._window is None:
+            return
+        self._window.destroy()
+        self._window = None
 
     def _evaluate(self, js_function: str, payload: dict) -> None:
         if self._window is None:
@@ -478,14 +485,14 @@ class StatusConsoleApi:
     def _loop_is_usable(self) -> bool:
         """False once main.py's run() has torn down its asyncio loop (e.g.
         after a completed shutdown - see request_shutdown()) - the
-        pywebview window(s) are documented to stay open but inert after
-        that (this class's docstring), so every public method must treat
-        an already-closed loop the same as never having had one at all,
-        rather than crashing inside pywebview's own JS-API dispatch thread
+        windows should be closing after that, but a late duplicate UI call
+        can still race with teardown. Every public method must treat an
+        already-closed loop the same as never having had one at all rather
+        than crashing inside pywebview's own JS-API dispatch thread
         (verified live: a second click on an already-shut-down Status
         Console raised "RuntimeError: Event loop is closed" from
-        call_soon_threadsafe(), because only a None loop was ever
-        guarded against)."""
+        call_soon_threadsafe(), because only a None loop was ever guarded
+        against)."""
         return self._loop is not None and not self._loop.is_closed()
 
     def toggle_thinking(self) -> None:

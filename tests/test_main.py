@@ -655,6 +655,9 @@ async def test_warm_up_publishes_warn_system_event_and_still_logs_exception_on_f
 class _FakeAudioInput:
     is_awake = True
 
+    async def stop(self) -> None:
+        return None
+
 
 class _FakeTtsOutput:
     async def on_token(self, event) -> None:
@@ -674,6 +677,7 @@ class _FakeCaptureInput:
 class _FakeStatusSurface:
     def __init__(self) -> None:
         self.created_with_api: object | None = None
+        self.close_calls = 0
         self.runtime_states: list[tuple[RuntimeState, str | None]] = []
         self.model_labels: list[str] = []
         self.localities: list[DataLocality] = []
@@ -688,6 +692,9 @@ class _FakeStatusSurface:
     def create(self, js_api: object | None = None) -> object:
         self.created_with_api = js_api
         return object()
+
+    def close(self) -> None:
+        self.close_calls += 1
 
     def push_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
         self.runtime_states.append((state, substatus))
@@ -780,6 +787,21 @@ def test_create_live_status_console_shares_one_api_between_surfaces():
 
     assert live_console.api is console.created_with_api
     assert live_console.api is touchstrip.created_with_api
+
+
+def test_live_status_console_closes_all_surfaces():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+
+    live_console.close()
+    live_console.close()
+
+    assert console.close_calls == 2
+    assert touchstrip.close_calls == 2
 
 
 async def test_wire_status_console_pushes_initial_state_and_live_events():

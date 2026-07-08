@@ -90,16 +90,11 @@ story card as part of this task.
   confirm-row show/hide) and `touchstrip.html` (actions page, hold
   start/cancel) - no console errors, correct guard behavior (early release
   cancels, no partial shutdown).
-- **Known limitation, documented in README/README.ru:** neither this
-  control nor the existing hotkey closes the `pywebview` window(s) -
-  `webview.start()`'s native GUI loop owns the main thread independently
-  of the `asyncio` loop `run()` tears down, so the window is left open but
-  inert after shutdown. Closing it automatically would need a lifecycle
-  controller bridging the two loops - this task's stop condition
-  ("routing shutdown through `StatusConsoleApi` creates a circular
-  dependency with `run()` lifecycle ownership") did not trigger, so no
-  such controller was built, matching the story's Boundary that one is
-  only created if the stop condition fires.
+- Superseded by the later lifecycle-controller fix: this original task
+  shipped with a known limitation where neither this control nor the
+  existing hotkey closed the `pywebview` window(s). That is no longer the
+  current contract. `main.py` now closes the live Status Console windows
+  after the shared clean engine shutdown completes.
 - `PROJECT.md` gained an "Architecture v1.2.4" section recording this.
 
 **Automated tests:** `tests/test_status_console.py` gained
@@ -124,9 +119,7 @@ python main.py --status-console
 3. Confirm the console log shows the same cancel/unsubscribe/unregister
    sequence already produced by `Ctrl+Alt+Q` (mic loop stopped, hotkeys
    unregistered, no further "listening" cue).
-4. Confirm the window itself stays open but inert afterward (expected -
-   see this card's Resolution and README's Known Issues) - close it
-   manually.
+4. Confirm the Status Console window closes after teardown completes.
 5. Repeat once on the touchstrip window instead: hold "Завершить работу"
    for the full ~2s (fill animation completes) and confirm the same
    teardown; release early on a second run and confirm nothing happens.
