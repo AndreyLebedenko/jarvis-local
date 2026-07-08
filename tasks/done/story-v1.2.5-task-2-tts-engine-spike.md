@@ -1,7 +1,7 @@
 # Task: TTS engine timing and quality spike
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.5
 **Depends on:** `tasks/story-v1.2.5-task-1-ollama-attention-cache-options.md`
 
