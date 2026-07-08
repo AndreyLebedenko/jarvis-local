@@ -34,7 +34,7 @@ import json
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
 DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
@@ -50,6 +50,10 @@ class BackendSettings:
     endpoint: str = "http://localhost:11434"
     num_ctx: int = 65536
     read_timeout_seconds: float = 120.0
+    # Optional Ollama tuning knobs for the spike. They default to None so the
+    # current runtime contract stays unchanged unless a config file sets them.
+    flash_attention: bool | None = None
+    kv_cache_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -153,11 +157,23 @@ _SECTIONS: dict[str, type] = {
 
 
 def _matches_type(value: Any, expected_type: type) -> bool:
+    origin = get_origin(expected_type)
+    if origin is not None:
+        return any(_matches_type(value, nested_type) for nested_type in get_args(expected_type))
     if isinstance(value, bool):
         return expected_type is bool
     if expected_type is float:
         return isinstance(value, (int, float))
     return isinstance(value, expected_type)
+
+
+def _describe_type(expected_type: type) -> str:
+    if expected_type is type(None):
+        return "None"
+    origin = get_origin(expected_type)
+    if origin is None:
+        return expected_type.__name__
+    return " | ".join(_describe_type(nested_type) for nested_type in get_args(expected_type))
 
 
 def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
@@ -177,7 +193,7 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         value = raw[name]
         if not _matches_type(value, expected_type):
             raise ConfigError(
-                f"[{section_name}].{name} must be {expected_type.__name__}, "
+                f"[{section_name}].{name} must be {_describe_type(expected_type)}, "
                 f"got {type(value).__name__}: {value!r}"
             )
         kwargs[name] = value

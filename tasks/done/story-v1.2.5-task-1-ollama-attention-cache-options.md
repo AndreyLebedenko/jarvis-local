@@ -1,7 +1,7 @@
 # Task: Ollama attention and cache options
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.5
 
 ## Summary

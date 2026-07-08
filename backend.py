@@ -82,12 +82,17 @@ class OllamaBackend:
         messages = [dict(message) for message in messages]
         if images_b64:
             messages[-1] = {**messages[-1], "images": list(images_b64)}
+        options: dict[str, Any] = {"num_ctx": self._settings.num_ctx}
+        if self._settings.flash_attention is not None:
+            options["flash_attention"] = self._settings.flash_attention
+        if self._settings.kv_cache_type is not None:
+            options["kv_cache_type"] = self._settings.kv_cache_type
         return {
             "model": self._settings.model,
             "messages": messages,
             "stream": True,
             "think": thinking_enabled,
-            "options": {"num_ctx": self._settings.num_ctx},
+            "options": options,
         }
 
     async def chat(

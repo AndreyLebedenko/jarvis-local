@@ -64,6 +64,33 @@ def test_payload_uses_model_and_num_ctx_from_settings():
     assert payload["options"]["num_ctx"] == 1234
 
 
+def test_payload_includes_configured_flash_attention_and_kv_cache_type():
+    settings = BackendSettings(
+        model="custom-model",
+        num_ctx=1234,
+        flash_attention=True,
+        kv_cache_type="q8_0",
+    )
+    backend = OllamaBackend(bus=EventBus(), settings=settings)
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert payload["options"] == {
+        "num_ctx": 1234,
+        "flash_attention": True,
+        "kv_cache_type": "q8_0",
+    }
+
+
+def test_payload_preserves_an_explicit_false_flash_attention_value():
+    settings = BackendSettings(flash_attention=False)
+    backend = OllamaBackend(bus=EventBus(), settings=settings)
+
+    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+
+    assert payload["options"]["flash_attention"] is False
+
+
 def test_default_client_uses_configured_read_timeout():
     """Regression test: httpx's own default timeout (~5 s total) is too
     short for a genuinely cold Ollama start - verified live, it raised

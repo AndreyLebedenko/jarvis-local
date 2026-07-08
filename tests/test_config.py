@@ -75,6 +75,91 @@ def test_partial_section_fills_missing_keys_from_defaults(tmp_path):
     assert settings.backend.num_ctx == BackendSettings().num_ctx
 
 
+def test_flash_attention_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        flash_attention = true
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.backend.flash_attention is True
+
+
+def test_flash_attention_defaults_to_none_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.backend.flash_attention is None
+
+
+def test_flash_attention_false_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        flash_attention = false
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.backend.flash_attention is False
+
+
+def test_flash_attention_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        flash_attention = "yes"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_kv_cache_type_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        kv_cache_type = "q8_0"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.backend.kv_cache_type == "q8_0"
+
+
+def test_kv_cache_type_defaults_to_none_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.backend.kv_cache_type is None
+
+
+def test_kv_cache_type_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        kv_cache_type = 123
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
 def test_missing_file_falls_back_to_defaults(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 

@@ -186,6 +186,10 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   silently ended without `done: true` would otherwise wedge the process
   busy forever (v1.2.3, see
   `tasks/done/story-v1.2.3-task-1-backend-stream-completion.md`).
+  `BackendSettings` also carries optional `flash_attention` and
+  `kv_cache_type` request knobs for the v1.2.5 spike; they default to
+  omission so the current runtime contract stays unchanged unless a
+  config file explicitly sets them.
 - `audio_utils.py` — shared wav-encoding helper. No project-module
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
