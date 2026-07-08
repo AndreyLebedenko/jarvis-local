@@ -1,7 +1,7 @@
 # Task: Record verified TTS facts
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.5
 **Depends on:** `tasks/story-v1.2.5-task-2-tts-engine-spike.md`
 
@@ -36,3 +36,4 @@ facts before choosing the TTS migration direction.
 - Stop if human results are incomplete or internally inconsistent.
 - Stop if measurements reveal non-obvious trade-offs with architectural
   consequences.
+

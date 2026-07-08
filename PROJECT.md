@@ -44,6 +44,15 @@ system is intended to grow.
   generation ~87 tok/s. VRAM under load: ~10.9/16 GB → ~5 GB headroom for TTS.
 - Context: `num_ctx: 65536` (verified to fit; if VRAM pressure appears, first
   try `OLLAMA_KV_CACHE_TYPE=q8_0`, then drop to 32768).
+- Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
+  `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
+  prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`
+  loaded in 0.52 s. Measured prompt classes were `russian`, `english`,
+  `mixed_latin`, `numbers`, `short_answer`, and `code_like`, with
+  first-audio / total times of 1.24 / 4.50 s, 0.99 / 4.87 s, 0.37 / 4.67 s,
+  0.32 / 5.98 s, 0.24 / 2.75 s, and 0.39 / 4.39 s respectively. The run
+  reported `peak_vram_delta_mib = 0` across those Silero prompts. This is a
+  verified q8_0 profile only; f16 comparison remains open.
 - Owner's fine-tuned gemma4 variant **lost audio capability** during tuning
   (unified weights — text-only tuning shifts audio pathways). It is parked.
   Do not use it. Behavioral customization goes into the system prompt instead.
@@ -141,6 +150,9 @@ system is intended to grow.
 
 ## Open questions (unverified - do not assume an answer)
 
+- TTS cache comparison is still partial: the `q8_0` profile above is
+  verified, but a matched `f16` run has not yet been recorded, so no final
+  cache recommendation is locked in.
 - **Resolved (task-07, human decision): history is text-only in v1.0.**
   Media (audio, screenshot) is attached only to the current turn's
   message; conversation history carries text only, never resent media.
