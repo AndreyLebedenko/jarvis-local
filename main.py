@@ -1,27 +1,4 @@
-"""Process entry point: wires every module together via bus.py, authors
-the system prompt, and drives sound cues for state transitions -
-PROJECT.md's "hotkeys + sound cues only, no GUI" interaction model.
-
-History (v1.0 decision, see PROJECT.md's Open questions section):
-text-only. Media (audio, screenshot) is attached only to the current
-turn's message, never resent in history. ConversationHistory's Turn
-already carries a media_b64 field so a later release can start passing
-media into history without restructuring anything here - v1.0 code
-simply never populates it.
-
-Warm-up (task-07 backlog note from task-03): a throwaway request runs
-BEFORE wire() subscribes tts_output/orchestrator to the bus, so its
-response tokens are published to zero subscribers (bus.py: publishing
-with no subscribers is a no-op) rather than spoken aloud or recorded
-into history.
-
-Malformed stream line policy (task-07 backlog note from task-03):
-backend.py's chat() lets a json.loads failure on a malformed line raise
-uncaught. Resolved here, not in backend.py: Orchestrator.on_utterance's
-try/except around backend.chat() already catches any such exception,
-plays the error cue, and lets the process keep running - no backend.py
-change needed.
-"""
+"""Process entry point and module wiring."""
 
 import asyncio
 import argparse
@@ -83,12 +60,7 @@ SYSTEM_PROMPT = (
 
 
 def is_elevated() -> bool:
-    """Windows-only: True if the process has Administrator privileges.
-    Global hotkeys (capture.py, the shutdown hotkey here) only work
-    system-wide when elevated - verified live, see PROJECT.md's Verified
-    facts. Not elevated is not fatal; hotkeys just degrade to only firing
-    while this process's own window has focus.
-    """
+    """Windows-only: True if the process has Administrator privileges."""
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except (AttributeError, OSError):
@@ -103,9 +75,7 @@ class Turn:
 
 
 class ConversationHistory:
-    """Text-only for v1.0. Turn already carries media_b64 so a later
-    release can extend this without restructuring anything - see module
-    docstring."""
+    """Text-first history with optional media fields for future retention."""
 
     def __init__(self) -> None:
         self._turns: list[Turn] = []
@@ -123,10 +93,7 @@ class ConversationHistory:
         return messages
 
     def clear(self) -> None:
-        """Drops every recorded turn (task-ui-04's global context reset).
-        Does not touch anything else about a turn in flight - Orchestrator's
-        own busy/pending-screenshot state is unrelated to conversation
-        history and is not this method's concern."""
+        """Drops recorded conversation turns."""
         self._turns = []
 
 
@@ -134,36 +101,7 @@ VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
 
 
 class Orchestrator:
-    """Owns the per-turn state machine: correlates the latest screenshot
-    with the next utterance, calls backend.chat(), builds history, and
-    drives the thinking/speaking/error sound cues (listening is driven
-    separately, once TTS finishes speaking - see wire()).
-
-    _start_turn() is the one shared turn-start path (busy-guard, thinking
-    cue, message assembly, backend.chat(), error handling) used by every
-    kind of user turn. on_utterance() and on_clipboard() are thin adapters
-    onto it (task-08): audio turns attach wav+pending-screenshot media and
-    a fixed history placeholder (no transcript exists in v1.0); clipboard
-    turns attach the real submitted text and no media at all. Duplicating
-    this logic per input source instead of sharing it is exactly the kind
-    of split that caused the ResponseComplete concurrency bugs found
-    during task-07's review - it must not happen again for the same
-    reason.
-
-    Echo mitigation (task-10, layered on top of finish_turn()'s existing
-    busy-cooldown - see PROJECT.md's Verified facts): if audio_input is
-    given, audio_input.auto_pause_for_speech()/auto_resume_after_speech()
-    are called unconditionally around this turn's speech (first response
-    token through finish_turn()'s cooldown). Unlike an earlier version of
-    this feature, this class no longer has to track whether it "owns" the
-    pause to avoid overriding a user privacy sleep - that composition
-    (user-requested sleep vs this internal auto-pause, ANDed into the
-    actual capture state) now lives in AudioInput itself, which is the
-    right owner of its own state (see its module docstring for the bug
-    this fixed: a single is_awake bit could not represent both facts
-    independently, so a hotkey press during this auto-pause could wake
-    the mic against the user's actual intent).
-    """
+    """Owns per-turn orchestration across input, backend, history, and cues."""
 
     def __init__(
         self,
@@ -470,10 +408,6 @@ def wire_status_console(
     _push_runtime_state(live_console, RuntimeState.WARMING, "Прогреваю модель...")
 
     async def on_model_options_available(event: ModelOptionsAvailable) -> None:
-        # Config menu is desktop-only (story-v1.2.4-task-3's Scope decision,
-        # matching push_system_event()'s existing touchstrip exclusion) -
-        # push straight to live_console.console, never looped via
-        # _status_surfaces().
         live_console.console.push_model_options(event.options, event.current)
 
     async def on_microphone_options_available(event: MicrophoneOptionsAvailable) -> None:
@@ -515,34 +449,7 @@ def wire_status_console(
 
 
 async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
-    """The single handler for ResponseComplete - deliberately NOT split
-    across separate concurrent bus subscribers (bus.py delivers
-    subscribers of the same event via asyncio.gather, concurrently, not
-    in sequence). An earlier version subscribed tts_output, orchestrator,
-    and a "replay listening cue" closure separately to ResponseComplete;
-    that let the listening cue play before the flushed trailing sentence
-    had actually finished (or even started) playing - and, worse, let a
-    new turn's "thinking" cue start while the previous turn's trailing
-    speech was still on the speaker, corrupting playback (verified live:
-    audible crackling/tempo artifacts from two sd.play() calls landing on
-    the shared device at once). Doing all four steps in order, in one
-    coroutine, makes both bugs structurally impossible.
-
-    finish_turn() runs in a finally block: if flushing the trailing
-    sentence or waiting for pending speech raises (model/cache/audio-
-    device failure), the busy flag must still clear - otherwise every
-    later utterance is ignored as "previous request still in flight"
-    forever, wedging the process on a single failed turn (exactly what
-    task-07's top-level error handling requirement rules out; bus.py
-    only logs a subscriber's exception, it does not restart or retry
-    this handler).
-
-    finish_turn() also gets a cooldown equal to
-    config.vad.request_end_pause_seconds - see its docstring for why:
-    audio_in.py can still be sitting on a self-heard "utterance"
-    (Jarvis's own voice, picked up by the mic with no echo cancellation)
-    for up to that long after Jarvis stops talking.
-    """
+    """Finishes a response in the order required by the audio pipeline."""
     try:
         await app.tts_output.on_response_complete(event)  # flushes trailing sentence
         await app.orchestrator.on_response_complete(event)  # records history
@@ -559,15 +466,7 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
 
 
 async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
-    """Plays the sleep/wake sound cue - the only feedback for this
-    privacy toggle, per the "hotkeys + sound cues only" interaction
-    model. Mirrors _on_full_response_complete's split: audio_in.py only
-    publishes what happened, main.py decides what to do about it.
-
-    Also publishes a SystemEvent (task-ui-03) so the Status Console's
-    events panel stays in sync with this console log line - see
-    system_log.py for why log_message/ui_message are two separate
-    strings rather than one reused verbatim."""
+    """Publishes UI/log feedback and plays the sleep/wake cue."""
     awake = event.is_awake
     await publish_system_event(
         app.bus,
@@ -581,14 +480,7 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
 
 
 async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> None:
-    """Plays the on/off cue and logs the new state - same split as every
-    other cue-driving event (thinking_mode.py only publishes what
-    happened; main.py decides what to do about it). The state itself is
-    read by Orchestrator._start_turn(), not here - this handler is purely
-    user feedback for the toggle.
-
-    Also publishes a SystemEvent (task-ui-03) - see _on_mic_sleep_toggled
-    above and system_log.py for why."""
+    """Publishes UI/log feedback and plays the thinking-mode cue."""
     enabled = event.is_enabled
     await publish_system_event(
         app.bus,
@@ -608,15 +500,6 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
 
     async def on_full_response_complete(event: ResponseComplete) -> None:
         await _on_full_response_complete(app, event)
-        # Live bug (2026-07-07): _push_runtime_state(SPEAKING) fires on
-        # the turn's first ResponseToken (on_response_token below), but
-        # nothing ever pushed the orb back afterward - it stayed stuck on
-        # "Отвечаю" forever after the very first turn, even though the
-        # engine kept handling later turns correctly in the background
-        # (sound_cues' own "listening" cue, played a few lines down in
-        # _on_full_response_complete, already did this correctly - the UI
-        # push was simply missing). Mirrors main.py's own startup push
-        # right after warm_up().
         if live_console is not None:
             _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
 
@@ -660,19 +543,7 @@ def unwire(app: App, subscriptions: list[Subscription]) -> None:
 
 
 async def warm_up(backend: OllamaBackend, bus: EventBus) -> None:
-    """Fires a throwaway request before the process signals it is ready
-    to listen, so the first real user turn doesn't pay Ollama's cold-load
-    penalty (measured 4.2 s vs 0.3 s warm - task-07 backlog note from
-    task-03). Must run before wire() - see module docstring.
-
-    Publishes a SystemEvent either way (task-ui-03's "warmup success/
-    failure is visible" acceptance criterion) via publish_system_event()
-    on the given bus - safe even with zero subscribers (bus.py: publish
-    with no subscribers is a no-op), so this works whether or not a
-    Status Console window is attached yet. The failure branch keeps the
-    existing logger.exception() call for the full stack trace (developer
-    diagnostic detail) in addition to the concise SystemEvent.
-    """
+    """Runs a throwaway backend request before user input is accepted."""
     try:
         await backend.chat([{"role": "user", "content": "Привет"}])
     except Exception:
@@ -702,37 +573,14 @@ async def run_until_shutdown(
     shutdown_event: asyncio.Event,
     background_tasks: list[asyncio.Task],
 ) -> None:
-    """Waits for shutdown_event, then stops the microphone loop
-    cooperatively, cancels background_tasks and awaits them ALL, lets any
-    in-flight speech finish, and unsubscribes everything. Testable in
-    isolation with fake background tasks instead of real mic/hotkey
-    hardware.
-
-    audio_input.stop() before the cancellations is load-bearing, not
-    belt-and-braces (real live-session hang, 2026-07-07: both shutdown
-    triggers set shutdown_event, the log stopped after "[ENGINE] Shutdown
-    requested via Status Console", and the process never exited until a
-    hard Ctrl+C). run_microphone_loop() spends most of its life inside
-    `await asyncio.to_thread(stream.read, ...)`; cancelling a task that
-    is awaiting a running executor future does NOT interrupt it - asyncio
-    cannot cancel a concurrent.futures future that has already started,
-    so the task only observes its CancelledError after the blocking
-    sounddevice read returns on its own, and a read that never returns
-    (PortAudio blocked on the device) means the old cancel-then-gather
-    sequence waited forever. stop() closes that hole from the other side:
-    it sets the loop's stop flag and calls the stream's own stop() on the
-    executor's thread, which makes a blocked PortAudio read return/raise
-    instead of hanging, letting the loop exit by returning normally -
-    cooperative shutdown, not abandonment. Every task is then still
-    awaited to full completion (the story's clean-shutdown contract:
-    cancel tasks, await pending TTS/sound cues, unsubscribe, unregister
-    hotkeys - never "give up waiting" with tasks still alive). Per-step
-    logging stays so any future hang names its exact step instead of
-    dying silently."""
+    """Runs the clean shutdown sequence after shutdown_event is set."""
     try:
         await shutdown_event.wait()
     finally:
         logger.info("Shutdown: stopping microphone capture")
+        # Cancelling a task awaiting a running executor future cannot stop
+        # the underlying blocking read; the microphone loop needs its own
+        # cooperative stop before we await all background tasks.
         await app.audio_input.stop()
         logger.info("Shutdown: cancelling %d background task(s)", len(background_tasks))
         for task in background_tasks:
@@ -782,10 +630,7 @@ async def run(
         )
 
     app = app or build_app(settings)
-    # Created before wire_status_console() so request_shutdown() (the
-    # Status Console's Shutdown control, story-v1.2.4-task-1) can be wired
-    # to the exact same event the shutdown hotkey below sets - one shutdown
-    # signal, two triggers, not two independent shutdown paths.
+    # One shutdown signal feeds both the hotkey and the Status Console.
     shutdown_event = asyncio.Event()
     if live_console is not None:
         live_console.api.set_shutdown_event(shutdown_event)

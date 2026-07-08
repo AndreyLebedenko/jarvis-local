@@ -1,99 +1,4 @@
-"""Desktop Status Console shell (task-ui-02): a pywebview window over
-status_console_ui/index.html.
-
-Framework decision (human, task-ui-02 stop condition): pywebview over a
-local HTML/CSS/JS front-end, reusing the visual language already drafted in
-.planning/UI/mock-ups/jarvis_status_console_v1.html with no rewrite into a
-native widget toolkit. Windows backend is WebView2 (pre-installed on
-Windows 11); a future Linux backend would be QtWebEngine via PySide6 - a
-pywebview GUI-backend choice, not a UI rewrite (see story-status-console-
-ui.md's Open Questions). This module is a same-process bridge only
-(pywebview's own evaluate_js), matching "UI consumes engine state through
-explicit events/snapshots" (story's Key Decisions) without adding a
-networked layer nothing in v1.0 needs yet - a networked WebSocket transport
-is deferred to whichever later task needs cross-device delivery (e.g.
-task-ui-06's touchstrip surface, if that ends up running on a separate
-device).
-
-Pure rendering logic (contract shape -> DOM update) lives in
-status_console_ui/app.js; this module's job is only launching the window
-and translating ui_contract.py's dataclasses into the JSON payloads that
-app.js's functions expect - the *_payload() functions below are the pure,
-testable half of that translation.
-
-Nothing here subscribes to bus.py directly - that would require deciding
-how pywebview's own GUI loop (webview.start(), typically main-thread) and
-this process's asyncio loop share the main thread, which is a separate,
-larger concern than either this module or task-ui-03 owns. Instead,
-main.py's handlers call system_log.publish_system_event() at the point
-something happens (see main.py's _on_mic_sleep_toggled/
-_on_thinking_mode_toggled/warm_up) - publishing to the bus is safe with
-zero subscribers (bus.py: a no-op) - and whichever future task wires a
-live StatusConsoleWindow into main.py's App only needs to subscribe
-push_system_event to that same SystemEvent. Visibility mode is still a
-reserved placeholder - task-ui-05's job. See story-status-console-ui.md's
-task-ui-02/task-ui-03 cards.
-
-task-ui-04 adds the reverse direction: StatusConsoleApi is exposed to the
-front-end as pywebview's js_api (JS -> Python), for the Think toggle and
-reset controls. Its methods are plain sync callables that schedule work
-onto a given asyncio loop via run_coroutine_threadsafe - the exact same
-race-avoidance pattern this project's hotkey listeners already use
-(thinking_mode.py/audio_in.py's run_hotkey_listener), since pywebview
-invokes js_api methods from its own GUI thread, not the asyncio loop's
-thread.
-
-Stop Condition (task-ui-04): no module (backend, microphone, TTS, memory,
-vision) has a lifecycle/reset API today (see PROJECT.md) - so
-reset_module() never claims success. It honestly publishes a WARN
-SystemEvent reporting the gap instead of faking a reset; a future task
-that adds a real per-module reset API replaces only that method's body,
-not the button/wiring around it.
-
-task-ui-05 adds set_visibility_mode(), the same js_api pattern as
-toggle_thinking()/reset_context(). Human decision recorded in task-ui-05's
-card: in v1, Open/Hidden only changes what the Status Console UI itself
-displays - it does not touch audio_in.py/tts.py/Orchestrator, so this
-method needs no engine-side consumer beyond VisibilityModeState itself and
-a SystemEvent for visibility.
-
-task-ui-06 adds TouchstripWindow, a second StatusConsoleWindow pointed at
-status_console_ui/touchstrip.html instead of index.html - same push_*()
-surface (task-ui-06's AC: "Same state contract as desktop Status Console
-is reused"), same StatusConsoleApi instance shared with the desktop
-window (pywebview allows binding the same js_api object to more than one
-window), so toggling Think/visibility mode on either surface is one real
-engine state, not two independently-tracked copies. Stop Condition
-evaluated: pywebview supports creating multiple windows in one process
-before webview.start() runs the GUI loop, so this needed no separate
-process or architecture change.
-
-story-v1.2.4-task-1 adds request_shutdown(), routed through the exact
-same shutdown_event that main.py's shutdown hotkey already sets (Boundary:
-"Shutdown must use the same clean path as the existing shutdown hotkey") -
-this class never cancels tasks or unsubscribes handlers itself; it only
-sets the event that run_until_shutdown() already waits on, so there is
-exactly one clean-shutdown implementation, not a second one reachable only
-from the UI. shutdown_event is optional at construction and settable later
-via set_shutdown_event(), the same chicken-and-egg ordering as set_loop()
-(this object is created before main.py's run() creates its real
-asyncio.Event()).
-
-story-v1.2.4-task-3 adds the configuration menu (model + microphone,
-restart-to-apply): request_model_options()/request_microphone_options()
-enumerate from injectable sources (real defaults: Ollama's GET /api/tags,
-sounddevice.query_devices() off-loop via asyncio.to_thread), degrading to
-just the current configured value on any failure rather than raising -
-never live Ollama or real devices in a pure test. Results reach the
-window(s) the same "publish an event, main.py's wire_status_console()
-pushes it" way as every other piece of state here (ModelOptionsAvailable/
-MicrophoneOptionsAvailable) - this class never holds a window reference
-itself. save_config_selection() writes only config.ui.toml (config.py's
-write_ui_config(), never config.toml) and publishes UiConfigSaved so the
-desktop window can show a pending-restart indicator; config.py's own
-load_settings() already only runs once at startup, so no live-reload
-mechanism is needed for "restart-to-apply" to actually be true.
-"""
+"""pywebview Status Console bridge and payload adapters."""
 
 import asyncio
 import json
@@ -210,8 +115,7 @@ def options_payload(options: list[str], current: str) -> dict:
 
 
 class WindowLike(Protocol):
-    """Shape of the pywebview window object this class relies on - lets
-    tests inject a fake, mirroring audio_in.py's InputStreamLike pattern."""
+    """Shape of the pywebview window object used by StatusConsoleWindow."""
 
     def evaluate_js(self, script: str) -> object: ...
     def destroy(self) -> None: ...
@@ -221,17 +125,7 @@ WindowFactory = Callable[..., WindowLike]
 
 
 class StatusConsoleWindow:
-    """Owns a pywebview window and translates ui_contract.py values into
-    evaluate_js calls against the matching front-end file (status_console_ui/
-    app.js for the desktop shell, touchstrip.js for TouchstripWindow below -
-    both expose the same apply*() function names, task-ui-06's "same state
-    contract" AC). window_factory is injectable so tests never need a real
-    pywebview/WebView2 install - see manual_check_status_console.py for the
-    real, hardware-dependent run.
-
-    title/url/width/height/min_size/resizable default to the desktop shell's
-    original values; TouchstripWindow below overrides them for a fixed-size,
-    non-resizable ~900x230 window matching a real touch-strip device."""
+    """Owns one pywebview window and pushes typed UI payloads into it."""
 
     def __init__(
         self,
@@ -313,20 +207,7 @@ class StatusConsoleWindow:
 
 
 class TouchstripWindow(StatusConsoleWindow):
-    """The touchstrip glance surface (task-ui-06): status_console_ui/
-    touchstrip.html instead of index.html, sized to a real touch-strip
-    device (~900x230, non-resizable - a physical device does not resize).
-    Every push_*() method except push_system_event() is inherited
-    unchanged, because touchstrip.js exposes the same apply*() function
-    names as app.js (task-ui-06's "same state contract" AC) - only the
-    rendering differs. push_system_event() is overridden to fail loudly:
-    Scope explicitly excludes a dense event log from this surface, and
-    touchstrip.js has no appendSystemEvent() to call.
-
-    story-v1.2.4-task-3's config menu (model/microphone selectors, pending-
-    restart indicator) is desktop-only for the same reason - touchstrip.js
-    has none of applyModelOptions()/applyMicrophoneOptions()/
-    applyPendingRestart() either, so those three are overridden here too."""
+    """Compact Status Console surface for touchstrip-sized displays."""
 
     def __init__(self, window_factory: WindowFactory | None = None) -> None:
         super().__init__(
@@ -366,11 +247,7 @@ class TouchstripWindow(StatusConsoleWindow):
 
 
 class ClearableHistory(Protocol):
-    """Shape StatusConsoleApi.reset_context() relies on - deliberately not
-    main.py's concrete ConversationHistory, so this module never depends on
-    the top-level wiring module (main.py may need to depend on this one
-    later, when a live window is finally wired in - see this module's
-    docstring)."""
+    """Shape StatusConsoleApi.reset_context() relies on."""
 
     def clear(self) -> None: ...
 
@@ -396,15 +273,7 @@ MicrophoneOptionsSource = Callable[[], Awaitable[list[str]]]
 
 
 async def _default_model_options_source(endpoint: str) -> list[str]:
-    """Real source for the model selector: local Ollama's own GET
-    /api/tags - the same endpoint config.py's BackendSettings.endpoint
-    already points at, not a new network dependency (PROJECT.md: Jarvis's
-    only permitted network access is the configured local Ollama
-    endpoint). A short timeout (not backend.py's generous
-    read_timeout_seconds, meant for a genuinely cold model load) so a
-    stuck request degrades quickly rather than hanging the config menu -
-    request_model_options()'s caller degrades to the current value on any
-    exception here, including this timeout."""
+    """Reads model options from the configured local Ollama endpoint."""
     async with httpx.AsyncClient(timeout=3.0) as client:
         response = await client.get(f"{endpoint}/api/tags")
         response.raise_for_status()
@@ -417,11 +286,7 @@ async def _default_model_options_source(endpoint: str) -> list[str]:
 
 
 async def _default_microphone_options_source() -> list[str]:
-    """Real source for the microphone selector: sounddevice.query_devices()
-    is a blocking call, run off the asyncio loop via asyncio.to_thread()
-    so it cannot stall request_microphone_options()'s caller even though
-    it is local/offline (Stop Condition: "if source enumeration blocks
-    the UI thread")."""
+    """Reads local input device names without blocking the asyncio loop."""
     devices = await asyncio.to_thread(sd.query_devices)
     return [
         device["name"] for device in devices if device.get("max_input_channels", 0) > 0
@@ -429,22 +294,7 @@ async def _default_microphone_options_source() -> list[str]:
 
 
 class StatusConsoleApi:
-    """Exposed to the front-end as window.pywebview.api (pywebview's own
-    JS -> Python bridge) - see this module's docstring for the threading
-    rationale. Every public method here is a plain sync callable, never
-    awaited directly by pywebview; each schedules its real async work onto
-    the given loop instead.
-
-    loop is optional at construction time and settable later via
-    set_loop(): pywebview.create_window(js_api=...) must receive this
-    object before webview.start() runs the GUI loop, but the real asyncio
-    loop this object needs to schedule onto typically does not exist until
-    the code running inside webview.start()'s own callback creates one
-    (see manual_check_status_console.py) - a real chicken-and-egg ordering
-    constraint, not an oversight. Every public method is a no-op until
-    set_loop() has been called (a user cannot click a control before the
-    window has actually opened, by which point the loop already exists in
-    every real run)."""
+    """Synchronous JS API facade that schedules work on the engine loop."""
 
     def __init__(
         self,
@@ -483,16 +333,7 @@ class StatusConsoleApi:
         self._shutdown_event = shutdown_event
 
     def _loop_is_usable(self) -> bool:
-        """False once main.py's run() has torn down its asyncio loop (e.g.
-        after a completed shutdown - see request_shutdown()) - the
-        windows should be closing after that, but a late duplicate UI call
-        can still race with teardown. Every public method must treat an
-        already-closed loop the same as never having had one at all rather
-        than crashing inside pywebview's own JS-API dispatch thread
-        (verified live: a second click on an already-shut-down Status
-        Console raised "RuntimeError: Event loop is closed" from
-        call_soon_threadsafe(), because only a None loop was ever guarded
-        against)."""
+        """True only while JS API calls can still schedule engine work."""
         return self._loop is not None and not self._loop.is_closed()
 
     def toggle_thinking(self) -> None:
@@ -523,9 +364,7 @@ class StatusConsoleApi:
         asyncio.run_coroutine_threadsafe(self._reset_module_async(module), self._loop)
 
     async def _reset_module_async(self, module: ModuleId) -> None:
-        """Stop Condition (task-ui-04): never claims success - see this
-        module's docstring. A future task adding a real per-module reset
-        API replaces only this body."""
+        """Reports that per-module reset is not implemented yet."""
         await publish_system_event(
             self._bus,
             self._logger,
@@ -660,21 +499,7 @@ class StatusConsoleApi:
         )
 
     async def _save_config_selection_async(self, model: str, microphone_device: str) -> None:
-        """Writes only config.ui.toml (config.py's write_ui_config() never
-        opens config.toml - see that function's docstring for why this
-        cannot risk overwriting the human-edited file). Restart-to-apply:
-        this does not change anything about the currently running process
-        - the new values take effect only the next time load_settings()
-        runs (main.py's next startup), which is exactly what the
-        UiConfigSaved-driven pending-restart indicator communicates.
-
-        Rejects an empty model (Python-side backstop, not just app.js's
-        own disabled-until-loaded guard on the "Применить" button - a
-        real live-session bug had the button clickable before either
-        <select> received real options, saving an empty backend.model
-        that broke the next startup). microphone_device has no such
-        guard: "" is the legitimate "system default device" sentinel
-        (MicrophoneSettings.device's own default), never invalid."""
+        """Writes restart-to-apply UI config after validating selections."""
         if not model.strip():
             self._logger.warning("Ignoring config menu save with an empty model")
             await publish_system_event(

@@ -1,72 +1,7 @@
 """Microphone capture plus Silero VAD end-of-utterance chunking.
 
-Segments continuous 16 kHz mono audio into utterance chunks and publishes
-each finished chunk as a wav payload on the bus.
-
-VadChunker is pure segmentation logic: it takes a complete 16 kHz mono
-audio tensor and returns UtteranceChunk objects, with no file or
-microphone I/O. This is what's testable against prerecorded fixtures
-without a microphone (per PROJECT.md's testing protocol).
-
-Silero's get_speech_timestamps() splits raw speech into small segments at
-any internal pause (~100 ms, not exposed here). That is a within-request
-micro-pause, not a request boundary: two segments separated by a breath
-or a thinking pause shorter than config.vad.request_end_pause_seconds are
-merged into a single utterance. Only a gap at least that long - absence
-of detected speech, not necessarily full digital silence - is treated as
-the user actually finishing. The merged result is then capped at
-config.vad.max_chunk_seconds (PROJECT.md's verified 30 s limit).
-
-AudioInput wires VadChunker's output onto the bus. Its microphone-capture
-loop is hardware-dependent and covered by the manual handoff, not
-automated tests - but it feeds live audio into the same VadChunker.chunk()
-used by the fixture tests, per this module's task card. It uses the same
-request_end_pause_seconds threshold to decide when a merged utterance is
-safe to finalize and publish (no further speech can still be merged into
-it once that much trailing buffer has passed with no new segment).
-
-Sleep mode (task-09, v1.1): a privacy pause driven from outside the
-module (a hotkey, wired in task-10) - a genuine capture pause, not just
-discarding results while still listening. run_microphone_loop() reuses
-the same sd.InputStream across sleep/wake cycles via its own
-.stop()/.start() (reconstructing it would add wake-latency and is
-unnecessary), blocks efficiently on an asyncio.Event while asleep (no
-busy-polling), and resets the accumulated buffer on the sleep transition:
-without that reset, speech captured just before sleep could still be
-sitting in the buffer, unconfirmed, when new speech arrives after wake,
-and the VAD/merge pipeline could stitch them into one utterance spanning
-a real gap where nothing was actually being captured. Any not-yet-
-confirmed audio in the buffer at the moment sleep triggers is therefore
-discarded, not published - consistent with sleep being a privacy pause,
-not a "flush first" action.
-
-Task-10 adds the real hotkey listener (run_hotkey_listener(), mirroring
-capture.py's) plus an internal echo-mitigation pause driven by
-Orchestrator while Jarvis is speaking (see main.py). Both share the same
-underlying capture on/off switch, which created a real bug caught in
-task-10's own review: a single is_awake bit cannot represent "the user
-wants privacy" and "Jarvis is auto-pausing for its own speech" as
-independent facts, so toggling the hotkey during an auto-pause could
-wake the mic against the user's actual intent, or the auto-resume could
-override an explicit user sleep. Fixed by tracking the two as separate
-flags, ANDed into the actual capture state:
-
-- toggle_user_sleep() - the *only* entry point for the user-facing
-  privacy hotkey. Flips _user_wants_awake and publishes MicSleepToggled
-  (driving the mic_sleep/mic_wake cues) reflecting what the user asked
-  for, regardless of whether capture actually changes state right away.
-  The whole read-decide-write happens synchronously inside this one
-  coroutine (no `await` before the mutation) specifically so two rapid
-  hotkey presses can never both read the same stale state and schedule
-  the same action twice - do not move that decision into the keyboard
-  callback thread (see run_hotkey_listener()) as an earlier version did.
-- auto_pause_for_speech() / auto_resume_after_speech() - Orchestrator's
-  internal mitigation. Deliberately does *not* publish MicSleepToggled or
-  play a cue: it is not a user-visible privacy action, and playing the
-  privacy cues on every spoken response would be misleading UX (caught
-  in the same review). Safe to call unconditionally around every turn's
-  speech regardless of the user's own state - the AND-gate composition
-  means this can never itself turn capture on if the user wants it off.
+VadChunker is pure segmentation logic. AudioInput owns live capture,
+privacy sleep, speech auto-pause, and bus publication.
 """
 
 import asyncio
@@ -248,17 +183,7 @@ class AudioInput:
             await asyncio.to_thread(self._active_stream.stop)
 
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
-        """Continuously records from the default input device at 16 kHz
-        mono, re-running the chunker over the accumulated buffer every
-        poll interval. An utterance is published once it is followed by
-        settings.request_end_pause_seconds of buffered audio with no
-        further speech merged into it (confirming it has actually ended,
-        not just paused mid-request). Runs until cancelled.
-
-        While asleep, the loop blocks on self._awake.wait() instead of
-        reading the stream, and the buffer is dropped on the sleep
-        transition (see module docstring for why).
-        """
+        """Records microphone audio until cancelled or stopped."""
         request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
         buffer = np.zeros(0, dtype=np.float32)
         published_end_seconds = 0.0
@@ -313,21 +238,7 @@ async def run_hotkey_listener(
     hotkeys: HotkeySettings,
     keyboard_module=None,
 ) -> None:
-    """Binds hotkeys.mic_sleep_toggle to a real global hotkey; each press
-    calls audio_input.toggle_user_sleep() (a single toggle, not separate
-    sleep/wake bindings - see task-09's card). Runs until cancelled.
-    Hardware-dependent in its default form, but keyboard_module is
-    injectable so the wiring itself is testable without a real keyboard
-    hook, mirroring capture.py's run_hotkey_listener.
-
-    Deliberately does not read audio_input.is_awake here to decide which
-    action to take: that decision must happen inside toggle_user_sleep()
-    itself, on the event loop - reading state in this callback (which
-    runs on the keyboard package's own thread) raced against the event
-    loop's own mutation, so two quick presses could both observe the same
-    stale state and schedule the same action twice instead of toggling
-    twice (caught in task-10's review).
-    """
+    """Binds the microphone privacy-toggle hotkey until cancelled."""
     kb = keyboard_module
     if kb is None:
         import keyboard as kb
