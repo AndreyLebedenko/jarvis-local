@@ -6,6 +6,8 @@ param(
         "update",
         "semantic",
         "docs",
+        "refresh",
+        "label",
         "cluster",
         "query",
         "path",
@@ -56,6 +58,12 @@ function Require-Graph {
 }
 
 function Invoke-SemanticExtract {
+    if (-not $env:OLLAMA_API_KEY) {
+        $env:OLLAMA_API_KEY = "ollama"
+    }
+    if ($Backend -eq "ollama") {
+        $env:OLLAMA_MODEL = $Model
+    }
     $graphifyArgs = @(
         "extract",
         ".",
@@ -72,6 +80,16 @@ function Invoke-SemanticExtract {
     Invoke-Graphify -GraphifyArgs $graphifyArgs
 }
 
+function Invoke-LabelCommunities {
+    if (-not $env:OLLAMA_API_KEY) {
+        $env:OLLAMA_API_KEY = "ollama"
+    }
+    if ($Backend -eq "ollama") {
+        $env:OLLAMA_MODEL = $Model
+    }
+    Invoke-Graphify -GraphifyArgs @("label", $repoRoot.Path, "--backend=$Backend")
+}
+
 switch ($Command) {
     "help" {
         @"
@@ -81,6 +99,9 @@ Usage:
   tools/graphify.ps1 init                  Build the initial code graph
   tools/graphify.ps1 update                Fast code-only graph update
   tools/graphify.ps1 semantic              Full code+docs semantic extraction
+  tools/graphify.ps1 refresh               Semantic extraction, then labels
+  tools/graphify.ps1 docs                  Alias for refresh
+  tools/graphify.ps1 label                 Refresh community labels only
     -Backend ollama                        LLM backend for semantic extraction
     -Model gemma4:12b-it-qat               Generative model for JSON extraction
     -MaxConcurrency 1                      Local LLM request concurrency
@@ -105,6 +126,15 @@ Usage:
     }
     "docs" {
         Invoke-SemanticExtract
+        Invoke-LabelCommunities
+    }
+    "refresh" {
+        Invoke-SemanticExtract
+        Invoke-LabelCommunities
+    }
+    "label" {
+        Require-Graph
+        Invoke-LabelCommunities
     }
     "cluster" {
         Require-Graph

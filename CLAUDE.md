@@ -95,15 +95,17 @@
    Use the project wrapper for standard operations:
    - `tools/graphify.ps1 init` for the first graph build;
    - `tools/graphify.ps1 update` after code changes when a graph exists;
-   - `tools/graphify.ps1 semantic` after meaningful changes to `PROJECT.md`,
+   - `tools/graphify.ps1 refresh` after meaningful changes to `PROJECT.md`,
      agent instructions, README/spec files, task cards, or bug reports;
+   - `tools/graphify.ps1 label` to refresh community labels only;
    - `tools/graphify.ps1 query "..."` for codebase questions;
    - `tools/graphify.ps1 hook-install` to install local git hooks.
-   The `semantic` command runs full code+docs extraction through a generative
-   LLM backend and is intentionally not part of the fast hook path. For local
-   Ollama use a JSON-capable chat/instruct model such as
+   The `refresh` command runs full code+docs extraction and community labeling
+   through a generative LLM backend, and is intentionally not part of the fast
+   hook path. For local Ollama use a JSON-capable chat/instruct model such as
    `gemma4:12b-it-qat`; embedding-only models are not suitable for graphify's
-   semantic extraction step.
+   semantic extraction step. On Windows, `tools/graphify-refresh.cmd` is the
+   same operation as `tools/graphify.ps1 refresh`.
    If `graphify-out/graph.json` exists and the task is a codebase question,
    query the graph before manually reading large parts of the repository.
    Do not run graph extraction in CI or treat missing graph output as a test
