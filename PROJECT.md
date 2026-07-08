@@ -53,6 +53,12 @@ system is intended to grow.
   0.32 / 5.98 s, 0.24 / 2.75 s, and 0.39 / 4.39 s respectively. The run
   reported `peak_vram_delta_mib = 0` across those Silero prompts. This is a
   verified q8_0 profile only; f16 comparison remains open.
+- Piper follow-up for English TTS: `python -m pip install piper-tts` succeeded
+  as a one-command install, and the human judged the tested English voice as
+  subjectively higher quality and lower perceived latency than the current
+  Silero Russian baseline. This is a promising usability signal for a simple
+  Silero/Russian + Piper/English route, not a matched benchmark or final engine
+  decision, because the comparison crossed languages.
 - Owner's fine-tuned gemma4 variant **lost audio capability** during tuning
   (unified weights — text-only tuning shifts audio pathways). It is parked.
   Do not use it. Behavioral customization goes into the system prompt instead.

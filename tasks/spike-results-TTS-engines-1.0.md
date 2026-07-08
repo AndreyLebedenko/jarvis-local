@@ -28,6 +28,13 @@ potential.
   monolingual English.
   The English voice works for English input; it does not make Russian
   support automatic.
+- Human follow-up after the initial spike: Piper installation succeeded with a
+  single command, `python -m pip install piper-tts`. Subjective English speech
+  quality sounded better than the current Silero Russian baseline, and
+  perceived latency sounded lower than Silero. This was not a matched
+  same-language benchmark: the comparison was English Piper output against
+  Russian Silero output, so treat it as a promising usability signal rather
+  than a final engine-quality conclusion.
 - Kokoro was not conclusively evaluated in this environment.
   The local Python stack hit an import-time `torch` / `torchvision`
   compatibility error, so there was no reliable model-level conclusion
@@ -111,6 +118,9 @@ potential.
 
 - Verify whether a single Silero multilingual voice is sufficient for the
   desired UX, or whether mixed-language responses should move to XTTS-v2.
+- If a simple first bilingual route is chosen, Silero-for-Russian plus
+  Piper-for-English is now a plausible pragmatic baseline to test behind the
+  future `TtsEngine` boundary.
 - If Silero stays in the stack, define a concrete response contract for
   language tags before changing runtime code.
 - Record any final architectural choice in `PROJECT.md` when that choice
