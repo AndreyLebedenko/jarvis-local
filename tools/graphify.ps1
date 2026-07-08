@@ -4,6 +4,8 @@ param(
         "help",
         "init",
         "update",
+        "semantic",
+        "docs",
         "cluster",
         "query",
         "path",
@@ -13,6 +15,14 @@ param(
         "hook-uninstall"
     )]
     [string] $Command = "help",
+
+    [string] $Backend = "ollama",
+
+    [string] $Model = "gemma4:12b-it-qat",
+
+    [int] $MaxConcurrency = 1,
+
+    [switch] $Deep,
 
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $Rest
@@ -45,6 +55,23 @@ function Require-Graph {
     }
 }
 
+function Invoke-SemanticExtract {
+    $graphifyArgs = @(
+        "extract",
+        ".",
+        "--backend",
+        $Backend,
+        "--model",
+        $Model,
+        "--max-concurrency",
+        $MaxConcurrency.ToString()
+    )
+    if ($Deep) {
+        $graphifyArgs += @("--mode", "deep")
+    }
+    Invoke-Graphify -GraphifyArgs $graphifyArgs
+}
+
 switch ($Command) {
     "help" {
         @"
@@ -53,6 +80,11 @@ Jarvis graphify wrapper
 Usage:
   tools/graphify.ps1 init                  Build the initial code graph
   tools/graphify.ps1 update                Fast code-only graph update
+  tools/graphify.ps1 semantic              Full code+docs semantic extraction
+    -Backend ollama                        LLM backend for semantic extraction
+    -Model gemma4:12b-it-qat               Generative model for JSON extraction
+    -MaxConcurrency 1                      Local LLM request concurrency
+    -Deep                                  Use graphify's deep extraction mode
   tools/graphify.ps1 cluster               Rebuild clusters/report from graph.json
   tools/graphify.ps1 query "question"      Query the existing graph
   tools/graphify.ps1 path "A" "B"          Show shortest path between nodes
@@ -67,6 +99,12 @@ Usage:
     }
     "update" {
         Invoke-Graphify -GraphifyArgs @("update", ".")
+    }
+    "semantic" {
+        Invoke-SemanticExtract
+    }
+    "docs" {
+        Invoke-SemanticExtract
     }
     "cluster" {
         Require-Graph
