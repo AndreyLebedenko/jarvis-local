@@ -17,6 +17,9 @@ markup contract that the TTS path can parse.
 - Do not implement "answer in the language of the request" as product behavior.
 - Do not route to a new TTS engine.
 - Do not expose a UI setting.
+- Do not turn the system prompt into an untested user-editable config blob.
+  If it is moved out of `main.py`, keep it as a tested runtime contract
+  module/template.
 
 ## Acceptance Criteria
 
@@ -32,6 +35,8 @@ markup contract that the TTS path can parse.
 - [ ] Thinking/reasoning tokens remain excluded from `ResponseToken` consumers.
 - [ ] Tests cover the expected prompt text or prompt-building behavior without
       contacting live Ollama.
+- [ ] If the prompt is moved out of `main.py`, tests still protect the required
+      speech-markup, short-answer, and Russian-by-default directives.
 - [ ] `python -m pytest` passes.
 
 ## Verification
@@ -47,3 +52,5 @@ markup contract that the TTS path can parse.
   documented decision.
 - Stop if the prompt needs a larger response-format architecture than this
   task allows.
+- Stop if making the prompt configurable would let the user silently break the
+  TTS markup contract without validation or tests.

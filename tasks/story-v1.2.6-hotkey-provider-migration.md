@@ -23,6 +23,11 @@ privacy-first direction.
 - Manual global behavior verification remains a human handoff.
 - Do not leave the project in a long-lived mixed hotkey model without
   documenting the remaining privacy trade-off.
+- This migration removes the current global-key-hook dependency and changes
+  hotkey callback ownership, but it is not itself the region-select overlay
+  threading fix. If `capture.py` still creates a Tkinter overlay from a hotkey
+  callback after migration, handle that under
+  `tasks/backlog/region-select-overlay-threading.md`.
 
 ## Acceptance Criteria
 
@@ -74,3 +79,5 @@ privacy-first direction.
   represent.
 - Stop if migration creates a circular dependency between input modules and
   main runtime wiring.
+- Stop if screenshot region selection turns out to require a UI-thread redesign
+  inside this task rather than a hotkey-provider migration.
