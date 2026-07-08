@@ -90,6 +90,17 @@
    locally and in CI.
 5. When reading project text files with PowerShell, pass `-Encoding UTF8`
    explicitly, e.g. `Get-Content -Raw -Encoding UTF8 PROJECT.md`.
+6. Graphify is an agent/dev tool, not a Jarvis runtime dependency.
+   Generated graph data lives under `graphify-out/` and is not committed.
+   Use the project wrapper for standard operations:
+   - `tools/graphify.ps1 init` for the first graph build;
+   - `tools/graphify.ps1 update` after code changes when a graph exists;
+   - `tools/graphify.ps1 query "..."` for codebase questions;
+   - `tools/graphify.ps1 hook-install` to install local git hooks.
+   If `graphify-out/graph.json` exists and the task is a codebase question,
+   query the graph before manually reading large parts of the repository.
+   Do not run graph extraction in CI or treat missing graph output as a test
+   failure.
 
 ## Git protocol
 
