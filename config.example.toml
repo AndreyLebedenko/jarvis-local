@@ -76,6 +76,16 @@ request_end_pause_seconds = 2.0
 voice = "baya"
 rate = 1.0
 
+[tts.languages.ru]
+engine = "silero"
+model = "v3_1_ru"
+
+# Optional v1.2.9 bilingual route. Jarvis does not download Piper models at
+# runtime; configure this only after placing the local .onnx model yourself.
+# [tts.languages.en]
+# engine = "piper"
+# model = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+
 [capture]
 default_mode = "full"
 

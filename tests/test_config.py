@@ -9,6 +9,8 @@ from config import (
     HotkeySettings,
     MicrophoneSettings,
     Settings,
+    TtsLanguageSettings,
+    TtsSettings,
     VadSettings,
     load_settings,
     write_ui_config,
@@ -478,6 +480,102 @@ def test_sound_cues_thinking_on_and_thinking_off_default_when_section_omitted(tm
 
     assert settings.sound_cues.thinking_on == "sounds/thinking_on.wav"
     assert settings.sound_cues.thinking_off == "sounds/thinking_off.wav"
+
+
+# --- story-v1.2.9-task-1: per-language TTS route config ---------------------
+
+
+def test_tts_language_routes_parse_for_supported_languages(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "v3_1_ru"
+
+        [tts.languages.en]
+        engine = "piper"
+        model = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.tts.languages == {
+        "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+        "en": TtsLanguageSettings(
+            engine="piper",
+            model=".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
+        ),
+    }
+
+
+def test_tts_language_routes_default_to_current_silero_behavior(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.tts == TtsSettings()
+    assert settings.tts.languages == {
+        "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru")
+    }
+
+
+def test_tts_language_routes_reject_unknown_language(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.de]
+        engine = "piper"
+        model = "de.onnx"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"Unsupported TTS language.*de"):
+        load_settings(config_path)
+
+
+def test_tts_language_routes_reject_unknown_engine(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.en]
+        engine = "festival"
+        model = "voice.onnx"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"Unsupported TTS engine.*festival"):
+        load_settings(config_path)
+
+
+def test_tts_language_routes_merge_base_and_ui_layers_per_language(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "custom_ru"
+        """,
+        encoding="utf-8",
+    )
+    ui_config_path = tmp_path / "config.ui.toml"
+    ui_config_path.write_text(
+        """
+        [tts.languages.en]
+        engine = "piper"
+        model = "en.onnx"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+
+    assert settings.tts.languages == {
+        "ru": TtsLanguageSettings(engine="silero", model="custom_ru"),
+        "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+    }
 
 
 # --- story-v1.2.4-task-2: config layering (defaults < config.toml <
