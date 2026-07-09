@@ -1,15 +1,13 @@
 """pywebview Status Console bridge and payload adapters."""
 
 import asyncio
+import concurrent.futures
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-
-import httpx
-import sounddevice as sd
 
 from bus import EventBus
 from config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
@@ -139,6 +137,7 @@ class StatusConsoleWindow:
     ) -> None:
         self._window_factory = window_factory or self._default_window_factory
         self._window: WindowLike | None = None
+        self._closed = False
         self._title = title
         self._url = url
         self._width = width
@@ -152,7 +151,11 @@ class StatusConsoleWindow:
 
         return webview.create_window(**kwargs)
 
-    def create(self, js_api: object | None = None) -> WindowLike:
+    def create(
+        self,
+        js_api: object | None = None,
+        on_closed: Callable[[], None] | None = None,
+    ) -> WindowLike:
         self._window = self._window_factory(
             title=self._title,
             url=str(self._url),
@@ -162,7 +165,27 @@ class StatusConsoleWindow:
             resizable=self._resizable,
             js_api=js_api,
         )
+        self._hook_native_closed(on_closed)
         return self._window
+
+    def _hook_native_closed(self, on_closed: Callable[[], None] | None) -> None:
+        """Marks this surface closed when the user closes the real window
+        (title-bar X), so later push_*() calls become safe no-ops instead
+        of evaluate_js() calls into a destroyed window - and optionally
+        forwards the close to a callback (main.py routes the desktop
+        console's close into the engine's clean shutdown path). Fake
+        windows in tests have no `.events`, so this is getattr-guarded."""
+        closed_event = getattr(getattr(self._window, "events", None), "closed", None)
+        if closed_event is None:
+            return
+
+        def handle_closed(*_args: object) -> None:
+            self._closed = True
+            self._window = None
+            if on_closed is not None:
+                on_closed()
+
+        closed_event += handle_closed
 
     def push_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
         self._evaluate("applyRuntimeState", runtime_state_payload(state, substatus))
@@ -195,12 +218,15 @@ class StatusConsoleWindow:
         self._evaluate("applyPendingRestart", {"pending": pending})
 
     def close(self) -> None:
-        if self._window is None:
+        window, self._window = self._window, None
+        self._closed = True
+        if window is None:
             return
-        self._window.destroy()
-        self._window = None
+        window.destroy()
 
     def _evaluate(self, js_function: str, payload: dict) -> None:
+        if self._closed:
+            return  # window already closed by the user or by shutdown
         if self._window is None:
             raise RuntimeError("create() must be called before pushing state")
         self._window.evaluate_js(f"{js_function}({json.dumps(payload)})")
@@ -273,7 +299,14 @@ MicrophoneOptionsSource = Callable[[], Awaitable[list[str]]]
 
 
 async def _default_model_options_source(endpoint: str) -> list[str]:
-    """Reads model options from the configured local Ollama endpoint."""
+    """Reads model options from the configured local Ollama endpoint.
+
+    httpx is imported here, not at module level: this module is the UI
+    bridge, and only the two default option sources touch the network/
+    audio stacks - importing this module (e.g. from a pure test) must not
+    pull them in."""
+    import httpx
+
     async with httpx.AsyncClient(timeout=3.0) as client:
         response = await client.get(f"{endpoint}/api/tags")
         response.raise_for_status()
@@ -286,7 +319,11 @@ async def _default_model_options_source(endpoint: str) -> list[str]:
 
 
 async def _default_microphone_options_source() -> list[str]:
-    """Reads local input device names without blocking the asyncio loop."""
+    """Reads local input device names without blocking the asyncio loop.
+    sounddevice is imported here, not at module level - see
+    _default_model_options_source()."""
+    import sounddevice as sd
+
     devices = await asyncio.to_thread(sd.query_devices)
     return [
         device["name"] for device in devices if device.get("max_input_channels", 0) > 0
@@ -317,6 +354,7 @@ class StatusConsoleApi:
         self._logger = logger
         self._visibility_mode = visibility_mode or VisibilityModeState(bus)
         self._shutdown_event = shutdown_event
+        self._pending_shutdown = False
         self._settings = settings or Settings()
         self._ui_config_path = Path(ui_config_path)
         self._model_options_source = model_options_source or (
@@ -328,23 +366,50 @@ class StatusConsoleApi:
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
+        self._dispatch_pending_shutdown()
 
     def set_shutdown_event(self, shutdown_event: asyncio.Event) -> None:
         self._shutdown_event = shutdown_event
+        self._dispatch_pending_shutdown()
 
-    def _loop_is_usable(self) -> bool:
-        """True only while JS API calls can still schedule engine work."""
-        return self._loop is not None and not self._loop.is_closed()
+    def _schedule(self, coroutine: Coroutine) -> bool:
+        """Single scheduling path for every JS API method: pywebview calls
+        them from its own GUI thread, so real work always hops onto the
+        engine loop via run_coroutine_threadsafe().
+
+        Guards in one place what used to be eight copies of the same
+        pattern: no loop yet (window clickable before the engine loop
+        exists), loop already closed (verified live: a control clicked
+        after shutdown crashed pywebview's JS dispatch thread), the
+        check-then-schedule race where the loop closes in between
+        (run_coroutine_threadsafe() then raises RuntimeError
+        synchronously), and scheduled coroutines whose exceptions would
+        otherwise be silently dropped with the discarded future."""
+        if self._loop is None or self._loop.is_closed():
+            coroutine.close()
+            return False
+        try:
+            future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        except RuntimeError:
+            coroutine.close()
+            return False
+        future.add_done_callback(self._log_scheduled_failure)
+        return True
+
+    def _log_scheduled_failure(self, future: concurrent.futures.Future) -> None:
+        if future.cancelled():
+            return
+        exception = future.exception()
+        if exception is not None:
+            self._logger.error(
+                "Status Console action failed on the engine loop", exc_info=exception
+            )
 
     def toggle_thinking(self) -> None:
-        if not self._loop_is_usable():
-            return
-        asyncio.run_coroutine_threadsafe(self._thinking_mode.toggle(), self._loop)
+        self._schedule(self._thinking_mode.toggle())
 
     def reset_context(self) -> None:
-        if not self._loop_is_usable():
-            return
-        asyncio.run_coroutine_threadsafe(self._reset_context_async(), self._loop)
+        self._schedule(self._reset_context_async())
 
     async def _reset_context_async(self) -> None:
         self._history.clear()
@@ -358,10 +423,14 @@ class StatusConsoleApi:
         )
 
     def reset_module(self, module_id: str) -> None:
-        if not self._loop_is_usable():
+        try:
+            module = ModuleId(module_id)
+        except ValueError:
+            # Raising here would crash pywebview's JS dispatch thread, the
+            # same failure shape as the verified closed-loop crash.
+            self._logger.warning("Ignoring reset for unknown module %r", module_id)
             return
-        module = ModuleId(module_id)
-        asyncio.run_coroutine_threadsafe(self._reset_module_async(module), self._loop)
+        self._schedule(self._reset_module_async(module))
 
     async def _reset_module_async(self, module: ModuleId) -> None:
         """Reports that per-module reset is not implemented yet."""
@@ -381,10 +450,12 @@ class StatusConsoleApi:
         )
 
     def set_visibility_mode(self, mode_value: str) -> None:
-        mode = VisibilityMode(mode_value)
-        if not self._loop_is_usable():
+        try:
+            mode = VisibilityMode(mode_value)
+        except ValueError:
+            self._logger.warning("Ignoring unknown visibility mode %r", mode_value)
             return
-        asyncio.run_coroutine_threadsafe(self._set_visibility_mode_async(mode), self._loop)
+        self._schedule(self._set_visibility_mode_async(mode))
 
     async def _set_visibility_mode_async(self, mode: VisibilityMode) -> None:
         previous_mode = self._visibility_mode.mode
@@ -416,10 +487,22 @@ class StatusConsoleApi:
         main.py's shutdown hotkey sets (loop.call_soon_threadsafe(
         shutdown_event.set) in run()) - this class does no teardown itself,
         it only requests it, so run_until_shutdown() remains the single
-        clean-shutdown implementation regardless of which trigger fired it."""
-        if not self._loop_is_usable() or self._shutdown_event is None:
+        clean-shutdown implementation regardless of which trigger fired it.
+
+        The intent is remembered, not dropped, if the engine loop or the
+        shutdown event is not wired up yet (the window is clickable before
+        run() reaches set_loop()/set_shutdown_event(), and the desktop
+        front-end disables its Shutdown button on the first click - a
+        silently dropped request would make UI shutdown permanently
+        unreachable): the setter that completes the wiring dispatches it."""
+        self._pending_shutdown = True
+        self._dispatch_pending_shutdown()
+
+    def _dispatch_pending_shutdown(self) -> None:
+        if not self._pending_shutdown or self._shutdown_event is None:
             return
-        asyncio.run_coroutine_threadsafe(self._request_shutdown_async(), self._loop)
+        if self._schedule(self._request_shutdown_async()):
+            self._pending_shutdown = False
 
     async def _request_shutdown_async(self) -> None:
         await publish_system_event(
@@ -433,9 +516,7 @@ class StatusConsoleApi:
         self._shutdown_event.set()
 
     def request_model_options(self) -> None:
-        if not self._loop_is_usable():
-            return
-        asyncio.run_coroutine_threadsafe(self._request_model_options_async(), self._loop)
+        self._schedule(self._request_model_options_async())
 
     async def _request_model_options_async(self) -> None:
         current = self._settings.backend.model
@@ -459,11 +540,7 @@ class StatusConsoleApi:
         )
 
     def request_microphone_options(self) -> None:
-        if not self._loop_is_usable():
-            return
-        asyncio.run_coroutine_threadsafe(
-            self._request_microphone_options_async(), self._loop
-        )
+        self._schedule(self._request_microphone_options_async())
 
     async def _request_microphone_options_async(self) -> None:
         current = self._settings.microphone.device
@@ -492,11 +569,7 @@ class StatusConsoleApi:
         )
 
     def save_config_selection(self, model: str, microphone_device: str) -> None:
-        if not self._loop_is_usable():
-            return
-        asyncio.run_coroutine_threadsafe(
-            self._save_config_selection_async(model, microphone_device), self._loop
-        )
+        self._schedule(self._save_config_selection_async(model, microphone_device))
 
     async def _save_config_selection_async(self, model: str, microphone_device: str) -> None:
         """Writes restart-to-apply UI config after validating selections."""

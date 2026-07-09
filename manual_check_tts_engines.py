@@ -109,6 +109,20 @@ class LoadedEngine:
     synthesize: Callable[[str, str], Awaitable[bytes]]
 
 
+class _FixedLanguageEngine:
+    """Adapts a LoadedEngine to tts.py's TtsEngine protocol for one probe:
+    the probe fixes the language per prompt, so the protocol's per-call
+    language hint is deliberately overridden."""
+
+    def __init__(self, loaded: LoadedEngine, language: str) -> None:
+        self._loaded = loaded
+        self._language = language
+
+    async def synthesize(self, text: str, language: str = "ru") -> bytes:
+        del language
+        return await self._loaded.synthesize(text, self._language)
+
+
 @dataclass(frozen=True)
 class EnginePaths:
     piper_model: Path | None
@@ -452,7 +466,7 @@ async def probe_prompt(
     play_probe = FirstPlayProbe(playback_lock=playback_lock)
     tts = TtsOutput(
         settings=tts_settings,
-        synthesize=lambda text, lang=prompt.language: engine.synthesize(text, lang),
+        engine=_FixedLanguageEngine(engine, prompt.language),
         play=play_probe.play,
         playback_lock=playback_lock,
     )

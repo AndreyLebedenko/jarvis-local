@@ -13,7 +13,18 @@ without changing the production TTS engine yet.
 
 ## Current Boundary
 
-- Integrate parser output after the existing sentence/speakable-unit boundary.
+- Design decision (2026-07-09, human review): parse markup BEFORE sentence
+  buffering, not after. `parse_speech_markup()` is stateless per call, so a
+  `<lang>` span crossing a sentence boundary would lose its language on the
+  second sentence if parsing ran per completed sentence. Instead, feed
+  streamed tokens through `speech_markup.SpeechMarkupStream` (incremental,
+  holds language state and unterminated-tag tails across feeds), then run
+  sentence buffering within language segments. A closing `</lang>` is an
+  additional flush boundary alongside sentence boundaries: observed model
+  output emits per-sentence/per-language blocks, so short foreign inserts
+  can start synthesis earlier than the ". " heuristic would allow. The
+  pipeline must stay correct for untagged text and tags spanning sentences -
+  the markup convention is prompt-level, not guaranteed.
 - Preserve current playback orchestration and sentence buffering behavior.
 - Preserve current Silero runtime behavior by default.
 - Do not migrate to Silero multilingual, XTTS-v2, or any other production TTS

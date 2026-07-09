@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
@@ -8,7 +9,6 @@ from tts import (
     OrderedPlayback,
     SileroEngine,
     SentenceBuffer,
-    SynthesisResult,
     TtsEngine,
     TtsModelNotCachedError,
     TtsOutput,
@@ -27,12 +27,19 @@ class _FakeSileroModule:
 
 
 class _FakeEngine:
-    def __init__(self) -> None:
-        self.seen: list[str] = []
+    """Echo engine: 'wav bytes' are just the sentence text, and an optional
+    per-sentence delay simulates out-of-order completion of concurrent
+    synthesis."""
 
-    async def synthesize(self, text: str) -> SynthesisResult:
-        self.seen.append(text)
-        return SynthesisResult(audio_bytes=text.encode(), sample_rate=48000)
+    def __init__(self, delay_for: Callable[[str], float] | None = None) -> None:
+        self.seen: list[tuple[str, str]] = []
+        self._delay_for = delay_for
+
+    async def synthesize(self, text: str, language: str = "ru") -> bytes:
+        self.seen.append((text, language))
+        if self._delay_for is not None:
+            await asyncio.sleep(self._delay_for(text))
+        return text.encode()
 
 
 def test_silero_engine_satisfies_tts_engine_protocol():
@@ -290,17 +297,14 @@ async def test_playback_reorders_under_concurrent_completion():
 
 async def test_on_token_schedules_sentences_and_plays_them_in_order():
     played = []
-
-    async def fake_synthesize(sentence: str) -> bytes:
-        # first sentence takes longer to "synthesize" than the second,
-        # simulating out-of-order completion of concurrent synthesis
-        await asyncio.sleep(0.05 if sentence.startswith("Первое") else 0.01)
-        return sentence.encode()
+    engine = _FakeEngine(
+        delay_for=lambda sentence: 0.05 if sentence.startswith("Первое") else 0.01
+    )
 
     async def fake_play(audio: bytes) -> None:
         played.append(audio.decode())
 
-    tts = TtsOutput(TtsSettings(), synthesize=fake_synthesize, play=fake_play)
+    tts = TtsOutput(TtsSettings(), engine=engine, play=fake_play)
 
     await tts.on_token(ResponseToken(text="Первое предложение. "))
     await tts.on_token(ResponseToken(text="Второе предложение. "))
@@ -312,13 +316,10 @@ async def test_on_token_schedules_sentences_and_plays_them_in_order():
 async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     played = []
 
-    async def fake_synthesize(sentence: str) -> bytes:
-        return sentence.encode()
-
     async def fake_play(audio: bytes) -> None:
         played.append(audio.decode())
 
-    tts = TtsOutput(TtsSettings(), synthesize=fake_synthesize, play=fake_play)
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
 
     await tts.on_token(ResponseToken(text="Без точки в конце"))
     await tts.on_response_complete(
@@ -345,13 +346,5 @@ async def test_tts_output_uses_injected_engine_for_synthesis():
     await tts.on_token(ResponseToken(text="Фраза готова. "))
     await tts.wait_for_pending()
 
-    assert engine.seen == ["Фраза готова."]
+    assert engine.seen == [("Фраза готова.", "ru")]
     assert played == ["Фраза готова."]
-
-
-def test_tts_output_rejects_two_synthesis_injection_paths():
-    async def fake_synthesize(sentence: str) -> bytes:
-        return sentence.encode()
-
-    with pytest.raises(ValueError):
-        TtsOutput(TtsSettings(), synthesize=fake_synthesize, engine=_FakeEngine())

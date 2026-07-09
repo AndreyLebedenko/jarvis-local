@@ -689,8 +689,13 @@ class _FakeStatusSurface:
         self.microphone_options: list[tuple[list[str], str]] = []
         self.pending_restart: list[bool] = []
 
-    def create(self, js_api: object | None = None) -> object:
+    def create(
+        self,
+        js_api: object | None = None,
+        on_closed: object | None = None,
+    ) -> object:
         self.created_with_api = js_api
+        self.created_with_on_closed = on_closed
         return object()
 
     def close(self) -> None:
@@ -1394,3 +1399,39 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
     await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
 
     assert tts_output.received_texts == ["Hello"]
+
+
+def test_push_runtime_state_skips_repeat_pushes_of_the_same_state():
+    """A turn streams many ResponseTokens; pushing SPEAKING again on every
+    one of them is a blocking evaluate_js round-trip inside bus.publish(),
+    which awaits all handlers - bus.py's own contract forbids that kind of
+    inline work. Only a real state transition may reach the window."""
+    from main import LiveStatusConsole, _push_runtime_state
+
+    surface = _FakeStatusSurface()
+    live_console = LiveStatusConsole(console=surface, touchstrip=None, api=object())
+
+    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
+    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
+    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
+    _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
+
+    assert surface.runtime_states == [
+        (RuntimeState.SPEAKING, "Произношу ответ..."),
+        (RuntimeState.LISTENING, "Готов слушать"),
+    ]
+
+
+def test_desktop_console_native_close_is_wired_to_shutdown_request():
+    app = _fake_app()
+    console = _FakeStatusSurface()
+    touchstrip = _FakeStatusSurface()
+
+    live_console = create_live_status_console(
+        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    )
+
+    # Closing the desktop window must route into the same clean shutdown
+    # path as the hotkey; closing the touchstrip alone must not.
+    assert console.created_with_on_closed == live_console.api.request_shutdown
+    assert touchstrip.created_with_on_closed is None
