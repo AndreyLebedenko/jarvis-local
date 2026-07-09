@@ -1,7 +1,7 @@
 # Task: TTS buffering integration
 
 **Story:** `tasks/story-v1.2.8-multilingual-speech-markup.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.8
 **Depends on:** `tasks/story-v1.2.8-task-1-speech-markup-parser.md`
 
@@ -33,26 +33,30 @@ without changing the production TTS engine yet.
 
 ## Acceptance Criteria
 
-- [ ] `TtsOutput` or its immediate helper path parses completed speakable units
+- [x] `TtsOutput` or its immediate helper path parses completed speakable units
       before synthesis.
-- [ ] `<speak>`, `<lang>`, and `xml:lang` are never sent as spoken text.
-- [ ] Existing unmarked assistant text still speaks through the current Silero
+- [x] `<speak>`, `<lang>`, and `xml:lang` are never sent as spoken text.
+- [x] Existing unmarked assistant text still speaks through the current Silero
       path.
-- [ ] Existing sentence buffering tests remain meaningful.
-- [ ] Tests prove that marked Russian-only text speaks as clean Russian text.
-- [ ] Tests prove that marked mixed Russian/English text is decomposed into
+- [x] Existing sentence buffering tests remain meaningful.
+- [x] Tests prove that marked Russian-only text speaks as clean Russian text.
+- [x] Tests prove that marked mixed Russian/English text is decomposed into
       ordered segments without spoken control tags.
-- [ ] The current Silero path either handles non-Russian segments through the
+- [x] The current Silero path either handles non-Russian segments through the
       existing transliteration fallback or explicitly records that true English
       synthesis waits for a later engine-routing task.
-- [ ] Punctuation and short connective spans do not trigger unnatural
+- [x] Punctuation and short connective spans do not trigger unnatural
       standalone synthesis calls.
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
 
 ## Verification
 
 - Run `python -m pytest`.
 - Do not run speaker/audio hardware tests as the agent.
+- Human-run speaker check (2026-07-09): `manual_check_speech_markup.py`
+  streamed the real marked-up Shakespeare answer through the production
+  path (split tag across chunks, en inserts, Love/i/Dove connective
+  carry). Confirmed by the human: all text audible, no spoken tags.
 
 ## Stop Conditions
 

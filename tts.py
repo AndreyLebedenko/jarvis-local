@@ -1,9 +1,15 @@
-"""Sentence-buffered Silero TTS output.
+"""Sentence-buffered, speech-markup-aware Silero TTS output.
 
-Buffers backend.py's streamed response tokens to sentence boundaries,
-synthesizes each completed sentence (Russian, Silero TTS), and plays
-them back in order while generation continues - per PROJECT.md's
-"sentence-level streaming is mandatory" requirement for tts.py.
+Streams backend.py's response tokens through speech_markup.py's
+incremental scanner (control tags are never spoken; <lang> routing
+survives tags split across token chunks), buffers each language run to
+sentence boundaries - a language switch is an additional flush boundary -
+then synthesizes each completed unit and plays them back in order while
+generation continues, per PROJECT.md's "sentence-level streaming is
+mandatory" requirement for tts.py. The language reaches TtsEngine as a
+routing hint; the default Silero runtime ignores it (transliteration
+fallback), so true English synthesis waits for a later engine-routing
+task.
 
 Per bus.py's handler contract, on_token()/on_response_complete() only
 feed the sentence buffer and schedule synthesis as a background task;
@@ -47,7 +53,7 @@ from num2words import num2words
 from audio_utils import samples_to_wav_bytes
 from backend import ResponseComplete, ResponseToken
 from config import TtsSettings
-from speech_markup import DEFAULT_LANGUAGE
+from speech_markup import DEFAULT_LANGUAGE, SpeechMarkupStream
 
 SAMPLE_RATE = 48000
 
@@ -218,6 +224,76 @@ class SentenceBuffer:
         return word in _ABBREVIATIONS
 
 
+_WORD_CHAR_RE = re.compile(r"\w")
+_SENTENCE_PUNCT_RE = re.compile(r"[.!?]")
+
+# A language-switch remainder with at most this many word characters and no
+# sentence-ending punctuation (e.g. the "и" between two English words) is
+# carried into the following segment instead of becoming its own tiny
+# synthesis call - story-v1.2.8's AC forbids unnatural standalone calls,
+# and for spans this short prosody matters more than language attribution
+# (the runtime engine is Silero-only today anyway).
+_CONNECTIVE_MAX_WORD_CHARS = 3
+
+
+class SpeechUnitBuffer:
+    """Streams response tokens into ordered (text, language) speech units.
+
+    Markup is parsed BEFORE sentence buffering (the design decision
+    recorded in tasks/story-v1.2.8-task-2-tts-buffering-integration.md):
+    tokens go through SpeechMarkupStream, so control tags are never spoken
+    and a <lang> span crossing a sentence boundary - or a tag split across
+    token chunks - never loses its language. Within a language run,
+    SentenceBuffer provides the usual sentence-boundary flushes; a language
+    switch is an additional unit boundary, which is what lets a short
+    foreign insert start synthesis before any ". " arrives.
+    """
+
+    def __init__(self) -> None:
+        self._markup = SpeechMarkupStream()
+        self._sentences = SentenceBuffer()
+        self._language = DEFAULT_LANGUAGE
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        units: list[tuple[str, str]] = []
+        for piece in self._markup.feed(text):
+            self._feed_piece(units, piece.language, piece.text)
+        return units
+
+    def flush(self) -> list[tuple[str, str]]:
+        """Ends the current response turn: flushes everything speakable and
+        resets markup state, so an unclosed <lang> tag can never leak its
+        language into the next turn."""
+        units: list[tuple[str, str]] = []
+        for piece in self._markup.close():
+            self._feed_piece(units, piece.language, piece.text)
+        remainder = self._sentences.flush()
+        if remainder and _WORD_CHAR_RE.search(remainder):
+            units.append((remainder, self._language))
+        self._markup = SpeechMarkupStream()
+        self._language = DEFAULT_LANGUAGE
+        return units
+
+    def _feed_piece(self, units: list[tuple[str, str]], language: str, text: str) -> None:
+        if language != self._language:
+            remainder = self._sentences.flush()
+            if remainder:
+                if self._is_connective(remainder):
+                    text = f"{remainder} {text}"
+                else:
+                    units.append((remainder, self._language))
+            self._language = language
+        for sentence in self._sentences.feed(text):
+            units.append((sentence, self._language))
+
+    @staticmethod
+    def _is_connective(text: str) -> bool:
+        return (
+            _SENTENCE_PUNCT_RE.search(text) is None
+            and len(_WORD_CHAR_RE.findall(text)) <= _CONNECTIVE_MAX_WORD_CHARS
+        )
+
+
 class OrderedPlayback:
     """Plays (index, audio) results in strict index order, regardless of
     the order they are submitted in - so concurrent synthesis of several
@@ -278,7 +354,7 @@ class TtsOutput:
         playback_lock: asyncio.Lock | None = None,
     ) -> None:
         self._settings = settings
-        self._buffer = SentenceBuffer()
+        self._units = SpeechUnitBuffer()
         self._engine = engine or SileroEngine(settings)
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
@@ -293,13 +369,12 @@ class TtsOutput:
         self._pending_tasks: set[asyncio.Task] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
-        for sentence in self._buffer.feed(event.text):
-            self._schedule(sentence)
+        for text, language in self._units.feed(event.text):
+            self._schedule(text, language)
 
     async def on_response_complete(self, event: ResponseComplete) -> None:
-        trailing = self._buffer.flush()
-        if trailing:
-            self._schedule(trailing)
+        for text, language in self._units.flush():
+            self._schedule(text, language)
 
     async def wait_for_pending(self) -> None:
         """Awaits every synthesis/playback task scheduled so far. Useful
@@ -308,15 +383,15 @@ class TtsOutput:
         if self._pending_tasks:
             await asyncio.gather(*self._pending_tasks)
 
-    def _schedule(self, sentence: str) -> None:
+    def _schedule(self, text: str, language: str) -> None:
         index = self._next_index
         self._next_index += 1
-        task = asyncio.create_task(self._synthesize_and_submit(index, sentence))
+        task = asyncio.create_task(self._synthesize_and_submit(index, text, language))
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
-    async def _synthesize_and_submit(self, index: int, sentence: str) -> None:
-        audio = await self._engine.synthesize(sentence)
+    async def _synthesize_and_submit(self, index: int, text: str, language: str) -> None:
+        audio = await self._engine.synthesize(text, language)
         await self._playback.submit(index, audio)
 
     async def _default_play(self, wav_bytes: bytes) -> None:

@@ -233,9 +233,19 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   Silero/ru + Piper/en direction; `SileroEngine` ignores it, since its
   transliteration fallback already covers non-Russian text. The
   Silero-specific model loading, Russian number normalization, Latin
-  transliteration, and `apply_tts` call live in `SileroEngine`. Sentence-level
-  streaming is mandatory: buffer LLM tokens to sentence boundary -> synthesize
-  -> play, while generation continues. Target end-to-end response start:
+  transliteration, and `apply_tts` call live in `SileroEngine`. Since
+  v1.2.8 task-2, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
+  speech markup is parsed BEFORE sentence buffering (`SpeechMarkupStream`,
+  incremental), control tags are never spoken, a language switch is an
+  additional flush boundary alongside sentence boundaries, an unclosed
+  `<lang>` tag cannot leak language into the next turn, and a short
+  connective remainder at a switch (<= 3 word chars, no sentence
+  punctuation - e.g. the Russian "и" between two English words) is
+  carried into the following segment instead of becoming a standalone
+  synthesis call; the segment language reaches `TtsEngine.synthesize()`
+  as the routing hint (still ignored by the default Silero runtime).
+  Sentence-level streaming is mandatory: buffer LLM tokens to sentence
+  boundary -> synthesize -> play, while generation continues. Target end-to-end response start:
   within ~3 s of audio_in.py publishing the finished utterance (i.e. after VAD's
   request_end_pause_seconds confirm-delay - not from the literal instant
   speech physically stopped), covering audio prefill + first-sentence

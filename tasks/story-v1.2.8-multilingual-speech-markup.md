@@ -84,8 +84,11 @@ tag, not a tag that should be passed through to Silero.
    - See `tasks/story-v1.2.8-task-1-speech-markup-parser.md`.
 
 2. TTS buffering integration.
-   - Parse each completed speakable unit after the existing sentence boundary.
-   - Preserve current sentence buffering behavior.
+   - Parse markup BEFORE sentence buffering (decision recorded in the task
+     card, 2026-07-09): stream tokens through the incremental scanner, then
+     sentence-buffer within language segments; a closing `</lang>` is an
+     additional flush boundary.
+   - Preserve current sentence buffering behavior for unmarked text.
    - Ensure tags are never sent to Silero as spoken text.
    - See `tasks/story-v1.2.8-task-2-tts-buffering-integration.md`.
 
