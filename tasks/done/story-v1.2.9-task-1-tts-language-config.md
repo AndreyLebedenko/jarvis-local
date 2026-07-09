@@ -1,6 +1,6 @@
 # Story v1.2.9 Task 1: TTS language config
 
-Status: Backlog.
+Status: Completed.
 
 ## Summary
 
