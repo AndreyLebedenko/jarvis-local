@@ -1,5 +1,8 @@
 import asyncio
+import io
+import wave
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,11 +10,13 @@ from backend import LatencyMetrics, ResponseComplete, ResponseToken
 from config import TtsSettings
 from tts import (
     OrderedPlayback,
+    PiperEngine,
     SileroEngine,
     SentenceBuffer,
     TtsEngine,
     TtsModelNotCachedError,
     TtsOutput,
+    _piper_chunks_to_wav_bytes,
     _ensure_model_cached,
     normalize_numbers,
     transliterate_latin,
@@ -42,8 +47,33 @@ class _FakeEngine:
         return text.encode()
 
 
+class _Int16Bytes:
+    def __init__(self, values: list[int]) -> None:
+        self._values = values
+
+    def tobytes(self) -> bytes:
+        return b"".join(value.to_bytes(2, "little", signed=True) for value in self._values)
+
+
+class _FakePiperVoice:
+    def __init__(self, chunks) -> None:
+        self.texts: list[str] = []
+        self._chunks = chunks
+
+    def synthesize(self, text: str):
+        self.texts.append(text)
+        return iter(self._chunks)
+
+
 def test_silero_engine_satisfies_tts_engine_protocol():
     engine: TtsEngine = SileroEngine(TtsSettings())
+
+    assert engine is not None
+
+
+def test_piper_engine_satisfies_tts_engine_protocol(tmp_path):
+    model_path, config_path = _write_piper_model_pair(tmp_path)
+    engine: TtsEngine = PiperEngine(model_path, config_path=config_path)
 
     assert engine is not None
 
@@ -113,6 +143,132 @@ def test_ensure_model_cached_passes_when_everything_lines_up(tmp_path, monkeypat
     _ensure_model_cached(
         _FakeSileroModule(repo_root / "silero_pkg"), repo_root=repo_root
     )  # must not raise
+
+
+# --- PiperEngine ------------------------------------------------------------
+
+
+def _write_piper_model_pair(tmp_path):
+    model_path = tmp_path / "voice.onnx"
+    config_path = tmp_path / "voice.onnx.json"
+    model_path.write_bytes(b"model")
+    config_path.write_text("{}", encoding="utf-8")
+    return model_path, config_path
+
+
+def _piper_chunk(sample_rate: int, values: list[int]):
+    return SimpleNamespace(
+        sample_rate=sample_rate,
+        audio_int16_array=_Int16Bytes(values),
+    )
+
+
+def test_piper_engine_rejects_missing_model_path(tmp_path):
+    config_path = tmp_path / "voice.onnx.json"
+    config_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="Piper model file does not exist"):
+        PiperEngine(tmp_path / "missing.onnx", config_path=config_path)
+
+
+def test_piper_engine_uses_adjacent_config_path_when_present(tmp_path):
+    model_path, config_path = _write_piper_model_pair(tmp_path)
+
+    engine = PiperEngine(model_path)
+
+    assert engine.model_path == model_path
+    assert engine.config_path == config_path
+
+
+def test_piper_engine_prefers_explicit_config_path(tmp_path):
+    model_path, _adjacent_config = _write_piper_model_pair(tmp_path)
+    explicit_config = tmp_path / "explicit.json"
+    explicit_config.write_text("{}", encoding="utf-8")
+
+    engine = PiperEngine(model_path, config_path=explicit_config)
+
+    assert engine.config_path == explicit_config
+
+
+def test_piper_engine_rejects_missing_adjacent_config_path(tmp_path):
+    model_path = tmp_path / "voice.onnx"
+    model_path.write_bytes(b"model")
+
+    with pytest.raises(FileNotFoundError, match="No Piper config file was supplied"):
+        PiperEngine(model_path)
+
+
+def test_piper_engine_rejects_missing_explicit_config_path(tmp_path):
+    model_path = tmp_path / "voice.onnx"
+    model_path.write_bytes(b"model")
+
+    with pytest.raises(FileNotFoundError, match="Piper config file does not exist"):
+        PiperEngine(model_path, config_path=tmp_path / "missing.json")
+
+
+async def test_piper_engine_synthesize_returns_wav_bytes_from_chunk_api(tmp_path):
+    model_path, config_path = _write_piper_model_pair(tmp_path)
+    voice = _FakePiperVoice([_piper_chunk(22050, [0, 100, -100, 0])])
+    load_calls = []
+
+    def load_voice(*, model_path, config_path, use_cuda):
+        load_calls.append((model_path, config_path, use_cuda))
+        return voice
+
+    engine = PiperEngine(model_path, config_path=config_path, voice_loader=load_voice)
+
+    wav_bytes = await engine.synthesize("hello", language="en")
+
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getsampwidth() == 2
+        assert wav_file.getframerate() == 22050
+        assert wav_file.readframes(4) == _Int16Bytes([0, 100, -100, 0]).tobytes()
+    assert voice.texts == ["hello"]
+    assert load_calls == [(model_path, config_path, False)]
+
+
+async def test_piper_engine_loads_voice_only_once(tmp_path):
+    model_path, config_path = _write_piper_model_pair(tmp_path)
+    voice = _FakePiperVoice([_piper_chunk(22050, [0])])
+    load_count = 0
+
+    def load_voice(*, model_path, config_path, use_cuda):
+        nonlocal load_count
+        del model_path, config_path, use_cuda
+        load_count += 1
+        return voice
+
+    engine = PiperEngine(model_path, config_path=config_path, voice_loader=load_voice)
+    await engine.synthesize("one", language="en")
+    await engine.synthesize("two", language="en")
+
+    assert load_count == 1
+
+
+def test_piper_chunks_are_encoded_as_readable_wav_bytes():
+    wav_bytes = _piper_chunks_to_wav_bytes([_piper_chunk(22050, [0, 100, -100, 0])])
+
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getsampwidth() == 2
+        assert wav_file.getframerate() == 22050
+        assert wav_file.readframes(4) == _Int16Bytes([0, 100, -100, 0]).tobytes()
+
+
+def test_piper_chunks_reject_empty_output():
+    with pytest.raises(RuntimeError, match="no audio chunks"):
+        _piper_chunks_to_wav_bytes([])
+
+
+def test_piper_chunks_reject_mixed_sample_rates():
+    chunks = [
+        _piper_chunk(22050, [0]),
+        _piper_chunk(16000, [0]),
+    ]
+
+    with pytest.raises(RuntimeError, match="mixed sample rates"):
+        _piper_chunks_to_wav_bytes(chunks)
 
 
 # --- normalize_numbers -----------------------------------------------------

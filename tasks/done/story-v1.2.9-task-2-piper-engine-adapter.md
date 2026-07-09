@@ -1,6 +1,6 @@
 # Story v1.2.9 Task 2: Piper engine adapter
 
-Status: Backlog.
+Status: Completed.
 
 ## Summary
 

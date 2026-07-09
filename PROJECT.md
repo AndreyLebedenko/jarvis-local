@@ -273,10 +273,15 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   earlier `SynthesisResult` wrapper duplicated the header's sample rate
   and was dropped). `language` is the routing hint for the planned
   Silero/ru + Piper/en direction; `SileroEngine` ignores it, since its
-  transliteration fallback already covers non-Russian text. The
-  Silero-specific model loading, Russian number normalization, Latin
-  transliteration, and `apply_tts` call live in `SileroEngine`. Since
-  the v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
+  transliteration fallback already covers non-Russian text. `PiperEngine`
+  (v1.2.9 task 2) is the production adapter for local Piper `.onnx` voices:
+  it validates the model file and adjacent or explicit `.json` config during
+  TTS initialization, imports `piper-tts` lazily, and uses Piper's chunk API
+  to write a complete wav header itself. It is not selected by default yet -
+  task 3 wires configured language routes. The Silero-specific model loading,
+  Russian number normalization, Latin transliteration, and `apply_tts` call
+  live in `SileroEngine`. Since the v1.2.8 pivot, `TtsOutput` streams tokens
+  through `SpeechUnitBuffer`:
   charset language segmentation happens BEFORE sentence buffering
   (`CharsetLanguageStream`, incremental), so language routing no longer
   depends on the model emitting XML-like control tags. A language switch is an
