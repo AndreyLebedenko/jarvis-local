@@ -277,11 +277,14 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   (v1.2.9 task 2) is the production adapter for local Piper `.onnx` voices:
   it validates the model file and adjacent or explicit `.json` config during
   TTS initialization, imports `piper-tts` lazily, and uses Piper's chunk API
-  to write a complete wav header itself. It is not selected by default yet -
-  task 3 wires configured language routes. The Silero-specific model loading,
-  Russian number normalization, Latin transliteration, and `apply_tts` call
-  live in `SileroEngine`. Since the v1.2.8 pivot, `TtsOutput` streams tokens
-  through `SpeechUnitBuffer`:
+  to write a complete wav header itself. v1.2.9 task 3 wires configured
+  language routes through `BilingualTtsEngine`: `build_tts_engine()` preserves
+  the existing Silero-only default when only the built-in `ru -> silero`
+  route is present, and otherwise composes one child engine per configured
+  language (`ru`/`en`) with clear failure for unsupported language hints. The
+  Silero-specific model loading, Russian number normalization, Latin
+  transliteration, and `apply_tts` call live in `SileroEngine`. Since the
+  v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
   charset language segmentation happens BEFORE sentence buffering
   (`CharsetLanguageStream`, incremental), so language routing no longer
   depends on the model emitting XML-like control tags. A language switch is an
@@ -301,6 +304,11 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   starts: 2.0 s is a deliberately conservative value for the development
   stage; production is expected to tighten it to ~1.0-1.5 s once
   request-boundary behavior is validated (see task-04's audio_in.py).
+  The final default-playback TTS unit gets a 1.0 s silent WAV post-roll before
+  reaching `sounddevice.play()`: human testing across Silero and Piper heard
+  final phrase endings clipped, and padding the last unit keeps the output
+  device alive long enough to drain the audible tail without adding gaps
+  between streamed sentences.
   Loading the Silero TTS model requires network on first use (like
   `ollama pull` for the backend model) - a one-time setup step via
   `setup_tts_model.py`, run once before the offline runtime starts; not
