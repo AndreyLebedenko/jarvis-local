@@ -348,3 +348,127 @@ async def test_tts_output_uses_injected_engine_for_synthesis():
 
     assert engine.seen == [("Фраза готова.", "ru")]
     assert played == ["Фраза готова."]
+
+
+# --- speech markup integration (story-v1.2.8-task-2) ------------------------
+#
+# Markup is parsed BEFORE sentence buffering (recorded design decision in
+# the task card): streamed tokens go through SpeechMarkupStream, then
+# sentence buffering runs within language segments, so a <lang> span
+# crossing a sentence boundary - or a tag split across token chunks -
+# never loses its language, and control tags are never spoken.
+
+
+async def _speak_tokens(engine, *tokens: str) -> None:
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_silent_play)
+    for token in tokens:
+        await tts.on_token(ResponseToken(text=token))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+
+async def _silent_play(audio: bytes) -> None:
+    del audio
+
+
+async def test_marked_russian_text_speaks_clean_without_control_tags():
+    engine = _FakeEngine()
+
+    await _speak_tokens(
+        engine,
+        '<speak><lang xml:lang="ru">Привет. ',
+        "Как дела?</lang></speak>",
+    )
+
+    assert engine.seen == [("Привет.", "ru"), ("Как дела?", "ru")]
+
+
+async def test_mixed_language_text_decomposes_into_ordered_language_units():
+    engine = _FakeEngine()
+
+    await _speak_tokens(
+        engine,
+        'Ответ: <lang xml:lang="en">blank verse</lang> без рифмы.',
+    )
+
+    assert engine.seen == [
+        ("Ответ:", "ru"),
+        ("blank verse", "en"),
+        ("без рифмы.", "ru"),
+    ]
+
+
+async def test_language_survives_a_tag_split_across_token_chunks():
+    engine = _FakeEngine()
+
+    await _speak_tokens(engine, "<lang xml:l", 'ang="en">Hi.</lang>')
+
+    assert engine.seen == [("Hi.", "en")]
+
+
+async def test_lang_span_crossing_a_sentence_boundary_keeps_its_language():
+    engine = _FakeEngine()
+
+    await _speak_tokens(
+        engine,
+        '<lang xml:lang="en">First one. Second one.</lang>',
+    )
+
+    assert engine.seen == [("First one.", "en"), ("Second one.", "en")]
+
+
+async def test_short_connective_span_is_carried_not_synthesized_standalone():
+    """The "и" between two English words must not become its own tiny
+    synthesis call (story AC: no unnatural standalone calls); it is
+    carried into the following segment - language attribution matters
+    less than prosody for spans that short, and the runtime engine is
+    Silero-only today anyway."""
+    engine = _FakeEngine()
+
+    await _speak_tokens(
+        engine,
+        '<lang xml:lang="en">Love</lang> и <lang xml:lang="en">Dove.</lang>',
+    )
+
+    assert engine.seen == [("Love", "en"), ("и Dove.", "en")]
+
+
+async def test_trailing_punctuation_only_remainder_is_not_synthesized():
+    engine = _FakeEngine()
+
+    await _speak_tokens(engine, '<lang xml:lang="en">Done</lang>...')
+
+    assert engine.seen == [("Done", "en")]
+
+
+async def test_second_turn_starts_fresh_after_an_unclosed_lang_tag():
+    """A turn ending inside <lang xml:lang="en"> must not leak English
+    routing into the next turn's plain Russian text."""
+    engine = _FakeEngine()
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_silent_play)
+
+    await tts.on_token(ResponseToken(text='<lang xml:lang="en">Unclosed tail'))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+            )
+        )
+    )
+    await tts.on_token(ResponseToken(text="Снова по-русски."))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+    assert engine.seen == [("Unclosed tail", "en"), ("Снова по-русски.", "ru")]
