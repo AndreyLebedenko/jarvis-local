@@ -92,9 +92,22 @@ class VadSettings:
 
 
 @dataclass(frozen=True)
+class TtsLanguageSettings:
+    engine: str
+    model: str
+
+
+def _default_tts_languages() -> dict[str, TtsLanguageSettings]:
+    return {"ru": TtsLanguageSettings(engine="silero", model="v3_1_ru")}
+
+
+@dataclass(frozen=True)
 class TtsSettings:
     voice: str = "baya"
     rate: float = 1.0
+    languages: dict[str, TtsLanguageSettings] = field(
+        default_factory=_default_tts_languages
+    )
 
 
 @dataclass(frozen=True)
@@ -165,6 +178,9 @@ _SECTIONS: dict[str, type] = {
     "microphone": MicrophoneSettings,
 }
 
+_SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
+_SUPPORTED_TTS_ENGINES = frozenset({"silero", "piper"})
+
 
 def _matches_type(value: Any, expected_type: type) -> bool:
     origin = get_origin(expected_type)
@@ -192,6 +208,9 @@ def _describe_type(expected_type: type) -> str:
 
 
 def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
+    if cls is TtsSettings:
+        return _build_tts_section(section_name, raw)
+
     known_fields = {f.name: f.type for f in fields(cls)}
     unknown_keys = set(raw) - set(known_fields)
     if unknown_keys:
@@ -213,6 +232,102 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
             )
         kwargs[name] = value
     return cls(**kwargs)
+
+
+def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
+    known_fields = {f.name: f.type for f in fields(TtsSettings)}
+    unknown_keys = set(raw) - set(known_fields)
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [{section_name}]: {', '.join(sorted(unknown_keys))}"
+        )
+
+    defaults = TtsSettings()
+    kwargs: dict[str, object] = {}
+    for name, expected_type in known_fields.items():
+        if name == "languages":
+            kwargs[name] = _build_tts_languages(raw.get(name, {}), defaults.languages)
+            continue
+        if name not in raw:
+            kwargs[name] = getattr(defaults, name)
+            continue
+        value = raw[name]
+        if not _matches_type(value, expected_type):
+            raise ConfigError(
+                f"[{section_name}].{name} must be {_describe_type(expected_type)}, "
+                f"got {type(value).__name__}: {value!r}"
+            )
+        kwargs[name] = value
+    return TtsSettings(**kwargs)
+
+
+def _build_tts_languages(
+    raw: object, defaults: dict[str, TtsLanguageSettings]
+) -> dict[str, TtsLanguageSettings]:
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"[tts].languages must be dict, got {type(raw).__name__}: {raw!r}"
+        )
+
+    routes = dict(defaults)
+    for language, route_raw in raw.items():
+        if not isinstance(language, str):
+            raise ConfigError(
+                f"TTS language keys must be str, got {type(language).__name__}: "
+                f"{language!r}"
+            )
+        if language not in _SUPPORTED_TTS_LANGUAGES:
+            supported = ", ".join(sorted(_SUPPORTED_TTS_LANGUAGES))
+            raise ConfigError(
+                f"Unsupported TTS language in [tts.languages.{language}]: "
+                f"{language!r}. Supported languages: {supported}"
+            )
+        if not isinstance(route_raw, dict):
+            raise ConfigError(
+                f"[tts.languages.{language}] must be dict, got "
+                f"{type(route_raw).__name__}: {route_raw!r}"
+            )
+        routes[language] = _build_tts_language_route(language, route_raw, routes)
+    return routes
+
+
+def _build_tts_language_route(
+    language: str,
+    raw: dict[str, object],
+    existing_routes: dict[str, TtsLanguageSettings],
+) -> TtsLanguageSettings:
+    known_fields = {f.name: f.type for f in fields(TtsLanguageSettings)}
+    unknown_keys = set(raw) - set(known_fields)
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [tts.languages.{language}]: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
+
+    fallback = existing_routes.get(
+        language, TtsLanguageSettings(engine="silero", model="")
+    )
+    kwargs = {"engine": fallback.engine, "model": fallback.model}
+    for name, expected_type in known_fields.items():
+        if name not in raw:
+            continue
+        value = raw[name]
+        if not _matches_type(value, expected_type):
+            raise ConfigError(
+                f"[tts.languages.{language}].{name} must be "
+                f"{_describe_type(expected_type)}, got {type(value).__name__}: "
+                f"{value!r}"
+            )
+        kwargs[name] = value
+
+    engine = kwargs["engine"]
+    if engine not in _SUPPORTED_TTS_ENGINES:
+        supported = ", ".join(sorted(_SUPPORTED_TTS_ENGINES))
+        raise ConfigError(
+            f"Unsupported TTS engine in [tts.languages.{language}]: {engine!r}. "
+            f"Supported engines: {supported}"
+        )
+    return TtsLanguageSettings(engine=engine, model=kwargs["model"])
 
 
 def _read_toml_file(path: Path) -> dict[str, Any]:
@@ -245,6 +360,29 @@ def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
             )
 
 
+def _merge_raw_section(
+    section_name: str, base_section: dict[str, Any], ui_section: dict[str, Any]
+) -> dict[str, Any]:
+    merged = {**base_section, **ui_section}
+    if section_name != "tts":
+        return merged
+
+    base_languages = base_section.get("languages", {})
+    ui_languages = ui_section.get("languages", {})
+    if not isinstance(base_languages, dict) or not isinstance(ui_languages, dict):
+        return merged
+
+    languages = {**base_languages}
+    for language, ui_route in ui_languages.items():
+        base_route = languages.get(language, {})
+        if isinstance(base_route, dict) and isinstance(ui_route, dict):
+            languages[language] = {**base_route, **ui_route}
+        else:
+            languages[language] = ui_route
+    merged["languages"] = languages
+    return merged
+
+
 def load_settings(
     path: str | Path = DEFAULT_CONFIG_PATH,
     ui_path: str | Path | None = None,
@@ -270,7 +408,9 @@ def load_settings(
 
     kwargs = {
         name: _build_section(
-            name, cls, {**base_raw.get(name, {}), **ui_raw.get(name, {})}
+            name,
+            cls,
+            _merge_raw_section(name, base_raw.get(name, {}), ui_raw.get(name, {})),
         )
         for name, cls in _SECTIONS.items()
     }
