@@ -279,7 +279,10 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   recorded design decision. `parse_speech_markup()` is the one-shot wrapper
   (cleans whitespace, merges adjacent same-language segments, smooths
   punctuation-only fragments, soft-drops malformed control tags without
-  speaking them). It is not wired into TTS playback yet and is not full
+  speaking them). Malformed known control fragments, missing language
+  attributes, unsupported language codes, and unmatched `</lang>` closers
+  log warnings through standard `logging`; `main.py` configures logging to
+  print those warnings to the console/stderr at runtime. This is not full
   SSML compatibility.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
@@ -288,9 +291,19 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   and plays them; fire-and-forget so a cue never adds latency to the
   request it signals about.
 - `main.py` — wiring + system prompt. System prompt must enforce SHORT
-  conversational answers (latency ∝ answer length) and Russian by default.
-  Conversation history is text-only in v1.0 (see Open questions); media is
-  attached only to the current turn. Warms Ollama up with a throwaway
+  conversational answers (latency ∝ answer length), Russian by default, and
+  the v1.2.8 speech-markup contract: all speakable assistant text inside one
+  `<speak>` wrapper, split into non-nested
+  `<lang xml:lang="ru">...</lang>` / `<lang xml:lang="en">...</lang>`
+  spans; Russian prose stays in `ru`; English terms, API names, identifiers,
+  short English phrases, and English quotes go in `en`; Markdown and
+  speakable text outside `<speak>` are forbidden. Conversation history is
+  text-only in v1.0 (see Open questions); media is attached only to the
+  current turn. Assistant history deliberately stores cleaned speakable text,
+  not raw tagged model output: `Orchestrator.on_response_complete()` parses
+  accumulated `ResponseToken` text through `speech_markup_to_text()` before
+  adding the assistant turn to `ConversationHistory`, while the TTS path still
+  consumes raw streamed tokens for language routing. Warms Ollama up with a throwaway
   request before subscribing anything to the bus, so the response isn't
   spoken or recorded. Checks for Administrator elevation at startup and
   warns (does not refuse to start) if missing, since global hotkeys

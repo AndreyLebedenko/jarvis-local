@@ -18,11 +18,13 @@ whitespace, merges adjacent same-language pieces, and smooths
 punctuation-only fragments into their neighbors.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 
 DEFAULT_LANGUAGE = "ru"
 SUPPORTED_LANGUAGES = {"ru", "en"}
+logger = logging.getLogger(__name__)
 
 _CONTROL_NAME_RE = re.compile(r"</?(?:speak|lang)\b", re.IGNORECASE)
 _LANG_ATTR_RE = re.compile(
@@ -49,6 +51,13 @@ def parse_speech_markup(text: str) -> list[SpeechSegment]:
         if (cleaned_text := _clean_text(piece.text))
     ]
     return _smooth_punctuation(_merge_adjacent(cleaned))
+
+
+def speech_markup_to_text(text: str) -> str:
+    rendered = ""
+    for segment in parse_speech_markup(text):
+        rendered = _join_text(rendered, segment.text)
+    return rendered
 
 
 class SpeechMarkupStream:
@@ -107,8 +116,11 @@ class SpeechMarkupStream:
             self._emit(pieces, token)
             return
         if token.startswith("</"):
-            if "lang" in token.lower() and len(self._languages) > 1:
-                self._languages.pop()
+            if "lang" in token.lower():
+                if len(self._languages) > 1:
+                    self._languages.pop()
+                else:
+                    logger.warning("Ignoring unmatched speech markup closing tag: %s", token)
             return
         if token.lower().startswith("<lang"):
             self._languages.append(_language_from_token(token))
@@ -118,6 +130,7 @@ class SpeechMarkupStream:
         (soft fallback - never spoken, never changes language); anything
         else is literal text."""
         if _CONTROL_NAME_RE.match(fragment):
+            logger.warning("Ignoring malformed speech markup control fragment: %s", fragment)
             fragment = _CONTROL_NAME_RE.sub("", fragment, count=1)
             fragment = _LANG_ATTR_STRIP_RE.sub("", fragment)
         self._emit(pieces, fragment)
@@ -130,6 +143,7 @@ class SpeechMarkupStream:
 def _language_from_token(token: str) -> str:
     match = _LANG_ATTR_RE.search(token)
     if match is None:
+        logger.warning("Speech markup lang tag has no language attribute: %s", token)
         return DEFAULT_LANGUAGE
     return _normalize_language(match.group(1))
 
@@ -138,6 +152,11 @@ def _normalize_language(value: str) -> str:
     base = value.replace("_", "-").split("-", maxsplit=1)[0].lower()
     if base in SUPPORTED_LANGUAGES:
         return base
+    logger.warning(
+        "Unsupported speech markup language %r; falling back to %s",
+        value,
+        DEFAULT_LANGUAGE,
+    )
     return DEFAULT_LANGUAGE
 
 

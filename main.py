@@ -23,6 +23,7 @@ from capture import run_hotkey_listener as run_capture_hotkey_listener
 from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
+from speech_markup import speech_markup_to_text
 from sound_cues import SoundCuePlayer, ensure_generated
 from status_console import (
     MicrophoneOptionsAvailable,
@@ -54,8 +55,16 @@ SYSTEM_PROMPT = (
     "по-русски, если пользователь явно не попросил другой язык. Отвечай "
     "коротко и по существу: одно-два предложения, если не попросили "
     "подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока "
-    "он прозвучит. Если вместе с голосовым сообщением пришёл скриншот "
-    "экрана пользователя, отвечай с учётом того, что на нём видно."
+    "он прозвучит. Весь произносимый текст ответа должен быть внутри одного "
+    "тега <speak>. Внутри <speak> разбивай текст только на неналоженные "
+    "сегменты <lang xml:lang=\"ru\">...</lang> и "
+    "<lang xml:lang=\"en\">...</lang>; не вкладывай <lang> внутрь <lang>. "
+    "Русский текст и русская проза должны быть в xml:lang=\"ru\". "
+    "Английские термины, API names, identifiers, короткие английские фразы "
+    "и цитаты на английском должны быть в xml:lang=\"en\". Не используй "
+    "Markdown и не пиши произносимый текст вне <speak>. Если вместе с "
+    "голосовым сообщением пришёл скриншот экрана пользователя, отвечай с "
+    "учётом того, что на нём видно."
 )
 
 
@@ -209,7 +218,7 @@ class Orchestrator:
         on_full_response_complete)."""
         full_text = "".join(self._response_tokens)
         self._history.add("user", self._current_turn_history_text)
-        self._history.add("assistant", full_text)
+        self._history.add("assistant", speech_markup_to_text(full_text))
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
         """Clears the busy flag, optionally after a cooldown.

@@ -1,4 +1,11 @@
-from speech_markup import SpeechMarkupStream, SpeechSegment, parse_speech_markup
+import logging
+
+from speech_markup import (
+    SpeechMarkupStream,
+    SpeechSegment,
+    parse_speech_markup,
+    speech_markup_to_text,
+)
 
 
 def test_plain_text_defaults_to_russian_segment():
@@ -86,6 +93,31 @@ def test_malformed_markup_strips_known_control_text():
     assert parse_speech_markup('<speak><lang xml:lang="en"Hello</lang> tail') == [
         SpeechSegment("ru", "Hello tail")
     ]
+
+
+def test_speech_markup_to_text_returns_clean_speakable_text():
+    assert (
+        speech_markup_to_text(
+            '<speak><lang xml:lang="ru">Открой </lang>'
+            '<lang xml:lang="en">APIClient</lang>'
+            '<lang xml:lang="ru">.</lang></speak>'
+        )
+        == "Открой APIClient."
+    )
+
+
+def test_malformed_markup_logs_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        parse_speech_markup('<lang xml:lang="en"Hello')
+
+    assert "Ignoring malformed speech markup control fragment" in caplog.text
+
+
+def test_unsupported_language_logs_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        parse_speech_markup('<lang xml:lang="de">Guten Tag.</lang>')
+
+    assert "Unsupported speech markup language" in caplog.text
 
 
 def test_code_like_identifiers_are_preserved_as_text():
