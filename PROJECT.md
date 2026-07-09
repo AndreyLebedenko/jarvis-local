@@ -99,6 +99,41 @@ system is intended to grow.
   phonetic Latin-to-Cyrillic conversion before synthesis (e.g. "gemma" ->
   "гемма") - crude, not linguistically rigorous, but strictly better than
   silence.
+- **v1.2.8 speech-markup prompt contract is not stable enough yet.**
+  Human-run `python manual_check_speech_markup_contract.py` on 2026-07-09
+  against Ollama 0.31.2, `gemma4:12b-it-qat`, `think: false`,
+  `num_ctx: 65536`, `flash_attention: True`, `kv_cache_type: q8_0`, and all
+  other generation knobs unset showed that normal prompts violate the flat
+  `<speak>` / non-nested `<lang>` contract. `russian_only` passed, but
+  `english_only`, `mixed_identifiers`, and `long_nuanced_pressure` produced
+  nested `<lang>` spans; `quotes_and_slashes` and `punctuation_heavy` kept
+  non-nested tags but left speakable text outside a complete final `<lang>`
+  span. This is a model-output contract failure, not a parser unit-test
+  failure. Do not treat task-3's prompt wording as verified stable until the
+  bug report `tasks/bug_reports/gemma4-speech-markup-contract-instability.md`
+  is resolved and the manual check passes.
+- **Decision after that failed check: v1.2.8 runtime language routing uses
+  charset segmentation, not LLM language tags.** For the supported v1 pair
+  (`ru`/`en`), Cyrillic and Latin alphabets are sufficiently disjoint to split
+  plain model text deterministically: Cyrillic routes to `ru`, Latin routes to
+  `en`, and digits/punctuation/whitespace attach to neighboring text. The
+  system prompt now explicitly tells the model not to add language markup.
+  This avoids relying on the model to maintain a flat XML-like grammar during
+  streaming.
+- **v1.2.8 charset segmentation manual check passed.** Human-run
+  `python manual_check_speech_markup_contract.py` on 2026-07-09 against
+  Ollama 0.31.2, `gemma4:12b-it-qat`, `think: false`, `num_ctx: 65536`,
+  `flash_attention: True`, `kv_cache_type: q8_0`, and all other generation
+  knobs unset produced plain speakable text for all six fixed cases
+  (`russian_only`, `english_only`, `mixed_identifiers`, `quotes_and_slashes`,
+  `punctuation_heavy`, `long_nuanced_pressure`). No `<speak>`/`<lang>` tags or
+  Markdown fences appeared. `language_segments.segment_by_charset()` routed
+  Cyrillic prose to `ru` and Latin terms/identifiers such as `parse_user_id`,
+  `JSONDecoder`, `APIClient`, `pull/push`, `request/response`, `REST`,
+  `HTTP/2`, `WebSocket`, `real-time`, `latency`, `observability`, and
+  `failure mode` to `en`. Mixed forms such as `CRUD-операций` split into an
+  English `CRUD-` segment followed by Russian `операций`, which is acceptable
+  for the current two-language TTS-routing contract.
 - **No echo cancellation in v1.0: audio_in.py's microphone can pick up
   Jarvis's own TTS output from the speakers.** Verified live: after
   Jarvis finished speaking, it "heard" itself and responded to its own
@@ -213,6 +248,13 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 - `audio_utils.py` — shared wav-encoding helper. No project-module
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
+- `language_segments.py` — pure Russian/English charset segmenter. This is not
+  general language detection: it deliberately covers the v1.2.8 pair with
+  non-overlapping primary alphabets. `CharsetLanguageStream` is incremental for
+  streamed tokens; `segment_by_charset()` is the one-shot helper for manual
+  checks and tests. Neutral characters (digits, punctuation, whitespace) attach
+  to the nearest language run so code identifiers, `HTTP/2`, `WebSocket`, and
+  slash-separated English examples stay usable for TTS routing.
 - `audio_in.py` — microphone capture + silero-vad; end-of-utterance detection;
   chunks <= 30 s; publishes wav chunks to the bus. `AudioInput.stop()` is the
   cooperative shutdown path for the microphone loop: it sets the loop's stop
@@ -234,16 +276,16 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   transliteration fallback already covers non-Russian text. The
   Silero-specific model loading, Russian number normalization, Latin
   transliteration, and `apply_tts` call live in `SileroEngine`. Since
-  v1.2.8 task-2, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
-  speech markup is parsed BEFORE sentence buffering (`SpeechMarkupStream`,
-  incremental), control tags are never spoken, a language switch is an
-  additional flush boundary alongside sentence boundaries, an unclosed
-  `<lang>` tag cannot leak language into the next turn, and a short
-  connective remainder at a switch (<= 3 word chars, no sentence
-  punctuation - e.g. the Russian "и" between two English words) is
-  carried into the following segment instead of becoming a standalone
-  synthesis call; the segment language reaches `TtsEngine.synthesize()`
-  as the routing hint (still ignored by the default Silero runtime).
+  the v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
+  charset language segmentation happens BEFORE sentence buffering
+  (`CharsetLanguageStream`, incremental), so language routing no longer
+  depends on the model emitting XML-like control tags. A language switch is an
+  additional flush boundary alongside sentence boundaries, and a short
+  connective remainder at a switch (<= 3 word chars, no sentence punctuation -
+  e.g. the Russian "и" between two English words) is carried into the following
+  segment instead of becoming a standalone synthesis call; the segment language
+  reaches `TtsEngine.synthesize()` as the routing hint (still ignored by the
+  default Silero runtime).
   Sentence-level streaming is mandatory: buffer LLM tokens to sentence
   boundary -> synthesize -> play, while generation continues. Target end-to-end response start:
   within ~3 s of audio_in.py publishing the finished utterance (i.e. after VAD's
@@ -263,7 +305,7 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   converts Latin-script text to a crude phonetic Cyrillic approximation
   before synthesis, since Silero's symbol set has no Latin characters at
   all (see Verified facts) - applied after `normalize_numbers()`.
-- `speech_markup.py` — pure scanner for Jarvis's small SSML-inspired speech
+- `speech_markup.py` — experimental pure scanner for Jarvis's small SSML-inspired speech
   markup subset. It accepts plain text as default Russian, optional `<speak>`,
   and `<lang xml:lang="ru|en">` routing tags (including common region variants
   normalized to `ru`/`en`). Rewritten in the 2026-07-09 entropy review from
@@ -276,7 +318,10 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   can parse markup BEFORE sentence buffering during token streaming, using a
   closing `</lang>` as an extra flush boundary - see
   `tasks/story-v1.2.8-task-2-tts-buffering-integration.md` for that
-  recorded design decision. `parse_speech_markup()` is the one-shot wrapper
+  recorded design decision. It is no longer used by the runtime TTS path after
+  the charset-segmentation pivot, but stays in the repo with tests as a
+  preserved experiment and possible future repair/interop helper.
+  `parse_speech_markup()` is the one-shot wrapper
   (cleans whitespace, merges adjacent same-language segments, smooths
   punctuation-only fragments, soft-drops malformed control tags without
   speaking them). Malformed known control fragments, missing language
@@ -292,18 +337,12 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   request it signals about.
 - `main.py` — wiring + system prompt. System prompt must enforce SHORT
   conversational answers (latency ∝ answer length), Russian by default, and
-  the v1.2.8 speech-markup contract: all speakable assistant text inside one
-  `<speak>` wrapper, split into non-nested
-  `<lang xml:lang="ru">...</lang>` / `<lang xml:lang="en">...</lang>`
-  spans; Russian prose stays in `ru`; English terms, API names, identifiers,
-  short English phrases, and English quotes go in `en`; Markdown and
-  speakable text outside `<speak>` are forbidden. Conversation history is
-  text-only in v1.0 (see Open questions); media is attached only to the
-  current turn. Assistant history deliberately stores cleaned speakable text,
-  not raw tagged model output: `Orchestrator.on_response_complete()` parses
-  accumulated `ResponseToken` text through `speech_markup_to_text()` before
-  adding the assistant turn to `ConversationHistory`, while the TTS path still
-  consumes raw streamed tokens for language routing. Warms Ollama up with a throwaway
+  plain speakable text. It tells the model not to use Markdown unless asked and
+  not to add language markup; English terms, API names, identifiers, short
+  English phrases, and quotes can appear as ordinary text where useful.
+  Conversation history is text-only in v1.0 (see Open questions); media is
+  attached only to the current turn. Assistant history stores the plain
+  accumulated `ResponseToken` text. Warms Ollama up with a throwaway
   request before subscribing anything to the bus, so the response isn't
   spoken or recorded. Checks for Administrator elevation at startup and
   warns (does not refuse to start) if missing, since global hotkeys

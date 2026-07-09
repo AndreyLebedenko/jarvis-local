@@ -350,13 +350,11 @@ async def test_tts_output_uses_injected_engine_for_synthesis():
     assert played == ["Фраза готова."]
 
 
-# --- speech markup integration (story-v1.2.8-task-2) ------------------------
+# --- charset language segmentation (story-v1.2.8 pivot) ---------------------
 #
-# Markup is parsed BEFORE sentence buffering (recorded design decision in
-# the task card): streamed tokens go through SpeechMarkupStream, then
-# sentence buffering runs within language segments, so a <lang> span
-# crossing a sentence boundary - or a tag split across token chunks -
-# never loses its language, and control tags are never spoken.
+# Language segmentation now happens deterministically from character sets
+# before sentence buffering. The model emits plain text; Jarvis splits
+# Cyrillic as Russian and Latin-script runs as English.
 
 
 async def _speak_tokens(engine, *tokens: str) -> None:
@@ -377,24 +375,20 @@ async def _silent_play(audio: bytes) -> None:
     del audio
 
 
-async def test_marked_russian_text_speaks_clean_without_control_tags():
+async def test_plain_russian_text_routes_to_russian():
     engine = _FakeEngine()
 
-    await _speak_tokens(
-        engine,
-        '<speak><lang xml:lang="ru">Привет. ',
-        "Как дела?</lang></speak>",
-    )
+    await _speak_tokens(engine, "Привет. Как дела?")
 
     assert engine.seen == [("Привет.", "ru"), ("Как дела?", "ru")]
 
 
-async def test_mixed_language_text_decomposes_into_ordered_language_units():
+async def test_plain_mixed_language_text_decomposes_into_ordered_language_units():
     engine = _FakeEngine()
 
     await _speak_tokens(
         engine,
-        'Ответ: <lang xml:lang="en">blank verse</lang> без рифмы.',
+        "Ответ: blank verse без рифмы.",
     )
 
     assert engine.seen == [
@@ -404,56 +398,56 @@ async def test_mixed_language_text_decomposes_into_ordered_language_units():
     ]
 
 
-async def test_language_survives_a_tag_split_across_token_chunks():
+async def test_latin_identifier_survives_token_split():
     engine = _FakeEngine()
 
-    await _speak_tokens(engine, "<lang xml:l", 'ang="en">Hi.</lang>')
+    await _speak_tokens(engine, "Функция par", "se_user_id готова.")
 
-    assert engine.seen == [("Hi.", "en")]
+    assert engine.seen == [
+        ("Функция", "ru"),
+        ("parse_user_id", "en"),
+        ("готова.", "ru"),
+    ]
 
 
-async def test_lang_span_crossing_a_sentence_boundary_keeps_its_language():
+async def test_english_span_crossing_a_sentence_boundary_keeps_its_language():
     engine = _FakeEngine()
 
     await _speak_tokens(
         engine,
-        '<lang xml:lang="en">First one. Second one.</lang>',
+        "First one. Second one.",
     )
 
     assert engine.seen == [("First one.", "en"), ("Second one.", "en")]
 
 
-async def test_short_connective_span_is_carried_not_synthesized_standalone():
-    """The "и" between two English words must not become its own tiny
-    synthesis call (story AC: no unnatural standalone calls); it is
-    carried into the following segment - language attribution matters
-    less than prosody for spans that short, and the runtime engine is
-    Silero-only today anyway."""
+async def test_http_terms_with_punctuation_stay_in_english_unit():
     engine = _FakeEngine()
 
     await _speak_tokens(
         engine,
-        '<lang xml:lang="en">Love</lang> и <lang xml:lang="en">Dove.</lang>',
+        "HTTP/2, WebSocket, REST: когда что выбрать?",
     )
+
+    assert engine.seen == [
+        ("HTTP/2, WebSocket, REST:", "en"),
+        ("когда что выбрать?", "ru"),
+    ]
+
+
+async def test_short_russian_connective_between_english_words_is_carried():
+    engine = _FakeEngine()
+
+    await _speak_tokens(engine, "Love и Dove.")
 
     assert engine.seen == [("Love", "en"), ("и Dove.", "en")]
 
 
-async def test_trailing_punctuation_only_remainder_is_not_synthesized():
-    engine = _FakeEngine()
-
-    await _speak_tokens(engine, '<lang xml:lang="en">Done</lang>...')
-
-    assert engine.seen == [("Done", "en")]
-
-
-async def test_second_turn_starts_fresh_after_an_unclosed_lang_tag():
-    """A turn ending inside <lang xml:lang="en"> must not leak English
-    routing into the next turn's plain Russian text."""
+async def test_second_turn_starts_fresh_after_english_text():
     engine = _FakeEngine()
     tts = TtsOutput(TtsSettings(), engine=engine, play=_silent_play)
 
-    await tts.on_token(ResponseToken(text='<lang xml:lang="en">Unclosed tail'))
+    await tts.on_token(ResponseToken(text="Unclosed tail"))
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
