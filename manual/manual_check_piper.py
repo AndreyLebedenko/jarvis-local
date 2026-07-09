@@ -13,9 +13,9 @@ hear basic Russian, English, numbers, and code-like text without the
 extra moving parts from the larger TTS-engine spike.
 
 Usage examples:
-  python manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx
-  python manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --use-cuda
-  python manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --config D:\\voices\\en_US-lessac-medium.onnx.json
+  python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx
+  python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --use-cuda
+  python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --config D:\\voices\\en_US-lessac-medium.onnx.json
 
 Expected output fields:
   model, config, use_cuda, load_seconds
@@ -26,13 +26,21 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import sounddevice as sd
 
-from manual_check_tts_engines import PROMPTS, split_text_into_chunks
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+try:
+    from manual.manual_check_tts_engines import PROMPTS, split_text_into_chunks
+except ModuleNotFoundError:
+    from manual_check_tts_engines import PROMPTS, split_text_into_chunks
 
 TOKEN_DELAY_SECONDS = 0.05
 DEFAULT_MODEL_PATH = Path(".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx")

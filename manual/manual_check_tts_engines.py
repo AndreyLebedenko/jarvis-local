@@ -18,10 +18,10 @@ the desired backend config in place and keep the resulting summaries side by
 side.
 
 Usage examples:
-  python manual_check_tts_engines.py
-  python manual_check_tts_engines.py --piper-model D:\\voices\\en_US-lessac-medium.onnx
-  python manual_check_tts_engines.py --kokoro-model D:\\models\\kokoro-v1.0.onnx
-  python manual_check_tts_engines.py --xtts-model-path D:\\models\\xtts_v2
+  python manual/manual_check_tts_engines.py
+  python manual/manual_check_tts_engines.py --piper-model D:\\voices\\en_US-lessac-medium.onnx
+  python manual/manual_check_tts_engines.py --kokoro-model D:\\models\\kokoro-v1.0.onnx
+  python manual/manual_check_tts_engines.py --xtts-model-path D:\\models\\xtts_v2
 
 Expected output fields:
   backend: model, num_ctx, flash_attention, kv_cache_type,
@@ -37,6 +37,7 @@ import asyncio
 import io
 import json
 import subprocess
+import sys
 import time
 import wave
 from dataclasses import dataclass
@@ -46,6 +47,10 @@ from typing import Awaitable, Callable
 import sounddevice as sd
 import soundfile as sf
 import torch
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_utils import samples_to_wav_bytes
 from backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken

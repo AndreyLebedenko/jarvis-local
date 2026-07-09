@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from manual_check_piper import (
+from manual.manual_check_piper import (
     DEFAULT_MODEL_PATH,
     PROMPTS,
     build_arg_parser,

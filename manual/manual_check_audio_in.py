@@ -7,7 +7,7 @@ speech triggers a chunk publish, silence does not, and end-of-utterance
 latency feels reasonable for a conversational pace.
 
 Usage:
-  python manual_check_audio_in.py
+  python manual/manual_check_audio_in.py
   (speak a few short sentences with pauses between them, then Ctrl+C)
 
 Each published utterance is printed (timing, duration) and saved as a
@@ -16,8 +16,13 @@ confirm the boundaries are sensible.
 """
 
 import asyncio
+import sys
 import time
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_in import AudioInput, UtteranceChunk, VadChunker
 from bus import EventBus

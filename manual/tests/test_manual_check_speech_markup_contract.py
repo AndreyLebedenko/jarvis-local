@@ -1,6 +1,6 @@
 from config import BackendSettings
 from main import SYSTEM_PROMPT
-from manual_check_speech_markup_contract import (
+from manual.manual_check_speech_markup_contract import (
     PROMPTS,
     SYSTEM_PROMPT_UNDER_TEST,
     build_payload,

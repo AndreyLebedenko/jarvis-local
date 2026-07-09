@@ -1,7 +1,7 @@
 import base64
 
 from config import BackendSettings
-from manual_check_thinking_mode import (
+from manual.manual_check_thinking_mode import (
     THINKING_PARAM,
     build_probe_request,
     content_has_inline_reasoning,

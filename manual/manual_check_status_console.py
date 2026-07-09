@@ -18,7 +18,7 @@ switch/reset controls/Open-Hidden toggle on *either* window is reflected
 on the other.
 
 Usage:
-  python manual_check_status_console.py
+  python manual/manual_check_status_console.py
   (two windows open; states/events cycle automatically; click the Think
   switch, reset buttons, and Open/Hidden toggle on either window and
   confirm the other one updates too - Hidden should replace the desktop's
@@ -36,7 +36,13 @@ unresponsive) instead of relying on Ctrl+C.
 
 import asyncio
 import logging
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from bus import EventBus
 from config import load_settings
