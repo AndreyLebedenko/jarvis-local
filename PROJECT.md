@@ -223,10 +223,17 @@ Modules (each an event-bus participant; no direct module-to-module calls):
 - `tts.py` — subscribes to response sentences; Silero TTS (Russian) remains
   the default v1.0 runtime path, with XTTS-v2 as a later quality upgrade.
   `TtsOutput` owns sentence buffering and ordered playback orchestration;
-  synthesis sits behind the `TtsEngine` protocol. The current Silero-specific
-  model loading, Russian number normalization, Latin transliteration, and
-  `apply_tts` call live in `SileroEngine`, which returns a structured
-  `SynthesisResult` carrying wav bytes and sample rate. Sentence-level
+  synthesis sits behind the `TtsEngine` protocol - the constructor's only
+  synthesis seam (the earlier parallel `synthesize=` callable seam was
+  removed in the 2026-07-09 entropy review). The protocol is
+  `synthesize(text, language="ru") -> bytes` (wav-encoded; the wav header
+  carries the sample rate, so playback needs no side channel - the
+  earlier `SynthesisResult` wrapper duplicated the header's sample rate
+  and was dropped). `language` is the routing hint for the planned
+  Silero/ru + Piper/en direction; `SileroEngine` ignores it, since its
+  transliteration fallback already covers non-Russian text. The
+  Silero-specific model loading, Russian number normalization, Latin
+  transliteration, and `apply_tts` call live in `SileroEngine`. Sentence-level
   streaming is mandatory: buffer LLM tokens to sentence boundary -> synthesize
   -> play, while generation continues. Target end-to-end response start:
   within ~3 s of audio_in.py publishing the finished utterance (i.e. after VAD's
@@ -246,14 +253,24 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   converts Latin-script text to a crude phonetic Cyrillic approximation
   before synthesis, since Silero's symbol set has no Latin characters at
   all (see Verified facts) - applied after `normalize_numbers()`.
-- `speech_markup.py` — pure parser for Jarvis's small SSML-inspired speech
+- `speech_markup.py` — pure scanner for Jarvis's small SSML-inspired speech
   markup subset. It accepts plain text as default Russian, optional `<speak>`,
   and `<lang xml:lang="ru|en">` routing tags (including common region variants
-  normalized to `ru`/`en`). It merges adjacent same-language segments, smooths
-  punctuation-only fragments into neighboring text, and uses a soft fallback
-  for malformed or unsupported language markup so known control tags and
-  `xml:lang` attributes are never spoken. It is not wired into TTS playback
-  yet and is not full SSML compatibility.
+  normalized to `ru`/`en`). Rewritten in the 2026-07-09 entropy review from
+  an `html.parser` subclass (which silently swallowed ANY tag-like text -
+  "List<String>", "<div>" - a real content-loss risk for code answers) to a
+  dedicated scanner that treats exactly the four known control tokens as
+  markup and preserves everything else as literal spoken text.
+  `SpeechMarkupStream` is incremental (feed()/close(), holds language state
+  and unterminated-tag tails across chunks) so the TTS buffering integration
+  can parse markup BEFORE sentence buffering during token streaming, using a
+  closing `</lang>` as an extra flush boundary - see
+  `tasks/story-v1.2.8-task-2-tts-buffering-integration.md` for that
+  recorded design decision. `parse_speech_markup()` is the one-shot wrapper
+  (cleans whitespace, merges adjacent same-language segments, smooths
+  punctuation-only fragments, soft-drops malformed control tags without
+  speaking them). It is not wired into TTS playback yet and is not full
+  SSML compatibility.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `sound_cues.py` — synthesizes placeholder cue tones (pure math, offline,
@@ -808,6 +825,37 @@ the guarded Shutdown control:
   history (human decision, task-1: touchstrip gets a shutdown action too,
   made hard to trigger accidentally, per the story's own "decide" framing
   rather than leaving the two surfaces' capabilities to drift apart).
+- Entropy review (2026-07-09, human-requested) hardened this control plane:
+  - `StatusConsoleApi` now schedules all JS-API work through one private
+    `_schedule()` (replacing eight copies of the guard/`run_coroutine_
+    threadsafe` pattern): it also closes the check-then-schedule race left
+    by the original `_loop_is_usable()` fix (loop closing between the check
+    and the call raised the same `RuntimeError` in pywebview's JS thread),
+    logs exceptions from scheduled coroutines instead of dropping them with
+    the discarded future, and rejects invalid `ModuleId`/`VisibilityMode`
+    strings with a warning instead of raising in the JS dispatch thread.
+  - A Shutdown click before `set_loop()`/`set_shutdown_event()` complete is
+    remembered and dispatched once wiring finishes, never silently dropped -
+    the front-end disables its Shutdown button on first click, so a dropped
+    early request would have made UI shutdown permanently unreachable.
+  - Closing the desktop console with the title-bar X is now a shutdown
+    trigger through the same clean path (window `closed` event ->
+    `api.request_shutdown()`); previously the engine kept running headless
+    and every later push hit a destroyed window. Any closed window (either
+    surface, any cause) marks itself closed so `push_*()` becomes a safe
+    no-op. Closing only the touchstrip does not stop the engine.
+  - `LiveStatusConsole` deduplicates runtime-state pushes: `SPEAKING` was
+    pushed on every streamed `ResponseToken` - two blocking `evaluate_js`
+    round-trips per token inside `bus.publish()`, violating bus.py's own
+    handler contract. Only real transitions reach the windows now. The
+    broader runtime-state ownership question is recorded in
+    `tasks/backlog/task-runtime-state-tracker.md`; the `TouchstripWindow`
+    `NotImplementedError` capability holes in
+    `tasks/backlog/task-touchstrip-capability-composition.md`.
+  - `status_console.py` no longer imports `httpx`/`sounddevice` at module
+    level (only the two default option sources need them, now imported
+    lazily) - the UI bridge module must be importable without pulling in
+    the audio/network stacks.
 - The hotkey and the Status Console's Shutdown control both close the live
   `pywebview` window(s) after the clean engine teardown completes.
   `StatusConsoleApi.request_shutdown()` still does not destroy windows or

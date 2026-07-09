@@ -37,7 +37,6 @@ the network at runtime.
 import asyncio
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -48,6 +47,7 @@ from num2words import num2words
 from audio_utils import samples_to_wav_bytes
 from backend import ResponseComplete, ResponseToken
 from config import TtsSettings
+from speech_markup import DEFAULT_LANGUAGE
 
 SAMPLE_RATE = 48000
 
@@ -65,14 +65,17 @@ class TtsModelNotCachedError(RuntimeError):
     pass
 
 
-@dataclass(frozen=True)
-class SynthesisResult:
-    audio_bytes: bytes
-    sample_rate: int
-
-
 class TtsEngine(Protocol):
-    async def synthesize(self, text: str) -> SynthesisResult:
+    """Synthesis boundary: text in, wav-encoded audio bytes out. The wav
+    container header is the sample-rate contract - playback reads it from
+    the bytes, so engines with different native rates need no side channel.
+
+    `language` is the routing hint carried by speech_markup.py's segments
+    (the Silero/ru + Piper/en direction recorded in PROJECT.md). An engine
+    that cannot switch languages may ignore it - SileroEngine does, since
+    its transliteration fallback already covers non-Russian text."""
+
+    async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
         pass
 
 
@@ -241,7 +244,8 @@ class SileroEngine:
         self._settings = settings
         self._model = None
 
-    async def synthesize(self, text: str) -> SynthesisResult:
+    async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
+        del language  # any language goes through the transliteration fallback
         model = await self._ensure_model()
         audio_tensor = await asyncio.to_thread(
             model.apply_tts,
@@ -249,10 +253,7 @@ class SileroEngine:
             speaker=self._settings.voice,
             sample_rate=SAMPLE_RATE,
         )
-        return SynthesisResult(
-            audio_bytes=samples_to_wav_bytes(audio_tensor, SAMPLE_RATE),
-            sample_rate=SAMPLE_RATE,
-        )
+        return samples_to_wav_bytes(audio_tensor, SAMPLE_RATE)
 
     async def _ensure_model(self):
         if self._model is None:
@@ -272,17 +273,13 @@ class TtsOutput:
     def __init__(
         self,
         settings: TtsSettings,
-        synthesize: Callable[[str], Awaitable[bytes]] | None = None,
         engine: TtsEngine | None = None,
         play: Callable[[bytes], Awaitable[None]] | None = None,
         playback_lock: asyncio.Lock | None = None,
     ) -> None:
         self._settings = settings
         self._buffer = SentenceBuffer()
-        if synthesize is not None and engine is not None:
-            raise ValueError("Pass either synthesize or engine, not both")
         self._engine = engine or SileroEngine(settings)
-        self._synthesize = synthesize
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
         # output device: sounddevice's play()/wait() convenience API
@@ -319,11 +316,7 @@ class TtsOutput:
         task.add_done_callback(self._pending_tasks.discard)
 
     async def _synthesize_and_submit(self, index: int, sentence: str) -> None:
-        if self._synthesize is not None:
-            audio = await self._synthesize(sentence)
-        else:
-            result = await self._engine.synthesize(sentence)
-            audio = result.audio_bytes
+        audio = await self._engine.synthesize(sentence)
         await self._playback.submit(index, audio)
 
     async def _default_play(self, wav_bytes: bytes) -> None:

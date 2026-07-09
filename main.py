@@ -313,6 +313,15 @@ class LiveStatusConsole:
     console: StatusConsoleWindow
     touchstrip: TouchstripWindow | None
     api: StatusConsoleApi
+    # Last (state, substatus) actually pushed - the one place that knows
+    # what the orb currently shows, so repeat pushes of the same state
+    # (e.g. SPEAKING on every streamed ResponseToken) don't turn into
+    # blocking evaluate_js round-trips inside bus.publish(), which awaits
+    # all handlers and would serialize the streaming pipeline (bus.py's
+    # own handler contract).
+    _last_runtime_push: tuple[RuntimeState, str | None] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def close(self) -> None:
         surfaces: list[StatusConsoleWindow] = [self.console]
@@ -331,6 +340,9 @@ def _status_surfaces(live_console: LiveStatusConsole) -> tuple[StatusConsoleWind
 def _push_runtime_state(
     live_console: LiveStatusConsole, state: RuntimeState, substatus: str | None = None
 ) -> None:
+    if live_console._last_runtime_push == (state, substatus):
+        return
+    live_console._last_runtime_push = (state, substatus)
     for surface in _status_surfaces(live_console):
         surface.push_runtime_state(state, substatus)
 
@@ -376,7 +388,12 @@ def create_live_status_console(
         settings=app.settings,
     )
     console = console or StatusConsoleWindow()
-    console.create(js_api=api)
+    # Closing the desktop console with the title-bar X is a shutdown
+    # request through the same clean path as the hotkey and the guarded
+    # Shutdown control - otherwise the engine keeps running headless and
+    # every later push hits a destroyed window. Closing the touchstrip
+    # alone only removes that glance surface; the engine keeps running.
+    console.create(js_api=api, on_closed=api.request_shutdown)
     if include_touchstrip:
         touchstrip = touchstrip or TouchstripWindow()
         touchstrip.create(js_api=api)
@@ -664,8 +681,6 @@ async def run(
     ]
 
     await app.sound_cues.play("listening")
-    if live_console is not None:
-        _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
     print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
 
     try:

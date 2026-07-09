@@ -1,4 +1,4 @@
-from speech_markup import SpeechSegment, parse_speech_markup
+from speech_markup import SpeechMarkupStream, SpeechSegment, parse_speech_markup
 
 
 def test_plain_text_defaults_to_russian_segment():
@@ -92,3 +92,29 @@ def test_code_like_identifiers_are_preserved_as_text():
     assert parse_speech_markup(
         '<lang xml:lang="en">Use get_user_id() in APIClient.</lang>'
     ) == [SpeechSegment("en", "Use get_user_id() in APIClient.")]
+
+
+def test_unknown_tag_like_text_is_preserved_not_swallowed_as_markup():
+    """Only the four known control tokens are markup; an assistant answer
+    about code must not lose "<String>" or "<div>" to a markup parser
+    (whitespace around the preserved token may be normalized)."""
+    assert parse_speech_markup("Используй List<String> здесь.") == [
+        SpeechSegment("ru", "Используй List <String> здесь.")
+    ]
+
+
+def test_comparison_operator_is_not_treated_as_markup():
+    assert parse_speech_markup("a < b и c") == [SpeechSegment("ru", "a < b и c")]
+
+
+def test_stream_feed_routes_language_across_a_tag_split_between_chunks():
+    stream = SpeechMarkupStream()
+    pieces = stream.feed("Привет <lang xml:l")
+    pieces += stream.feed('ang="en">hello</lang> пока')
+    pieces += stream.close()
+
+    assert [
+        (piece.language, piece.text.strip())
+        for piece in pieces
+        if piece.text.strip()
+    ] == [("ru", "Привет"), ("en", "hello"), ("ru", "пока")]

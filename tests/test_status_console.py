@@ -190,8 +190,11 @@ def test_close_destroys_the_created_window_and_is_idempotent():
     console.close()
 
     assert fake_window.destroy_calls == 1
-    with pytest.raises(RuntimeError):
-        console.push_runtime_state(RuntimeState.IDLE)
+    # Pushing after close is a safe no-op, never a call into a destroyed
+    # window: a closed window can also happen without our close() (the
+    # user's title-bar X), and engine events keep flowing either way.
+    console.push_runtime_state(RuntimeState.IDLE)
+    assert fake_window.calls == []
 
 
 def test_push_thinking_mode_evaluates_js_with_contract_payload():
@@ -1041,3 +1044,78 @@ def test_touchstrip_js_ignores_shutdown_hold_after_first_request():
 
     assert "if (_shutdownRequested) return;" in body
     assert "_shutdownRequested = true;" in body
+
+
+class _FakeClosedEvent:
+    def __init__(self) -> None:
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def fire(self) -> None:
+        for handler in list(self.handlers):
+            handler()
+
+
+class _FakeEvents:
+    def __init__(self) -> None:
+        self.closed = _FakeClosedEvent()
+
+
+class _FakeWindowWithEvents(_FakeWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events = _FakeEvents()
+
+
+def test_native_window_close_makes_pushes_no_ops_and_fires_callback():
+    """The user's title-bar X was previously invisible to this class: every
+    later push_*() called evaluate_js() on a destroyed window, and the
+    engine kept running headless with no shutdown trigger."""
+    fake_window = _FakeWindowWithEvents()
+    closed_calls = []
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+    console.create(on_closed=lambda: closed_calls.append(True))
+
+    fake_window.events.closed.fire()
+
+    assert closed_calls == [True]
+    console.push_runtime_state(RuntimeState.IDLE)  # safe no-op, not evaluate_js
+    assert fake_window.calls == []
+    console.close()  # must not destroy() a window the user already closed
+    assert fake_window.destroy_calls == 0
+
+
+def test_windows_without_native_close_events_are_still_supported():
+    fake_window = _FakeWindow()  # no .events at all, like every other fake here
+    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
+
+    console.create(on_closed=lambda: None)
+    console.push_runtime_state(RuntimeState.IDLE)
+
+    assert len(fake_window.calls) == 1
+
+
+async def test_shutdown_click_before_engine_wiring_is_queued_not_dropped():
+    """The window is clickable before run() reaches set_loop()/
+    set_shutdown_event(), and the desktop front-end disables its Shutdown
+    button on the first click - so a silently dropped early request would
+    make UI shutdown permanently unreachable. The request must be
+    remembered and dispatched once the wiring completes."""
+    bus = EventBus()
+    api = StatusConsoleApi(
+        thinking_mode=ThinkingModeState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+    )
+
+    api.request_shutdown()  # neither loop nor shutdown_event wired yet
+
+    shutdown_event = asyncio.Event()
+    api.set_shutdown_event(shutdown_event)
+    api.set_loop(asyncio.get_running_loop())
+
+    await asyncio.wait_for(shutdown_event.wait(), timeout=2.0)
