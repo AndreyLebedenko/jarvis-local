@@ -12,13 +12,18 @@ If hotkeys don't register at all, try running from an elevated
 require it on Windows.
 
 Usage:
-  python manual_check_capture.py
+  python manual/manual_check_capture.py
   (press the full-screen hotkey, then the region hotkey and drag a
   rectangle, Escape cancels a region selection; Ctrl+C to stop)
 """
 
 import asyncio
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from bus import EventBus
 from capture import CaptureEngine, CaptureInput, ScreenshotCaptured, run_hotkey_listener

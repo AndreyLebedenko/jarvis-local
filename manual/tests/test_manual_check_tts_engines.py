@@ -1,7 +1,11 @@
 from argparse import Namespace
 from pathlib import Path
 
-from manual_check_tts_engines import PROMPTS, build_engine_paths, split_text_into_chunks
+from manual.manual_check_tts_engines import (
+    PROMPTS,
+    build_engine_paths,
+    split_text_into_chunks,
+)
 
 
 def test_prompt_catalog_covers_the_required_phrase_families():

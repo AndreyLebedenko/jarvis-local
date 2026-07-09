@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from bus import EventBus
-from manual_check_status_console import DemoContext, _run_demo_cycle_async
+from manual.manual_check_status_console import DemoContext, _run_demo_cycle_async
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from ui_contract import VisibilityMode
 from visibility_mode import VisibilityModeChanged, VisibilityModeState

@@ -5,15 +5,21 @@ Not an automated test. It talks to the live local Ollama endpoint and the
 configured model, so the human runs it and records the output.
 
 Usage:
-  python manual_check_speech_markup_contract.py
+  python manual/manual_check_speech_markup_contract.py
 """
 
 import asyncio
 import json
+import sys
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import httpx
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import BackendSettings, load_settings
 from language_segments import LanguageSegment, segment_by_charset
