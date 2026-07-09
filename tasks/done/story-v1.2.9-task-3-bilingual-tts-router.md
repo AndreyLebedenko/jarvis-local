@@ -1,6 +1,6 @@
 # Story v1.2.9 Task 3: Bilingual TTS router
 
-Status: Backlog.
+Status: Completed.
 
 ## Summary
 
@@ -42,3 +42,7 @@ Out of scope:
 
 The implementation should reuse v1.2.8 charset segmentation. Do not re-open
 the rejected model-authored language tag path.
+
+Completed with `BilingualTtsEngine` behind `TtsEngine`, `build_tts_engine()`
+app wiring, ordered mixed-engine playback tests, Piper startup path validation,
+and a final-playback WAV tail padding fix verified by human live testing.

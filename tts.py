@@ -53,10 +53,11 @@ from num2words import num2words
 
 from audio_utils import samples_to_wav_bytes
 from backend import ResponseComplete, ResponseToken
-from config import TtsSettings
+from config import TtsLanguageSettings, TtsSettings
 from language_segments import DEFAULT_LANGUAGE, CharsetLanguageStream
 
 SAMPLE_RATE = 48000
+FINAL_PLAYBACK_TAIL_SECONDS = 1.0
 
 # Filenames Silero's own downloader produces for this exact model/speaker
 # (see setup_tts_model.py). Hardcoded rather than parsed from the models
@@ -76,6 +77,11 @@ class VoiceLoader(Protocol):
     def __call__(
         self, *, model_path: Path, config_path: Path, use_cuda: bool
     ) -> object:
+        pass
+
+
+class EngineBuilder(Protocol):
+    def __call__(self, route: TtsLanguageSettings) -> "TtsEngine":
         pass
 
 
@@ -183,6 +189,24 @@ def _piper_chunks_to_wav_bytes(chunks) -> bytes:
                 )
             wav_file.writeframes(chunk.audio_int16_array.tobytes())
     return buffer.getvalue()
+
+
+def _append_wav_tail_silence(wav_bytes: bytes, seconds: float) -> bytes:
+    if seconds <= 0:
+        return wav_bytes
+
+    data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32", always_2d=True)
+    tail_frames = round(sample_rate * seconds)
+    if tail_frames <= 0:
+        return wav_bytes
+
+    import numpy as np
+
+    tail = np.zeros((tail_frames, data.shape[1]), dtype=data.dtype)
+    padded = np.concatenate((data, tail), axis=0)
+    output = io.BytesIO()
+    sf.write(output, padded, sample_rate, format="WAV")
+    return output.getvalue()
 
 
 def normalize_numbers(text: str) -> str:
@@ -435,6 +459,57 @@ class PiperEngine:
         return self._voice
 
 
+class BilingualTtsEngine:
+    def __init__(self, engines: dict[str, TtsEngine]) -> None:
+        self._engines = dict(engines)
+
+    async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
+        try:
+            engine = self._engines[language]
+        except KeyError as exc:
+            available = ", ".join(sorted(self._engines))
+            raise ValueError(
+                f"Unsupported TTS language for configured routing: {language!r}. "
+                f"Configured languages: {available}"
+            ) from exc
+        return await engine.synthesize(text, language)
+
+
+def _is_default_silero_only(settings: TtsSettings) -> bool:
+    return settings.languages == {
+        DEFAULT_LANGUAGE: TtsLanguageSettings(engine="silero", model="v3_1_ru")
+    }
+
+
+def _default_engine_builders(settings: TtsSettings) -> dict[str, EngineBuilder]:
+    return {
+        "silero": lambda route: SileroEngine(settings),
+        "piper": lambda route: PiperEngine(route.model),
+    }
+
+
+def build_tts_engine(
+    settings: TtsSettings,
+    engine_builders: dict[str, EngineBuilder] | None = None,
+) -> TtsEngine:
+    if _is_default_silero_only(settings):
+        return SileroEngine(settings)
+
+    builders = engine_builders or _default_engine_builders(settings)
+    engines: dict[str, TtsEngine] = {}
+    for language, route in settings.languages.items():
+        try:
+            builder = builders[route.engine]
+        except KeyError as exc:
+            available = ", ".join(sorted(builders))
+            raise ValueError(
+                f"Unsupported TTS engine for configured routing: {route.engine!r}. "
+                f"Available builders: {available}"
+            ) from exc
+        engines[language] = builder(route)
+    return BilingualTtsEngine(engines)
+
+
 class TtsOutput:
     def __init__(
         self,
@@ -445,7 +520,7 @@ class TtsOutput:
     ) -> None:
         self._settings = settings
         self._units = SpeechUnitBuffer()
-        self._engine = engine or SileroEngine(settings)
+        self._engine = engine or build_tts_engine(settings)
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
         # output device: sounddevice's play()/wait() convenience API
@@ -454,8 +529,10 @@ class TtsOutput:
         # mixing - the cause of audible crackling/tempo artifacts if
         # cues and speech land at the same time (verified live).
         self._playback_lock = playback_lock or asyncio.Lock()
+        self._uses_default_play = play is None
         self._playback = OrderedPlayback(play or self._default_play)
         self._next_index = 0
+        self._final_playback_index: int | None = None
         self._pending_tasks: set[asyncio.Task] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
@@ -465,6 +542,7 @@ class TtsOutput:
     async def on_response_complete(self, event: ResponseComplete) -> None:
         for text, language in self._units.flush():
             self._schedule(text, language)
+        self._final_playback_index = self._next_index - 1 if self._next_index else None
 
     async def wait_for_pending(self) -> None:
         """Awaits every synthesis/playback task scheduled so far. Useful
@@ -482,6 +560,8 @@ class TtsOutput:
 
     async def _synthesize_and_submit(self, index: int, text: str, language: str) -> None:
         audio = await self._engine.synthesize(text, language)
+        if self._uses_default_play and index == self._final_playback_index:
+            audio = _append_wav_tail_silence(audio, FINAL_PLAYBACK_TAIL_SECONDS)
         await self._playback.submit(index, audio)
 
     async def _default_play(self, wav_bytes: bytes) -> None:

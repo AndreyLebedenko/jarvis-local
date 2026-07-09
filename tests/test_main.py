@@ -5,12 +5,13 @@ import logging
 from collections.abc import Callable
 
 import httpx
+import pytest
 
 from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
 from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
-from config import MicrophoneSettings, Settings, VadSettings
+from config import MicrophoneSettings, Settings, TtsLanguageSettings, TtsSettings, VadSettings
 from bus import EventBus
 from main import (
     SYSTEM_PROMPT,
@@ -47,6 +48,7 @@ from ui_contract import (
     VisibilityMode,
 )
 from visibility_mode import VisibilityModeChanged
+from tts import BilingualTtsEngine
 
 
 class _FakeBackend:
@@ -1316,6 +1318,49 @@ def test_build_app_wires_the_configured_microphone_device_into_the_stream_factor
     app = build_app(settings, backend=_FakeBackend())
 
     assert app.audio_input._stream_factory.keywords == {"device": "USB Headset"}
+
+
+def test_build_app_wires_configured_bilingual_tts_engine(tmp_path):
+    model_path = tmp_path / "en.onnx"
+    config_path = tmp_path / "en.onnx.json"
+    model_path.write_bytes(b"model")
+    config_path.write_text("{}", encoding="utf-8")
+    settings = Settings(
+        tts=TtsSettings(
+            languages={
+                "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+                "en": TtsLanguageSettings(engine="piper", model=str(model_path)),
+            }
+        )
+    )
+
+    app = build_app(
+        settings,
+        backend=_FakeBackend(),
+        audio_input=_FakeAudioInput(),
+        capture_input=_FakeCaptureInput(),
+    )
+
+    assert isinstance(app.tts_output._engine, BilingualTtsEngine)
+
+
+def test_build_app_validates_configured_piper_paths_before_playback(tmp_path):
+    settings = Settings(
+        tts=TtsSettings(
+            languages={
+                "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+                "en": TtsLanguageSettings(engine="piper", model=str(tmp_path / "missing.onnx")),
+            }
+        )
+    )
+
+    with pytest.raises(FileNotFoundError, match="Piper model file does not exist"):
+        build_app(
+            settings,
+            backend=_FakeBackend(),
+            audio_input=_FakeAudioInput(),
+            capture_input=_FakeCaptureInput(),
+        )
 
 
 async def test_shared_playback_lock_prevents_overlapping_device_access(tmp_path, monkeypatch):

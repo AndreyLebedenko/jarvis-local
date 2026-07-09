@@ -7,8 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from backend import LatencyMetrics, ResponseComplete, ResponseToken
-from config import TtsSettings
+from config import TtsLanguageSettings, TtsSettings
 from tts import (
+    BilingualTtsEngine,
     OrderedPlayback,
     PiperEngine,
     SileroEngine,
@@ -16,6 +17,8 @@ from tts import (
     TtsEngine,
     TtsModelNotCachedError,
     TtsOutput,
+    build_tts_engine,
+    _append_wav_tail_silence,
     _piper_chunks_to_wav_bytes,
     _ensure_model_cached,
     normalize_numbers,
@@ -65,6 +68,30 @@ class _FakePiperVoice:
         return iter(self._chunks)
 
 
+def _pcm_wav_bytes(sample_rate: int, frames: int) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(b"\x00\x00" * frames)
+    return buffer.getvalue()
+
+
+def _wav_frame_count(wav_bytes: bytes) -> int:
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+        return wav_file.getnframes()
+
+
+def _fake_engine_builder(label: str, seen: list[tuple[str, str, str]]):
+    class _NamedFakeEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            seen.append((label, text, language))
+            return f"{label}:{text}".encode()
+
+    return _NamedFakeEngine()
+
+
 def test_silero_engine_satisfies_tts_engine_protocol():
     engine: TtsEngine = SileroEngine(TtsSettings())
 
@@ -76,6 +103,74 @@ def test_piper_engine_satisfies_tts_engine_protocol(tmp_path):
     engine: TtsEngine = PiperEngine(model_path, config_path=config_path)
 
     assert engine is not None
+
+
+def test_bilingual_tts_engine_routes_supported_languages_to_child_engines():
+    seen: list[tuple[str, str, str]] = []
+    engine = BilingualTtsEngine(
+        {
+            "ru": _fake_engine_builder("silero", seen),
+            "en": _fake_engine_builder("piper", seen),
+        }
+    )
+
+    assert asyncio.run(engine.synthesize("Привет", language="ru")) == "silero:Привет".encode()
+    assert asyncio.run(engine.synthesize("Hello", language="en")) == b"piper:Hello"
+    assert seen == [
+        ("silero", "Привет", "ru"),
+        ("piper", "Hello", "en"),
+    ]
+
+
+async def test_bilingual_tts_engine_rejects_unsupported_language_hint():
+    engine = BilingualTtsEngine({"ru": _FakeEngine()})
+
+    with pytest.raises(ValueError, match="Unsupported TTS language"):
+        await engine.synthesize("Hallo", language="de")
+
+
+async def test_tts_output_keeps_order_when_bilingual_engines_finish_out_of_order():
+    played = []
+    ru_engine = _FakeEngine(delay_for=lambda text: 0.05)
+    en_engine = _FakeEngine(delay_for=lambda text: 0.01)
+    router = BilingualTtsEngine({"ru": ru_engine, "en": en_engine})
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=router, play=fake_play)
+    await tts.on_token(ResponseToken(text="Привет. "))
+    await tts.on_token(ResponseToken(text="Hello. "))
+    await tts.wait_for_pending()
+
+    assert played == ["Привет.", "Hello."]
+
+
+def test_build_tts_engine_preserves_default_silero_only_behavior():
+    engine = build_tts_engine(TtsSettings())
+
+    assert isinstance(engine, SileroEngine)
+
+
+def test_build_tts_engine_builds_configured_bilingual_route_with_injected_builders():
+    seen: list[tuple[str, str]] = []
+    settings = TtsSettings(
+        languages={
+            "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+            "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+        }
+    )
+
+    engine = build_tts_engine(
+        settings,
+        engine_builders={
+            "silero": lambda route: seen.append(("silero", route.model)) or _FakeEngine(),
+            "piper": lambda route: seen.append(("piper", route.model)) or _FakeEngine(),
+        },
+    )
+
+    assert isinstance(engine, BilingualTtsEngine)
+    assert seen == [("silero", "v3_1_ru"), ("piper", "en.onnx")]
 
 
 # --- _ensure_model_cached (offline preflight check) ------------------------
@@ -488,6 +583,44 @@ async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     await tts.wait_for_pending()
 
     assert played == ["Без точки в конце"]
+
+
+def test_append_wav_tail_silence_extends_audio_duration():
+    wav_bytes = _pcm_wav_bytes(sample_rate=10, frames=2)
+
+    padded = _append_wav_tail_silence(wav_bytes, seconds=0.3)
+
+    assert _wav_frame_count(padded) == 5
+
+
+async def test_on_response_complete_pads_the_final_default_playback_unit():
+    sample_rate = 10
+    captured: list[bytes] = []
+
+    class _WavEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            del text, language
+            await asyncio.sleep(0)
+            return _pcm_wav_bytes(sample_rate=sample_rate, frames=2)
+
+    async def capture(audio: bytes) -> None:
+        captured.append(audio)
+
+    tts = TtsOutput(TtsSettings(), engine=_WavEngine())
+    tts._playback = OrderedPlayback(capture)
+
+    await tts.on_token(ResponseToken(text="Финальная фраза."))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+    assert len(captured) == 1
+    assert _wav_frame_count(captured[0]) == 12
 
 
 async def test_tts_output_uses_injected_engine_for_synthesis():
