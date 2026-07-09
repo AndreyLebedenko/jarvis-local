@@ -26,7 +26,10 @@ Ollama environment variables.
 - `tools/graphify.ps1 refresh` runs semantic extraction and then labels
   communities with the same backend/model.
 - `tools/graphify-refresh.cmd` provides a Windows one-command entry point.
-- Local Ollama defaults to `gemma4:12b-it-qat` with request concurrency `1`.
+- Local Ollama defaults to `gpt-oss:20b` with request concurrency `1`.
+- Current graphify CLI support does not expose an Ollama `think: false`
+  switch through the project wrapper; use the model as served unless graphify
+  adds a supported request-shape option.
 - `tools/graphify.ps1 docs` is available as a human-friendly alias for the
   full refresh path.
 - Agent instructions document when to run semantic extraction and which model

@@ -20,7 +20,7 @@ param(
 
     [string] $Backend = "ollama",
 
-    [string] $Model = "gemma4:12b-it-qat",
+    [string] $Model = "gpt-oss:20b",
 
     [int] $MaxConcurrency = 1,
 
@@ -103,7 +103,7 @@ Usage:
   tools/graphify.ps1 docs                  Alias for refresh
   tools/graphify.ps1 label                 Refresh community labels only
     -Backend ollama                        LLM backend for semantic extraction
-    -Model gemma4:12b-it-qat               Generative model for JSON extraction
+    -Model gpt-oss:20b                     Generative model for JSON extraction
     -MaxConcurrency 1                      Local LLM request concurrency
     -Deep                                  Use graphify's deep extraction mode
   tools/graphify.ps1 cluster               Rebuild clusters/report from graph.json

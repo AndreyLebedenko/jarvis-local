@@ -104,10 +104,13 @@
    - `tools/graphify.ps1 hook-install` to install local git hooks.
    The `refresh` command runs full code+docs extraction and community labeling
    through a generative LLM backend, and is intentionally not part of the fast
-   hook path. For local Ollama use a JSON-capable chat/instruct model such as
-   `gemma4:12b-it-qat`; embedding-only models are not suitable for graphify's
-   semantic extraction step. On Windows, `tools/graphify-refresh.cmd` is the
-   same operation as `tools/graphify.ps1 refresh`.
+   hook path. The project wrapper defaults local Ollama refreshes to
+   `gpt-oss:20b`; it must remain a JSON-capable chat/instruct model, not an
+   embedding-only model. Current graphify CLI support does not expose an
+   Ollama `think: false` switch through this wrapper; use the model as served
+   unless graphify adds a supported request-shape option. On Windows,
+   `tools/graphify-refresh.cmd` is the same operation as
+   `tools/graphify.ps1 refresh`.
    If `graphify-out/graph.json` exists and the task is a codebase question,
    query the graph before manually reading large parts of the repository.
    Do not run graph extraction in CI or treat missing graph output as a test

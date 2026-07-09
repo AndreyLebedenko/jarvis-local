@@ -84,6 +84,20 @@ def test_system_prompt_includes_russian_and_short_answer_directives():
     assert "коротко" in SYSTEM_PROMPT
 
 
+def test_system_prompt_defines_speech_markup_contract():
+    assert "<speak>" in SYSTEM_PROMPT
+    assert '<lang xml:lang="ru">' in SYSTEM_PROMPT
+    assert '<lang xml:lang="en">' in SYSTEM_PROMPT
+    assert "Русский текст" in SYSTEM_PROMPT
+    assert 'xml:lang="ru"' in SYSTEM_PROMPT
+    assert "API names" in SYSTEM_PROMPT
+    assert "identifiers" in SYSTEM_PROMPT
+    assert 'xml:lang="en"' in SYSTEM_PROMPT
+    assert "не вкладывай <lang> внутрь <lang>" in SYSTEM_PROMPT
+    assert "Markdown" in SYSTEM_PROMPT
+    assert "вне <speak>" in SYSTEM_PROMPT
+
+
 # --- ConversationHistory (text-only, extensible) ------------------------
 
 
@@ -297,6 +311,24 @@ async def test_on_response_complete_records_history():
     messages = orchestrator._history.as_messages()
     assert messages[-2] == {"role": "user", "content": "[голосовое сообщение]"}
     assert messages[-1] == {"role": "assistant", "content": "Привет, мир"}
+
+
+async def test_on_response_complete_records_clean_speech_markup_text_in_history():
+    orchestrator, _backend, _sound_cues = _orchestrator()
+
+    await orchestrator.on_response_token(
+        ResponseToken(
+            text=(
+                '<speak><lang xml:lang="ru">Ответ через </lang>'
+                '<lang xml:lang="en">API</lang>'
+                '<lang xml:lang="ru"> готов.</lang></speak>'
+            )
+        )
+    )
+    await orchestrator.on_response_complete(_complete_event())
+
+    messages = orchestrator._history.as_messages()
+    assert messages[-1] == {"role": "assistant", "content": "Ответ через API готов."}
 
 
 async def test_busy_utterance_is_ignored_until_previous_turn_completes():
