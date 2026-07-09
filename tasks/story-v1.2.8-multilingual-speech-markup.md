@@ -1,21 +1,19 @@
 # Story v1.2.8: Multilingual speech markup
 
-**Status:** Backlog.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.8
 
 ## User-facing goal
 
-Let Jarvis speak mixed Russian and English responses correctly by accepting a
-small SSML-inspired markup contract from the LLM, parsing it into language
-segments, and routing those segments through the TTS layer without speaking
-control tags aloud.
+Let Jarvis speak mixed Russian and English responses correctly by routing
+plain model text into language segments before TTS.
 
-The first implementation should be simple: preserve the current Silero runtime
-path, add a robust parser and tests, and avoid choosing the long-term
-multilingual TTS engine until the segment contract is proven. The markup should
-stay close enough to SSML that a future TTS engine with native `<lang>` support
-can adopt more of the standard without changing the LLM-facing contract.
+The successful implementation preserves the current Silero runtime path and
+avoids choosing the long-term multilingual TTS engine. The attempted
+LLM-authored SSML-like markup contract was rejected after manual testing showed
+Gemma4 could not keep it stable; runtime routing now uses deterministic
+Russian/English charset segmentation instead.
 
 ## Context
 
@@ -23,8 +21,8 @@ Current Jarvis TTS is Russian-first. `tts.py` uses Silero `ru/v3_1_ru`, applies
 Russian number normalization, and transliterates Latin text into Cyrillic as a
 fallback because the current Silero model does not include Latin symbols.
 
-Manual Gemma4 session tests on 2026-07-08 showed that the model can follow this
-SSML-inspired language markup shape reliably enough for a first parser:
+Manual Gemma4 session tests on 2026-07-08 initially suggested that the model
+could follow this SSML-inspired language markup shape:
 
 ```xml
 <speak>
@@ -34,17 +32,19 @@ SSML-inspired language markup shape reliably enough for a first parser:
 ```
 
 Silero supports a subset of SSML (`speak`, `break`, `prosody`, `p`, `s`) via
-`ssml_text`, but does not support `lang`. Therefore `lang` is a Jarvis routing
-tag, not a tag that should be passed through to Silero.
+`ssml_text`, but does not support `lang`. Therefore `lang` was tested as a
+Jarvis routing tag, not a tag to pass through to Silero. Later task-4 manual
+checks rejected that path in favor of charset routing.
 
 ## Boundaries
 
-- This story defines and parses Jarvis speech markup; it does not migrate to a
-  new production TTS engine.
-- The supported v1 markup subset is intentionally small:
-  - optional `<speak>` wrapper;
-  - `<lang xml:lang="ru">...</lang>`;
-  - `<lang xml:lang="en">...</lang>`.
+- This story defines and tests Jarvis language routing; it does not migrate to
+  a new production TTS engine.
+- The runtime-supported v1 language routing contract is intentionally small:
+  - plain model text;
+  - Cyrillic routes to `ru`;
+  - Latin routes to `en`;
+  - neutral digits, whitespace, and punctuation attach to neighboring text.
 - Do not claim full SSML compatibility.
 - Do not pass `<lang>` tags to any TTS engine.
 - Do not implement automatic language detection as the primary source of truth.
@@ -54,26 +54,27 @@ tag, not a tag that should be passed through to Silero.
 
 ## Acceptance Criteria
 
-- [ ] A pure parser converts supported speech markup into ordered language
+- [x] A pure parser converts supported speech markup into ordered language
       segments.
-- [ ] The parser accepts plain text and treats it as the default language
+- [x] The parser accepts plain text and treats it as the default language
       (`ru`) for backward compatibility.
-- [ ] The parser accepts an optional `<speak>` wrapper.
-- [ ] The parser supports `xml:lang="ru"` and `xml:lang="en"`.
-- [ ] The parser normalizes common region variants such as `ru-RU` to `ru` and
+- [x] The parser accepts an optional `<speak>` wrapper.
+- [x] The parser supports `xml:lang="ru"` and `xml:lang="en"`.
+- [x] The parser normalizes common region variants such as `ru-RU` to `ru` and
       `en-US` to `en`, or explicitly rejects them with a documented fallback.
-- [ ] Adjacent segments with the same language are merged.
-- [ ] Punctuation-only or very short connective segments do not produce
+- [x] Adjacent segments with the same language are merged.
+- [x] Punctuation-only or very short connective segments do not produce
       standalone TTS calls when they can be safely attached to a neighboring
       segment.
-- [ ] Broken markup uses a soft fallback: strip known control tags where safe
+- [x] Broken markup uses a soft fallback: strip known control tags where safe
       and speak the remaining text as the default language, while logging a
       warning.
-- [ ] Parser tests cover Russian-only, English-only, mixed Russian/English,
+- [x] Parser tests cover Russian-only, English-only, mixed Russian/English,
       adjacent same-language segments, punctuation smoothing, text outside
       tags, unsupported languages, malformed tags, and code-like identifiers.
-- [ ] The TTS layer does not speak `<speak>`, `<lang>`, or `xml:lang` text.
-- [ ] `python -m pytest` passes.
+- [x] The TTS layer no longer depends on model-authored tags; runtime routing
+      uses charset segmentation over plain text.
+- [x] `python -m pytest` passes.
 
 ## Task Card Sequence
 
@@ -81,7 +82,7 @@ tag, not a tag that should be passed through to Silero.
    - Introduce a pure parser module.
    - Return a structured segment type with `language` and `text`.
    - Add parser tests before wiring it into playback.
-   - See `tasks/story-v1.2.8-task-1-speech-markup-parser.md`.
+   - See `tasks/done/story-v1.2.8-task-1-speech-markup-parser.md`.
 
 2. TTS buffering integration.
    - Parse markup BEFORE sentence buffering (decision recorded in the task
@@ -90,21 +91,21 @@ tag, not a tag that should be passed through to Silero.
      additional flush boundary.
    - Preserve current sentence buffering behavior for unmarked text.
    - Ensure tags are never sent to Silero as spoken text.
-   - See `tasks/story-v1.2.8-task-2-tts-buffering-integration.md`.
+   - See `tasks/done/story-v1.2.8-task-2-tts-buffering-integration.md`.
 
 3. Prompt contract update.
-   - Update Jarvis's system prompt so assistant responses use the markup
-     contract.
+   - Update Jarvis's system prompt so assistant responses use the successful
+     plain-text language-routing contract.
    - Keep responses concise enough for low-latency speech.
    - Keep reasoning/thinking text out of `ResponseToken` consumers.
-   - See `tasks/story-v1.2.8-task-3-system-prompt-speech-markup-contract.md`.
+   - See `tasks/done/story-v1.2.8-task-3-system-prompt-language-routing-contract.md`.
 
-4. Manual markup handoff.
-   - Provide fixed human-run prompts that check whether Gemma4 keeps the
-     markup stable under mixed Russian/English, identifiers, quotes, and
-     punctuation.
+4. Manual language-routing handoff.
+   - Provide fixed human-run prompts that check whether Gemma4 emits plain text
+     and whether charset segmentation routes mixed Russian/English,
+     identifiers, quotes, and punctuation correctly.
    - Record the verified behavior in `PROJECT.md`.
-   - See `tasks/story-v1.2.8-task-4-manual-markup-handoff.md`.
+   - See `tasks/done/story-v1.2.8-task-4-manual-language-routing-handoff.md`.
 
 ## Open Questions
 

@@ -1,8 +1,7 @@
-"""Sentence-buffered, speech-markup-aware Silero TTS output.
+"""Sentence-buffered, charset-language-aware Silero TTS output.
 
-Streams backend.py's response tokens through speech_markup.py's
-incremental scanner (control tags are never spoken; <lang> routing
-survives tags split across token chunks), buffers each language run to
+Streams backend.py's response tokens through language_segments.py's
+incremental Russian/English segmenter, buffers each language run to
 sentence boundaries - a language switch is an additional flush boundary -
 then synthesizes each completed unit and plays them back in order while
 generation continues, per PROJECT.md's "sentence-level streaming is
@@ -53,7 +52,7 @@ from num2words import num2words
 from audio_utils import samples_to_wav_bytes
 from backend import ResponseComplete, ResponseToken
 from config import TtsSettings
-from speech_markup import DEFAULT_LANGUAGE, SpeechMarkupStream
+from language_segments import DEFAULT_LANGUAGE, CharsetLanguageStream
 
 SAMPLE_RATE = 48000
 
@@ -76,7 +75,7 @@ class TtsEngine(Protocol):
     container header is the sample-rate contract - playback reads it from
     the bytes, so engines with different native rates need no side channel.
 
-    `language` is the routing hint carried by speech_markup.py's segments
+    `language` is the routing hint carried by language_segments.py's segments
     (the Silero/ru + Piper/en direction recorded in PROJECT.md). An engine
     that cannot switch languages may ignore it - SileroEngine does, since
     its transliteration fallback already covers non-Russian text."""
@@ -228,49 +227,45 @@ _WORD_CHAR_RE = re.compile(r"\w")
 _SENTENCE_PUNCT_RE = re.compile(r"[.!?]")
 
 # A language-switch remainder with at most this many word characters and no
-# sentence-ending punctuation (e.g. the "и" between two English words) is
-# carried into the following segment instead of becoming its own tiny
-# synthesis call - story-v1.2.8's AC forbids unnatural standalone calls,
-# and for spans this short prosody matters more than language attribution
-# (the runtime engine is Silero-only today anyway).
+# sentence-ending punctuation is carried into the following segment instead
+# of becoming its own tiny synthesis call - story-v1.2.8's AC forbids
+# unnatural standalone calls, and for spans this short prosody matters more
+# than language attribution (the runtime engine is Silero-only today anyway).
 _CONNECTIVE_MAX_WORD_CHARS = 3
 
 
 class SpeechUnitBuffer:
     """Streams response tokens into ordered (text, language) speech units.
 
-    Markup is parsed BEFORE sentence buffering (the design decision
-    recorded in tasks/story-v1.2.8-task-2-tts-buffering-integration.md):
-    tokens go through SpeechMarkupStream, so control tags are never spoken
-    and a <lang> span crossing a sentence boundary - or a tag split across
-    token chunks - never loses its language. Within a language run,
-    SentenceBuffer provides the usual sentence-boundary flushes; a language
-    switch is an additional unit boundary, which is what lets a short
-    foreign insert start synthesis before any ". " arrives.
+    Language segmentation happens BEFORE sentence buffering: tokens go
+    through CharsetLanguageStream, so Russian/English routing no longer
+    depends on the model emitting XML-like control tags. Within a language
+    run, SentenceBuffer provides the usual sentence-boundary flushes; a
+    language switch is an additional unit boundary, which is what lets a
+    short foreign insert start synthesis before any ". " arrives.
     """
 
     def __init__(self) -> None:
-        self._markup = SpeechMarkupStream()
+        self._segments = CharsetLanguageStream()
         self._sentences = SentenceBuffer()
         self._language = DEFAULT_LANGUAGE
 
     def feed(self, text: str) -> list[tuple[str, str]]:
         units: list[tuple[str, str]] = []
-        for piece in self._markup.feed(text):
+        for piece in self._segments.feed(text):
             self._feed_piece(units, piece.language, piece.text)
         return units
 
     def flush(self) -> list[tuple[str, str]]:
         """Ends the current response turn: flushes everything speakable and
-        resets markup state, so an unclosed <lang> tag can never leak its
-        language into the next turn."""
+        resets language-segmentation state."""
         units: list[tuple[str, str]] = []
-        for piece in self._markup.close():
+        for piece in self._segments.close():
             self._feed_piece(units, piece.language, piece.text)
         remainder = self._sentences.flush()
         if remainder and _WORD_CHAR_RE.search(remainder):
             units.append((remainder, self._language))
-        self._markup = SpeechMarkupStream()
+        self._segments = CharsetLanguageStream()
         self._language = DEFAULT_LANGUAGE
         return units
 
