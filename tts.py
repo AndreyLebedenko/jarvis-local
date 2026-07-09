@@ -40,7 +40,9 @@ the network at runtime.
 """
 
 import asyncio
+import io
 import re
+import wave
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Protocol
@@ -68,6 +70,13 @@ _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 
 class TtsModelNotCachedError(RuntimeError):
     pass
+
+
+class VoiceLoader(Protocol):
+    def __call__(
+        self, *, model_path: Path, config_path: Path, use_cuda: bool
+    ) -> object:
+        pass
 
 
 class TtsEngine(Protocol):
@@ -119,6 +128,61 @@ def _ensure_model_cached(silero_module, repo_root: Path | None = None) -> None:
             "this file. Launch the app with the repo root as the working "
             "directory."
         )
+
+
+def _resolve_existing_path(path: str | Path, description: str) -> Path:
+    resolved = Path(path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"{description} does not exist: {resolved}")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"{description} is not a file: {resolved}")
+    return resolved
+
+
+def _resolve_piper_config(model_path: Path, config_path: str | Path | None) -> Path:
+    if config_path is not None:
+        return _resolve_existing_path(config_path, "Piper config file")
+
+    derived = Path(f"{model_path}.json")
+    if derived.exists() and derived.is_file():
+        return derived
+    raise FileNotFoundError(
+        f"No Piper config file was supplied and the default {derived} was not found."
+    )
+
+
+def _load_piper_voice(*, model_path: Path, config_path: Path, use_cuda: bool):
+    from piper.voice import PiperVoice
+
+    return PiperVoice.load(
+        model_path=str(model_path),
+        config_path=str(config_path),
+        use_cuda=use_cuda,
+    )
+
+
+def _piper_chunks_to_wav_bytes(chunks) -> bytes:
+    chunk_list = list(chunks)
+    if not chunk_list:
+        raise RuntimeError("Piper returned no audio chunks")
+
+    buffer = io.BytesIO()
+    sample_rate: int | None = None
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        for chunk in chunk_list:
+            current_sample_rate = int(chunk.sample_rate)
+            if sample_rate is None:
+                sample_rate = current_sample_rate
+                wav_file.setframerate(sample_rate)
+            elif current_sample_rate != sample_rate:
+                raise RuntimeError(
+                    f"Piper returned mixed sample rates: {sample_rate} and "
+                    f"{current_sample_rate}"
+                )
+            wav_file.writeframes(chunk.audio_int16_array.tobytes())
+    return buffer.getvalue()
 
 
 def normalize_numbers(text: str) -> str:
@@ -338,6 +402,37 @@ class SileroEngine:
         _ensure_model_cached(silero)
         model, _ = silero.silero_tts(language="ru", speaker="v3_1_ru")
         return model
+
+
+class PiperEngine:
+    def __init__(
+        self,
+        model_path: str | Path,
+        *,
+        config_path: str | Path | None = None,
+        use_cuda: bool = False,
+        voice_loader: VoiceLoader = _load_piper_voice,
+    ) -> None:
+        self.model_path = _resolve_existing_path(model_path, "Piper model file")
+        self.config_path = _resolve_piper_config(self.model_path, config_path)
+        self._use_cuda = use_cuda
+        self._voice_loader = voice_loader
+        self._voice = None
+
+    async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
+        del language
+        voice = await self._ensure_voice()
+        return await asyncio.to_thread(_piper_chunks_to_wav_bytes, voice.synthesize(text))
+
+    async def _ensure_voice(self):
+        if self._voice is None:
+            self._voice = await asyncio.to_thread(
+                self._voice_loader,
+                model_path=self.model_path,
+                config_path=self.config_path,
+                use_cuda=self._use_cuda,
+            )
+        return self._voice
 
 
 class TtsOutput:
