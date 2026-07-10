@@ -173,6 +173,36 @@ def test_build_tts_engine_builds_configured_bilingual_route_with_injected_builde
     assert seen == [("silero", "v3_1_ru"), ("piper", "en.onnx")]
 
 
+def test_build_tts_engine_rejects_routes_that_do_not_cover_english():
+    """Charset segmentation emits 'en' for any Latin run no matter what is
+    configured, so a non-default routing table without an English route
+    would fail at runtime on the first English word - reject it at
+    startup instead."""
+    settings = TtsSettings(
+        languages={"ru": TtsLanguageSettings(engine="piper", model="ru.onnx")}
+    )
+
+    with pytest.raises(ValueError, match="Missing: en"):
+        build_tts_engine(
+            settings, engine_builders={"piper": lambda route: _FakeEngine()}
+        )
+
+
+def test_build_tts_engine_rejects_non_default_silero_model():
+    """SileroEngine is bound to the v3_1_ru cache filenames and speaker;
+    another model in a silero route must fail loudly instead of being
+    silently ignored."""
+    settings = TtsSettings(
+        languages={
+            "ru": TtsLanguageSettings(engine="silero", model="v4_ru"),
+            "en": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+        }
+    )
+
+    with pytest.raises(ValueError, match="supports only model 'v3_1_ru'"):
+        build_tts_engine(settings)
+
+
 # --- _ensure_model_cached (offline preflight check) ------------------------
 #
 # Two independent things are checked: the manifest/weights exist next to
@@ -497,7 +527,7 @@ def test_flush_returns_none_for_empty_buffer():
 async def test_playback_plays_in_order_when_submitted_in_order():
     played = []
 
-    async def player(audio: bytes) -> None:
+    async def player(index: int, audio: bytes) -> None:
         played.append(audio)
 
     playback = OrderedPlayback(player)
@@ -510,7 +540,7 @@ async def test_playback_plays_in_order_when_submitted_in_order():
 async def test_playback_reorders_when_submitted_out_of_order():
     played = []
 
-    async def player(audio: bytes) -> None:
+    async def player(index: int, audio: bytes) -> None:
         played.append(audio)
 
     playback = OrderedPlayback(player)
@@ -522,10 +552,40 @@ async def test_playback_reorders_when_submitted_out_of_order():
     assert played == [b"A", b"B"]
 
 
+async def test_playback_passes_the_unit_index_to_the_player():
+    played = []
+
+    async def player(index: int, audio: bytes) -> None:
+        played.append((index, audio))
+
+    playback = OrderedPlayback(player)
+    await playback.submit(0, b"A")
+    await playback.submit(1, b"B")
+
+    assert played == [(0, b"A"), (1, b"B")]
+
+
+async def test_playback_skips_none_audio_without_stalling_later_units():
+    """A failed synthesis submits None for its index; playback must
+    advance past it instead of buffering every later unit forever."""
+    played = []
+
+    async def player(index: int, audio: bytes) -> None:
+        played.append(audio)
+
+    playback = OrderedPlayback(player)
+    await playback.submit(1, b"B")
+    assert played == []  # buffered, waiting for index 0
+
+    await playback.submit(0, None)
+
+    assert played == [b"B"]
+
+
 async def test_playback_reorders_under_concurrent_completion():
     played = []
 
-    async def player(audio: bytes) -> None:
+    async def player(index: int, audio: bytes) -> None:
         played.append(audio)
 
     playback = OrderedPlayback(player)
@@ -593,21 +653,36 @@ def test_append_wav_tail_silence_extends_audio_duration():
     assert _wav_frame_count(padded) == 5
 
 
-async def test_on_response_complete_pads_the_final_default_playback_unit():
-    sample_rate = 10
-    captured: list[bytes] = []
+class _TinyWavEngine:
+    """Returns a 2-frame wav at a tiny sample rate, so the 1.0 s tail guard
+    adds exactly sample_rate frames and frame counts stay assertable."""
 
-    class _WavEngine:
-        async def synthesize(self, text: str, language: str = "ru") -> bytes:
-            del text, language
-            await asyncio.sleep(0)
-            return _pcm_wav_bytes(sample_rate=sample_rate, frames=2)
+    def __init__(self, sample_rate: int = 10) -> None:
+        self.sample_rate = sample_rate
+
+    async def synthesize(self, text: str, language: str = "ru") -> bytes:
+        del text, language
+        await asyncio.sleep(0)
+        return _pcm_wav_bytes(sample_rate=self.sample_rate, frames=2)
+
+
+def _default_playback_tts_with_captured_audio(
+    engine, captured: list[bytes]
+) -> TtsOutput:
+    """TtsOutput on the default-playback path (play=None, so the tail
+    guard is active) with the hardware sounddevice call stubbed out."""
+    tts = TtsOutput(TtsSettings(), engine=engine)
 
     async def capture(audio: bytes) -> None:
         captured.append(audio)
 
-    tts = TtsOutput(TtsSettings(), engine=_WavEngine())
-    tts._playback = OrderedPlayback(capture)
+    tts._play = capture
+    return tts
+
+
+async def test_on_response_complete_pads_the_final_default_playback_unit():
+    captured: list[bytes] = []
+    tts = _default_playback_tts_with_captured_audio(_TinyWavEngine(), captured)
 
     await tts.on_token(ResponseToken(text="Финальная фраза."))
     await tts.on_response_complete(
@@ -621,6 +696,73 @@ async def test_on_response_complete_pads_the_final_default_playback_unit():
 
     assert len(captured) == 1
     assert _wav_frame_count(captured[0]) == 12
+
+
+async def test_tail_guard_pads_currently_last_unit_even_before_response_complete():
+    """Regression for the live-observed race: the final sentence can be
+    flushed mid-stream by on_token and finish synthesis before
+    ResponseComplete arrives, so finality cannot be decided against state
+    recorded by on_response_complete. The guard decides at play time
+    instead: a unit with no later unit scheduled yet gets the tail."""
+    captured: list[bytes] = []
+    tts = _default_playback_tts_with_captured_audio(_TinyWavEngine(), captured)
+
+    await tts.on_token(ResponseToken(text="Фраза целиком. "))
+    await tts.wait_for_pending()  # played before any ResponseComplete
+
+    assert len(captured) == 1
+    assert _wav_frame_count(captured[0]) == 12
+
+
+async def test_tail_guard_skips_units_with_a_later_unit_already_scheduled():
+    captured: list[bytes] = []
+    tts = _default_playback_tts_with_captured_audio(_TinyWavEngine(), captured)
+
+    await tts.on_token(ResponseToken(text="Первая фраза. Вторая фраза. "))
+    await tts.wait_for_pending()
+
+    assert [_wav_frame_count(audio) for audio in captured] == [2, 12]
+
+
+async def test_tail_guard_does_not_touch_injected_playback():
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio)
+
+    tts = TtsOutput(TtsSettings(), engine=_TinyWavEngine(), play=fake_play)
+
+    await tts.on_token(ResponseToken(text="Фраза целиком. "))
+    await tts.wait_for_pending()
+
+    assert [_wav_frame_count(audio) for audio in played] == [2]
+
+
+async def test_failed_synthesis_is_skipped_and_later_units_still_play(caplog):
+    """Regression for the silent-stall risk: an engine exception must not
+    leave OrderedPlayback waiting forever on the failed index, killing all
+    speech for the rest of the session. The failed unit is logged and
+    skipped; every later unit still plays."""
+
+    class _FlakyEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            if text.startswith("Первая"):
+                raise RuntimeError("Piper returned no audio chunks")
+            return text.encode()
+
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_FlakyEngine(), play=fake_play)
+
+    with caplog.at_level("ERROR", logger="tts"):
+        await tts.on_token(ResponseToken(text="Первая фраза. Вторая фраза. "))
+        await tts.wait_for_pending()
+
+    assert played == ["Вторая фраза."]
+    assert "TTS synthesis failed" in caplog.text
 
 
 async def test_tts_output_uses_injected_engine_for_synthesis():

@@ -76,12 +76,16 @@ request_end_pause_seconds = 2.0
 voice = "baya"
 rate = 1.0
 
+# Silero supports exactly this model (its cache filenames and speaker are
+# bound to it); any other value is a startup error.
 [tts.languages.ru]
 engine = "silero"
 model = "v3_1_ru"
 
 # Optional v1.2.9 bilingual route. Jarvis does not download Piper models at
 # runtime; configure this only after placing the local .onnx model yourself.
+# Any non-default routing must cover BOTH ru and en - charset segmentation
+# emits English units for Latin text regardless of configuration.
 # [tts.languages.en]
 # engine = "piper"
 # model = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"

@@ -6,9 +6,9 @@ sentence boundaries - a language switch is an additional flush boundary -
 then synthesizes each completed unit and plays them back in order while
 generation continues, per PROJECT.md's "sentence-level streaming is
 mandatory" requirement for tts.py. The language reaches TtsEngine as a
-routing hint; the default Silero runtime ignores it (transliteration
-fallback), so true English synthesis waits for a later engine-routing
-task.
+routing hint: the default Silero-only engine ignores it (transliteration
+fallback), while a configured bilingual route dispatches ru to Silero and
+en to Piper through BilingualTtsEngine (v1.2.9).
 
 Per bus.py's handler contract, on_token()/on_response_complete() only
 feed the sentence buffer and schedule synthesis as a background task;
@@ -41,6 +41,7 @@ the network at runtime.
 
 import asyncio
 import io
+import logging
 import re
 import wave
 from collections.abc import Awaitable, Callable
@@ -53,8 +54,10 @@ from num2words import num2words
 
 from audio_utils import samples_to_wav_bytes
 from backend import ResponseComplete, ResponseToken
-from config import TtsLanguageSettings, TtsSettings
-from language_segments import DEFAULT_LANGUAGE, CharsetLanguageStream
+from config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
+from language_segments import DEFAULT_LANGUAGE, ENGLISH, CharsetLanguageStream
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 48000
 FINAL_PLAYBACK_TAIL_SECONDS = 1.0
@@ -381,20 +384,28 @@ class OrderedPlayback:
     """Plays (index, audio) results in strict index order, regardless of
     the order they are submitted in - so concurrent synthesis of several
     sentences can never cause a later one to play before an earlier one.
+
+    Every scheduled index MUST eventually be submitted, or playback stalls
+    forever at the gap; a failed synthesis therefore submits audio=None,
+    which advances the order without playing anything. The player receives
+    the index alongside the audio so the caller can make play-time
+    decisions (TtsOutput's final-unit tail guard needs to know, at the
+    moment sound reaches the device, whether a later unit exists yet).
     """
 
-    def __init__(self, player: Callable[[bytes], Awaitable[None]]) -> None:
+    def __init__(self, player: Callable[[int, bytes], Awaitable[None]]) -> None:
         self._player = player
-        self._pending: dict[int, bytes] = {}
+        self._pending: dict[int, bytes | None] = {}
         self._next_index = 0
         self._lock = asyncio.Lock()
 
-    async def submit(self, index: int, audio: bytes) -> None:
+    async def submit(self, index: int, audio: bytes | None) -> None:
         async with self._lock:
             self._pending[index] = audio
             while self._next_index in self._pending:
                 ready = self._pending.pop(self._next_index)
-                await self._player(ready)
+                if ready is not None:
+                    await self._player(self._next_index, ready)
                 self._next_index += 1
 
 
@@ -475,15 +486,31 @@ class BilingualTtsEngine:
         return await engine.synthesize(text, language)
 
 
+# The languages charset segmentation actually emits (language_segments.py):
+# any Latin run becomes an ENGLISH unit regardless of configuration, so a
+# bilingual routing table must cover both or it is guaranteed to fail at
+# runtime on the first English word.
+_ROUTED_LANGUAGES = (DEFAULT_LANGUAGE, ENGLISH)
+
+
 def _is_default_silero_only(settings: TtsSettings) -> bool:
     return settings.languages == {
-        DEFAULT_LANGUAGE: TtsLanguageSettings(engine="silero", model="v3_1_ru")
+        DEFAULT_LANGUAGE: TtsLanguageSettings(engine="silero", model=SILERO_MODEL)
     }
+
+
+def _build_silero_engine(settings: TtsSettings, route: TtsLanguageSettings) -> "TtsEngine":
+    if route.model != SILERO_MODEL:
+        raise ValueError(
+            f"SileroEngine supports only model {SILERO_MODEL!r} (its cache "
+            f"filenames and speaker are bound to it), got {route.model!r}"
+        )
+    return SileroEngine(settings)
 
 
 def _default_engine_builders(settings: TtsSettings) -> dict[str, EngineBuilder]:
     return {
-        "silero": lambda route: SileroEngine(settings),
+        "silero": lambda route: _build_silero_engine(settings, route),
         "piper": lambda route: PiperEngine(route.model),
     }
 
@@ -494,6 +521,20 @@ def build_tts_engine(
 ) -> TtsEngine:
     if _is_default_silero_only(settings):
         return SileroEngine(settings)
+
+    missing = [
+        language
+        for language in _ROUTED_LANGUAGES
+        if language not in settings.languages
+    ]
+    if missing:
+        raise ValueError(
+            "Configured TTS language routes must cover "
+            f"{', '.join(_ROUTED_LANGUAGES)}: charset segmentation emits all "
+            f"of them regardless of configuration. Missing: {', '.join(missing)}. "
+            "Add the missing [tts.languages.*] route or remove the section to "
+            "use the Silero-only default."
+        )
 
     builders = engine_builders or _default_engine_builders(settings)
     engines: dict[str, TtsEngine] = {}
@@ -530,9 +571,9 @@ class TtsOutput:
         # cues and speech land at the same time (verified live).
         self._playback_lock = playback_lock or asyncio.Lock()
         self._uses_default_play = play is None
-        self._playback = OrderedPlayback(play or self._default_play)
+        self._play = play or self._default_play
+        self._playback = OrderedPlayback(self._play_unit)
         self._next_index = 0
-        self._final_playback_index: int | None = None
         self._pending_tasks: set[asyncio.Task] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
@@ -542,7 +583,6 @@ class TtsOutput:
     async def on_response_complete(self, event: ResponseComplete) -> None:
         for text, language in self._units.flush():
             self._schedule(text, language)
-        self._final_playback_index = self._next_index - 1 if self._next_index else None
 
     async def wait_for_pending(self) -> None:
         """Awaits every synthesis/playback task scheduled so far. Useful
@@ -559,10 +599,46 @@ class TtsOutput:
         task.add_done_callback(self._pending_tasks.discard)
 
     async def _synthesize_and_submit(self, index: int, text: str, language: str) -> None:
-        audio = await self._engine.synthesize(text, language)
-        if self._uses_default_play and index == self._final_playback_index:
-            audio = _append_wav_tail_silence(audio, FINAL_PLAYBACK_TAIL_SECONDS)
+        try:
+            audio = await self._engine.synthesize(text, language)
+        except Exception:
+            # OrderedPlayback requires every index to arrive or all later
+            # units stay buffered forever; a failed unit must therefore
+            # still advance the order. Losing one sentence of speech is
+            # recoverable, silently losing all speech for the rest of the
+            # session is not.
+            logger.exception(
+                "TTS synthesis failed for unit %d (language=%r); "
+                "skipping its playback",
+                index,
+                language,
+            )
+            await self._playback.submit(index, None)
+            return
         await self._playback.submit(index, audio)
+
+    async def _play_unit(self, index: int, audio: bytes) -> None:
+        """Playback callback for OrderedPlayback, applying the final-unit
+        tail guard at the last responsible moment.
+
+        The last unit of a response gets FINAL_PLAYBACK_TAIL_SECONDS of
+        silent post-roll: without it, human testing across Silero and Piper
+        heard final phrase endings clipped when the output device shut down.
+        Which unit is final is only knowable once ResponseComplete arrives,
+        but its playback can legitimately happen earlier (verified live:
+        deciding at synthesis time against an index recorded by
+        on_response_complete lost the race whenever the last sentence was
+        flushed mid-stream and synthesized quickly - the clipping came back
+        intermittently). So the decision is made here, when sound actually
+        reaches the device: pad iff no later unit has been scheduled yet.
+        For the true final unit that is always true. A mid-stream unit can
+        match too, when generation is slow enough that the next sentence
+        has not been scheduled yet - then the pause is masked by waiting
+        for that next sentence anyway (worst case: up to the tail length
+        of extra pause at one sentence boundary)."""
+        if self._uses_default_play and index == self._next_index - 1:
+            audio = _append_wav_tail_silence(audio, FINAL_PLAYBACK_TAIL_SECONDS)
+        await self._play(audio)
 
     async def _default_play(self, wav_bytes: bytes) -> None:
         import io

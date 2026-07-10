@@ -97,8 +97,14 @@ class TtsLanguageSettings:
     model: str
 
 
+# The single Silero model this project supports (see tts.py's SileroEngine:
+# the cache filenames and speaker are bound to this exact model). Defined
+# here so config defaults and tts.py's route validation share one literal.
+SILERO_MODEL = "v3_1_ru"
+
+
 def _default_tts_languages() -> dict[str, TtsLanguageSettings]:
-    return {"ru": TtsLanguageSettings(engine="silero", model="v3_1_ru")}
+    return {"ru": TtsLanguageSettings(engine="silero", model=SILERO_MODEL)}
 
 
 @dataclass(frozen=True)
