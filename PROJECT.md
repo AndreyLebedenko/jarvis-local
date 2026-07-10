@@ -65,15 +65,13 @@ system is intended to grow.
 - Screenshot OCR: use high visual token budget (1120) for screen text; if
   small fonts garble, use region-select capture at full resolution rather
   than raising the budget.
-- **The former `keyboard` global-key-hook provider required elevation on
-  Windows; the replacement `RegisterHotKey` provider has not yet been
-  verified without elevation.** The old provider was verified live to fire
-  outside Jarvis only from an elevated process. v1.2.6 removed that dependency
-  and now registers only concrete combinations through `HotkeyProvider`.
-  Until task 4 tests the native provider both elevated and non-elevated,
-  Jarvis conservatively retains the startup warning and recommendation to run
-  elevated. Do not treat this temporary precaution as a verified limitation
-  of `RegisterHotKey`.
+- **The native `RegisterHotKey` provider works globally without elevation.**
+  Verified live on 2026-07-10: from a non-Administrator PowerShell process,
+  `Ctrl+Alt+Q` fired while another application had focus. A second process
+  attempting the same combination received the expected clear `HotkeyError`,
+  and `Ctrl+C` cleanup unregistered the binding without a traceback. The old
+  `keyboard` provider's elevation requirement does not apply to the native
+  provider; the startup elevation warning has been removed.
 - **`sounddevice`'s `play()`/`wait()` convenience functions share one
   implicit default output stream per process.** Two concurrent calls
   don't mix - the second stops/replaces the first. Verified live as the
@@ -401,10 +399,8 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   attached only to the current turn. Assistant history stores the plain
   accumulated `ResponseToken` text. Warms Ollama up with a throwaway
   request before subscribing anything to the bus, so the response isn't
-  spoken or recorded. Checks for Administrator elevation at startup and
-  warns (does not refuse to start) if missing; this warning is temporarily
-  retained pending the v1.2.6 native-provider manual handoff (see Verified
-  facts).
+  spoken or recorded. Native global hotkeys do not require Administrator
+  elevation (see Verified facts).
   `Orchestrator.finish_turn()`'s cooldown (`config.vad.
   resume_cooldown_seconds` after speech ends, default 1.0 s; historically
   `request_end_pause_seconds` until the 2026-07-10 stale-buffer-replay fix

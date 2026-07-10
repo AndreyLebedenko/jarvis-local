@@ -49,7 +49,6 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Python 3.11.
 - Ollama installed and running.
 - A GPU with enough VRAM for the selected Ollama model.
-- Administrator terminal for global hotkeys on Windows.
 
 ## Installation
 
@@ -97,9 +96,8 @@ To open only the desktop console, without the touchstrip window:
 python main.py --status-console --no-touchstrip
 ```
 
-Jarvis now uses Windows `RegisterHotKey` for concrete shortcuts. Behavior
-without elevation has not yet been verified for this provider, so run the
-terminal as Administrator until the v1.2.6 manual hotkey handoff is complete.
+Jarvis uses Windows `RegisterHotKey` for concrete shortcuts. Global shortcuts
+were verified from another focused application without Administrator rights.
 
 Default hotkeys:
 
@@ -130,11 +128,6 @@ This repository was built with an agent-assisted workflow: project facts were re
 - Global hotkeys use Windows `RegisterHotKey` through `HotkeyProvider` and
   register only Jarvis's concrete combinations. The former Python `keyboard`
   global-key-hook dependency has been removed.
-- Administrator behavior for the native provider is not verified yet. Until
-  the v1.2.6 manual handoff tests focus-independent behavior both elevated and
-  non-elevated, Jarvis preserves the conservative startup warning and the
-  recommendation to run elevated. This is a temporary unverified limitation,
-  not a settled `RegisterHotKey` requirement.
 - The Status Console has a guarded Shutdown control (desktop: click,
   confirm; touchstrip: hold ~2s), routed through the same clean shutdown
   path as the `Ctrl+Alt+Q` hotkey - both stop the engine (background
