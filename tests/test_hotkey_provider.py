@@ -9,6 +9,7 @@ from hotkey_provider import (
     HotkeyError,
     HotkeyProvider,
     WindowsHotkeyProvider,
+    _CtypesWin32Api,
     parse_binding,
     run_hotkey_provider,
 )
@@ -125,6 +126,28 @@ class _FakeWin32Api:
     # test-only driver
     def press(self, hotkey_id: int) -> None:
         self._queue.put(hotkey_id)
+
+
+class _FakeDll:
+    def __init__(self) -> None:
+        self.posted_messages: list[tuple[int, int, int, int]] = []
+
+    def PostThreadMessageW(
+        self, thread_id: int, message: int, wparam: int, lparam: int
+    ) -> None:
+        self.posted_messages.append((thread_id, message, wparam, lparam))
+
+
+def test_ctypes_backend_posts_wakeup_through_user32_not_kernel32():
+    user32 = _FakeDll()
+    kernel32 = _FakeDll()
+    backend = _CtypesWin32Api(user32=user32, kernel32=kernel32)
+    backend._thread_id = 42
+
+    backend.wake()
+
+    assert user32.posted_messages == [(42, 0x8000, 0, 0)]
+    assert kernel32.posted_messages == []
 
 
 def test_windows_provider_satisfies_hotkey_provider_protocol():

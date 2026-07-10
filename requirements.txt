@@ -14,7 +14,6 @@ silero>=0.5
 num2words>=0.5
 piper-tts>=1.4
 mss>=10.2
-keyboard>=0.13
 pyperclip>=1.11
 pywebview>=6.2
 pytest>=8.0

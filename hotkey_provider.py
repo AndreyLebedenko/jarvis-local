@@ -293,14 +293,14 @@ class _CtypesWin32Api:
     (no real global hotkeys in CI - see the module docstring); verified by
     the human manual handoff."""
 
-    def __init__(self) -> None:
+    def __init__(self, user32: object | None = None, kernel32: object | None = None) -> None:
         import ctypes
         from ctypes import wintypes
 
         self._ctypes = ctypes
         self._wintypes = wintypes
-        self._user32 = ctypes.windll.user32
-        self._kernel32 = ctypes.windll.kernel32
+        self._user32 = user32 or ctypes.windll.user32
+        self._kernel32 = kernel32 or ctypes.windll.kernel32
         self._thread_id: int | None = None
 
     def attach(self) -> None:
@@ -332,7 +332,7 @@ class _CtypesWin32Api:
 
     def wake(self) -> None:
         if self._thread_id is not None:
-            self._kernel32.PostThreadMessageW(self._thread_id, _WM_STOP, 0, 0)
+            self._user32.PostThreadMessageW(self._thread_id, _WM_STOP, 0, 0)
 
     def detach(self) -> None:
         self._thread_id = None

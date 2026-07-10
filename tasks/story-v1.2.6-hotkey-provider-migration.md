@@ -10,11 +10,10 @@ Remove the privacy and reliability debt from global hotkeys by routing all
 shortcut handling through a native provider abstraction instead of the current
 global key-hook dependency.
 
-Jarvis currently uses the Python `keyboard` package for global hotkeys. That is
-practical and testable through injectable fake modules, but it works as a
-global key hook and sees a broader keypress stream than Jarvis needs. A native
-provider based on registering concrete shortcuts is a better fit for the
-privacy-first direction.
+Jarvis previously used the Python `keyboard` package for global hotkeys. That
+global key hook saw a broader keypress stream than Jarvis needed. Tasks 1-3
+replaced it with a native provider that registers only concrete shortcuts;
+task 4 still owns live verification of that provider.
 
 ## Boundaries
 

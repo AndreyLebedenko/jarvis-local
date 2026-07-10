@@ -11,7 +11,7 @@ on constructing and running a Tkinter UI from a global-hotkey callback thread.
 ## Context
 
 `capture.py` currently calls `select_region_interactively()` from the screenshot
-region hotkey callback. With the current `keyboard` package, that callback runs
+region hotkey callback. With the current `HotkeyProvider`, that callback runs
 on the package's own listener thread. The overlay creates a fresh `tk.Tk()` and
 runs `mainloop()` there, which is a plausible cause of the observed
 out-of-order mouse event crash recorded in the bug report.

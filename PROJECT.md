@@ -65,15 +65,15 @@ system is intended to grow.
 - Screenshot OCR: use high visual token budget (1120) for screen text; if
   small fonts garble, use region-select capture at full resolution rather
   than raising the budget.
-- **Global hotkeys (`keyboard` package) require the process to run
-  elevated (Administrator) on Windows.** Verified live: without
-  elevation, `add_hotkey` callbacks only fire while the app's own window
-  has focus - not globally, from whatever app the user is actually using
-  when they press the hotkey. With an elevated terminal, hotkeys fire
-  from any application, as intended. Jarvis's entire hotkey-driven
-  interaction model (PROJECT.md: "Hotkeys + sound cues only") depends on
-  this working globally, so the process must run elevated - see task-07's
-  backlog notes for the operational consequence.
+- **The former `keyboard` global-key-hook provider required elevation on
+  Windows; the replacement `RegisterHotKey` provider has not yet been
+  verified without elevation.** The old provider was verified live to fire
+  outside Jarvis only from an elevated process. v1.2.6 removed that dependency
+  and now registers only concrete combinations through `HotkeyProvider`.
+  Until task 4 tests the native provider both elevated and non-elevated,
+  Jarvis conservatively retains the startup warning and recommendation to run
+  elevated. Do not treat this temporary precaution as a verified limitation
+  of `RegisterHotKey`.
 - **`sounddevice`'s `play()`/`wait()` convenience functions share one
   implicit default output stream per process.** Two concurrent calls
   don't mix - the second stops/replaces the first. Verified live as the
@@ -202,7 +202,7 @@ system is intended to grow.
   The same review also caught a related hotkey race (two rapid presses
   could both read a stale pre-toggle state and schedule the same action
   twice instead of toggling twice): the decision now happens entirely
-  inside `toggle_user_sleep()` on the event loop, never in the keyboard
+  inside `toggle_user_sleep()` on the event loop, never in the hotkey
   callback thread. All three fixes have regression tests confirmed to
   fail without the fix and pass with it.
 
@@ -402,8 +402,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   accumulated `ResponseToken` text. Warms Ollama up with a throwaway
   request before subscribing anything to the bus, so the response isn't
   spoken or recorded. Checks for Administrator elevation at startup and
-  warns (does not refuse to start) if missing, since global hotkeys
-  degrade to window-focus-only without it (see Verified facts).
+  warns (does not refuse to start) if missing; this warning is temporarily
+  retained pending the v1.2.6 native-provider manual handoff (see Verified
+  facts).
   `Orchestrator.finish_turn()`'s cooldown (`config.vad.
   resume_cooldown_seconds` after speech ends, default 1.0 s; historically
   `request_end_pause_seconds` until the 2026-07-10 stale-buffer-replay fix
@@ -481,7 +482,8 @@ Task-10 landed third, wiring task-08/task-09 end to end:
 - `clipboard_input.py` gained `run_hotkey_listener()`, binding the new
   `hotkeys.clipboard_submit` (default `ctrl+alt+v`) - mirrors
   `capture.py`'s listener shape (config-driven binding, injectable
-  `keyboard_module`/`read_clipboard`).
+  provider/`read_clipboard`). This listener now uses `HotkeyProvider`;
+  `keyboard_module` describes the historical v1.1 test seam.
 - `audio_in.py` gained `run_hotkey_listener()` for `hotkeys.
   mic_sleep_toggle`, calling `AudioInput.toggle_user_sleep()` on every
   press, and a `MicSleepToggled(is_awake: bool)` bus event that method
@@ -557,7 +559,7 @@ the backend contract, task-12 the runtime state/hotkey, task-13 the final
   `toggle()`. Mirrors `audio_in.py`'s `AudioInput.toggle_user_sleep()`
   race-avoidance shape - `toggle()` reads and flips state with no `await`
   in between, so two rapid hotkey presses (scheduled via
-  `run_coroutine_threadsafe` from the keyboard package's own thread) can
+  `run_coroutine_threadsafe` from the hotkey provider's own thread) can
   never both observe the same stale value and schedule the same
   transition twice instead of toggling twice.
 - `main.py`'s `Orchestrator._start_turn()` is the sole consumer: it reads
