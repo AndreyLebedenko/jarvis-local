@@ -57,28 +57,23 @@ def test_whitespace_only_clipboard_reports_is_empty():
 
 
 class _FakeKeyboardModule:
-    """Mirrors capture.py's test fake and the real keyboard package's
-    contract: remove_hotkey() must be called with the value add_hotkey()
-    returned, not the original binding string."""
+    """Records provider registrations and cleanup per binding."""
 
     def __init__(self) -> None:
         self.registered: dict[str, callable] = {}
         self.removed_handles: list[object] = []
         self._handle_by_binding: dict[str, object] = {}
 
-    def add_hotkey(self, binding, callback):
+    def register(self, binding, callback) -> None:
         self.registered[binding] = callback
         handle = object()
         self._handle_by_binding[binding] = handle
-        return handle
 
-    def remove_hotkey(self, handle) -> None:
-        valid_handles = set(self._handle_by_binding.values())
-        assert handle in valid_handles, (
-            f"remove_hotkey called with {handle!r}, which is not a handle "
-            "add_hotkey returned"
-        )
-        self.removed_handles.append(handle)
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        self.removed_handles.extend(self._handle_by_binding.values())
 
     def handle_for(self, binding: str) -> object:
         return self._handle_by_binding[binding]
@@ -90,7 +85,7 @@ async def test_hotkey_listener_registers_binding_from_config():
 
     task = asyncio.create_task(
         run_hotkey_listener(
-            EventBus(), hotkeys, ClipboardSettings(), keyboard_module=fake_kb
+                EventBus(), hotkeys, ClipboardSettings(), provider=fake_kb
         )
     )
     await asyncio.sleep(0)
@@ -120,7 +115,7 @@ async def test_hotkey_callback_publishes_clipboard_submitted():
             bus,
             hotkeys,
             ClipboardSettings(),
-            keyboard_module=fake_kb,
+            provider=fake_kb,
             read_clipboard=lambda: "hello from clipboard",
         )
     )

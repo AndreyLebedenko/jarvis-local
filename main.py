@@ -23,6 +23,7 @@ from capture import run_hotkey_listener as run_capture_hotkey_listener
 from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
 from config import Settings, load_settings
+from hotkey_provider import HotkeyProvider, WindowsHotkeyProvider
 from sound_cues import SoundCuePlayer, ensure_generated
 from status_console import (
     MicrophoneOptionsAvailable,
@@ -617,6 +618,7 @@ async def run(
     settings: Settings | None = None,
     app: App | None = None,
     live_console: LiveStatusConsole | None = None,
+    shutdown_provider: HotkeyProvider | None = None,
 ) -> None:
     # No logging was configured anywhere in the process before this (verified:
     # grep found no basicConfig/setLevel calls), so every existing INFO-level
@@ -655,14 +657,14 @@ async def run(
         _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
     subscriptions = [*status_console_subscriptions, *wire(app, live_console)]
 
-    import keyboard
-
     loop = asyncio.get_running_loop()
 
     def on_shutdown_hotkey() -> None:
         loop.call_soon_threadsafe(shutdown_event.set)
 
-    shutdown_handle = keyboard.add_hotkey(settings.hotkeys.shutdown, on_shutdown_hotkey)
+    shutdown_provider = shutdown_provider or WindowsHotkeyProvider()
+    shutdown_provider.register(settings.hotkeys.shutdown, on_shutdown_hotkey)
+    shutdown_provider.start()
 
     background_tasks = [
         asyncio.create_task(app.audio_input.run_microphone_loop()),
@@ -681,7 +683,7 @@ async def run(
         await run_until_shutdown(app, subscriptions, shutdown_event, background_tasks)
     finally:
         try:
-            keyboard.remove_hotkey(shutdown_handle)
+            shutdown_provider.stop()
         finally:
             if live_console is not None:
                 live_console.close()

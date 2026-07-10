@@ -1,7 +1,7 @@
 # Task: HotkeyProvider interface and Windows implementation
 
 **Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.6
 
 ## Summary
@@ -16,14 +16,14 @@ Introduce the provider abstraction and Windows `RegisterHotKey` implementation.
 
 ## Acceptance Criteria
 
-- [ ] `HotkeyProvider` has no Windows-specific details.
-- [ ] `WindowsHotkeyProvider` registers concrete combinations using
+- [x] `HotkeyProvider` has no Windows-specific details.
+- [x] `WindowsHotkeyProvider` registers concrete combinations using
       `RegisterHotKey`.
-- [ ] Provider supports unregister/cleanup.
-- [ ] Registration conflict produces a clear error.
-- [ ] Tests cover provider contract with fakes and Windows binding shape where
+- [x] Provider supports unregister/cleanup.
+- [x] Registration conflict produces a clear error.
+- [x] Tests cover provider contract with fakes and Windows binding shape where
       possible without real global hotkeys.
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
 
 ## Verification
 

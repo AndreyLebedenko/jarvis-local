@@ -35,28 +35,23 @@ async def test_toggle_flips_state_and_publishes_new_value():
 
 
 class _FakeKeyboardModule:
-    """Mirrors capture.py/audio_in.py/clipboard_input.py's test fake and the
-    real keyboard package's contract: remove_hotkey() must be called with
-    the value add_hotkey() returned, not the original binding string."""
+    """Records provider registrations and cleanup per binding."""
 
     def __init__(self) -> None:
         self.registered: dict[str, Callable[[], None]] = {}
         self.removed_handles: list[object] = []
         self._handle_by_binding: dict[str, object] = {}
 
-    def add_hotkey(self, binding: str, callback: Callable[[], None]) -> object:
+    def register(self, binding: str, callback: Callable[[], None]) -> None:
         self.registered[binding] = callback
         handle = object()
         self._handle_by_binding[binding] = handle
-        return handle
 
-    def remove_hotkey(self, handle) -> None:
-        valid_handles = set(self._handle_by_binding.values())
-        assert handle in valid_handles, (
-            f"remove_hotkey called with {handle!r}, which is not a handle "
-            "add_hotkey returned"
-        )
-        self.removed_handles.append(handle)
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        self.removed_handles.extend(self._handle_by_binding.values())
 
     def handle_for(self, binding: str) -> object:
         return self._handle_by_binding[binding]
@@ -68,7 +63,7 @@ async def test_hotkey_listener_registers_binding_from_config():
     state = ThinkingModeState(bus=EventBus())
 
     task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, keyboard_module=fake_kb)
+        run_hotkey_listener(state, hotkeys, provider=fake_kb)
     )
     await asyncio.sleep(0)
 
@@ -88,7 +83,7 @@ async def test_hotkey_press_schedules_exactly_one_toggle():
     assert state.is_enabled is False
 
     task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, keyboard_module=fake_kb)
+        run_hotkey_listener(state, hotkeys, provider=fake_kb)
     )
     await asyncio.sleep(0)
 
@@ -124,7 +119,7 @@ async def test_two_rapid_hotkey_presses_toggle_twice_not_the_same_transition_twi
     assert state.is_enabled is False
 
     task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, keyboard_module=fake_kb)
+        run_hotkey_listener(state, hotkeys, provider=fake_kb)
     )
     await asyncio.sleep(0)
 

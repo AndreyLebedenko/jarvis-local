@@ -27,33 +27,23 @@ def _solid_rgb(width: int, height: int) -> bytes:
 
 
 class _FakeKeyboardModule:
-    """Mirrors the real keyboard package's contract: remove_hotkey() must
-    be called with the value add_hotkey() returned, not the original
-    binding string (real keyboard.remove_hotkey's own docstring: "Must be
-    called with the value returned by add_hotkey"). Returns a distinct
-    sentinel per binding, not the binding string itself, so a caller that
-    passes the string through instead of the handle fails this fake too.
-    """
+    """Records provider registrations and cleanup per binding."""
 
     def __init__(self) -> None:
         self.registered: dict[str, callable] = {}
         self.removed_handles: list[object] = []
         self._handle_by_binding: dict[str, object] = {}
 
-    def add_hotkey(self, binding, callback):
+    def register(self, binding, callback) -> None:
         self.registered[binding] = callback
         handle = object()
         self._handle_by_binding[binding] = handle
-        return handle
 
-    def remove_hotkey(self, handle) -> None:
-        valid_handles = set(self._handle_by_binding.values())
-        assert handle in valid_handles, (
-            f"remove_hotkey called with {handle!r}, which is not a handle "
-            "add_hotkey returned (looks like a binding string was passed "
-            "instead)"
-        )
-        self.removed_handles.append(handle)
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        self.removed_handles.extend(self._handle_by_binding.values())
 
     def handle_for(self, binding: str) -> object:
         return self._handle_by_binding[binding]
@@ -163,7 +153,7 @@ async def test_hotkey_listener_registers_bindings_from_config():
     )
 
     task = asyncio.create_task(
-        run_hotkey_listener(capture, hotkeys, keyboard_module=fake_kb, select_region=lambda: None)
+        run_hotkey_listener(capture, hotkeys, provider=fake_kb, select_region=lambda: None)
     )
     await asyncio.sleep(0)
 
@@ -196,7 +186,7 @@ async def test_hotkey_full_screen_callback_publishes_capture():
     )
 
     task = asyncio.create_task(
-        run_hotkey_listener(capture, hotkeys, keyboard_module=fake_kb, select_region=lambda: None)
+        run_hotkey_listener(capture, hotkeys, provider=fake_kb, select_region=lambda: None)
     )
     await asyncio.sleep(0)
 
@@ -231,7 +221,7 @@ async def test_hotkey_region_callback_publishes_capture_from_selected_region():
 
     task = asyncio.create_task(
         run_hotkey_listener(
-            capture, hotkeys, keyboard_module=fake_kb, select_region=lambda: fixed_region
+            capture, hotkeys, provider=fake_kb, select_region=lambda: fixed_region
         )
     )
     await asyncio.sleep(0)
@@ -267,7 +257,7 @@ async def test_hotkey_region_callback_skips_zero_size_selection():
 
     task = asyncio.create_task(
         run_hotkey_listener(
-            capture, hotkeys, keyboard_module=fake_kb, select_region=lambda: empty_region
+            capture, hotkeys, provider=fake_kb, select_region=lambda: empty_region
         )
     )
     await asyncio.sleep(0)
