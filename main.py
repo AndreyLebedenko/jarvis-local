@@ -3,7 +3,6 @@
 import asyncio
 import argparse
 import base64
-import ctypes
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -62,14 +61,6 @@ SYSTEM_PROMPT = (
     "сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, "
     "что на нём видно."
 )
-
-
-def is_elevated() -> bool:
-    """Windows-only: True if the process has Administrator privileges."""
-    try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except (AttributeError, OSError):
-        return False
 
 
 @dataclass(frozen=True)
@@ -634,13 +625,6 @@ async def run(
 
     settings = settings or load_settings()
     ensure_generated(settings.sound_cues)
-
-    if not is_elevated():
-        print(
-            "WARNING: global RegisterHotKey behavior without Administrator "
-            "privileges has not yet been verified. Run elevated until the "
-            "v1.2.6 manual hotkey handoff is complete."
-        )
 
     app = app or build_app(settings)
     # One shutdown signal feeds both the hotkey and the Status Console.

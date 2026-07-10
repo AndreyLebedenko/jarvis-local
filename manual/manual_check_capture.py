@@ -7,9 +7,8 @@ run by hand. Confirms the real full-screen hotkey triggers a capture, the
 region hotkey opens the interactive selection overlay and captures just
 that region, and both resulting images look correct.
 
-If hotkeys don't register at all, try running from an elevated
-(Administrator) terminal - the `keyboard` package's global hooks can
-require it on Windows.
+The native provider's elevation behavior is verified by the v1.2.6 manual
+hotkey handoff. Run this check in the privilege mode requested there.
 
 Usage:
   python manual/manual_check_capture.py

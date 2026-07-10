@@ -23,7 +23,6 @@ from main import (
     _on_thinking_mode_toggled,
     build_app,
     create_live_status_console,
-    is_elevated,
     parse_args,
     run_clipboard_hotkey_listener,
     run_mic_sleep_hotkey_listener,
@@ -1184,13 +1183,6 @@ async def test_on_mic_sleep_toggled_publishes_a_system_event_for_the_ui():
     assert received[0].source == "HOTKEY"
     assert received[0].level is EventLevel.INFO
     assert "усыпл" in received[0].message
-
-
-# --- elevation check -------------------------------------------------------
-
-
-def test_is_elevated_returns_a_bool():
-    assert isinstance(is_elevated(), bool)
 
 
 # --- ResponseComplete ordering (review finding) -----------------------------
