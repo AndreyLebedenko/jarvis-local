@@ -323,7 +323,11 @@ async def run_route_sample(
     engines: dict[str, SpeechEngine],
     play: Callable[[bytes], Awaitable[None]],
 ) -> tuple[SegmentMeasurement, ...]:
-    playback = OrderedPlayback(play)
+    async def play_indexed(index: int, audio: bytes) -> None:
+        del index  # OrderedPlayback's player contract carries the unit index
+        await play(audio)
+
+    playback = OrderedPlayback(play_indexed)
     plans = build_segment_plan(route, sample.text)
     measurements: list[SegmentMeasurement | None] = [None] * len(plans)
 

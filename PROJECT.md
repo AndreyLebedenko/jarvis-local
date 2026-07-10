@@ -281,7 +281,15 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   language routes through `BilingualTtsEngine`: `build_tts_engine()` preserves
   the existing Silero-only default when only the built-in `ru -> silero`
   route is present, and otherwise composes one child engine per configured
-  language (`ru`/`en`) with clear failure for unsupported language hints. The
+  language (`ru`/`en`) with clear failure for unsupported language hints.
+  A non-default routing table must cover both `ru` and `en` (charset
+  segmentation emits both regardless of configuration), and a silero route
+  must name the one supported model (`v3_1_ru`, shared constant
+  `config.SILERO_MODEL`); either violation fails at startup rather than on
+  the first mismatched segment. A synthesis failure at runtime is logged
+  and its unit skipped: `OrderedPlayback` requires every index to arrive,
+  so submitting `None` for the failed index is what keeps one bad sentence
+  from silently stalling all later speech in the session. The
   Silero-specific model loading, Russian number normalization, Latin
   transliteration, and `apply_tts` call live in `SileroEngine`. Since the
   v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
@@ -308,7 +316,15 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   reaching `sounddevice.play()`: human testing across Silero and Piper heard
   final phrase endings clipped, and padding the last unit keeps the output
   device alive long enough to drain the audible tail without adding gaps
-  between streamed sentences.
+  between streamed sentences. Which unit is final is decided at play time
+  ("no later unit scheduled yet"), not at synthesis time against an index
+  recorded by `ResponseComplete`: the completion event can arrive after the
+  last sentence (flushed mid-stream by a trailing ". ") has already finished
+  synthesizing, so the synthesis-time check lost that race and the clipping
+  returned intermittently (observed live). The play-time rule always holds
+  for the true final unit; a mid-stream unit can also match during slow
+  generation, where the extra tail is masked by waiting for the next
+  sentence anyway.
   Loading the Silero TTS model requires network on first use (like
   `ollama pull` for the backend model) - a one-time setup step via
   `setup_tts_model.py`, run once before the offline runtime starts; not
