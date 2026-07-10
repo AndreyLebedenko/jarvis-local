@@ -1,7 +1,7 @@
 # Task: Migrate existing hotkeys
 
 **Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.6
 **Depends on:** `tasks/story-v1.2.6-task-1-hotkey-provider-interface.md`
 
@@ -18,15 +18,15 @@ Move all existing global hotkeys to the new provider path.
 
 ## Acceptance Criteria
 
-- [ ] Screenshot full hotkey uses `HotkeyProvider`.
-- [ ] Screenshot region hotkey uses `HotkeyProvider`.
-- [ ] Clipboard submit hotkey uses `HotkeyProvider`.
-- [ ] Mic sleep toggle hotkey uses `HotkeyProvider`.
-- [ ] Thinking toggle hotkey uses `HotkeyProvider`.
-- [ ] Shutdown hotkey uses `HotkeyProvider`.
-- [ ] Callback-thread rule is preserved: callbacks schedule onto the asyncio
+- [x] Screenshot full hotkey uses `HotkeyProvider`.
+- [x] Screenshot region hotkey uses `HotkeyProvider`.
+- [x] Clipboard submit hotkey uses `HotkeyProvider`.
+- [x] Mic sleep toggle hotkey uses `HotkeyProvider`.
+- [x] Thinking toggle hotkey uses `HotkeyProvider`.
+- [x] Shutdown hotkey uses `HotkeyProvider`.
+- [x] Callback-thread rule is preserved: callbacks schedule onto the asyncio
       loop and do not decide engine state.
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
 
 ## Verification
 

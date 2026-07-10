@@ -1037,11 +1037,14 @@ class _FakeKeyboardModuleForShutdownTest:
     def __init__(self) -> None:
         self.removed_handles: list[object] = []
 
-    def add_hotkey(self, binding, callback):
-        return object()
+    def register(self, binding, callback) -> None:
+        pass
 
-    def remove_hotkey(self, handle) -> None:
-        self.removed_handles.append(handle)
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        self.removed_handles.append(object())
 
 
 async def test_run_until_shutdown_cancels_clipboard_mic_sleep_and_thinking_hotkey_listeners():
@@ -1049,7 +1052,7 @@ async def test_run_until_shutdown_cancels_clipboard_mic_sleep_and_thinking_hotke
     but with the real listener coroutines (task-10's clipboard/mic-sleep,
     task-13's thinking-mode) instead of arbitrary fake tasks - confirms
     run()'s pattern of handing these to run_until_shutdown actually cancels
-    them and runs their cleanup (kb.remove_hotkey)."""
+    them and stops each provider during cleanup."""
     app = _fake_app()
     subscriptions = wire(app)
     shutdown_event = asyncio.Event()
@@ -1065,17 +1068,17 @@ async def test_run_until_shutdown_cancels_clipboard_mic_sleep_and_thinking_hotke
                 app.bus,
                 app.settings.hotkeys,
                 app.settings.clipboard,
-                keyboard_module=fake_kb_clipboard,
+                provider=fake_kb_clipboard,
             )
         ),
         asyncio.create_task(
             run_mic_sleep_hotkey_listener(
-                mic_sleep_audio_input, app.settings.hotkeys, keyboard_module=fake_kb_mic_sleep
+                mic_sleep_audio_input, app.settings.hotkeys, provider=fake_kb_mic_sleep
             )
         ),
         asyncio.create_task(
             run_thinking_hotkey_listener(
-                app.thinking_mode, app.settings.hotkeys, keyboard_module=fake_kb_thinking
+                app.thinking_mode, app.settings.hotkeys, provider=fake_kb_thinking
             )
         ),
     ]

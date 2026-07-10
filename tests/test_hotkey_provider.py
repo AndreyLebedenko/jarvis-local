@@ -1,3 +1,4 @@
+import asyncio
 import queue
 import threading
 
@@ -9,6 +10,7 @@ from hotkey_provider import (
     HotkeyProvider,
     WindowsHotkeyProvider,
     parse_binding,
+    run_hotkey_provider,
 )
 
 _MOD_ALT = 0x0001
@@ -269,3 +271,21 @@ def test_context_manager_starts_and_stops():
 
     assert fake.unregistered == [1]
     assert fake.detached
+
+
+async def test_async_provider_lifecycle_registers_and_stops_on_cancellation():
+    fake = _FakeWin32Api()
+    provider = WindowsHotkeyProvider(fake)
+    task = asyncio.create_task(
+        run_hotkey_provider([("ctrl+alt+s", lambda: None)], provider)
+    )
+    await asyncio.sleep(0)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert fake.register_calls == [
+        (1, _MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S"))
+    ]
+    assert fake.unregistered == [1]

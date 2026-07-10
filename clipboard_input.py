@@ -16,7 +16,7 @@ hotkey callback (keyboard's own callback thread) is exactly that.
 
 run_hotkey_listener() (task-10) binds hotkeys.clipboard_submit to a real
 global hotkey via the keyboard package, mirroring capture.py's
-run_hotkey_listener - config-driven binding, injectable keyboard_module
+run_hotkey_listener - config-driven binding, injectable provider
 and read_clipboard so the wiring itself is testable without a real
 keyboard hook. Task-08 deliberately stopped at "read the clipboard,
 build the event" (see its task card): this keeps wiring work from
@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 from bus import EventBus
 from config import ClipboardSettings, HotkeySettings
+from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 ReadClipboard = Callable[[], str]
 
@@ -83,28 +84,20 @@ async def run_hotkey_listener(
     bus: EventBus,
     hotkeys: HotkeySettings,
     clipboard: ClipboardSettings,
-    keyboard_module=None,
+    provider: HotkeyProvider | None = None,
     read_clipboard: ReadClipboard | None = None,
 ) -> None:
     """Binds hotkeys.clipboard_submit to a real global hotkey; publishes a
     ClipboardSubmitted event on each trigger. Runs until cancelled.
-    Hardware-dependent in its default form, but keyboard_module and
+    Hardware-dependent in its default form, but provider and
     read_clipboard are injectable so the wiring itself (config-driven
     binding -> callback -> bus publish) is testable without a real
     keyboard hook or clipboard.
     """
-    kb = keyboard_module
-    if kb is None:
-        import keyboard as kb
-
     loop = asyncio.get_running_loop()
 
     def on_submit() -> None:
         event = read_clipboard_submission(clipboard, read_clipboard)
         asyncio.run_coroutine_threadsafe(bus.publish(ClipboardSubmitted, event), loop)
 
-    handle = kb.add_hotkey(hotkeys.clipboard_submit, on_submit)
-    try:
-        await asyncio.Event().wait()
-    finally:
-        kb.remove_hotkey(handle)
+    await run_hotkey_provider([(hotkeys.clipboard_submit, on_submit)], provider)

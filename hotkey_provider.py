@@ -21,6 +21,7 @@ human manual handoff, like every other global-hotkey behavior in this
 project (see PROJECT.md's Testing protocol).
 """
 
+import asyncio
 import re
 import threading
 from collections.abc import Callable
@@ -134,6 +135,21 @@ class HotkeyProvider(Protocol):
     def start(self) -> None: ...
 
     def stop(self) -> None: ...
+
+
+async def run_hotkey_provider(
+    registrations: list[tuple[str, Callable[[], None]]],
+    provider: HotkeyProvider | None = None,
+) -> None:
+    """Runs a provider for the lifetime of the current async task."""
+    active_provider = provider or WindowsHotkeyProvider()
+    for binding, callback in registrations:
+        active_provider.register(binding, callback)
+    active_provider.start()
+    try:
+        await asyncio.Event().wait()
+    finally:
+        active_provider.stop()
 
 
 class Win32Api(Protocol):

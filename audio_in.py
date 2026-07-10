@@ -18,6 +18,7 @@ from silero_vad import get_speech_timestamps, load_silero_vad
 from audio_utils import samples_to_wav_bytes
 from bus import EventBus
 from config import HotkeySettings, VadSettings
+from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 SAMPLE_RATE = 16000
 
@@ -285,20 +286,12 @@ class AudioInput:
 async def run_hotkey_listener(
     audio_input: AudioInput,
     hotkeys: HotkeySettings,
-    keyboard_module=None,
+    provider: HotkeyProvider | None = None,
 ) -> None:
     """Binds the microphone privacy-toggle hotkey until cancelled."""
-    kb = keyboard_module
-    if kb is None:
-        import keyboard as kb
-
     loop = asyncio.get_running_loop()
 
     def on_toggle() -> None:
         asyncio.run_coroutine_threadsafe(audio_input.toggle_user_sleep(), loop)
 
-    handle = kb.add_hotkey(hotkeys.mic_sleep_toggle, on_toggle)
-    try:
-        await asyncio.Event().wait()
-    finally:
-        kb.remove_hotkey(handle)
+    await run_hotkey_provider([(hotkeys.mic_sleep_toggle, on_toggle)], provider)

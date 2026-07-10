@@ -23,6 +23,7 @@ import mss.tools
 
 from bus import EventBus
 from config import HotkeySettings
+from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 Region = dict[str, int]  # {"left": int, "top": int, "width": int, "height": int}
 
@@ -150,20 +151,16 @@ def select_region_interactively() -> Region | None:
 async def run_hotkey_listener(
     capture: CaptureInput,
     hotkeys: HotkeySettings,
-    keyboard_module=None,
+    provider: HotkeyProvider | None = None,
     select_region: Callable[[], Region | None] = select_region_interactively,
 ) -> None:
     """Binds hotkeys.screenshot_full/screenshot_region to real global
     hotkeys; publishes a screenshot on each trigger. Runs until
     cancelled. Hardware/display-dependent in its default form, but
-    keyboard_module and select_region are injectable so the wiring
+    provider and select_region are injectable so the wiring
     itself (config-driven bindings -> callback -> bus publish) is
     testable without a real keyboard hook or display.
     """
-    kb = keyboard_module
-    if kb is None:
-        import keyboard as kb
-
     loop = asyncio.get_running_loop()
 
     def on_full_screen() -> None:
@@ -174,13 +171,10 @@ async def run_hotkey_listener(
         if region is not None and region["width"] > 0 and region["height"] > 0:
             asyncio.run_coroutine_threadsafe(capture.publish_region(region), loop)
 
-    # remove_hotkey() must be called with the value add_hotkey() returned,
-    # not the original binding string (verified against the installed
-    # keyboard package's own docstring for remove_hotkey).
-    full_handle = kb.add_hotkey(hotkeys.screenshot_full, on_full_screen)
-    region_handle = kb.add_hotkey(hotkeys.screenshot_region, on_region)
-    try:
-        await asyncio.Event().wait()
-    finally:
-        kb.remove_hotkey(full_handle)
-        kb.remove_hotkey(region_handle)
+    await run_hotkey_provider(
+        [
+            (hotkeys.screenshot_full, on_full_screen),
+            (hotkeys.screenshot_region, on_region),
+        ],
+        provider,
+    )

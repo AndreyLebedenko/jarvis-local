@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from bus import EventBus
 from config import HotkeySettings
+from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 
 @dataclass(frozen=True)
@@ -53,11 +54,11 @@ class ThinkingModeState:
 async def run_hotkey_listener(
     state: ThinkingModeState,
     hotkeys: HotkeySettings,
-    keyboard_module=None,
+    provider: HotkeyProvider | None = None,
 ) -> None:
     """Binds hotkeys.thinking_toggle to a real global hotkey; each press
     calls state.toggle(). Runs until cancelled. Hardware-dependent in its
-    default form, but keyboard_module is injectable so the wiring itself is
+    default form, but provider is injectable so the wiring itself is
     testable without a real keyboard hook.
 
     Deliberately does not read state.is_enabled here to decide what to do:
@@ -66,17 +67,9 @@ async def run_hotkey_listener(
     own thread) would race against the event loop's own mutation, same bug
     class task-10's review caught for the mic-sleep hotkey.
     """
-    kb = keyboard_module
-    if kb is None:
-        import keyboard as kb
-
     loop = asyncio.get_running_loop()
 
     def on_toggle() -> None:
         asyncio.run_coroutine_threadsafe(state.toggle(), loop)
 
-    handle = kb.add_hotkey(hotkeys.thinking_toggle, on_toggle)
-    try:
-        await asyncio.Event().wait()
-    finally:
-        kb.remove_hotkey(handle)
+    await run_hotkey_provider([(hotkeys.thinking_toggle, on_toggle)], provider)
