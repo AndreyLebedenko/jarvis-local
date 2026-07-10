@@ -145,6 +145,12 @@ class AudioInput:
         self._awake.set()
         self._stop_requested = False
         self._active_stream: InputStreamLike | None = None
+        # Set on every transition into pause/sleep; run_microphone_loop()
+        # discards its accumulated buffer (and the read that observed the
+        # flag) before processing any further audio. This is what makes
+        # buffer hygiene independent of stream.read() returning promptly -
+        # see the stale-buffer-replay bug report in tasks/bug_reports/.
+        self._buffer_invalidated = False
 
     @property
     def is_awake(self) -> bool:
@@ -170,7 +176,18 @@ class AudioInput:
         if self._user_wants_awake and not self._auto_paused_for_speech:
             self._awake.set()
         else:
+            was_awake = self._awake.is_set()
             self._awake.clear()
+            self._buffer_invalidated = True
+            # Stop the stream so a stream.read() the loop is currently
+            # blocked in gets interrupted (same mechanism stop() uses for
+            # shutdown). Without this, a device that stops delivering
+            # frames (hardware mute, USB stall) leaves the loop blocked in
+            # read() with a stale buffer that replays as a fresh utterance
+            # when frames eventually resume - verified live, see the bug
+            # report referenced on _buffer_invalidated.
+            if was_awake and self._active_stream is not None:
+                await asyncio.to_thread(self._active_stream.stop)
 
     async def publish_from_samples(self, samples: torch.Tensor) -> None:
         for chunk in self._chunker.chunk(samples):
@@ -198,6 +215,7 @@ class AudioInput:
                         await asyncio.to_thread(stream.stop)
                         buffer = np.zeros(0, dtype=np.float32)
                         published_end_seconds = 0.0
+                        self._buffer_invalidated = False
                         await self._awake.wait()
                         if self._stop_requested:
                             break
@@ -209,9 +227,40 @@ class AudioInput:
                     except Exception:
                         if self._stop_requested:
                             break
+                        if not self._awake.is_set():
+                            # The pause/sleep transition stopped the stream
+                            # to interrupt this read; the pause branch at
+                            # the top of the loop takes over.
+                            continue
+                        if self._buffer_invalidated:
+                            # A pause AND a resume both happened while this
+                            # read was in flight (stalled device): the pause
+                            # stopped the stream and this loop never reached
+                            # the pause branch to restart it. Recover here.
+                            buffer = np.zeros(0, dtype=np.float32)
+                            published_end_seconds = 0.0
+                            self._buffer_invalidated = False
+                            await asyncio.to_thread(stream.start)
+                            continue
                         raise
                     if self._stop_requested:
                         break
+                    if self._buffer_invalidated:
+                        # A pause happened while this read was in flight
+                        # (possibly a resume too, if the device stalled
+                        # long enough): both the accumulated buffer and
+                        # this read's data straddle the pause boundary and
+                        # must never be published as fresh speech.
+                        buffer = np.zeros(0, dtype=np.float32)
+                        published_end_seconds = 0.0
+                        self._buffer_invalidated = False
+                        if self._awake.is_set():
+                            # Same stalled-device recovery as above: the
+                            # pause stopped the stream, the pause branch
+                            # never ran, and capture must restart for the
+                            # reads that follow.
+                            await asyncio.to_thread(stream.start)
+                        continue
                     buffer = np.concatenate([buffer, data[:, 0]])
                     buffer_duration = len(buffer) / SAMPLE_RATE
 

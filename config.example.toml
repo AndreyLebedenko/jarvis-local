@@ -71,6 +71,12 @@ max_chunk_seconds = 30
 # to ~1.0-1.5 s once request-boundary behavior is validated. See
 # PROJECT.md's Architecture v1.0 and task-07's backlog notes.
 request_end_pause_seconds = 2.0
+# How long the busy flag stays up after Jarvis finishes speaking, before
+# capture resumes and the "listening" cue plays. A short grace period,
+# not an echo guard: since the stale-buffer-replay fix, auto-pause stops
+# the stream and invalidates the buffer, so nothing heard during a turn
+# can leak into the next one regardless of this value.
+resume_cooldown_seconds = 1.0
 
 [tts]
 voice = "baya"

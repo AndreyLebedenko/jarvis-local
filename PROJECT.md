@@ -163,6 +163,23 @@ system is intended to grow.
   this now rather than defer, given task-09's primitive already existed
   and the implementation cost was low.
 
+  Stale-buffer-replay fix (2026-07-10, verified live with a hardware-muted
+  mic; see tasks/bug_reports/stale-audio-buffer-replay-after-mic-stall.md):
+  the pause above used to take effect only when `stream.read()` returned,
+  so a device that stops delivering frames (hardware mute, USB stall) left
+  the loop blocked in `read()` with a stale buffer that replayed as a
+  fresh utterance when frames resumed - the log signature is `listening ->
+  thinking` within tens of milliseconds, impossible for fresh audio (the
+  `still_extending` guard needs `request_end_pause_seconds` of buffered
+  trailing silence first). Now entering pause/sleep actively stops the
+  stream (interrupting a blocked read, same mechanism as shutdown) and
+  sets a buffer-invalidation flag; the loop discards the buffer plus any
+  read that straddled the pause boundary, and treats a read exception
+  while paused as the interruption, not a device failure. Consequently
+  `finish_turn()`'s cooldown no longer needs to mirror
+  `request_end_pause_seconds`: it is a short grace period before capture
+  resumes, `config.vad.resume_cooldown_seconds` (default 1.0 s).
+
   Privacy guard, redesigned after a human review caught two real bugs in
   the first version (which tracked a single `Orchestrator`-side
   `_mic_paused_by_us` boolean plus a single `AudioInput.is_awake` bit):
@@ -377,10 +394,11 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   warns (does not refuse to start) if missing, since global hotkeys
   degrade to window-focus-only without it (see Verified facts).
   `Orchestrator.finish_turn()`'s cooldown (`config.vad.
-  request_end_pause_seconds` after speech ends) mitigates the no-echo-
-  cancellation risk of Jarvis hearing its own voice (see Verified facts) -
-  it is not a substitute for real echo cancellation, which v1.0 does not
-  attempt.
+  resume_cooldown_seconds` after speech ends, default 1.0 s; historically
+  `request_end_pause_seconds` until the 2026-07-10 stale-buffer-replay fix
+  made the mic pause deterministic - see Verified facts) is a short grace
+  period before capture resumes - not a substitute for real echo
+  cancellation, which is still not attempted.
 
 ## Architecture v1.1 (controlled input)
 
