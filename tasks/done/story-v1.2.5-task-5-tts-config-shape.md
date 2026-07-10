@@ -1,7 +1,12 @@
 # Task: TTS config shape
 
 **Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
-**Status:** Backlog.
+**Status:** Superseded by v1.2.9 per-language routes (human decision
+2026-07-10). The `[tts.languages.<lang>]` shape selects an engine per
+language and is strictly more expressive than a global `[tts] engine`
+switch; adding the latter now would create two competing sources of truth
+in config. Engine-specific settings (e.g. Piper use_cuda) get their own
+card if a concrete need appears.
 **Release:** v1.2.5
 **Depends on:** `tasks/story-v1.2.5-task-4-tts-engine-boundary.md`
 
