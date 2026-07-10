@@ -867,11 +867,45 @@ async def test_http_terms_with_punctuation_stay_in_english_unit():
 
 
 async def test_short_russian_connective_between_english_words_is_carried():
+    """Single-engine (default Silero-only) settings: prosody wins, the
+    short connective rides along into the next unit - Silero's
+    transliteration can voice either language."""
     engine = _FakeEngine()
 
     await _speak_tokens(engine, "Love и Dove.")
 
     assert engine.seen == [("Love", "en"), ("и Dove.", "en")]
+
+
+async def test_connectives_stay_in_their_own_language_when_engines_differ():
+    """Regression for the v1.2.9 task-4 live finding: with distinct
+    per-language engines, a carried Russian connective ("Для", "и",
+    "без") lands in Piper, which has no Cyrillic phonemes and spells it
+    out letter by letter. With multi-engine routes every language run
+    must reach its own engine, even a short one."""
+    bilingual_settings = TtsSettings(
+        languages={
+            "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+            "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+        }
+    )
+    ru_engine = _FakeEngine()
+    en_engine = _FakeEngine()
+    router = BilingualTtsEngine({"ru": ru_engine, "en": en_engine})
+    tts = TtsOutput(bilingual_settings, engine=router, play=_silent_play)
+
+    await tts.on_token(ResponseToken(text="Для APIClient важны latency."))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+    assert ru_engine.seen == [("Для", "ru"), ("важны", "ru")]
+    assert en_engine.seen == [("APIClient", "en"), ("latency.", "en")]
 
 
 async def test_second_turn_starts_fresh_after_english_text():

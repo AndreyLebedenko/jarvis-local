@@ -316,9 +316,20 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   additional flush boundary alongside sentence boundaries, and a short
   connective remainder at a switch (<= 3 word chars, no sentence punctuation -
   e.g. the Russian "и" between two English words) is carried into the following
-  segment instead of becoming a standalone synthesis call; the segment language
-  reaches `TtsEngine.synthesize()` as the routing hint (still ignored by the
-  default Silero runtime).
+  segment instead of becoming a standalone synthesis call - but ONLY while
+  every configured route uses one engine (the Silero-only default, whose
+  transliteration voices either language). With distinct per-language engines
+  the carry is disabled: verified live in the v1.2.9 task-4 handoff, a
+  carried Russian "Для" reached Piper, which has no Cyrillic phonemes and
+  spelled it out letter by letter ("Missing phoneme from id map" warnings).
+  The segment language reaches `TtsEngine.synthesize()` as the routing hint
+  (ignored by the default Silero runtime).
+  Production route verified live (2026-07-10, v1.2.9 task-4 handoff via
+  `manual/manual_check_bilingual_tts_production.py`, which exercises the
+  real load_settings -> build_tts_engine -> TtsOutput wiring and prints the
+  engine per synthesized unit): `ru -> silero v3_1_ru (baya)`,
+  `en -> piper .local-models/piper/en_US-ryan-low/en_US-ryan-low.onnx`,
+  with correct ordering and no cross-language units.
   Sentence-level streaming is mandatory: buffer LLM tokens to sentence
   boundary -> synthesize -> play, while generation continues. Target end-to-end response start:
   within ~3 s of audio_in.py publishing the finished utterance (i.e. after VAD's

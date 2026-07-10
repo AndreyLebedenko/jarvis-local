@@ -1,6 +1,6 @@
 # Story v1.2.9: Bilingual TTS routing
 
-**Status:** Backlog.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.9
 
@@ -58,24 +58,24 @@ with configuration general enough to describe both languages explicitly.
 
 ## Acceptance Criteria
 
-- [ ] Config can express per-language TTS routes for `ru` and `en`.
-- [ ] Default config preserves current behavior unless an English Piper model
+- [x] Config can express per-language TTS routes for `ru` and `en`.
+- [x] Default config preserves current behavior unless an English Piper model
       is explicitly configured.
-- [ ] Config validation rejects unsupported languages and unsupported engine
+- [x] Config validation rejects unsupported languages and unsupported engine
       names with clear errors.
-- [ ] Piper synthesis is behind the existing `TtsEngine` boundary, not mixed
+- [x] Piper synthesis is behind the existing `TtsEngine` boundary, not mixed
       into sentence buffering or playback code.
-- [ ] A bilingual engine routes `ru` segments to Silero and `en` segments to
+- [x] A bilingual engine routes `ru` segments to Silero and `en` segments to
       Piper according to config.
-- [ ] `TtsOutput` still owns buffering and ordered playback; it does not know
+- [x] `TtsOutput` still owns buffering and ordered playback; it does not know
       Piper-specific details.
-- [ ] English Piper model/config paths are validated before first response
+- [x] English Piper model/config paths are validated before first response
       playback, failing clearly during app startup or TTS initialization.
-- [ ] Existing Silero-only behavior remains test-covered.
-- [ ] Pure automated tests pass with `python -m pytest`.
-- [ ] Human-run manual TTS check confirms mixed Russian/English responses use
+- [x] Existing Silero-only behavior remains test-covered.
+- [x] Pure automated tests pass with `python -m pytest`.
+- [x] Human-run manual TTS check confirms mixed Russian/English responses use
       the configured engines and remain ordered.
-- [ ] `PROJECT.md` records the verified production route and manual result.
+- [x] `PROJECT.md` records the verified production route and manual result.
 
 ## Task Card Sequence
 

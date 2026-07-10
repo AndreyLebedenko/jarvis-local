@@ -1,6 +1,15 @@
 # Story v1.2.9 Task 4: Manual bilingual TTS handoff
 
-Status: Backlog.
+Status: Completed.
+
+Result: human ran `manual/manual_check_bilingual_tts_production.py`
+(production wiring: load_settings -> build_tts_engine -> TtsOutput) on
+2026-07-10. Per-unit output confirmed ru -> silero and en -> piper
+(en_US-ryan-low), ordering and quality accepted. The first run exposed
+one defect - short Russian connectives ("Для", "без") were carried into
+Piper units by v1.2.8's connective rule and spelled out letter by letter;
+fixed by gating the carry on all routes sharing one engine
+(SpeechUnitBuffer.carry_connectives), re-run confirmed correct.
 
 ## Summary
 
