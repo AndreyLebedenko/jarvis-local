@@ -321,7 +321,12 @@ _SENTENCE_PUNCT_RE = re.compile(r"[.!?]")
 # sentence-ending punctuation is carried into the following segment instead
 # of becoming its own tiny synthesis call - story-v1.2.8's AC forbids
 # unnatural standalone calls, and for spans this short prosody matters more
-# than language attribution (the runtime engine is Silero-only today anyway).
+# than language attribution. Only valid while every configured route uses
+# ONE engine (the Silero-only default, whose transliteration covers either
+# direction): with distinct per-language engines, carrying moves text into
+# an engine that cannot pronounce it at all - verified live in the v1.2.9
+# task-4 handoff, where a carried Russian "Для" was spelled out letter by
+# letter by Piper. SpeechUnitBuffer's carry_connectives flag gates this.
 _CONNECTIVE_MAX_WORD_CHARS = 3
 
 
@@ -336,10 +341,11 @@ class SpeechUnitBuffer:
     short foreign insert start synthesis before any ". " arrives.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, carry_connectives: bool = True) -> None:
         self._segments = CharsetLanguageStream()
         self._sentences = SentenceBuffer()
         self._language = DEFAULT_LANGUAGE
+        self._carry_connectives = carry_connectives
 
     def feed(self, text: str) -> list[tuple[str, str]]:
         units: list[tuple[str, str]] = []
@@ -364,7 +370,7 @@ class SpeechUnitBuffer:
         if language != self._language:
             remainder = self._sentences.flush()
             if remainder:
-                if self._is_connective(remainder):
+                if self._carry_connectives and self._is_connective(remainder):
                     text = f"{remainder} {text}"
                 else:
                     units.append((remainder, self._language))
@@ -499,6 +505,10 @@ def _is_default_silero_only(settings: TtsSettings) -> bool:
     }
 
 
+def _routes_share_one_engine(settings: TtsSettings) -> bool:
+    return len({route.engine for route in settings.languages.values()}) == 1
+
+
 def _build_silero_engine(settings: TtsSettings, route: TtsLanguageSettings) -> "TtsEngine":
     if route.model != SILERO_MODEL:
         raise ValueError(
@@ -560,7 +570,13 @@ class TtsOutput:
         playback_lock: asyncio.Lock | None = None,
     ) -> None:
         self._settings = settings
-        self._units = SpeechUnitBuffer()
+        # Carrying a short language-switch remainder into the next unit is
+        # only safe when one engine voices everything; with per-language
+        # engines it would hand text to an engine that cannot pronounce it
+        # (see _CONNECTIVE_MAX_WORD_CHARS).
+        self._units = SpeechUnitBuffer(
+            carry_connectives=_routes_share_one_engine(settings)
+        )
         self._engine = engine or build_tts_engine(settings)
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
