@@ -14,8 +14,8 @@ tasks/bug_reports/capture-region-select-tkinter-thread-safety.md) -
 Tkinter is not safe to drive from an arbitrary background thread, and a
 hotkey callback (keyboard's own callback thread) is exactly that.
 
-run_hotkey_listener() (task-10) binds hotkeys.clipboard_submit to a real
-global hotkey via the keyboard package, mirroring capture.py's
+run_hotkey_listener() binds hotkeys.clipboard_submit through HotkeyProvider,
+mirroring capture.py's
 run_hotkey_listener - config-driven binding, injectable provider
 and read_clipboard so the wiring itself is testable without a real
 keyboard hook. Task-08 deliberately stopped at "read the clipboard,

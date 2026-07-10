@@ -17,7 +17,7 @@ ThinkingModeState.toggle() flips and publishes with no `await` between the
 read and the write, same race-avoidance rule as AudioInput.
 toggle_user_sleep() (task-10's review): the whole read-decide-write must
 happen synchronously on the event loop so two rapid hotkey presses (both
-scheduled from the keyboard package's own callback thread via
+scheduled from the provider's callback thread via
 run_coroutine_threadsafe) can never both observe the same stale state and
 schedule the same transition twice instead of toggling twice.
 """
@@ -63,7 +63,7 @@ async def run_hotkey_listener(
 
     Deliberately does not read state.is_enabled here to decide what to do:
     that decision must happen inside toggle() itself, on the event loop -
-    reading state in this callback (which runs on the keyboard package's
+    reading state in this callback (which runs on the provider's
     own thread) would race against the event loop's own mutation, same bug
     class task-10's review caught for the mic-sleep hotkey.
     """

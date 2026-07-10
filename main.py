@@ -637,9 +637,9 @@ async def run(
 
     if not is_elevated():
         print(
-            "WARNING: not running as Administrator - global hotkeys will "
-            "only work while this window has focus, not from other "
-            "applications. See PROJECT.md's Verified facts."
+            "WARNING: global RegisterHotKey behavior without Administrator "
+            "privileges has not yet been verified. Run elevated until the "
+            "v1.2.6 manual hotkey handoff is complete."
         )
 
     app = app or build_app(settings)

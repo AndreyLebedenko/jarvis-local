@@ -1,7 +1,7 @@
 # Task: Hotkey dependency and documentation cleanup
 
 **Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
-**Status:** Backlog.
+**Status:** Completed.
 **Release:** v1.2.6
 **Depends on:** `tasks/story-v1.2.6-task-2-migrate-existing-hotkeys.md`
 
@@ -18,12 +18,12 @@ with privacy trade-offs.
 
 ## Acceptance Criteria
 
-- [ ] `requirements.txt` no longer includes `keyboard`, or docs explain the
+- [x] `requirements.txt` no longer includes `keyboard`, or docs explain the
       explicit fallback and privacy trade-off.
-- [ ] README known issues are updated to reflect the new hotkey state.
-- [ ] `PROJECT.md` is updated if the architectural decision changes.
-- [ ] Stale references to the old hotkey model are removed or revised.
-- [ ] `python -m pytest` passes.
+- [x] README known issues are updated to reflect the new hotkey state.
+- [x] `PROJECT.md` is updated if the architectural decision changes.
+- [x] Stale references to the old hotkey model are removed or revised.
+- [x] `python -m pytest` passes.
 
 ## Verification
 

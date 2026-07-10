@@ -22,8 +22,8 @@ Add push-to-talk activation through the unified HotkeyProvider path.
 - [ ] Trigger calls the same activation path as other future triggers.
 - [ ] Registration conflict is visible in log/UI.
 - [ ] Callback schedules work onto the asyncio loop.
-- [ ] The task explicitly records any remaining `keyboard`-based listeners if
-      the v1.2.6 migration has not removed them yet.
+- [ ] The trigger uses the existing provider path without reintroducing a
+      legacy global-key-hook listener.
 - [ ] Tests cover synthetic trigger behavior without real keyboard hardware.
 - [ ] `python -m pytest` passes.
 

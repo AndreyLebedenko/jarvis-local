@@ -97,7 +97,9 @@ To open only the desktop console, without the touchstrip window:
 python main.py --status-console --no-touchstrip
 ```
 
-For global hotkeys to work from any application on Windows, run the terminal as Administrator. Without elevation, hotkeys may only fire while the app's own terminal window has focus.
+Jarvis now uses Windows `RegisterHotKey` for concrete shortcuts. Behavior
+without elevation has not yet been verified for this provider, so run the
+terminal as Administrator until the v1.2.6 manual hotkey handoff is complete.
 
 Default hotkeys:
 
@@ -125,24 +127,14 @@ This repository was built with an agent-assisted workflow: project facts were re
 
 ## Known Issues
 
-- Global hotkeys are implemented with the Python `keyboard` package, which
-  works as a global key hook: it sees the whole system keypress stream and
-  filters for the bound combinations, rather than registering only the
-  concrete shortcuts Jarvis actually needs with the OS. This is a real
-  privacy trade-off, not just an implementation detail - a future
-  `HotkeyProvider` migration (see `tasks/story-v1.2.6-hotkey-provider-
-  migration.md`) plans to move to Windows' native `RegisterHotKey`, which
-  only ever sees the specific combinations it registers. That migration has
-  not landed yet; this is the current, real behavior.
-- Windows global hotkeys require Administrator privileges: without an
-  elevated process, `keyboard`'s `add_hotkey` callbacks only fire while
-  Jarvis's own terminal window has focus, not globally from whatever
-  application the user is actually using - verified live (see
-  `PROJECT.md`'s Verified facts). Jarvis's entire interaction model
-  (hotkeys + sound cues) depends on global firing, so run the terminal as
-  Administrator; Jarvis still starts without elevation but only warns.
-  This limitation is specific to the current Windows/`keyboard` combination
-  and is not a statement about any other platform.
+- Global hotkeys use Windows `RegisterHotKey` through `HotkeyProvider` and
+  register only Jarvis's concrete combinations. The former Python `keyboard`
+  global-key-hook dependency has been removed.
+- Administrator behavior for the native provider is not verified yet. Until
+  the v1.2.6 manual handoff tests focus-independent behavior both elevated and
+  non-elevated, Jarvis preserves the conservative startup warning and the
+  recommendation to run elevated. This is a temporary unverified limitation,
+  not a settled `RegisterHotKey` requirement.
 - The Status Console has a guarded Shutdown control (desktop: click,
   confirm; touchstrip: hold ~2s), routed through the same clean shutdown
   path as the `Ctrl+Alt+Q` hotkey - both stop the engine (background
