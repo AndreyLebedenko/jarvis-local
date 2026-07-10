@@ -89,6 +89,7 @@ class VadSettings:
     threshold: float = 0.5
     max_chunk_seconds: int = 30
     request_end_pause_seconds: float = 2.0
+    resume_cooldown_seconds: float = 1.0
 
 
 @dataclass(frozen=True)

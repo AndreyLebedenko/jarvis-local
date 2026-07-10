@@ -216,29 +216,19 @@ class Orchestrator:
         self._history.add("assistant", full_text)
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
-        """Clears the busy flag, optionally after a cooldown.
+        """Clears the busy flag, optionally after a cooldown, and resumes
+        the mic from its auto-pause (see on_response_token()).
 
-        Verified live: after Jarvis stops speaking, audio_in.py's own
-        VAD/merge pipeline has been continuously buffering the whole
-        time it was talking (it has no notion of "busy" at all - it
-        just watches the microphone). If the mic picks up Jarvis's own
-        voice from the speakers (no echo cancellation - not attempted in
-        v1.0), audio_in.py needs its own request_end_pause_seconds of
-        silence after Jarvis stops before it decides that "utterance" is
-        finished and publishes it. If busy had already cleared by then
-        (which it does almost immediately once wait_for_pending()
-        returns), that self-heard chunk is accepted as a genuine new
-        utterance and answered - the process is talking to itself. The
-        cooldown keeps busy True for roughly as long as audio_in.py's own
-        confirmation delay, so that self-heard tail is rejected by the
-        same busy-guard that already ignores utterances mid-turn, rather
-        than needing echo cancellation or a cross-module mute signal
-        into audio_in.py.
-
-        Task-10 layers a second mitigation on top: the mic is resumed
-        from its auto-pause (see on_response_token()) here, after the
-        same cooldown - see this class's docstring for why this no
-        longer needs to track whether it "owns" the pause.
+        Historical note: the cooldown originally had to mirror
+        vad.request_end_pause_seconds (2.0 s), because audio_in.py's
+        buffer kept whatever the mic heard while Jarvis was speaking, and
+        only the busy-guard stopped a self-heard tail from being answered.
+        Since the stale-buffer-replay fix (see
+        tasks/bug_reports/stale-audio-buffer-replay-after-mic-stall.md),
+        entering auto-pause stops the stream and invalidates the buffer,
+        so nothing heard during a turn can be published after resume. The
+        cooldown is now just a short grace period before capture resumes,
+        configurable as vad.resume_cooldown_seconds (default 1.0 s).
         """
         if cooldown_seconds > 0:
             await asyncio.sleep(cooldown_seconds)
@@ -481,7 +471,7 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
         return
     finally:
         await app.orchestrator.finish_turn(
-            cooldown_seconds=app.settings.vad.request_end_pause_seconds
+            cooldown_seconds=app.settings.vad.resume_cooldown_seconds
         )
     await app.sound_cues.play("listening")
 

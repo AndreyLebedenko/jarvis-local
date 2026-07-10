@@ -493,6 +493,197 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     assert received[0].end_seconds == pytest.approx(10.4, abs=0.05)
 
 
+# --- stale-buffer-replay fix (see tasks/bug_reports/) -----------------------
+#
+# All of these model the live-observed failure: a device that stops
+# delivering frames (hardware mute, USB stall) leaves the loop blocked
+# inside stream.read(), so none of the top-of-loop pause hygiene runs.
+# Whatever was buffered before the pause must never be published after it.
+
+
+async def test_auto_pause_stops_the_stream_to_interrupt_a_pending_read():
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    fake_stream = _SteppedFakeStream(blocks=[], fill_value=silence)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    await _wait_until_read_pending(fake_stream)
+    assert fake_stream.stop_calls == 0
+
+    await audio_input.auto_pause_for_speech()
+
+    assert fake_stream.stop_calls >= 1  # read interrupted without waiting for it
+
+    fake_stream.release_next_read()  # let the parked read finish before cleanup
+    await _run_until_cancelled(task)
+
+
+async def test_data_read_across_a_pause_is_discarded_not_published(vad_model):
+    """The read that was already in flight when the pause hit delivers
+    real speech WITH enough trailing silence to confirm an utterance -
+    before the fix, that published as a fresh turn."""
+    a2_samples = read_audio("audio/a2.wav", sampling_rate=SAMPLE_RATE).numpy()
+    confirmed_speech = np.concatenate(
+        [a2_samples, np.zeros(SAMPLE_RATE * 3, dtype=np.float32)]
+    )
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    fake_stream = _SteppedFakeStream(blocks=[confirmed_speech], fill_value=silence)
+
+    bus = EventBus()
+    received = []
+
+    async def on_chunk(chunk: UtteranceChunk) -> None:
+        received.append(chunk)
+
+    bus.subscribe(UtteranceChunk, on_chunk)
+    chunker = VadChunker(VadSettings(), model=vad_model)
+    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream)
+
+    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    await _wait_until_read_pending(fake_stream)
+
+    await audio_input.auto_pause_for_speech()
+    fake_stream.release_next_read()  # speech + confirming silence arrive across the pause
+    await _wait_until(
+        lambda: fake_stream.stop_calls >= 2,  # _apply_combined_state + pause branch
+        message="loop never reached the pause branch",
+    )
+    assert received == []
+
+    await audio_input.auto_resume_after_speech()
+
+    # post-resume silence reads: nothing stale must surface
+    for _ in range(3):
+        await _wait_until_read_pending(fake_stream)
+        fake_stream.release_next_read()
+
+    await _run_until_cancelled(task)
+    assert received == []
+
+
+async def test_stalled_read_buffer_is_dropped_on_resume_instead_of_replayed(vad_model):
+    """The exact live signature (listening -> thinking in ~35 ms): speech
+    is buffered but unconfirmed, the device stalls, pause AND resume both
+    pass while the loop is blocked in read(), then frames resume carrying
+    the confirming silence. Before the fix the pre-pause speech published
+    instantly as a fresh utterance."""
+    a2_samples = read_audio("audio/a2.wav", sampling_rate=SAMPLE_RATE).numpy()
+    confirming_silence = np.zeros(SAMPLE_RATE * 3, dtype=np.float32)
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    fake_stream = _SteppedFakeStream(
+        blocks=[a2_samples, confirming_silence], fill_value=silence
+    )
+
+    bus = EventBus()
+    received = []
+
+    async def on_chunk(chunk: UtteranceChunk) -> None:
+        received.append(chunk)
+
+    bus.subscribe(UtteranceChunk, on_chunk)
+    chunker = VadChunker(VadSettings(), model=vad_model)
+    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream)
+
+    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+
+    # Read #1: a2's speech lands in the buffer, unconfirmed (no trailing
+    # silence yet). The loop parks on read #2 - the "stalled device".
+    await _wait_until_read_pending(fake_stream)
+    fake_stream.release_next_read()
+    await _wait_until(lambda: fake_stream.read_calls >= 1)
+    await _wait_until_read_pending(fake_stream)
+    assert received == []
+
+    # Pause and resume both pass while read #2 is still blocked; the fake
+    # stream's stop() does not unblock the read, modelling a stall.
+    await audio_input.auto_pause_for_speech()
+    await audio_input.auto_resume_after_speech()
+
+    # Frames resume: read #2 delivers the confirming silence. With the old
+    # code the buffer still held a2 and published it immediately.
+    fake_stream.release_next_read()
+    await _wait_until(lambda: fake_stream.read_calls >= 2)
+
+    for _ in range(3):
+        await _wait_until_read_pending(fake_stream)
+        fake_stream.release_next_read()
+
+    await _run_until_cancelled(task)
+    assert received == []
+    assert fake_stream.start_calls >= 1  # capture restarted after the missed pause
+
+
+class _PauseRaisingFakeStream:
+    """Models the real device behavior where stopping the stream makes the
+    blocked read() raise (PortAudio returns an error from Pa_ReadStream on
+    a stopped stream). start() re-arms it so post-resume reads succeed."""
+
+    def __init__(self, block_samples: int) -> None:
+        self._block_samples = block_samples
+        self._stopped = threading.Event()
+        self._waiting = threading.Event()
+        self.read_calls = 0
+        self.stop_calls = 0
+        self.start_calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def block_until_read_is_pending(self, timeout: float) -> None:
+        if not self._waiting.wait(timeout):
+            raise AssertionError("read() was never called")
+        self._waiting.clear()
+
+    def read(self, block_samples):
+        self.read_calls += 1
+        if self._stopped.is_set():
+            raise RuntimeError("Error reading stream: stream is stopped")
+        self._waiting.set()
+        self._stopped.wait()
+        raise RuntimeError("Error reading stream: stream was stopped")
+
+    def stop(self):
+        self.stop_calls += 1
+        self._stopped.set()
+
+    def start(self):
+        self.start_calls += 1
+        self._stopped.clear()
+
+
+async def test_read_exception_from_a_pause_stop_is_treated_as_pause_not_crash():
+    fake_stream = _PauseRaisingFakeStream(block_samples=160)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    await _wait_until_read_pending(fake_stream)
+
+    await audio_input.auto_pause_for_speech()  # stop() makes the blocked read raise
+    await _wait_until(
+        lambda: fake_stream.stop_calls >= 2,  # _apply_combined_state + pause branch
+        message="loop never reached the pause branch after the read raised",
+    )
+    assert not task.done()  # the loop survived the interrupted read
+
+    await audio_input.auto_resume_after_speech()
+    await _wait_until(
+        lambda: fake_stream.start_calls >= 1,
+        message="loop never restarted capture after resume",
+    )
+
+    # stop() unblocks the read parked after resume, so the loop (and its
+    # worker thread) exits cleanly instead of being abandoned mid-read.
+    await audio_input.stop()
+    await asyncio.wait_for(task, timeout=2)
+
+
 async def test_stop_unblocks_a_microphone_loop_waiting_inside_stream_read():
     fake_stream = _StopUnblocksFakeStream(block_samples=160)
     chunker = _CountingFakeChunker()

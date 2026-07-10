@@ -1284,8 +1284,8 @@ async def test_on_full_response_complete_clears_busy_and_plays_error_when_tts_fa
         sound_cues=sound_cues,
         thinking_mode=None,
         # negligible cooldown - keeps this test fast; the real default
-        # (2.0 s) is exercised by design, not by this test's timing
-        settings=Settings(vad=VadSettings(request_end_pause_seconds=0.001)),
+        # (1.0 s) is exercised by design, not by this test's timing
+        settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
     )
 
     await orchestrator.on_utterance(UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1))
