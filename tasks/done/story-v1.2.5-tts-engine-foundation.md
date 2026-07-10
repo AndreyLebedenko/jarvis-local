@@ -1,6 +1,7 @@
 ﻿# Story v1.2.5: TTS engine foundation
 
-**Status:** Backlog.
+**Status:** Completed (closed 2026-07-10; the `[tts] engine` config item
+was superseded by v1.2.9's per-language routes, see task-5).
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.5
 
@@ -23,22 +24,24 @@ buffering and playback orchestration.
 
 ## Acceptance Criteria
 
-- [ ] Ollama `flash_attention` and `kv_cache_type` options are configurable and
+- [x] Ollama `flash_attention` and `kv_cache_type` options are configurable and
       included in backend request payloads before the spike runs.
-- [ ] A dedicated spike task produces `manual_check_tts_engines.py`.
-- [ ] The spike compares Silero, Piper, Kokoro, and XTTS-v2 where they can be
+- [x] A dedicated spike task produces `manual_check_tts_engines.py`.
+- [x] The spike compares Silero, Piper, Kokoro, and XTTS-v2 where they can be
       installed locally.
-- [ ] The spike measures quality on fixed Russian, English, mixed Latin,
+- [x] The spike measures quality on fixed Russian, English, mixed Latin,
       numbers, short answers, and code-like phrases.
-- [ ] The spike measures first-sentence latency, cold load time, and peak VRAM
+- [x] The spike measures first-sentence latency, cold load time, and peak VRAM
       delta while Gemma remains resident.
-- [ ] The spike compares Ollama Gemma with 64K f16 KV cache and 64K q8_0 KV
+- [x] The spike compares Ollama Gemma with 64K f16 KV cache and 64K q8_0 KV
       cache, including resource headroom for stronger TTS options.
-- [ ] Human-confirmed measurements are recorded in `PROJECT.md`.
-- [ ] `TtsOutput` keeps buffering/playback orchestration while synthesis moves
+- [x] Human-confirmed measurements are recorded in `PROJECT.md`.
+- [x] `TtsOutput` keeps buffering/playback orchestration while synthesis moves
       behind a `TtsEngine` interface.
-- [ ] Current Silero behavior remains covered by tests after refactor.
+- [x] Current Silero behavior remains covered by tests after refactor.
 - [ ] Config supports `[tts] engine` and engine-specific subsections.
+      SUPERSEDED: v1.2.9's `[tts.languages.<lang>]` per-language routes
+      replaced the global engine switch (see task-5's status note).
 
 ## Task Card Sequence
 
