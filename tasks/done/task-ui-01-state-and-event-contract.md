@@ -48,7 +48,7 @@ importable regardless of that choice. Shapes:
   change).
 - `VisibilityMode` (enum): `OPEN`, `HIDDEN`. Independent of `DataLocality` -
   see story's Key Decisions and
-  `tasks/task-ui-privacy-and-touchstrip-requirements.md`.
+  `task-ui-privacy-and-touchstrip-requirements.md`.
 - `DataLocality` (enum): `LOCAL`, `EXTERNAL`. v1.0 only ever reports `LOCAL`
   (Ollama is the only supported v1.0 backend per `PROJECT.md`); `EXTERNAL` is
   defined now so the enum shape does not need to change later, even though
