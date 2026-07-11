@@ -299,6 +299,37 @@ Boundary:
 Story/task readiness: story card exists; implementation task cards should be
 created before coding.
 
+## v1.2.10 - UI transport
+
+Purpose: move all UI surfaces onto one local HTTP+WebSocket transport as the
+architectural prerequisite for the v1.3.0 Control Center, aligned with the
+component-model direction in `VISION.md`.
+
+Scope:
+
+- Complete `tasks/story-v1.2.10-ui-transport.md`.
+- Local server (aiohttp) in the engine asyncio loop: loopback bind,
+  ephemeral port, one-time token.
+- Protocol v1: hello/handshake with client capability declaration; `state`
+  channel (snapshot plus deltas over `ui_contract.py` values); `control`
+  channel (think toggle, reset, shutdown, visibility). Envelope reserves
+  channel multiplexing for later audio channels.
+- Status Console and touchstrip migrate to the WS transport with visual
+  parity; the `evaluate_js`/`js_api` bridge is removed; pywebview remains a
+  window shell opening the loopback URL.
+- Manual handoff verifies real windows and a Chrome client on the same URL.
+- `PROJECT.md` records the transport decision and the loopback locality
+  clarification: listening on loopback is not outbound network access.
+
+Boundary:
+
+- Loopback only. LAN binding, pairing/mTLS, audio channels, and multi-host
+  operation are out of scope.
+- `bus.py` is unchanged; the server is a bus client, not a distributed bus.
+- No visual changes to existing surfaces.
+
+Story/task readiness: story and task cards exist.
+
 ## v1.3.0 - Control Center
 
 Purpose: deliver the full UI/control release on top of already-built engine
@@ -311,6 +342,8 @@ Prerequisites:
 - Shutdown control and configuration layering exist.
 - TTS engine boundary and benchmark decisions exist.
 - Hotkeys use the unified provider path.
+- v1.2.10 UI transport is complete: all surfaces on the local HTTP+WS
+  server, `evaluate_js`/`js_api` bridge removed.
 
 Scope:
 

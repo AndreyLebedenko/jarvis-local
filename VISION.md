@@ -52,11 +52,39 @@ Jarvis should evolve around five boundaries:
    In-process first; later LAN transport such as WebSocket, HTTP, or another
    authenticated local protocol when a real remote surface needs it.
 
+## Component Model (Jarvis 2.0 direction)
+
+The long-term identity of Jarvis is a bus plus orchestrator. The LLM,
+information sources (including PC input capture), and output devices are all
+components registered with the orchestrator, not parts of a monolith.
+
+- The event bus stays in-process on the orchestrator host. Remote components
+  attach through authenticated protocol adapters that project bus traffic in
+  both directions. Jarvis does not implement a distributed event bus.
+- Registration is a handshake: a component declares its identity and
+  capabilities before exchanging state or media. The wire protocol reserves
+  this from its first version, even while the only client is local.
+- Compute components live where they are implemented - typically on the
+  orchestrator host (TTS synthesis, recognition via the LLM backend).
+  Sensor and actuator components live on the node physically near the user
+  (microphone capture, audio playback, screen capture, global hotkeys).
+  Synthesis and playback are therefore separate components, as are capture
+  and recognition.
+- Multiple hosts may register components. The orchestrator arbitrates which
+  sensor node is active at a given moment; the arbitration mechanics are a
+  later decision, but the protocol leaves room for it via registration.
+- Security direction for LAN operation: pairing-based trust, with
+  host-issued client certificates (mTLS) as the leading option for
+  component nodes; UI surfaces may use token auth instead. Not decided yet.
+
 ## Near-Term Implications
 
 - Keep UI logic out of core modules.
 - Keep backend-specific assumptions inside backend adapters.
 - Stabilize state and command contracts before adding remote transport.
+- Design the UI transport protocol (v1.2.x) as a multiplexed channel set
+  (state, control, later audio) with no same-process or same-machine
+  assumptions, while shipping it loopback-only.
 - Treat the Status Console as the first management surface, not the final
   application shape.
 - Do not add network dependency to core runtime just because a future transport
