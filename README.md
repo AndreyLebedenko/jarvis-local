@@ -24,12 +24,16 @@ is English by default, with Russian available via `[ui].language = "ru"`.
 
 ## Status
 
-This is a v1.2 hobby/research release. It is usable, but intentionally honest
-about its limits: no full echo cancellation, Russian-first Silero defaults,
-rough Latin transliteration when that default handles Latin text, and
-imperfect OCR on dense screenshots. A production configuration using Silero
-for Russian and Piper for English has been verified; engine selection remains
-configurable per supported language.
+This is a usable v1.2 hobby/research release with verified bilingual TTS:
+Silero handles Russian and Piper handles English, with streamed text routed
+automatically by character set. TTS engines and local voice models remain
+configurable per language. The zero-config compatibility default uses Russian
+Silero only; its rough Latin-to-Cyrillic transliteration is a fallback for
+users who have not configured the English Piper route, not the recommended
+bilingual setup.
+
+The remaining important limitations are the lack of full echo cancellation
+and imperfect OCR on dense screenshots.
 
 Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
