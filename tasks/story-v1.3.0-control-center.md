@@ -1,6 +1,6 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Backlog, blocked only by v1.2.10 UI transport.
+**Status:** Backlog, ready to start now that v1.2.10 UI transport is complete.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.3.0
 
@@ -31,7 +31,7 @@ layering, TTS engine choices, and unified hotkeys.
 - [x] v1.2.4 shutdown and configuration layer are complete.
 - [x] v1.2.5 TTS measurements and engine boundary are complete.
 - [x] v1.2.6 HotkeyProvider migration is complete.
-- [ ] v1.2.10 UI transport (`tasks/story-v1.2.10-ui-transport.md`) is
+- [x] v1.2.10 UI transport (`tasks/done/story-v1.2.10-ui-transport.md`) is
       complete: local HTTP+WebSocket server bound to loopback, registration
       handshake in protocol v1, Status Console and touchstrip migrated from
       the `evaluate_js` bridge to the WS channels.
