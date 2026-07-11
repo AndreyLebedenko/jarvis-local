@@ -44,7 +44,10 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Hotkey and sound-cue interface.
 - Local Status Console UI with system events, Think mode, Open/Hidden mode,
   context reset, guarded Shutdown, a restart-to-apply model/microphone
-  configuration menu, and touchstrip glance surface.
+  configuration menu, and touchstrip glance surface. The UI language is
+  English by default; Russian is available via `[ui].language = "ru"` in
+  `config.toml` (UI chrome only - the assistant's dialog language and TTS
+  are not affected).
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration.
 - Jarvis core runtime has no network dependency after models are downloaded.

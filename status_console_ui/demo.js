@@ -4,12 +4,12 @@
 // bridge would call, so this exercises the real rendering path.
 
 const RUNTIME_STATE_LABELS = {
-  idle: ["Ожидание", "Скажите «Джарвис», чтобы начать."],
-  warming: ["Прогрев (локально)", "Модель загружается в память GPU..."],
-  listening: ["Слушаю", "Жду голосовую команду..."],
-  thinking: ["Думаю", "Собираю контекст и формирую ответ..."],
-  speaking: ["Отвечаю", "Произношу ответ вслух..."],
-  error: ["Ошибка", "Смотри событие в логе (task-ui-03)."],
+  idle: ["Idle", 'Say "Jarvis" to begin.'],
+  warming: ["Warming up (local)", "Loading the model into GPU memory..."],
+  listening: ["Listening", "Waiting for a voice command..."],
+  thinking: ["Thinking", "Gathering context and composing a response..."],
+  speaking: ["Speaking", "Speaking the response aloud..."],
+  error: ["Error", "See the event in the log (task-ui-03)."],
 };
 
 function buildControls() {
@@ -51,10 +51,10 @@ function buildControls() {
   logGroup.textContent = "log event:";
   root.appendChild(logGroup);
   const sampleMessages = {
-    info: ["ENGINE", "Цикл завершён"],
-    active: ["LLM", "Запрос отправлен в Ollama"],
-    warn: ["WARMUP", "Прогрев не удался - первый ответ может быть медленным"],
-    error: ["TTS", "Устройство вывода звука не найдено"],
+    info: ["ENGINE", "Cycle complete"],
+    active: ["LLM", "Request sent to Ollama"],
+    warn: ["WARMUP", "Warm-up failed - the first response may be slow"],
+    error: ["TTS", "Audio output device not found"],
   };
   for (const level of EVENT_LEVELS) {
     const [source, message] = sampleMessages[level];
@@ -76,9 +76,9 @@ function buildControls() {
         level: EVENT_LEVELS[i % EVENT_LEVELS.length],
         message:
           i % 7 === 0
-            ? "Очень длинное сообщение для проверки переноса строки в узкой панели событий без поломки раскладки: " +
+            ? "A very long message to check line wrapping in the narrow event panel without breaking the layout: " +
               "eval_count=163 prompt_eval_duration=1.2s load_duration=0.3s"
-            : `Событие #${i}`,
+            : `Event #${i}`,
       });
     }
   };

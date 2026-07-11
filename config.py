@@ -163,6 +163,20 @@ class MicrophoneSettings:
 
 
 @dataclass(frozen=True)
+class UiSettings:
+    """UI chrome language only (story-v1.2.11-ui-english-localization.md):
+    the dialog language - system prompt, TTS output, speech markup - is
+    runtime data and is not governed by this setting.
+
+    The default and the supported set are literals here, not imports from
+    ui_text.py: config.py must stay free of project-module imports (see
+    test_config_has_no_project_import_dependencies). A test asserts the
+    two modules agree."""
+
+    language: str = "en"
+
+
+@dataclass(frozen=True)
 class Settings:
     backend: BackendSettings = field(default_factory=BackendSettings)
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings)
@@ -172,6 +186,7 @@ class Settings:
     sound_cues: SoundCueSettings = field(default_factory=SoundCueSettings)
     clipboard: ClipboardSettings = field(default_factory=ClipboardSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
+    ui: UiSettings = field(default_factory=UiSettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -183,8 +198,10 @@ _SECTIONS: dict[str, type] = {
     "sound_cues": SoundCueSettings,
     "clipboard": ClipboardSettings,
     "microphone": MicrophoneSettings,
+    "ui": UiSettings,
 }
 
+_SUPPORTED_UI_LANGUAGES = ("en", "ru")
 _SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
 _SUPPORTED_TTS_ENGINES = frozenset({"silero", "piper"})
 
@@ -217,7 +234,12 @@ def _describe_type(expected_type: type) -> str:
 def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
     if cls is TtsSettings:
         return _build_tts_section(section_name, raw)
+    if cls is UiSettings:
+        return _build_ui_section(section_name, raw)
+    return _build_plain_section(section_name, cls, raw)
 
+
+def _build_plain_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
     known_fields = {f.name: f.type for f in fields(cls)}
     unknown_keys = set(raw) - set(known_fields)
     if unknown_keys:
@@ -239,6 +261,17 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
             )
         kwargs[name] = value
     return cls(**kwargs)
+
+
+def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
+    settings = _build_plain_section(section_name, UiSettings, raw)
+    if settings.language not in _SUPPORTED_UI_LANGUAGES:
+        supported = ", ".join(_SUPPORTED_UI_LANGUAGES)
+        raise ConfigError(
+            f"[{section_name}].language must be one of: {supported}; "
+            f"got {settings.language!r}"
+        )
+    return settings
 
 
 def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:

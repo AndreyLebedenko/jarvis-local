@@ -38,7 +38,7 @@ const _showTransportStatus = typeof createTransportStatusHandler === "function"
 
 function _sendControl(command, argumentsObject = {}) {
   if (typeof sendUiControl !== "function" || !sendUiControl(command, argumentsObject)) {
-    _showTransportStatus(false, "Нет связи с engine");
+    _showTransportStatus(false, uiString("transport_no_connection"));
   }
 }
 
@@ -48,6 +48,7 @@ function _clearSystemEvents() {
 }
 
 function _applyStateSnapshot(state) {
+  applyUiLanguage(state.ui_language || {});
   applyRuntimeState(state.runtime);
   Object.values(state.modules || {}).forEach(applyModuleHealth);
   applyDataLocality(state.data_locality);
@@ -73,6 +74,7 @@ function _applyStateDelta(payload) {
     model_options: applyModelOptions,
     microphone_options: applyMicrophoneOptions,
     pending_restart: applyPendingRestart,
+    ui_language: applyUiLanguage,
   });
 }
 
@@ -111,7 +113,7 @@ function applyModuleHealth(payload) {
 function _renderVisionChipMeta() {
   const isHidden = document.documentElement.getAttribute("data-visibility") === "hidden";
   document.getElementById("chip-vision").querySelector(".chip-meta").textContent = isHidden
-    ? "превью скрыто (Hidden)"
+    ? uiString("vision_preview_hidden")
     : _lastVisionDetail;
 }
 
@@ -119,7 +121,7 @@ function applyDataLocality(payload) {
   const badge = document.getElementById("localityBadge");
   badge.setAttribute("data-locality", payload.locality);
   badge.querySelector(".locality-label").textContent =
-    payload.locality === "local" ? "Локально" : "Внешний backend";
+    uiString(payload.locality === "local" ? "locality_local" : "locality_external");
 }
 
 function applyModelLabel(payload) {
@@ -168,9 +170,9 @@ function applyThinkingMode(payload) {
   const enabled = payload.is_enabled;
   document.getElementById("thinkSwitch").classList.toggle("on", enabled);
   document.getElementById("thinkTag").textContent = "think: " + (enabled ? "on" : "off");
-  document.getElementById("thinkStatus").textContent = enabled
-    ? "Глубже, медленнее - с расширенной обработкой запроса"
-    : "Быстрее, без рассуждения";
+  document.getElementById("thinkStatus").textContent = uiString(
+    enabled ? "think_status_on" : "think_status_off"
+  );
 }
 
 function toggleThinking() {
@@ -253,7 +255,7 @@ function setVisibilityMode(modeValue) {
 // (status_console.py's request_model_options()/request_microphone_options(),
 // never invented or guessed here). Like every other control on this page,
 // selecting an option does not apply anything by itself - only
-// applyConfigSelection() (the "Применить" button) writes config.ui.toml,
+// applyConfigSelection() (the "Apply" button) writes config.ui.toml,
 // and even that is restart-to-apply, not live (see confirmShutdown() and
 // the reset flow above for the same "engine confirms, UI never assumes"
 // shape - the difference here is there is no live confirmation event to
@@ -262,7 +264,7 @@ function setVisibilityMode(modeValue) {
 // successful save, not deferred to any engine event).
 // Regression guard (2026-07-07, real live-session bug): both <select>s
 // start empty (no <option>s) until request_model_options()/
-// request_microphone_options() resolve - a click on "Применить" before
+// request_microphone_options() resolve - a click on "Apply" before
 // then read modelSelect.value as "" and saved an empty model into
 // config.ui.toml, breaking the next restart. btnConfigApply now starts
 // disabled (see index.html) and only re-enables once both selectors have
@@ -295,7 +297,7 @@ function _renderOptions(select, options, current) {
   for (const option of options) {
     const el = document.createElement("option");
     el.value = option;
-    el.textContent = option === "" ? "(системный микрофон по умолчанию)" : option;
+    el.textContent = option === "" ? uiString("default_microphone_option") : option;
     if (option === current) el.selected = true;
     select.appendChild(el);
   }

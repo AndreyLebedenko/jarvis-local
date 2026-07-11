@@ -41,6 +41,7 @@ from ui_contract import (
     ModuleId,
     RuntimeState,
 )
+from ui_text import ui_text
 from ui_transport import UiStateStore, UiTransportInfo, UiTransportServer
 from visibility_mode import VisibilityModeState
 
@@ -324,11 +325,13 @@ def _push_runtime_state(
     live_console.transport.set_runtime_state(state, substatus)
 
 
-def _microphone_health(is_awake: bool) -> ModuleHealth:
+def _microphone_health(is_awake: bool, language: str) -> ModuleHealth:
     return ModuleHealth(
         module=ModuleId.MICROPHONE,
         status=HealthStatus.OK if is_awake else HealthStatus.UNAVAILABLE,
-        detail="слушает" if is_awake else "не используется",
+        detail=ui_text(
+            "mic_detail_listening" if is_awake else "mic_detail_muted", language
+        ),
     )
 
 
@@ -371,8 +374,14 @@ def wire_status_console(
     live_console.transport.set_data_locality(DataLocality.LOCAL)
     live_console.transport.set_thinking_mode(app.thinking_mode.is_enabled)
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
-    live_console.transport.set_module_health(_microphone_health(app.audio_input.is_awake))
-    _push_runtime_state(live_console, RuntimeState.WARMING, "Прогреваю модель...")
+    live_console.transport.set_module_health(
+        _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
+    )
+    _push_runtime_state(
+        live_console,
+        RuntimeState.WARMING,
+        ui_text("warming_model", app.settings.ui.language),
+    )
     return []
 
 
@@ -402,7 +411,9 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
         source="HOTKEY",
         level=EventLevel.INFO,
         log_message=f"Microphone {'awake' if awake else 'asleep'}",
-        ui_message="Микрофон разбужен" if awake else "Микрофон усыплён",
+        ui_message=ui_text(
+            "mic_awake" if awake else "mic_asleep", app.settings.ui.language
+        ),
     )
     await app.sound_cues.play("mic_wake" if awake else "mic_sleep")
 
@@ -416,7 +427,10 @@ async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> Non
         source="HOTKEY",
         level=EventLevel.INFO,
         log_message=f"Thinking mode {'enabled' if enabled else 'disabled'}",
-        ui_message="Режим мышления включён" if enabled else "Режим мышления выключен",
+        ui_message=ui_text(
+            "thinking_enabled" if enabled else "thinking_disabled",
+            app.settings.ui.language,
+        ),
     )
     await app.sound_cues.play("thinking_on" if enabled else "thinking_off")
 
@@ -429,7 +443,11 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
     async def on_full_response_complete(event: ResponseComplete) -> None:
         await _on_full_response_complete(app, event)
         if live_console is not None:
-            _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
+            _push_runtime_state(
+                live_console,
+                RuntimeState.LISTENING,
+                ui_text("ready_to_listen", app.settings.ui.language),
+            )
 
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
@@ -439,12 +457,20 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
 
     async def on_utterance(event: UtteranceChunk) -> None:
         if live_console is not None and not app.orchestrator.is_busy:
-            _push_runtime_state(live_console, RuntimeState.THINKING, "Обрабатываю голос...")
+            _push_runtime_state(
+                live_console,
+                RuntimeState.THINKING,
+                ui_text("processing_voice", app.settings.ui.language),
+            )
         await app.orchestrator.on_utterance(event)
 
     async def on_clipboard(event: ClipboardSubmitted) -> None:
         if live_console is not None and not app.orchestrator.is_busy and not event.is_empty:
-            _push_runtime_state(live_console, RuntimeState.THINKING, "Обрабатываю текст...")
+            _push_runtime_state(
+                live_console,
+                RuntimeState.THINKING,
+                ui_text("processing_text", app.settings.ui.language),
+            )
         await app.orchestrator.on_clipboard(event)
 
     utterance_handler = on_utterance if live_console is not None else app.orchestrator.on_utterance
@@ -470,8 +496,11 @@ def unwire(app: App, subscriptions: list[Subscription]) -> None:
         app.bus.unsubscribe(event_type, handler)
 
 
-async def warm_up(backend: OllamaBackend, bus: EventBus) -> None:
-    """Runs a throwaway backend request before user input is accepted."""
+async def warm_up(backend: OllamaBackend, bus: EventBus, ui_language: str = "en") -> None:
+    """Runs a throwaway backend request before user input is accepted.
+
+    The warm-up prompt stays Russian regardless of ui_language: it is
+    dialog data sent to the model, not UI text."""
     try:
         await backend.chat([{"role": "user", "content": "Привет"}])
     except Exception:
@@ -482,7 +511,7 @@ async def warm_up(backend: OllamaBackend, bus: EventBus) -> None:
             source="WARMUP",
             level=EventLevel.WARN,
             log_message="Warm-up request failed; continuing anyway",
-            ui_message="Прогрев модели не удался - первый ответ может быть медленным",
+            ui_message=ui_text("warmup_failed", ui_language),
         )
     else:
         await publish_system_event(
@@ -491,7 +520,7 @@ async def warm_up(backend: OllamaBackend, bus: EventBus) -> None:
             source="WARMUP",
             level=EventLevel.INFO,
             log_message="Warm-up request succeeded",
-            ui_message="Прогрев модели завершён",
+            ui_message=ui_text("warmup_succeeded", ui_language),
         )
 
 
@@ -561,9 +590,13 @@ async def run(
         )
     else:
         status_console_subscriptions = []
-    await warm_up(app.backend, app.bus)
+    await warm_up(app.backend, app.bus, settings.ui.language)
     if live_console is not None:
-        _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
+        _push_runtime_state(
+            live_console,
+            RuntimeState.LISTENING,
+            ui_text("ready_to_listen", settings.ui.language),
+        )
     subscriptions = [*status_console_subscriptions, *wire(app, live_console)]
 
     loop = asyncio.get_running_loop()
@@ -613,6 +646,7 @@ def run_with_status_console(
             model_label=settings.backend.model,
             thinking_enabled=app.thinking_mode.is_enabled,
             visibility_mode=app.visibility_mode.mode,
+            language=settings.ui.language,
         ),
         logger=logger,
     )

@@ -638,7 +638,7 @@ async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(capl
     assert len(received) == 1
     assert received[0].source == "HOTKEY"
     assert received[0].level is EventLevel.INFO
-    assert "включ" in received[0].message
+    assert "enabled" in received[0].message
 
 
 # --- warm-up SystemEvent (task-ui-03) ---------------------------------------
@@ -837,20 +837,24 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
         ("visibility", VisibilityMode.OPEN),
         (
             "module",
-            ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает"),
+            ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="listening"),
         ),
-        ("runtime", (RuntimeState.WARMING, "Прогреваю модель...")),
+        ("runtime", (RuntimeState.WARMING, "Warming up the model...")),
     ]
 
     unwire(app, subscriptions)
 
 
 def test_microphone_health_reports_user_muted_as_not_in_use():
-    assert _microphone_health(False) == ModuleHealth(
+    assert _microphone_health(False, "en") == ModuleHealth(
         module=ModuleId.MICROPHONE,
         status=HealthStatus.UNAVAILABLE,
-        detail="не используется",
+        detail="not in use",
     )
+
+
+def test_microphone_health_keeps_the_v1_2_10_russian_muted_wording():
+    assert _microphone_health(False, "ru").detail == "не используется"
 
 
 async def test_wire_status_console_leaves_bus_projection_to_the_transport_server():
@@ -866,7 +870,7 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     assert len(transport.calls) == 6
     assert transport.calls[-1] == (
         "runtime",
-        (RuntimeState.WARMING, "Прогреваю модель..."),
+        (RuntimeState.WARMING, "Warming up the model..."),
     )
 
     unwire(app, subscriptions)
@@ -883,7 +887,7 @@ async def test_wire_with_live_status_console_reports_thinking_before_accepted_tu
         UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
     )
 
-    assert transport.calls[-1] == ("runtime", (RuntimeState.THINKING, "Обрабатываю голос..."))
+    assert transport.calls[-1] == ("runtime", (RuntimeState.THINKING, "Processing voice..."))
 
 
 async def test_wire_pushes_listening_state_after_response_complete():
@@ -915,7 +919,7 @@ async def test_wire_pushes_listening_state_after_response_complete():
         ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
     )
 
-    assert transport.calls[-1] == ("runtime", (RuntimeState.LISTENING, "Готов слушать"))
+    assert transport.calls[-1] == ("runtime", (RuntimeState.LISTENING, "Ready to listen"))
 
 
 def test_parse_args_enables_status_console_without_touchstrip():
@@ -1146,7 +1150,7 @@ async def test_on_mic_sleep_toggled_publishes_a_system_event_for_the_ui():
     assert len(received) == 1
     assert received[0].source == "HOTKEY"
     assert received[0].level is EventLevel.INFO
-    assert "усыпл" in received[0].message
+    assert "sleep" in received[0].message
 
 
 # --- ResponseComplete ordering (review finding) -----------------------------
