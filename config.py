@@ -162,6 +162,36 @@ class MicrophoneSettings:
     device: str = ""
 
 
+# Dialog-prompt defaults (task-v1.2.12-external-prompt-config.md). These are
+# runtime dialog data sent to the model, not UI text - deliberately not part
+# of ui_text.py's UI catalog and not governed by [ui].language. Russian
+# typography is canonical here (see the agent instructions' exception for
+# runtime user-facing strings).
+_DEFAULT_SYSTEM_PROMPT = (
+    "Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай "
+    "по-русски, если пользователь явно не попросил другой язык. Отвечай "
+    "коротко и по существу: одно-два предложения, если не попросили "
+    "подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока "
+    "он прозвучит. Не используй Markdown, если пользователь явно не просит "
+    "форматирование. Английские термины, API names, identifiers, короткие "
+    "английские фразы и цитаты можно писать обычным текстом там, где они "
+    "уместны; языковую разметку добавлять не нужно. Если вместе с голосовым "
+    "сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, "
+    "что на нём видно."
+)
+_DEFAULT_WARMUP_PROMPT = "Привет"
+
+
+@dataclass(frozen=True)
+class PromptSettings:
+    """The dialog prompts sent to the model: `system` opens every turn's
+    message list, `warmup` is the throwaway request main.warm_up() sends
+    before user input is accepted."""
+
+    system: str = _DEFAULT_SYSTEM_PROMPT
+    warmup: str = _DEFAULT_WARMUP_PROMPT
+
+
 @dataclass(frozen=True)
 class UiSettings:
     """UI chrome language only (story-v1.2.11-ui-english-localization.md):
@@ -187,6 +217,7 @@ class Settings:
     clipboard: ClipboardSettings = field(default_factory=ClipboardSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
     ui: UiSettings = field(default_factory=UiSettings)
+    prompts: PromptSettings = field(default_factory=PromptSettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -199,6 +230,7 @@ _SECTIONS: dict[str, type] = {
     "clipboard": ClipboardSettings,
     "microphone": MicrophoneSettings,
     "ui": UiSettings,
+    "prompts": PromptSettings,
 }
 
 _SUPPORTED_UI_LANGUAGES = ("en", "ru")
@@ -236,6 +268,8 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         return _build_tts_section(section_name, raw)
     if cls is UiSettings:
         return _build_ui_section(section_name, raw)
+    if cls is PromptSettings:
+        return _build_prompts_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -271,6 +305,17 @@ def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
             f"[{section_name}].language must be one of: {supported}; "
             f"got {settings.language!r}"
         )
+    return settings
+
+
+def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSettings":
+    settings = _build_plain_section(section_name, PromptSettings, raw)
+    for name in ("system", "warmup"):
+        if not getattr(settings, name).strip():
+            raise ConfigError(
+                f"[{section_name}].{name} must be a non-empty string; an empty "
+                "prompt is almost certainly a config mistake"
+            )
     return settings
 
 

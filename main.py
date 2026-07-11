@@ -21,7 +21,7 @@ from capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from capture import run_hotkey_listener as run_capture_hotkey_listener
 from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
-from config import Settings, load_settings
+from config import PromptSettings, Settings, load_settings
 from hotkey_provider import HotkeyProvider, WindowsHotkeyProvider
 from sound_cues import SoundCuePlayer, ensure_generated
 from status_console import (
@@ -47,18 +47,10 @@ from visibility_mode import VisibilityModeState
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = (
-    "Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай "
-    "по-русски, если пользователь явно не попросил другой язык. Отвечай "
-    "коротко и по существу: одно-два предложения, если не попросили "
-    "подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока "
-    "он прозвучит. Не используй Markdown, если пользователь явно не просит "
-    "форматирование. Английские термины, API names, identifiers, короткие "
-    "английские фразы и цитаты можно писать обычным текстом там, где они "
-    "уместны; языковую разметку добавлять не нужно. Если вместе с голосовым "
-    "сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, "
-    "что на нём видно."
-)
+# Dialog prompts live in config.py's PromptSettings ([prompts] section,
+# task-v1.2.12-external-prompt-config.md); this alias keeps the historical
+# name for the built-in default.
+SYSTEM_PROMPT = PromptSettings().system
 
 
 @dataclass(frozen=True)
@@ -272,7 +264,12 @@ def build_app(
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
     orchestrator = Orchestrator(
-        backend, history, sound_cues, audio_input=audio_input, thinking_mode=thinking_mode
+        backend,
+        history,
+        sound_cues,
+        system_prompt=settings.prompts.system,
+        audio_input=audio_input,
+        thinking_mode=thinking_mode,
     )
     return App(
         bus=bus,
@@ -496,13 +493,18 @@ def unwire(app: App, subscriptions: list[Subscription]) -> None:
         app.bus.unsubscribe(event_type, handler)
 
 
-async def warm_up(backend: OllamaBackend, bus: EventBus, ui_language: str = "en") -> None:
+async def warm_up(
+    backend: OllamaBackend,
+    bus: EventBus,
+    ui_language: str = "en",
+    warmup_prompt: str = PromptSettings().warmup,
+) -> None:
     """Runs a throwaway backend request before user input is accepted.
 
-    The warm-up prompt stays Russian regardless of ui_language: it is
-    dialog data sent to the model, not UI text."""
+    The warm-up prompt is dialog data configured via [prompts].warmup,
+    independent of ui_language, which governs UI text only."""
     try:
-        await backend.chat([{"role": "user", "content": "Привет"}])
+        await backend.chat([{"role": "user", "content": warmup_prompt}])
     except Exception:
         logger.exception("Warm-up request failed; continuing anyway")
         await publish_system_event(
@@ -590,7 +592,9 @@ async def run(
         )
     else:
         status_console_subscriptions = []
-    await warm_up(app.backend, app.bus, settings.ui.language)
+    await warm_up(
+        app.backend, app.bus, settings.ui.language, settings.prompts.warmup
+    )
     if live_console is not None:
         _push_runtime_state(
             live_console,

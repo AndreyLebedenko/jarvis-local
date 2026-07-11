@@ -410,7 +410,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   no assets committed) if `config.sound_cues`' paths don't already exist,
   and plays them; fire-and-forget so a cue never adds latency to the
   request it signals about.
-- `main.py` — wiring + system prompt. System prompt must enforce SHORT
+- `main.py` — wiring + system prompt (since v1.2.12 the prompt text lives
+  in config.py's PromptSettings, `[prompts]` section). System prompt must
+  enforce SHORT
   conversational answers (latency ∝ answer length), Russian by default, and
   plain speakable text. It tells the model not to use Markdown unless asked and
   not to add language markup; English terms, API names, identifiers, short
@@ -1256,6 +1258,23 @@ default UI language.
   previously pushed "усыплён" on live MicSleepToggled while main.py seeded
   "не используется"; both now resolve the same catalog key, keeping the
   v1.2.10 wording decision ("не используется" / "not in use").
+
+## Architecture v1.2.12 (external dialog prompts)
+
+The system prompt and the warm-up request text are configuration, not
+source literals:
+
+- `[prompts].system` and `[prompts].warmup` in config.py's PromptSettings;
+  defaults are the previous main.py literals verbatim (Russian prompt,
+  "Привет"), so a missing config keeps v1.2.11 behavior byte-identical.
+- Both must be non-empty strings; empty values are a ConfigError.
+- This is the dialog-language counterpart to `[ui].language` (v1.2.11):
+  the two are independent. Switching the assistant's spoken language means
+  replacing `[prompts]` (and, if needed, adjusting TTS routes); it does not
+  touch UI chrome, and `[ui].language` does not touch prompts.
+- No separate config.llm.toml: the existing layered loader already gives
+  type checking, unknown-key detection, and per-key precedence; a second
+  file would add a second loader for two strings.
 
 ## Project verification contract (v1.2.2)
 

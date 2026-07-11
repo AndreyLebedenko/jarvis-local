@@ -15,13 +15,12 @@ their own network requirements.
 v1.2 adds a local desktop Status Console for runtime state, system events,
 Think mode, Open/Hidden visibility mode, context reset, a guarded Shutdown
 control, a restart-to-apply configuration menu (model and microphone
-selection), and a compact touchstrip glance surface.
+selection), and a compact touchstrip glance surface. Since v1.2.11 the UI
+is English by default, with Russian available via `[ui].language = "ru"`.
 
-![Jarvis Status Console thinking state](docs/screenshots/status-console-thinking.png)
+![Jarvis Status Console](docs/screenshots/en/status-console.png)
 
-![Jarvis Status Console events state](docs/screenshots/status-console.png)
-
-![Jarvis Touchstrip](docs/screenshots/touchstrip.png)
+![Jarvis Touchstrip](docs/screenshots/en/touchstrip.png)
 
 ## Status
 
@@ -49,7 +48,10 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   `config.toml` (UI chrome only - the assistant's dialog language and TTS
   are not affected).
 - Async event-bus architecture with isolated modules.
-- Type-checked TOML configuration.
+- Type-checked TOML configuration, including the dialog prompts: the
+  system prompt and warm-up request are set via `[prompts]` in
+  `config.toml` (Russian by default), so the assistant's dialog language
+  can be switched without editing source.
 - Jarvis core runtime has no network dependency after models are downloaded.
 
 ## Requirements
@@ -127,8 +129,9 @@ The app is split into small asyncio modules connected through `bus.py`:
 - `capture.py`: screenshot capture.
 - `tts.py`: sentence buffering, configurable Silero/Piper routing, playback.
 - `sound_cues.py`: generated local cue sounds.
-- `config.py`: TOML settings and validation.
-- `main.py`: wiring, orchestration, prompt, shutdown.
+- `config.py`: TOML settings and validation, including the dialog prompts
+  (`[prompts]`) and the UI language (`[ui]`).
+- `main.py`: wiring, orchestration, shutdown.
 
 `PROJECT.md` is the source of truth for architectural decisions and verified experiments. The `tasks/` directory keeps story cards, task cards, and bug reports from development.
 
@@ -170,7 +173,7 @@ python -m pytest
 
 The same command runs in GitHub Actions (`.github/workflows/ci.yml`) on push and pull request: install `requirements.txt`, then `python -m pytest`. CI does not start Ollama, download models, touch secrets, or exercise hardware.
 
-Hardware-dependent and live checks stay human-run manual handoffs, never CI jobs: microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView visual review, and the live Ollama endpoint. Use the `manual/manual_check_*.py` scripts (`manual/manual_check_audio_in.py`, `manual/manual_check_backend.py`, `manual/manual_check_capture.py`, `manual/manual_check_status_console.py`, `manual/manual_check_thinking_mode.py`, `manual/manual_check_tts.py`) and `day0_checks.py` for those. Pure tests for manual-check helpers live under `manual/tests/`.
+Hardware-dependent and live checks stay human-run manual handoffs, never CI jobs: microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView visual review, and the live Ollama endpoint. Use the `manual/manual_check_*.py` scripts and `day0_checks.py` for those. Pure tests for manual-check helpers live under `manual/tests/`.
 
 A green CI run only proves the pure suite passes on a clean dependency install. It does not prove the running app stays free of network calls at run time - that is an architecture/code-review guarantee (see `PROJECT.md`), not something the pytest suite measures.
 

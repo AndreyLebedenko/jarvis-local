@@ -18,13 +18,13 @@ routes.
 В v1.2 появился локальный desktop Status Console: состояние runtime, события
 движка, Think mode, режим Open/Hidden, сброс контекста, защищённый Shutdown
 control, меню настроек с restart-to-apply (выбор модели и микрофона) и
-компактная touchstrip панель.
+компактная touchstrip панель. Начиная с v1.2.11 интерфейс по умолчанию
+английский; русский включается через `[ui].language = "ru"` в
+`config.toml`.
 
-![Jarvis Status Console thinking state](docs/screenshots/status-console-thinking.png)
+![Jarvis Status Console](docs/screenshots/ru/status-console.png)
 
-![Jarvis Status Console events state](docs/screenshots/status-console.png)
-
-![Jarvis Touchstrip](docs/screenshots/touchstrip.png)
+![Jarvis Touchstrip](docs/screenshots/ru/touchstrip.png)
 
 ## Статус
 
@@ -47,9 +47,15 @@ Jarvis не связан с Marvel, Disney или правообладателя
 - Интерфейс на горячих клавишах и звуковых сигналах.
 - Локальный Status Console UI: события системы, Think mode, Open/Hidden,
   сброс контекста, защищённый Shutdown, меню настроек модели/микрофона
-  с restart-to-apply и touchstrip glance surface.
+  с restart-to-apply и touchstrip glance surface. Язык интерфейса по
+  умолчанию английский; русский включается через `[ui].language = "ru"`
+  в `config.toml` (это касается только UI - язык диалога и TTS не
+  меняются).
 - Асинхронная event-bus архитектура с изолированными модулями.
-- TOML-конфигурация с проверкой типов.
+- TOML-конфигурация с проверкой типов, включая диалоговые промпты:
+  системный промпт и запрос прогрева задаются секцией `[prompts]` в
+  `config.toml` (по умолчанию - русские), так что язык диалога ассистента
+  меняется без правки исходников.
 - Runtime ядра Jarvis не зависит от сети после загрузки моделей.
 
 ## Требования
@@ -128,8 +134,9 @@ Jarvis регистрирует конкретные сочетания чере
 - `tts.py`: буферизация предложений, настраиваемая маршрутизация Silero/Piper,
   воспроизведение.
 - `sound_cues.py`: локально генерируемые звуковые сигналы.
-- `config.py`: TOML-настройки и валидация.
-- `main.py`: wiring, orchestration, prompt, shutdown.
+- `config.py`: TOML-настройки и валидация, включая диалоговые промпты
+  (`[prompts]`) и язык интерфейса (`[ui]`).
+- `main.py`: wiring, orchestration, shutdown.
 
 `PROJECT.md` - источник истины для архитектурных решений и проверенных экспериментов. Каталог `tasks/` хранит story cards, task cards и bug reports процесса разработки.
 
@@ -173,7 +180,7 @@ python -m pytest
 
 Та же команда выполняется в GitHub Actions (`.github/workflows/ci.yml`) при push и pull request: установка `requirements.txt`, затем `python -m pytest`. CI не запускает Ollama, не скачивает модели, не трогает секреты и не задействует железо.
 
-Проверки, зависящие от железа и live-сервисов, остаются ручными и никогда не становятся CI-джобами: микрофон, колонки, глобальные hotkeys, screen capture, GPU/VRAM, визуальный обзор WebView и live Ollama endpoint. Для них используются скрипты `manual/manual_check_*.py` (`manual/manual_check_audio_in.py`, `manual/manual_check_backend.py`, `manual/manual_check_capture.py`, `manual/manual_check_status_console.py`, `manual/manual_check_thinking_mode.py`, `manual/manual_check_tts.py`) и `day0_checks.py`. Чистые тесты helpers для этих скриптов лежат в `manual/tests/`.
+Проверки, зависящие от железа и live-сервисов, остаются ручными и никогда не становятся CI-джобами: микрофон, колонки, глобальные hotkeys, screen capture, GPU/VRAM, визуальный обзор WebView и live Ollama endpoint. Для них используются скрипты `manual/manual_check_*.py` и `day0_checks.py`. Чистые тесты helpers для этих скриптов лежат в `manual/tests/`.
 
 Зелёный прогон CI доказывает только то, что чистый набор тестов проходит при чистой установке зависимостей. Он не доказывает, что работающее приложение свободно от сетевых вызовов во время выполнения - это архитектурная гарантия, проверяемая код-ревью (см. `PROJECT.md`), а не то, что измеряет набор pytest.
 

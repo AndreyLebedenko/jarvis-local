@@ -15,7 +15,14 @@ from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
 from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
-from config import MicrophoneSettings, Settings, TtsLanguageSettings, TtsSettings, VadSettings
+from config import (
+    MicrophoneSettings,
+    PromptSettings,
+    Settings,
+    TtsLanguageSettings,
+    TtsSettings,
+    VadSettings,
+)
 from bus import EventBus
 from main import (
     SYSTEM_PROMPT,
@@ -1268,6 +1275,24 @@ def test_build_app_shares_one_playback_lock_between_tts_and_sound_cues():
     app = build_app(_settings(), backend=_FakeBackend())
 
     assert app.tts_output._playback_lock is app.sound_cues._playback_lock
+
+
+def test_build_app_wires_the_configured_system_prompt_into_the_orchestrator():
+    """task-v1.2.12: build_app() must bind settings.prompts.system, not the
+    built-in default, so a config-file prompt actually reaches every turn."""
+    settings = Settings(prompts=PromptSettings(system="You are Jarvis.", warmup="Hi"))
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    assert app.orchestrator._system_prompt == "You are Jarvis."
+
+
+async def test_warm_up_sends_the_configured_warmup_prompt():
+    backend = _FakeBackend()
+
+    await warm_up(backend, EventBus(), "en", "Hello")
+
+    assert backend.calls[-1][0] == [{"role": "user", "content": "Hello"}]
 
 
 def test_build_app_wires_the_configured_microphone_device_into_the_stream_factory():
