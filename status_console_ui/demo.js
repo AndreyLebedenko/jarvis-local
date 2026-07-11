@@ -1,6 +1,6 @@
 // Demo/QA harness wiring for demo.html - not part of the production shell.
 // Builds one button per RuntimeState/HealthStatus/DataLocality value and
-// calls the exact same app.js functions status_console.py's evaluate_js
+// calls the exact same app.js rendering functions as the live transport client
 // bridge would call, so this exercises the real rendering path.
 
 const RUNTIME_STATE_LABELS = {
@@ -84,8 +84,8 @@ function buildControls() {
   };
   root.appendChild(stressButton);
 
-  // window.pywebview does not exist in a plain browser, so toggleThinking()'s
-  // real click handler (index.html/app.js) is a guarded no-op here - these
+  // The demo has no live UI transport, so toggleThinking()'s real click
+  // handler is a no-op here - these
   // buttons call applyThinkingMode() directly to exercise the switch's
   // visual/animation without a live backend.
   const thinkGroup = document.createElement("span");
@@ -99,8 +99,8 @@ function buildControls() {
   }
 
   // Same reasoning as the think-switch buttons above: the real
-  // #visibilityToggle buttons call setVisibilityMode(), a guarded no-op
-  // here without window.pywebview - these call applyVisibilityMode()
+  // #visibilityToggle buttons call setVisibilityMode(), a no-op here without
+  // a live UI transport - these call applyVisibilityMode()
   // directly to exercise the toggle/vision-chip-hiding visuals.
   const visibilityGroup = document.createElement("span");
   visibilityGroup.textContent = "visibility:";
@@ -122,7 +122,7 @@ function buildControls() {
   // story-v1.2.4-task-3: config menu. Same reasoning as the think-switch/
   // visibility buttons above - the real request_model_options()/
   // request_microphone_options()/save_config_selection() are guarded
-  // no-ops without window.pywebview, so these call the apply*() functions
+  // no-ops without a live UI transport, so these call the apply*() functions
   // directly to exercise the dropdown-population and pending-restart
   // visuals without a live Ollama endpoint or real audio devices.
   const configGroup = document.createElement("span");

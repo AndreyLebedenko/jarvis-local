@@ -1,21 +1,17 @@
-// Status Console shell rendering (task-ui-02/task-ui-03/task-ui-04).
+// Status Console shell rendering and UI transport client.
 //
 // Every apply*/appendSystemEvent function takes a plain JSON object shaped
 // like ui_contract.py's dataclasses (converted to snake_case dicts by
-// status_console.py's *_payload() helpers) and updates the DOM. Nothing here
-// reads engine state on its own - status_console.py pushes it in via
-// pywebview's evaluate_js bridge (in-process IPC, no network).
+// status_console.py's *_payload() helpers) and updates the DOM. Engine state
+// arrives through the local protocol-v1 WebSocket snapshot/delta stream.
 //
 // toggleThinking()/requestModuleReset()/requestContextReset()/
-// setVisibilityMode() are the other direction (JS -> Python, pywebview's
-// js_api - see status_console.py's StatusConsoleApi). They deliberately do
+// setVisibilityMode() send protocol-v1 control messages. They deliberately do
 // not optimistically update the DOM themselves: the switch/chips/visibility
 // toggle only ever change via applyThinkingMode()/appendSystemEvent()/
-// applyVisibilityMode(), driven by the real engine event coming back
-// through evaluate_js, so the UI can never show a state the engine hasn't
-// actually confirmed. window.pywebview is undefined outside a real
-// pywebview window (e.g. demo.html opened in an ordinary browser), so every
-// call is guarded.
+// applyVisibilityMode(), driven by the real engine event coming back through
+// the WebSocket, so the UI can never show a state the engine has not actually
+// confirmed.
 //
 // RUNTIME_STATES/MODULE_IDS/HEALTH_STATUSES/EVENT_LEVELS/VISIBILITY_MODES
 // live in contract.js (loaded before this file) - shared with
@@ -35,6 +31,50 @@ let _lastVisionDetail = "";
 // Caps DOM growth for a long-running process feeding a live-appending log
 // (task-ui-03's Scope: "recent events", not an unbounded transcript).
 const MAX_LOG_ENTRIES = 200;
+
+const _showTransportStatus = typeof createTransportStatusHandler === "function"
+  ? createTransportStatusHandler()
+  : () => {};
+
+function _sendControl(command, argumentsObject = {}) {
+  if (typeof sendUiControl !== "function" || !sendUiControl(command, argumentsObject)) {
+    _showTransportStatus(false, "Нет связи с engine");
+  }
+}
+
+function _clearSystemEvents() {
+  const list = document.getElementById("logList");
+  list.replaceChildren();
+}
+
+function _applyStateSnapshot(state) {
+  applyRuntimeState(state.runtime);
+  Object.values(state.modules || {}).forEach(applyModuleHealth);
+  applyDataLocality(state.data_locality);
+  applyModelLabel(state.model);
+  _clearSystemEvents();
+  (state.system_events || []).forEach(appendSystemEvent);
+  applyThinkingMode(state.thinking);
+  applyVisibilityMode(state.visibility);
+  applyModelOptions(state.model_options, false);
+  applyMicrophoneOptions(state.microphone_options, false);
+  applyPendingRestart(state.pending_restart);
+}
+
+function _applyStateDelta(payload) {
+  dispatchStateDelta(payload, {
+    runtime: applyRuntimeState,
+    modules: (value) => Object.values(value).forEach(applyModuleHealth),
+    data_locality: applyDataLocality,
+    model: applyModelLabel,
+    system_event: appendSystemEvent,
+    thinking: applyThinkingMode,
+    visibility: applyVisibilityMode,
+    model_options: applyModelOptions,
+    microphone_options: applyMicrophoneOptions,
+    pending_restart: applyPendingRestart,
+  });
+}
 
 function applyRuntimeState(payload) {
   if (!RUNTIME_STATES.includes(payload.state)) {
@@ -133,21 +173,15 @@ function applyThinkingMode(payload) {
     : "Быстрее, без рассуждения";
 }
 
-function _pywebviewApi() {
-  return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
-}
-
 function toggleThinking() {
-  const api = _pywebviewApi();
-  if (api) api.toggle_thinking();
+  _sendControl("toggle_thinking");
 }
 
 function requestModuleReset(moduleId) {
   if (!MODULE_IDS.includes(moduleId)) {
     throw new Error("Unknown module id: " + moduleId);
   }
-  const api = _pywebviewApi();
-  if (api) api.reset_module(moduleId);
+  _sendControl("reset_module", { module_id: moduleId });
 }
 
 function showResetConfirm() {
@@ -160,8 +194,7 @@ function hideResetConfirm() {
 
 function confirmContextReset() {
   hideResetConfirm();
-  const api = _pywebviewApi();
-  if (api) api.reset_context();
+  _sendControl("reset_context");
 }
 
 // story-v1.2.4-task-1: guarded Shutdown control - same confirm-before-
@@ -191,8 +224,7 @@ function confirmShutdown() {
   // the button is a purely cosmetic extra layer on top of that real fix,
   // not a substitute for it.
   document.getElementById("btnShutdown").disabled = true;
-  const api = _pywebviewApi();
-  if (api) api.request_shutdown();
+  _sendControl("request_shutdown");
 }
 
 function applyVisibilityMode(payload) {
@@ -210,8 +242,7 @@ function applyVisibilityMode(payload) {
 }
 
 function setVisibilityMode(modeValue) {
-  const api = _pywebviewApi();
-  if (api) api.set_visibility_mode(modeValue);
+  _sendControl("set_visibility_mode", { mode: modeValue });
 }
 
 // story-v1.2.4-task-3: configuration menu (model + microphone,
@@ -255,11 +286,8 @@ function toggleConfigMenu() {
   _modelOptionsLoaded = false;
   _microphoneOptionsLoaded = false;
   _updateApplyButtonEnabled();
-  const api = _pywebviewApi();
-  if (api) {
-    api.request_model_options();
-    api.request_microphone_options();
-  }
+  _sendControl("request_model_options");
+  _sendControl("request_microphone_options");
 }
 
 function _renderOptions(select, options, current) {
@@ -273,15 +301,15 @@ function _renderOptions(select, options, current) {
   }
 }
 
-function applyModelOptions(payload) {
+function applyModelOptions(payload, markLoaded = true) {
   _renderOptions(document.getElementById("modelSelect"), payload.options, payload.current);
-  _modelOptionsLoaded = true;
+  if (markLoaded) _modelOptionsLoaded = true;
   _updateApplyButtonEnabled();
 }
 
-function applyMicrophoneOptions(payload) {
+function applyMicrophoneOptions(payload, markLoaded = true) {
   _renderOptions(document.getElementById("micSelect"), payload.options, payload.current);
-  _microphoneOptionsLoaded = true;
+  if (markLoaded) _microphoneOptionsLoaded = true;
   _updateApplyButtonEnabled();
 }
 
@@ -292,6 +320,14 @@ function applyPendingRestart(payload) {
 function applyConfigSelection() {
   const model = document.getElementById("modelSelect").value;
   const microphone = document.getElementById("micSelect").value;
-  const api = _pywebviewApi();
-  if (api) api.save_config_selection(model, microphone);
+  _sendControl("save_config_selection", { model, microphone });
+}
+
+if (typeof startUiTransport === "function") {
+  startUiTransport("status-console", ["state", "control", "config"], {
+    onSnapshot: _applyStateSnapshot,
+    onDelta: _applyStateDelta,
+    onStatus: _showTransportStatus,
+    onError: (message) => console.error("UI transport error:", message),
+  });
 }

@@ -5,7 +5,7 @@ import argparse
 import base64
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from audio_in import (
     AudioInput,
@@ -25,12 +25,9 @@ from config import Settings, load_settings
 from hotkey_provider import HotkeyProvider, WindowsHotkeyProvider
 from sound_cues import SoundCuePlayer, ensure_generated
 from status_console import (
-    MicrophoneOptionsAvailable,
-    ModelOptionsAvailable,
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
-    UiConfigSaved,
 )
 from system_log import publish_system_event
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
@@ -43,9 +40,9 @@ from ui_contract import (
     ModuleHealth,
     ModuleId,
     RuntimeState,
-    SystemEvent,
 )
-from visibility_mode import VisibilityModeChanged, VisibilityModeState
+from ui_transport import UiStateStore, UiTransportInfo, UiTransportServer
+from visibility_mode import VisibilityModeState
 
 logger = logging.getLogger(__name__)
 
@@ -299,15 +296,17 @@ class LiveStatusConsole:
     console: StatusConsoleWindow
     touchstrip: TouchstripWindow | None
     api: StatusConsoleApi
-    # Last (state, substatus) actually pushed - the one place that knows
-    # what the orb currently shows, so repeat pushes of the same state
-    # (e.g. SPEAKING on every streamed ResponseToken) don't turn into
-    # blocking evaluate_js round-trips inside bus.publish(), which awaits
-    # all handlers and would serialize the streaming pipeline (bus.py's
-    # own handler contract).
-    _last_runtime_push: tuple[RuntimeState, str | None] | None = field(
-        default=None, init=False, repr=False
-    )
+    transport: UiTransportServer | None = None
+
+    def create_windows(self) -> None:
+        self.console.create(on_closed=self.api.request_shutdown)
+        if self.touchstrip is not None:
+            self.touchstrip.create()
+
+    def load_transport_urls(self, transport_info: UiTransportInfo) -> None:
+        self.console.load_url(transport_info.url)
+        if self.touchstrip is not None:
+            self.touchstrip.load_url(transport_info.touchstrip_url)
 
     def close(self) -> None:
         surfaces: list[StatusConsoleWindow] = [self.console]
@@ -317,35 +316,12 @@ class LiveStatusConsole:
             surface.close()
 
 
-def _status_surfaces(live_console: LiveStatusConsole) -> tuple[StatusConsoleWindow, ...]:
-    if live_console.touchstrip is None:
-        return (live_console.console,)
-    return (live_console.console, live_console.touchstrip)
-
-
 def _push_runtime_state(
     live_console: LiveStatusConsole, state: RuntimeState, substatus: str | None = None
 ) -> None:
-    if live_console._last_runtime_push == (state, substatus):
+    if live_console.transport is None:
         return
-    live_console._last_runtime_push = (state, substatus)
-    for surface in _status_surfaces(live_console):
-        surface.push_runtime_state(state, substatus)
-
-
-def _push_thinking_mode(live_console: LiveStatusConsole, is_enabled: bool) -> None:
-    for surface in _status_surfaces(live_console):
-        surface.push_thinking_mode(is_enabled)
-
-
-def _push_visibility_mode(live_console: LiveStatusConsole, event: VisibilityModeChanged) -> None:
-    for surface in _status_surfaces(live_console):
-        surface.push_visibility_mode(event.mode)
-
-
-def _push_module_health(live_console: LiveStatusConsole, health: ModuleHealth) -> None:
-    for surface in _status_surfaces(live_console):
-        surface.push_module_health(health)
+    live_console.transport.set_runtime_state(state, substatus)
 
 
 def _microphone_health(is_awake: bool) -> ModuleHealth:
@@ -374,18 +350,12 @@ def create_live_status_console(
         settings=app.settings,
     )
     console = console or StatusConsoleWindow()
-    # Closing the desktop console with the title-bar X is a shutdown
-    # request through the same clean path as the hotkey and the guarded
-    # Shutdown control - otherwise the engine keeps running headless and
-    # every later push hits a destroyed window. Closing the touchstrip
-    # alone only removes that glance surface; the engine keeps running.
-    console.create(js_api=api, on_closed=api.request_shutdown)
     if include_touchstrip:
         touchstrip = touchstrip or TouchstripWindow()
-        touchstrip.create(js_api=api)
     else:
         touchstrip = None
-    return LiveStatusConsole(console=console, touchstrip=touchstrip, api=api)
+    live_console = LiveStatusConsole(console=console, touchstrip=touchstrip, api=api)
+    return live_console
 
 
 def wire_status_console(
@@ -393,62 +363,17 @@ def wire_status_console(
     live_console: LiveStatusConsole,
     loop: asyncio.AbstractEventLoop,
 ) -> list[Subscription]:
-    """Connects the Status Console to real engine events.
-
-    The module-health source is intentionally absent here: story-status-
-    console-ui.md defers that authoritative signal, so this wiring pushes no
-    fake `OK` health snapshots.
-    """
+    """Seeds the transport snapshot from authoritative engine state."""
     live_console.api.set_loop(loop)
-    if app.visibility_mode is None:
+    if app.visibility_mode is None or live_console.transport is None:
         raise RuntimeError("live Status Console requires an App created by build_app()")
-    for surface in _status_surfaces(live_console):
-        surface.push_model_label(app.settings.backend.model)
-        surface.push_data_locality(DataLocality.LOCAL)
-        surface.push_thinking_mode(app.thinking_mode.is_enabled)
-        surface.push_visibility_mode(app.visibility_mode.mode)
-        surface.push_module_health(_microphone_health(app.audio_input.is_awake))
+    live_console.transport.set_model_label(app.settings.backend.model)
+    live_console.transport.set_data_locality(DataLocality.LOCAL)
+    live_console.transport.set_thinking_mode(app.thinking_mode.is_enabled)
+    live_console.transport.set_visibility_mode(app.visibility_mode.mode)
+    live_console.transport.set_module_health(_microphone_health(app.audio_input.is_awake))
     _push_runtime_state(live_console, RuntimeState.WARMING, "Прогреваю модель...")
-
-    async def on_model_options_available(event: ModelOptionsAvailable) -> None:
-        live_console.console.push_model_options(event.options, event.current)
-
-    async def on_microphone_options_available(event: MicrophoneOptionsAvailable) -> None:
-        live_console.console.push_microphone_options(event.options, event.current)
-
-    async def on_ui_config_saved(event: UiConfigSaved) -> None:
-        live_console.console.push_pending_restart(True)
-
-    async def on_system_event(event: SystemEvent) -> None:
-        live_console.console.push_system_event(event)
-        if event.level is EventLevel.ERROR:
-            _push_runtime_state(live_console, RuntimeState.ERROR, event.message)
-
-    async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
-        _push_thinking_mode(live_console, event.is_enabled)
-
-    async def on_visibility_mode_changed(event: VisibilityModeChanged) -> None:
-        _push_visibility_mode(live_console, event)
-
-    async def on_response_token(event: ResponseToken) -> None:
-        _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
-
-    async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
-        _push_module_health(live_console, _microphone_health(event.is_awake))
-
-    subscriptions: list[Subscription] = [
-        (SystemEvent, on_system_event),
-        (ThinkingModeToggled, on_thinking_mode_toggled),
-        (VisibilityModeChanged, on_visibility_mode_changed),
-        (ResponseToken, on_response_token),
-        (MicSleepToggled, on_mic_sleep_toggled),
-        (ModelOptionsAvailable, on_model_options_available),
-        (MicrophoneOptionsAvailable, on_microphone_options_available),
-        (UiConfigSaved, on_ui_config_saved),
-    ]
-    for event_type, handler in subscriptions:
-        app.bus.subscribe(event_type, handler)
-    return subscriptions
+    return []
 
 
 async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
@@ -670,6 +595,8 @@ async def run(
             shutdown_provider.stop()
         finally:
             if live_console is not None:
+                if live_console.transport is not None:
+                    await live_console.transport.stop()
                 live_console.close()
 
 
@@ -679,9 +606,27 @@ def run_with_status_console(
     settings = settings or load_settings()
     app = build_app(settings)
     live_console = create_live_status_console(app, include_touchstrip=include_touchstrip)
+    live_console.transport = UiTransportServer(
+        app.bus,
+        live_console.api,
+        state=UiStateStore(
+            model_label=settings.backend.model,
+            thinking_enabled=app.thinking_mode.is_enabled,
+            visibility_mode=app.visibility_mode.mode,
+        ),
+        logger=logger,
+    )
+    live_console.create_windows()
 
     def start_jarvis() -> None:
-        asyncio.run(run(settings=settings, app=app, live_console=live_console))
+        async def start() -> None:
+            if live_console.transport is None:
+                raise RuntimeError("Status Console transport was not created")
+            transport_info = await live_console.transport.start()
+            live_console.load_transport_urls(transport_info)
+            await run(settings=settings, app=app, live_console=live_console)
+
+        asyncio.run(start())
 
     import webview
 

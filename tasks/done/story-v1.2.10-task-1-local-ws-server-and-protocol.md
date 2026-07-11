@@ -1,7 +1,7 @@
 # Task: Local HTTP+WS server and protocol v1
 
 **Story:** `tasks/story-v1.2.10-ui-transport.md`
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.2.10
 
 ## Summary

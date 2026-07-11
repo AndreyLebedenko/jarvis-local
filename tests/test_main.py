@@ -2,10 +2,14 @@ import asyncio
 import base64
 import json
 import logging
+import sys
+import types
 from collections.abc import Callable
 
 import httpx
 import pytest
+
+import main as main_module
 
 from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
 from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
@@ -34,7 +38,7 @@ from main import (
     wire_status_console,
 )
 from sound_cues import SoundCuePlayer
-from status_console import MicrophoneOptionsAvailable, ModelOptionsAvailable, UiConfigSaved
+from ui_transport import UiTransportInfo
 from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from ui_contract import (
     DataLocality,
@@ -46,7 +50,6 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
-from visibility_mode import VisibilityModeChanged
 from tts import BilingualTtsEngine
 
 
@@ -698,60 +701,45 @@ class _FakeCaptureInput:
 
 class _FakeStatusSurface:
     def __init__(self) -> None:
-        self.created_with_api: object | None = None
         self.close_calls = 0
-        self.runtime_states: list[tuple[RuntimeState, str | None]] = []
-        self.model_labels: list[str] = []
-        self.localities: list[DataLocality] = []
-        self.thinking_modes: list[bool] = []
-        self.visibility_modes: list[VisibilityMode] = []
-        self.system_events: list[SystemEvent] = []
-        self.module_health: list[ModuleHealth] = []
-        self.model_options: list[tuple[list[str], str]] = []
-        self.microphone_options: list[tuple[list[str], str]] = []
-        self.pending_restart: list[bool] = []
 
     def create(
         self,
-        js_api: object | None = None,
         on_closed: object | None = None,
+        url: str | None = None,
     ) -> object:
-        self.created_with_api = js_api
         self.created_with_on_closed = on_closed
+        self.created_with_url = url
         return object()
 
     def close(self) -> None:
         self.close_calls += 1
 
-    def push_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
-        self.runtime_states.append((state, substatus))
+    def load_url(self, url: str) -> None:
+        self.loaded_url = url
 
-    def push_model_label(self, label: str) -> None:
-        self.model_labels.append(label)
 
-    def push_data_locality(self, locality: DataLocality) -> None:
-        self.localities.append(locality)
+class _FakeTransport:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object]] = []
 
-    def push_thinking_mode(self, is_enabled: bool) -> None:
-        self.thinking_modes.append(is_enabled)
+    def set_model_label(self, label: str) -> None:
+        self.calls.append(("model", label))
 
-    def push_visibility_mode(self, mode: VisibilityMode) -> None:
-        self.visibility_modes.append(mode)
+    def set_data_locality(self, locality: DataLocality) -> None:
+        self.calls.append(("locality", locality))
 
-    def push_system_event(self, event: SystemEvent) -> None:
-        self.system_events.append(event)
+    def set_thinking_mode(self, enabled: bool) -> None:
+        self.calls.append(("thinking", enabled))
 
-    def push_module_health(self, health: ModuleHealth) -> None:
-        self.module_health.append(health)
+    def set_visibility_mode(self, mode: VisibilityMode) -> None:
+        self.calls.append(("visibility", mode))
 
-    def push_model_options(self, options: list[str], current: str) -> None:
-        self.model_options.append((options, current))
+    def set_module_health(self, health: ModuleHealth) -> None:
+        self.calls.append(("module", health))
 
-    def push_microphone_options(self, options: list[str], current: str) -> None:
-        self.microphone_options.append((options, current))
-
-    def push_pending_restart(self, pending: bool) -> None:
-        self.pending_restart.append(pending)
+    def set_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
+        self.calls.append(("runtime", (state, substatus)))
 
 
 def _settings() -> Settings:
@@ -812,8 +800,9 @@ def test_create_live_status_console_shares_one_api_between_surfaces():
         app, console=console, touchstrip=touchstrip, include_touchstrip=True
     )
 
-    assert live_console.api is console.created_with_api
-    assert live_console.api is touchstrip.created_with_api
+    assert live_console.transport is None
+    assert live_console.console is console
+    assert live_console.touchstrip is touchstrip
 
 
 def test_live_status_console_closes_all_surfaces():
@@ -831,129 +820,61 @@ def test_live_status_console_closes_all_surfaces():
     assert touchstrip.close_calls == 2
 
 
-async def test_wire_status_console_pushes_initial_state_and_live_events():
+async def test_wire_status_console_seeds_the_transport_snapshot():
     app = _fake_app()
-    console = _FakeStatusSurface()
-    touchstrip = _FakeStatusSurface()
-    live_console = create_live_status_console(
-        app, console=console, touchstrip=touchstrip, include_touchstrip=True
-    )
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
 
     subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
 
-    assert console.model_labels == [app.settings.backend.model]
-    assert touchstrip.model_labels == [app.settings.backend.model]
-    assert console.localities == [DataLocality.LOCAL]
-    assert touchstrip.localities == [DataLocality.LOCAL]
-    assert console.thinking_modes == [False]
-    assert touchstrip.thinking_modes == [False]
-    assert console.visibility_modes == [VisibilityMode.OPEN]
-    assert touchstrip.visibility_modes == [VisibilityMode.OPEN]
-    assert console.module_health == [
-        ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает")
+    assert subscriptions == []
+    assert transport.calls == [
+        ("model", app.settings.backend.model),
+        ("locality", DataLocality.LOCAL),
+        ("thinking", False),
+        ("visibility", VisibilityMode.OPEN),
+        (
+            "module",
+            ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает"),
+        ),
+        ("runtime", (RuntimeState.WARMING, "Прогреваю модель...")),
     ]
-    assert touchstrip.module_health == [
-        ModuleHealth(module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="слушает")
-    ]
-    assert console.runtime_states == [(RuntimeState.WARMING, "Прогреваю модель...")]
-
-    await app.bus.publish(
-        SystemEvent,
-        SystemEvent(timestamp=1, source="ENGINE", level=EventLevel.INFO, message="ok"),
-    )
-    await app.bus.publish(
-        VisibilityModeChanged, VisibilityModeChanged(mode=VisibilityMode.HIDDEN)
-    )
-    await app.bus.publish(ResponseToken, ResponseToken(text="Привет"))
-
-    assert [event.message for event in console.system_events] == ["ok"]
-    assert touchstrip.system_events == []
-    assert console.visibility_modes[-1] is VisibilityMode.HIDDEN
-    assert touchstrip.visibility_modes[-1] is VisibilityMode.HIDDEN
-    assert console.runtime_states[-1] == (RuntimeState.SPEAKING, "Произношу ответ...")
-    assert touchstrip.runtime_states[-1] == (RuntimeState.SPEAKING, "Произношу ответ...")
 
     unwire(app, subscriptions)
 
 
-async def test_wire_status_console_updates_microphone_chip_from_mic_sleep_events():
+async def test_wire_status_console_leaves_bus_projection_to_the_transport_server():
     app = _fake_app()
-    console = _FakeStatusSurface()
-    touchstrip = _FakeStatusSurface()
-    live_console = create_live_status_console(
-        app, console=console, touchstrip=touchstrip, include_touchstrip=True
-    )
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
     subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
 
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    expected = [
-        ModuleHealth(
-            module=ModuleId.MICROPHONE,
-            status=HealthStatus.OK,
-            detail="слушает",
-        ),
-        ModuleHealth(
-            module=ModuleId.MICROPHONE,
-            status=HealthStatus.UNAVAILABLE,
-            detail="усыплён",
-        ),
-        ModuleHealth(
-            module=ModuleId.MICROPHONE,
-            status=HealthStatus.OK,
-            detail="слушает",
-        ),
-    ]
-    assert console.module_health == expected
-    assert touchstrip.module_health == expected
-
-    unwire(app, subscriptions)
-
-
-async def test_wire_status_console_routes_config_menu_events_to_desktop_only():
-    """story-v1.2.4-task-3: config menu is desktop-only (Scope decision) -
-    ModelOptionsAvailable/MicrophoneOptionsAvailable/UiConfigSaved must
-    reach console but never touchstrip, unlike most other state here."""
-    app = _fake_app()
-    console = _FakeStatusSurface()
-    touchstrip = _FakeStatusSurface()
-    live_console = create_live_status_console(
-        app, console=console, touchstrip=touchstrip, include_touchstrip=True
+    assert len(transport.calls) == 6
+    assert transport.calls[-1] == (
+        "runtime",
+        (RuntimeState.WARMING, "Прогреваю модель..."),
     )
-    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
-
-    await app.bus.publish(
-        ModelOptionsAvailable,
-        ModelOptionsAvailable(options=["a", "b"], current="a"),
-    )
-    await app.bus.publish(
-        MicrophoneOptionsAvailable,
-        MicrophoneOptionsAvailable(options=["mic-1"], current="mic-1"),
-    )
-    await app.bus.publish(UiConfigSaved, UiConfigSaved())
-
-    assert console.model_options == [(["a", "b"], "a")]
-    assert console.microphone_options == [(["mic-1"], "mic-1")]
-    assert console.pending_restart == [True]
-    assert touchstrip.model_options == []
-    assert touchstrip.microphone_options == []
-    assert touchstrip.pending_restart == []
 
     unwire(app, subscriptions)
 
 
 async def test_wire_with_live_status_console_reports_thinking_before_accepted_turn():
     app = _fake_app()
-    console = _FakeStatusSurface()
-    live_console = create_live_status_console(app, console=console, include_touchstrip=False)
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
     wire(app, live_console)
 
     await app.bus.publish(
         UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
     )
 
-    assert console.runtime_states == [(RuntimeState.THINKING, "Обрабатываю голос...")]
+    assert transport.calls[-1] == ("runtime", (RuntimeState.THINKING, "Обрабатываю голос..."))
 
 
 async def test_wire_pushes_listening_state_after_response_complete():
@@ -976,15 +897,16 @@ async def test_wire_pushes_listening_state_after_response_complete():
         tts_output=_FakeTtsOutput(),
         capture_input=_FakeCaptureInput(),
     )
-    console = _FakeStatusSurface()
-    live_console = create_live_status_console(app, console=console, include_touchstrip=False)
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
     wire(app, live_console)
 
     await app.bus.publish(
         ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
     )
 
-    assert console.runtime_states == [(RuntimeState.LISTENING, "Готов слушать")]
+    assert transport.calls[-1] == ("runtime", (RuntimeState.LISTENING, "Готов слушать"))
 
 
 def test_parse_args_enables_status_console_without_touchstrip():
@@ -992,6 +914,39 @@ def test_parse_args_enables_status_console_without_touchstrip():
 
     assert args.status_console is True
     assert args.no_touchstrip is True
+
+
+def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
+    fake_app = types.SimpleNamespace(
+        bus=EventBus(),
+        thinking_mode=types.SimpleNamespace(is_enabled=False),
+        visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
+    )
+    fake_live_console = types.SimpleNamespace(
+        api=object(),
+        transport=None,
+        windows_created=False,
+    )
+
+    def create_windows() -> None:
+        fake_live_console.windows_created = True
+
+    fake_live_console.create_windows = create_windows
+    monkeypatch.setattr(main_module, "build_app", lambda settings: fake_app)
+    monkeypatch.setattr(
+        main_module,
+        "create_live_status_console",
+        lambda app, include_touchstrip: fake_live_console,
+    )
+    monkeypatch.setattr(main_module, "UiTransportServer", lambda *args, **kwargs: object())
+
+    def start(callback) -> None:
+        del callback
+        assert fake_live_console.windows_created is True
+
+    monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(start=start))
+
+    main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
 
 
 async def test_unwire_removes_all_subscriptions():
@@ -1462,24 +1417,23 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
     assert tts_output.received_texts == ["Hello"]
 
 
-def test_push_runtime_state_skips_repeat_pushes_of_the_same_state():
-    """A turn streams many ResponseTokens; pushing SPEAKING again on every
-    one of them is a blocking evaluate_js round-trip inside bus.publish(),
-    which awaits all handlers - bus.py's own contract forbids that kind of
-    inline work. Only a real state transition may reach the window."""
+def test_push_runtime_state_is_not_suppressed_by_a_direct_transport_update():
     from main import LiveStatusConsole, _push_runtime_state
 
     surface = _FakeStatusSurface()
-    live_console = LiveStatusConsole(console=surface, touchstrip=None, api=object())
+    transport = _FakeTransport()
+    live_console = LiveStatusConsole(
+        console=surface, touchstrip=None, api=object(), transport=transport
+    )
 
-    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
-    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
-    _push_runtime_state(live_console, RuntimeState.SPEAKING, "Произношу ответ...")
+    transport.set_runtime_state(RuntimeState.SPEAKING, "Произношу ответ...")
+    _push_runtime_state(live_console, RuntimeState.THINKING, "Обрабатываю голос...")
     _push_runtime_state(live_console, RuntimeState.LISTENING, "Готов слушать")
 
-    assert surface.runtime_states == [
-        (RuntimeState.SPEAKING, "Произношу ответ..."),
-        (RuntimeState.LISTENING, "Готов слушать"),
+    assert transport.calls == [
+        ("runtime", (RuntimeState.SPEAKING, "Произношу ответ...")),
+        ("runtime", (RuntimeState.THINKING, "Обрабатываю голос...")),
+        ("runtime", (RuntimeState.LISTENING, "Готов слушать")),
     ]
 
 
@@ -1492,7 +1446,11 @@ def test_desktop_console_native_close_is_wired_to_shutdown_request():
         app, console=console, touchstrip=touchstrip, include_touchstrip=True
     )
 
-    # Closing the desktop window must route into the same clean shutdown
-    # path as the hotkey; closing the touchstrip alone must not.
+    live_console.transport = _FakeTransport()
+    transport_info = UiTransportInfo(host="127.0.0.1", port=4321, token="token")
+    live_console.create_windows()
+    live_console.load_transport_urls(transport_info)
+
     assert console.created_with_on_closed == live_console.api.request_shutdown
-    assert touchstrip.created_with_on_closed is None
+    assert console.loaded_url.endswith("/?token=token")
+    assert touchstrip.loaded_url.endswith("/touchstrip.html?token=token")

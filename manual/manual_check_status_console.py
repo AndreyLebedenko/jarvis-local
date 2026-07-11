@@ -1,37 +1,30 @@
 #!/usr/bin/env python3
-"""Manual handoff for task-ui-02 through task-ui-06: real pywebview/
-WebView2 window check, including live system events, the Think/reset/
-visibility-mode controls' real JS -> Python round trip, and the touchstrip
-glance surface sharing the same engine state as the desktop window.
+"""Manual handoff for the v1.2.10 UI transport.
 
-Not an automated test - a real GUI window on a real display/WebView2
-runtime is hardware/environment-dependent per CLAUDE.md's testing
-protocol, so this is run by hand. Opens both the desktop Status Console
-window and the touchstrip window side by side, pushes the real
-backend.model from config (proving the "no hardcoded model name"
-acceptance criterion end-to-end), cycles through every RuntimeState/
-HealthStatus/DataLocality combination on both windows, publishes a handful
-of SystemEvents through the real bus + system_log.publish_system_event()
-(desktop only - the touchstrip has no event log by design), and wires a
-real StatusConsoleApi, shared by both windows, so clicking the Think
-switch/reset controls/Open-Hidden toggle on *either* window is reflected
-on the other.
+This check starts the real loopback HTTP+WebSocket server inside the engine
+asyncio loop, opens both WebView2 windows on server URLs, and cycles the
+same state projection that Chrome receives. The printed console URL can be
+opened in Chrome in parallel; it contains the one-time process token.
 
 Usage:
   python manual/manual_check_status_console.py
-  (two windows open; states/events cycle automatically; click the Think
-  switch, reset buttons, and Open/Hidden toggle on either window and
-  confirm the other one updates too - Hidden should replace the desktop's
-  vision chip detail text and never change either window's locality
-  display; close both windows to stop)
 
-Note: Ctrl+C in the terminal will not reliably stop this script.
-webview.start()'s native GUI loop (WebView2/EdgeChromium via pythonnet on
-Windows) owns the main thread and does not hand control back to the
-Python interpreter between messages, so there is no point at which
-SIGINT gets checked - a CPython/embedded-native-loop limitation, not a
-bug in this script. Close the windows themselves (or use Task Manager if
-unresponsive) instead of relying on Ctrl+C.
+Manual checklist:
+  1. Confirm the Status Console and touchstrip look unchanged from the
+     pre-transport reference and both show the cycling states.
+  2. Open the printed URL in Chrome. Confirm Chrome receives the same state,
+     Think/visibility/reset/shutdown controls work, and the hello identities
+     are status-console and touchstrip in the terminal log.
+  3. Stop the server from a debugger or add a temporary stop call, confirm
+     both surfaces show their offline indicator and do not present stale state
+     as live. Restore the server and confirm automatic reconnect plus a fresh
+     snapshot.
+  4. Exercise Think, Open/Hidden, context reset, module reset, and guarded
+     shutdown. Close the desktop window to verify the clean engine shutdown.
+
+The real windows, WebView2, browser, microphone, speakers, and local Ollama
+are human-run checks. This script intentionally uses no external network
+endpoint; only the configured local Ollama path is used by the normal engine.
 """
 
 import asyncio
@@ -49,24 +42,16 @@ from config import load_settings
 from main import ConversationHistory
 from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
 from system_log import publish_system_event
-from thinking_mode import ThinkingModeState, ThinkingModeToggled
-from ui_contract import (
-    DataLocality,
-    EventLevel,
-    HealthStatus,
-    ModuleHealth,
-    ModuleId,
-    RuntimeState,
-    SystemEvent,
-)
-from visibility_mode import VisibilityModeChanged, VisibilityModeState
+from thinking_mode import ThinkingModeState
+from ui_contract import EventLevel, RuntimeState
+from ui_transport import UiStateStore, UiTransportServer
+from visibility_mode import VisibilityModeState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 STATE_CYCLE = list(RuntimeState)
-
-_SAMPLE_EVENTS = [
+SAMPLE_EVENTS = [
     ("WARMUP", EventLevel.INFO, "Warm-up request succeeded", "Прогрев модели завершён"),
     ("HOTKEY", EventLevel.INFO, "Thinking mode enabled", "Режим мышления включён"),
     ("HOTKEY", EventLevel.INFO, "Microphone asleep", "Микрофон усыплён"),
@@ -77,102 +62,84 @@ _SAMPLE_EVENTS = [
 
 @dataclass
 class DemoContext:
-    console: StatusConsoleWindow
-    touchstrip: TouchstripWindow
     api: StatusConsoleApi
     bus: EventBus
-    thinking_mode: ThinkingModeState
-    visibility_mode: VisibilityModeState
+    transport: UiTransportServer
+    shutdown_event: asyncio.Event
 
 
 async def _run_demo_cycle_async(ctx: DemoContext) -> None:
-    # The real asyncio loop only exists from here on - see StatusConsoleApi's
-    # docstring for why set_loop() happens here, not in main().
-    ctx.api.set_loop(asyncio.get_running_loop())
-
-    async def on_system_event(event: SystemEvent) -> None:
-        ctx.console.push_system_event(event)  # touchstrip has no event log
-
-    async def on_thinking_toggled(event: ThinkingModeToggled) -> None:
-        ctx.console.push_thinking_mode(event.is_enabled)
-        ctx.touchstrip.push_thinking_mode(event.is_enabled)
-
-    async def on_visibility_mode_changed(event: VisibilityModeChanged) -> None:
-        ctx.console.push_visibility_mode(event.mode)
-        ctx.touchstrip.push_visibility_mode(event.mode)
-
-    ctx.bus.subscribe(SystemEvent, on_system_event)
-    ctx.bus.subscribe(ThinkingModeToggled, on_thinking_toggled)
-    ctx.bus.subscribe(VisibilityModeChanged, on_visibility_mode_changed)
-
-    settings = load_settings()
-    for window in (ctx.console, ctx.touchstrip):
-        window.push_model_label(settings.backend.model)
-        for module in ModuleId:
-            window.push_module_health(ModuleHealth(module=module, status=HealthStatus.OK))
-        window.push_data_locality(DataLocality.LOCAL)
-        window.push_thinking_mode(ctx.thinking_mode.is_enabled)
-        window.push_visibility_mode(ctx.visibility_mode.mode)
-    # A fake capture detail, so clicking Hidden on the desktop window has
-    # something visible to replace (see app.js's _renderVisionChipMeta()) -
-    # the touchstrip never shows per-module detail text at all.
-    ctx.console.push_module_health(
-        ModuleHealth(module=ModuleId.VISION, status=HealthStatus.OK, detail="1200x800 @ демо")
-    )
-
-    print("Cycling RuntimeState + sample SystemEvents every 2s on both windows.")
-    print("Click Think / reset / Open-Hidden on either window and confirm the other updates too.")
     i = 0
-    while True:
+    while not ctx.shutdown_event.is_set():
         state = STATE_CYCLE[i % len(STATE_CYCLE)]
-        ctx.console.push_runtime_state(state)
-        ctx.touchstrip.push_runtime_state(state)
-        source, level, log_message, ui_message = _SAMPLE_EVENTS[i % len(_SAMPLE_EVENTS)]
+        ctx.transport.set_runtime_state(state)
+        source, level, log_message, ui_message = SAMPLE_EVENTS[i % len(SAMPLE_EVENTS)]
         await publish_system_event(ctx.bus, logger, source, level, log_message, ui_message)
         i += 1
-        await asyncio.sleep(2.0)
+        try:
+            await asyncio.wait_for(ctx.shutdown_event.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            continue
 
 
-def _run_demo_cycle(ctx: DemoContext) -> None:
-    asyncio.run(_run_demo_cycle_async(ctx))
-
-
-def main() -> None:
-    import webview
-
+def _build_demo_context(settings) -> DemoContext:
     bus = EventBus()
     thinking_mode = ThinkingModeState(bus=bus)
     visibility_mode = VisibilityModeState(bus=bus)
-    history = ConversationHistory()
-    # Real settings (not a fake/default Settings()) so the config menu's
-    # model selector points at the real local Ollama endpoint and the
-    # microphone selector's "current" reflects this machine's actual
-    # config.toml/config.ui.toml, matching a real python main.py
-    # --status-console run - see story-v1.2.4-task-3-config-menu-
-    # iteration-1.md's manual handoff.
     api = StatusConsoleApi(
         thinking_mode=thinking_mode,
-        history=history,
+        history=ConversationHistory(),
         bus=bus,
         logger=logger,
         visibility_mode=visibility_mode,
-        settings=load_settings(),
+        settings=settings,
     )
+    shutdown_event = asyncio.Event()
+    api.set_shutdown_event(shutdown_event)
+    transport = UiTransportServer(
+        bus,
+        api,
+        state=UiStateStore(
+            model_label=settings.backend.model,
+            thinking_enabled=thinking_mode.is_enabled,
+            visibility_mode=visibility_mode.mode,
+        ),
+        logger=logger,
+    )
+    return DemoContext(api=api, bus=bus, transport=transport, shutdown_event=shutdown_event)
 
+
+async def _run_manual_session(
+    context: DemoContext,
+    console: StatusConsoleWindow,
+    touchstrip: TouchstripWindow,
+) -> None:
+    info = await context.transport.start()
+    console.load_url(info.url)
+    touchstrip.load_url(info.touchstrip_url)
+    print(f"Chrome URL: {info.url}")
+    print("Cycle states are running. Close the desktop window or use shutdown to stop.")
+    try:
+        await _run_demo_cycle_async(context)
+    finally:
+        await context.transport.stop()
+        touchstrip.close()
+        console.close()
+
+
+def main() -> None:
+    settings = load_settings()
+    import webview
+    context = _build_demo_context(settings)
     console = StatusConsoleWindow()
-    console.create(js_api=api)
     touchstrip = TouchstripWindow()
-    touchstrip.create(js_api=api)  # same api instance - one shared engine state
+    console.create(on_closed=context.api.request_shutdown)
+    touchstrip.create()
 
-    ctx = DemoContext(
-        console=console,
-        touchstrip=touchstrip,
-        api=api,
-        bus=bus,
-        thinking_mode=thinking_mode,
-        visibility_mode=visibility_mode,
-    )
-    webview.start(_run_demo_cycle, ctx)
+    def start_session() -> None:
+        asyncio.run(_run_manual_session(context, console, touchstrip))
+
+    webview.start(start_session)
 
 
 if __name__ == "__main__":
