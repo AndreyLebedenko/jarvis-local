@@ -1,6 +1,0 @@
-Metadata-Version: 2.4
-Name: local-jarvis
-Version: 1.2.12
-Requires-Python: <3.12,>=3.11
-License-File: LICENSE
-Dynamic: license-file

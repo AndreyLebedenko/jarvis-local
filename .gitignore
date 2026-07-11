@@ -11,3 +11,4 @@ sounds/
 .planning/
 .claude/settings.local.json
 graphify-out/
+*.egg-info/
