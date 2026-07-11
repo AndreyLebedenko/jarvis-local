@@ -3,7 +3,7 @@
 **Статус:** Completed.
 **Родитель:** future UI roadmap
 **Связано с:** task-ui-privacy-and-touchstrip-requirements.md,
-backlog/activation-warmup.md, story-v1.2.6-hotkey-provider-migration.md
+backlog/activation-warmup.md, done/story-v1.2.6-hotkey-provider-migration.md
 **Дата создания:** 2026-07-06
 
 ## Контекст

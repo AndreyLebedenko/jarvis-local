@@ -1,6 +1,6 @@
 # Task: HotkeyProvider interface and Windows implementation
 
-**Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
+**Story:** `tasks/done/story-v1.2.6-hotkey-provider-migration.md`
 **Status:** Completed.
 **Release:** v1.2.6
 

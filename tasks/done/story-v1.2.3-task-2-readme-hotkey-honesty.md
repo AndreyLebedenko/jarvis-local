@@ -45,7 +45,7 @@ line:
    keypress stream, filters for bound combinations) rather than registering
    only the concrete shortcuts Jarvis needs with the OS - named as a real
    privacy trade-off, not an implementation detail, and pointed at
-   `tasks/story-v1.2.6-hotkey-provider-migration.md`'s planned
+   `tasks/done/story-v1.2.6-hotkey-provider-migration.md`'s planned
    `HotkeyProvider`/`RegisterHotKey` migration without promising it has
    landed or that any non-Windows platform is supported.
 2. The existing Administrator/elevation limitation, expanded with the exact

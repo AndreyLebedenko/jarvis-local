@@ -75,6 +75,12 @@ system is intended to grow.
   and `Ctrl+C` cleanup unregistered the binding without a traceback. The old
   `keyboard` provider's elevation requirement does not apply to the native
   provider; the startup elevation warning has been removed.
+  Full migration verification completed on 2026-07-11 from a
+  non-Administrator session with another application focused: full-screen
+  capture, region capture, clipboard submit, microphone sleep/wake, thinking
+  on/off, and shutdown all passed. This closes v1.2.6. Region-overlay
+  threading and DirectX capture behavior remain separate capture concerns,
+  not hotkey-provider failures.
 - **`sounddevice`'s `play()`/`wait()` convenience functions share one
   implicit default output stream per process.** Two concurrent calls
   don't mix - the second stops/replaces the first. Verified live as the

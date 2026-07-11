@@ -1,6 +1,6 @@
 ﻿# Story v1.2.6: HotkeyProvider migration release
 
-**Status:** Backlog.
+**Status:** Completed (closed 2026-07-11).
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.6
 
@@ -13,7 +13,7 @@ global key-hook dependency.
 Jarvis previously used the Python `keyboard` package for global hotkeys. That
 global key hook saw a broader keypress stream than Jarvis needed. Tasks 1-3
 replaced it with a native provider that registers only concrete shortcuts;
-task 4 still owns live verification of that provider.
+task 4 completed live verification of that provider.
 
 ## Boundaries
 
@@ -30,17 +30,20 @@ task 4 still owns live verification of that provider.
 
 ## Acceptance Criteria
 
-- [ ] `HotkeyProvider` interface contains no Windows-specific details.
-- [ ] `WindowsHotkeyProvider` registers concrete combinations with
+- [x] `HotkeyProvider` interface contains no Windows-specific details.
+- [x] `WindowsHotkeyProvider` registers concrete combinations with
       `RegisterHotKey`.
-- [ ] Registration conflicts produce clear log/UI errors.
-- [ ] Screenshot full, screenshot region, clipboard submit, mic sleep toggle,
-      thinking toggle, shutdown, and future push-to-talk use one provider path.
-- [ ] The old `keyboard` dependency is removed, or kept only as an explicit
+- [x] Registration conflicts produce a clear `HotkeyError`.
+- [x] Screenshot full, screenshot region, clipboard submit, mic sleep toggle,
+      thinking toggle, and shutdown use the provider path. Future
+      push-to-talk is required to use the same path when implemented; it is
+      not part of this story.
+- [x] The old `keyboard` dependency is removed, or kept only as an explicit
       fallback with documented privacy trade-off.
-- [ ] Callback-thread rules are preserved: callbacks schedule work onto the
+- [x] Callback-thread rules are preserved: callbacks schedule work onto the
       asyncio loop and do not decide engine state themselves.
-- [ ] Human handoff verifies global behavior outside Jarvis focus.
+- [x] Human handoff verifies all migrated hotkeys outside Jarvis focus without
+      Administrator privileges.
 
 ## Task Card Sequence
 
@@ -57,18 +60,28 @@ task 4 still owns live verification of that provider.
    - Update README known issues if the privacy state changes.
 
 4. Manual verification handoff.
-   - Administrator behavior.
+   - Non-Administrator behavior.
    - Focus-independent hotkeys.
    - Conflict handling.
 
-## Open Questions
+## Resolved Questions
 
-- Is a temporary compatibility fallback to `keyboard` acceptable if
-  `RegisterHotKey` is unavailable or a combination is occupied?
-- Should the UI show provider status, such as `Global hotkeys: native`,
-  `fallback`, or `unavailable`?
-- Should default hotkeys change if Windows-reserved combinations conflict more
-  often than the current bindings?
+- No `keyboard` fallback is retained; registration failures are explicit.
+- Provider status UI was not required to complete the migration.
+- Existing default hotkeys remain unchanged; an occupied combination produces
+  a clear conflict error.
+
+## Completion Evidence
+
+- Pure suite passed: 478 tests.
+- Human verification confirmed that every migrated hotkey works globally with
+  another application focused and without running Jarvis as Administrator:
+  full-screen capture, region capture, clipboard submit, microphone
+  sleep/wake, thinking on/off, and clean shutdown.
+- Duplicate registration produced the expected clear `HotkeyError`.
+- Shutdown cleanup unregistered providers without errors or tracebacks.
+- The known region-overlay threading debt and DirectX capture capability are
+  separate follow-ups and do not block this provider migration.
 
 ## Stop Conditions
 

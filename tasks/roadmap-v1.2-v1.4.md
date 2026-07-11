@@ -203,7 +203,7 @@ Purpose: remove the privacy and reliability debt from global hotkey handling.
 
 Scope:
 
-- Complete `tasks/story-v1.2.6-hotkey-provider-migration.md`.
+- Completed: `tasks/done/story-v1.2.6-hotkey-provider-migration.md`.
 - Introduce a `HotkeyProvider` interface with no Windows-specific details.
 - Implement `WindowsHotkeyProvider` using `RegisterHotKey`.
 - Route all existing global hotkeys through the provider:
@@ -212,8 +212,9 @@ Scope:
   - clipboard submit;
   - mic sleep toggle;
   - thinking toggle;
-  - shutdown;
-  - future push-to-talk.
+  - shutdown.
+- Require future push-to-talk to reuse `HotkeyProvider` when that deferred
+  feature is implemented.
 - Remove the `keyboard` dependency, or leave it only as an explicitly
   documented fallback with a clear privacy trade-off.
 - Keep callback-thread behavior safe: the callback schedules work onto the
@@ -223,9 +224,9 @@ Boundary:
 
 - Linux/X11/Wayland provider implementation is out of scope for the first
   migration.
-- Manual global-hotkey behavior remains a human handoff.
+- Manual global-hotkey behavior was verified by the human without elevation.
 
-Story/task readiness: existing story card is sufficient as the starting point.
+Story/task status: completed.
 
 ## Backlog for v1.4.0+ - Activation and warmup
 

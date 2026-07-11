@@ -1,9 +1,9 @@
 # Task: Hotkey manual verification handoff
 
-**Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
+**Story:** `tasks/done/story-v1.2.6-hotkey-provider-migration.md`
 **Status:** Completed.
 **Release:** v1.2.6
-**Depends on:** `tasks/story-v1.2.6-task-3-hotkey-dependency-docs.md`
+**Depends on:** `tasks/done/story-v1.2.6-task-3-hotkey-dependency-docs.md`
 
 ## Summary
 
@@ -14,11 +14,11 @@ machine.
 
 - Handoff instructions and optional check script only.
 - The agent does not run global hotkey hardware checks.
-- Do not close the release story until the human reports results.
+- The human reported and accepted the complete result on 2026-07-11.
 
 ## Acceptance Criteria
 
-- [x] Handoff covers Administrator and non-Administrator behavior.
+- [x] Handoff proves native hotkeys work without Administrator privileges.
 - [x] Handoff covers focus-independent hotkey triggering.
 - [x] Handoff covers registration conflict behavior.
 - [x] Handoff covers each migrated hotkey.
@@ -30,11 +30,28 @@ machine.
 - Run `python -m pytest`.
 - Human runs the documented checks and reports results.
 
-## Human handoff
+## Human Result
 
-Run the matrix once from a normal PowerShell terminal and once from an
-Administrator PowerShell terminal. Close every other Jarvis/manual hotkey
-process before each run.
+Human verification completed on 2026-07-11 from a normal,
+non-Administrator session with another application focused:
+
+- `Ctrl+Alt+S`: full-screen capture passed.
+- `Ctrl+Alt+R`: region capture passed.
+- `Ctrl+Alt+V`: clipboard submit passed.
+- `Ctrl+Alt+M`: microphone sleep and wake passed.
+- `Ctrl+Alt+T`: thinking mode on and off passed.
+- `Ctrl+Alt+Q`: clean shutdown passed without errors or tracebacks.
+- Duplicate registration produced the expected clear `HotkeyError`.
+- Cleanup unregistered the binding without a traceback.
+
+The earlier Administrator matrix is intentionally retired. The architectural
+requirement is operation without elevation; Administrator execution is not a
+release criterion.
+
+## Handoff Procedure
+
+Run from a normal PowerShell terminal. Close every other Jarvis/manual hotkey
+process before the run.
 
 ### 1. Isolated registration and focus independence
 
@@ -80,9 +97,8 @@ Record `PASS`, `FAIL`, or `BLOCKED` plus the visible/audible observation for:
 - `Ctrl+Alt+Q`: clean shutdown reaches `Shutdown: teardown complete` with no
   error or traceback.
 
-Also report whether the non-Administrator startup warning appeared. Do not
-enter secrets in the clipboard or capture sensitive screen content during the
-check.
+Do not enter secrets in the clipboard or capture sensitive screen content
+during the check.
 
 ## Stop Conditions
 

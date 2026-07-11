@@ -27,7 +27,7 @@ layering, TTS engine choices, and unified hotkeys.
 - [ ] v1.2.3 hygiene and known debts are complete.
 - [ ] v1.2.4 shutdown and configuration layer are complete.
 - [ ] v1.2.5 TTS measurements and engine boundary are complete.
-- [ ] v1.2.6 HotkeyProvider migration is complete.
+- [x] v1.2.6 HotkeyProvider migration is complete.
 
 ## Acceptance Criteria
 

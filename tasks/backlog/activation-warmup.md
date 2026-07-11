@@ -24,7 +24,7 @@ privacy or complicating the main voice pipeline.
 - Triggering activation and warming Ollama are separate mechanisms joined by a
   shared activation entry point.
 - Full migration of existing hotkeys to `HotkeyProvider` is handled by
-  `tasks/story-v1.2.6-hotkey-provider-migration.md`.
+  `tasks/done/story-v1.2.6-hotkey-provider-migration.md`.
 - Linux/X11/Wayland hotkey implementation is out of scope for this story.
 
 ## Key Decisions

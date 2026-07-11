@@ -1,9 +1,9 @@
 # Task: Migrate existing hotkeys
 
-**Story:** `tasks/story-v1.2.6-hotkey-provider-migration.md`
+**Story:** `tasks/done/story-v1.2.6-hotkey-provider-migration.md`
 **Status:** Completed.
 **Release:** v1.2.6
-**Depends on:** `tasks/story-v1.2.6-task-1-hotkey-provider-interface.md`
+**Depends on:** `tasks/done/story-v1.2.6-task-1-hotkey-provider-interface.md`
 
 ## Summary
 

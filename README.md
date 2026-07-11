@@ -1,6 +1,6 @@
 # Jarvis
 
-Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks short Russian answers through local TTS.
+Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks answers through configurable local TTS routes.
 
 Jarvis core is designed to run without network access after the one-time setup
 steps are complete. The LLM backend is a separate component: the default
@@ -25,7 +25,12 @@ selection), and a compact touchstrip glance surface.
 
 ## Status
 
-This is a v1.2 hobby/research release. It is usable, but intentionally honest about its limits: no full echo cancellation, Russian-only Silero TTS, rough Latin transliteration, and imperfect OCR on dense screenshots.
+This is a v1.2 hobby/research release. It is usable, but intentionally honest
+about its limits: no full echo cancellation, Russian-first Silero defaults,
+rough Latin transliteration when that default handles Latin text, and
+imperfect OCR on dense screenshots. A production configuration using Silero
+for Russian and Piper for English has been verified; engine selection remains
+configurable per supported language.
 
 Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
@@ -33,7 +38,8 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
 - Local Ollama backend using `gemma4:12b-it-qat`.
 - Voice input with Silero VAD.
-- Sentence-level streaming TTS for low perceived latency.
+- Sentence-level streaming TTS with configurable per-language Silero/Piper
+  routes for low perceived latency.
 - Full-screen and region screenshot capture.
 - Hotkey and sound-cue interface.
 - Local Status Console UI with system events, Think mode, Open/Hidden mode,
@@ -64,7 +70,7 @@ Pull the Ollama model:
 ollama pull gemma4:12b-it-qat
 ```
 
-Download and cache the Silero TTS model once:
+Download and cache the default Silero TTS model once:
 
 ```bash
 python setup_tts_model.py
@@ -97,12 +103,16 @@ python main.py --status-console --no-touchstrip
 ```
 
 Jarvis uses Windows `RegisterHotKey` for concrete shortcuts. Global shortcuts
-were verified from another focused application without Administrator rights.
+were verified from another focused application without Administrator rights;
+the former global-key-hook dependency is no longer used.
 
 Default hotkeys:
 
 - `Ctrl+Alt+S`: capture the full screen for the next request.
 - `Ctrl+Alt+R`: capture a selected screen region for the next request.
+- `Ctrl+Alt+V`: submit clipboard text as a turn.
+- `Ctrl+Alt+M`: toggle microphone sleep/wake.
+- `Ctrl+Alt+T`: toggle Think mode.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
 ## Architecture
@@ -112,7 +122,7 @@ The app is split into small asyncio modules connected through `bus.py`:
 - `audio_in.py`: microphone capture, VAD, utterance chunking.
 - `backend.py`: Ollama `/api/chat` streaming adapter.
 - `capture.py`: screenshot capture.
-- `tts.py`: sentence buffering, Silero TTS synthesis, playback.
+- `tts.py`: sentence buffering, configurable Silero/Piper routing, playback.
 - `sound_cues.py`: generated local cue sounds.
 - `config.py`: TOML settings and validation.
 - `main.py`: wiring, orchestration, prompt, shutdown.
@@ -127,7 +137,9 @@ This repository was built with an agent-assisted workflow: project facts were re
 
 - Global hotkeys use Windows `RegisterHotKey` through `HotkeyProvider` and
   register only Jarvis's concrete combinations. The former Python `keyboard`
-  global-key-hook dependency has been removed.
+  global-key-hook dependency has been removed. Full-screen capture, region
+  capture, clipboard submit, microphone sleep/wake, Think mode, conflict
+  reporting, and shutdown were verified globally without elevation.
 - The Status Console has a guarded Shutdown control (desktop: click,
   confirm; touchstrip: hold ~2s), routed through the same clean shutdown
   path as the `Ctrl+Alt+Q` hotkey - both stop the engine (background
@@ -138,6 +150,12 @@ This repository was built with an agent-assisted workflow: project facts were re
 - There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
 - Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
 - Dense screenshots, especially large IDE views, can cause OCR confabulation. Use region capture for targeted questions.
+- Region selection currently creates a Tkinter overlay from the hotkey
+  callback thread. A defensive guard covers the observed callback-order
+  failure, but the threading design remains a documented backlog item.
+- Screenshot capture from DirectX applications is not yet a supported
+  guarantee. Windowed and borderless-windowed behavior needs a dedicated
+  capture-backend spike; failure there does not indicate a hotkey problem.
 
 ## Tests
 
