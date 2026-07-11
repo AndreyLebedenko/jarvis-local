@@ -97,7 +97,7 @@ def test_state_store_replaces_values_and_keeps_system_event_snapshot_history():
         "key": "runtime",
         "value": {
             "state": "thinking",
-            "label": "Думаю",
+            "label": "Thinking",
             "substatus": "working",
         },
     }

@@ -1230,6 +1230,33 @@ owned by the engine's asyncio loop:
   runtime locality guarantee is unchanged: Jarvis requires no network access
   beyond the configured local Ollama endpoint.
 
+## Architecture v1.2.11 (UI localization)
+
+The Status Console and Touchstrip UI chrome is localized; English is the
+default UI language.
+
+- `[ui].language` in config.py selects the UI language: `en` (default) or
+  `ru`. Any other value is a ConfigError. Restart-to-apply like every other
+  setting.
+- Boundary: this governs UI chrome only. The dialog language - the Russian
+  system prompt, the warm-up prompt, TTS output, and speech markup - is
+  runtime data and is not affected by `[ui].language`.
+- `ui_text.py` is the single Python-side catalog of UI-visible runtime
+  strings (runtime-state labels, substatus lines, module labels, microphone
+  details, `ui_message` texts). No module hardcodes UI-visible prose.
+  config.py repeats the supported set/default as literals because it must
+  stay free of project-module imports; a test pins the two together.
+- The transport state projection carries `ui_language`; the web layer
+  (`status_console_ui/strings.js`) holds the en/ru dictionary for static
+  markup (`data-i18n` attributes) and JS-produced strings, defaults to
+  English before the snapshot arrives, and re-stamps on snapshot.
+- The demo/QA harness pages are plain English and do not use the `data-i18n`
+  mechanism.
+- v1.2.11 also unified the user-muted microphone detail: ui_transport.py
+  previously pushed "усыплён" on live MicSleepToggled while main.py seeded
+  "не используется"; both now resolve the same catalog key, keeping the
+  v1.2.10 wording decision ("не используется" / "not in use").
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

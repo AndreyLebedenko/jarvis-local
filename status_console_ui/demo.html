@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-state="idle" data-visibility="open">
+<html lang="en" data-state="idle" data-visibility="open">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,7 +49,7 @@
   <div class="topbar-right">
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
-      <span class="locality-label">Локально</span>
+      <span class="locality-label">Local</span>
     </div>
     <div class="visibility-toggle" id="visibilityToggle">
       <button data-mode="open" class="sel" onclick="setVisibilityMode('open')">Open</button>
@@ -64,102 +64,103 @@
     <div class="orb-core"><div class="orb-glyph">J</div></div>
   </div>
   <div style="text-align: center; margin-top: -10px;">
-    <div class="orb-state" id="orbState">Ожидание</div>
+    <div class="orb-state" id="orbState">Idle</div>
     <div class="orb-sub" id="orbSub"></div>
   </div>
 
   <div class="chip-row">
     <div class="chip" id="chip-backend" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body"><div class="chip-label">Модель</div><div class="chip-meta">...</div></div>
-      <button class="chip-reset" title="Запросить сброс модели/backend" onclick="requestModuleReset('backend')">&#8635;</button>
+      <div class="chip-body"><div class="chip-label">Model</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Request model/backend reset" onclick="requestModuleReset('backend')">&#8635;</button>
     </div>
     <div class="chip" id="chip-microphone" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body"><div class="chip-label">Микрофон</div><div class="chip-meta">...</div></div>
-      <button class="chip-reset" title="Запросить сброс микрофона" onclick="requestModuleReset('microphone')">&#8635;</button>
+      <div class="chip-body"><div class="chip-label">Microphone</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Request microphone reset" onclick="requestModuleReset('microphone')">&#8635;</button>
     </div>
     <div class="chip" id="chip-tts" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">TTS</div><div class="chip-meta">...</div></div>
-      <button class="chip-reset" title="Запросить сброс TTS" onclick="requestModuleReset('tts')">&#8635;</button>
+      <button class="chip-reset" title="Request TTS reset" onclick="requestModuleReset('tts')">&#8635;</button>
     </div>
     <div class="chip" id="chip-memory" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body"><div class="chip-label">Память</div><div class="chip-meta">...</div></div>
-      <button class="chip-reset" title="Запросить сброс памяти" onclick="requestModuleReset('memory')">&#8635;</button>
+      <div class="chip-body"><div class="chip-label">Memory</div><div class="chip-meta">...</div></div>
+      <button class="chip-reset" title="Request memory reset" onclick="requestModuleReset('memory')">&#8635;</button>
     </div>
     <div class="chip" id="chip-vision" data-status="unavailable">
       <span class="chip-dot" data-status="unavailable"></span>
       <div class="chip-body"><div class="chip-label">Vision</div><div class="chip-meta">...</div></div>
-      <button class="chip-reset" title="Запросить сброс vision/экрана" onclick="requestModuleReset('vision')">&#8635;</button>
+      <button class="chip-reset" title="Request vision/screen reset" onclick="requestModuleReset('vision')">&#8635;</button>
     </div>
   </div>
 
   <div class="think-card">
     <div class="switch" id="thinkSwitch" onclick="toggleThinking()"></div>
     <div class="think-body">
-      <div class="think-title">Режим мышления <span class="think-tag" id="thinkTag">think: off</span></div>
-      <div class="think-status" id="thinkStatus">Быстрее, без рассуждения</div>
+      <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">think: off</span></div>
+      <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
     </div>
   </div>
 
   <div class="action-row">
     <div class="config-zone">
-      <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Настройки</button>
+      <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Settings</button>
     </div>
 
     <div class="reset-zone">
-      <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Сбросить контекст</button>
+      <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Reset context</button>
     </div>
 
     <div class="shutdown-zone">
-      <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Завершить работу</button>
+      <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Shut down</button>
     </div>
   </div>
 
   <div class="action-feedback">
     <div class="confirm-row" id="confirmRow">
-      <span>Диалог и текущий контекст будут удалены. Отменить нельзя.</span>
-      <button onclick="hideResetConfirm()">Отмена</button>
-      <button class="danger" onclick="confirmContextReset()">Сбросить</button>
+      <span>The dialog and current context will be deleted. This cannot be undone.</span>
+      <button onclick="hideResetConfirm()">Cancel</button>
+      <button class="danger" onclick="confirmContextReset()">Reset</button>
     </div>
     <div class="confirm-row" id="shutdownConfirmRow">
-      <span>Jarvis будет остановлен. Потребуется запустить процесс заново.</span>
-      <button onclick="hideShutdownConfirm()">Отмена</button>
-      <button class="danger" onclick="confirmShutdown()">Завершить</button>
+      <span>Jarvis will be stopped. You will need to start the process again.</span>
+      <button onclick="hideShutdownConfirm()">Cancel</button>
+      <button class="danger" onclick="confirmShutdown()">Shut down</button>
     </div>
   </div>
 
   <div class="config-panel" id="configPanel">
     <div class="config-field">
-      <label for="modelSelect">Модель</label>
+      <label for="modelSelect">Model</label>
       <select id="modelSelect"></select>
     </div>
     <div class="config-field">
-      <label for="micSelect">Микрофон</label>
+      <label for="micSelect">Microphone</label>
       <select id="micSelect"></select>
     </div>
-    <button class="btn-config-apply" id="btnConfigApply" disabled onclick="applyConfigSelection()">Применить</button>
-    <div class="pending-restart" id="pendingRestart">Изменения сохранены - перезапустите Jarvis, чтобы применить.</div>
+    <button class="btn-config-apply" id="btnConfigApply" disabled onclick="applyConfigSelection()">Apply</button>
+    <div class="pending-restart" id="pendingRestart">Changes saved - restart Jarvis to apply.</div>
   </div>
 </div>
 
 <div class="logpanel">
-  <div class="log-title">События системы</div>
-  <div class="log-sub">engine log - реальное время</div>
+  <div class="log-title">System events</div>
+  <div class="log-sub">engine log - real time</div>
   <div id="logList">
-    <div class="log-empty" id="logEmpty">Пока нет событий</div>
+    <div class="log-empty" id="logEmpty">No events yet</div>
   </div>
   <div class="legend">
-    <span><i style="background:var(--gray)"></i>инфо</span>
-    <span><i style="background:var(--cyan)"></i>активно</span>
-    <span><i style="background:var(--amber)"></i>предупреждение</span>
-    <span><i style="background:var(--red)"></i>ошибка</span>
+    <span><i style="background:var(--gray)"></i>info</span>
+    <span><i style="background:var(--cyan)"></i>active</span>
+    <span><i style="background:var(--amber)"></i>warning</span>
+    <span><i style="background:var(--red)"></i>error</span>
   </div>
 </div>
 
 <script src="contract.js"></script>
+<script src="strings.js"></script>
 <script src="app.js"></script>
 <script src="demo.js"></script>
 </body>

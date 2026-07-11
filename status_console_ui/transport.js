@@ -39,7 +39,7 @@ function startUiTransport(clientId, capabilities, handlers) {
 function connectUiTransport(clientId, capabilities, handlers) {
   const token = new URLSearchParams(window.location.search).get("token");
   if (!token) {
-    handlers.onStatus(false, "Нет токена UI transport в URL");
+    handlers.onStatus(false, uiString("transport_no_token"));
     return;
   }
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -69,12 +69,12 @@ function connectUiTransport(clientId, capabilities, handlers) {
       }
     } catch (error) {
       console.error("UI transport message failed:", error);
-      handlers.onStatus(false, "Ошибка данных UI transport");
+      handlers.onStatus(false, uiString("transport_data_error"));
     }
   };
-  _uiTransportSocket.onerror = () => handlers.onStatus(false, "Нет связи с engine");
+  _uiTransportSocket.onerror = () => handlers.onStatus(false, uiString("transport_no_connection"));
   _uiTransportSocket.onclose = () => {
-    handlers.onStatus(false, "Нет связи с engine");
+    handlers.onStatus(false, uiString("transport_no_connection"));
     if (_uiTransportReconnectTimer === null) {
       _uiTransportReconnectTimer = window.setTimeout(() => {
         _uiTransportReconnectTimer = null;

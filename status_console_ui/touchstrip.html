@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-state="idle" data-visibility="open" data-page="glance">
+<html lang="en" data-state="idle" data-visibility="open" data-page="glance">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,23 +17,23 @@
         <div class="orb-core"></div>
       </div>
       <div class="g-textblock">
-        <div class="g-state" id="gState">Ожидание</div>
+        <div class="g-state" id="gState">Idle</div>
         <div class="g-sub" id="gSub"></div>
         <div class="g-model" id="gModel">...</div>
         <div class="g-visibility" id="gVisibility" onclick="toggleVisibilityFromGlance()">Open</div>
       </div>
     </div>
     <div class="g-chips">
-      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-microphone"></span>Микрофон</div>
-      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-tts"></span>TTS</div>
-      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-memory"></span>Память</div>
-      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-vision"></span>Vision</div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-microphone"></span><span data-i18n="chip_microphone">Microphone</span></div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-tts"></span><span data-i18n="chip_tts">TTS</span></div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-memory"></span><span data-i18n="chip_memory">Memory</span></div>
+      <div class="g-chip"><span class="g-dot" data-status="unavailable" id="dot-vision"></span><span data-i18n="chip_vision">Vision</span></div>
     </div>
   </div>
 
   <div class="page" id="pageActions">
     <div class="act-btn" id="thinkBtn" onclick="toggleThinking()">
-      <div class="act-label">Мышление</div>
+      <div class="act-label" data-i18n="strip_think_label">Thinking</div>
       <div class="act-sub" id="thinkSub">think: off</div>
     </div>
     <div
@@ -45,8 +45,8 @@
       onpointercancel="onResetHoldEnd()"
     >
       <div class="act-hold-fill"></div>
-      <div class="act-label">Сбросить контекст</div>
-      <div class="act-sub" id="resetSub">удержать 1с для подтверждения</div>
+      <div class="act-label" data-i18n="btn_reset_context">Reset context</div>
+      <div class="act-sub" id="resetSub" data-i18n="strip_reset_hold_hint">hold 1s to confirm</div>
     </div>
     <div
       class="act-btn"
@@ -57,8 +57,8 @@
       onpointercancel="onShutdownHoldEnd()"
     >
       <div class="act-hold-fill"></div>
-      <div class="act-label">Завершить работу</div>
-      <div class="act-sub" id="shutdownSub">удержать 2с для подтверждения</div>
+      <div class="act-label" data-i18n="btn_shutdown">Shut down</div>
+      <div class="act-sub" id="shutdownSub" data-i18n="strip_shutdown_hold_hint">hold 2s to confirm</div>
     </div>
   </div>
 
@@ -69,6 +69,7 @@
 </div>
 
 <script src="contract.js"></script>
+<script src="strings.js"></script>
 <script src="transport.js"></script>
 <script src="touchstrip.js"></script>
 </body>

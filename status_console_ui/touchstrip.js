@@ -21,6 +21,7 @@ const _showTransportStatus = typeof createTransportStatusHandler === "function"
   : () => {};
 
 function _applyStateSnapshot(state) {
+  applyUiLanguage(state.ui_language || {});
   applyRuntimeState(state.runtime);
   Object.values(state.modules || {}).forEach(applyModuleHealth);
   applyModelLabel(state.model);
@@ -37,6 +38,7 @@ function _applyStateDelta(payload) {
     data_locality: applyDataLocality,
     thinking: applyThinkingMode,
     visibility: applyVisibilityMode,
+    ui_language: applyUiLanguage,
   });
 }
 
@@ -75,7 +77,9 @@ function applyModelLabel(payload) {
 }
 
 function applyDataLocality(payload) {
-  _lastLocalityText = payload.locality === "local" ? "локально" : "внешний backend";
+  _lastLocalityText = uiString(
+    payload.locality === "local" ? "strip_locality_local" : "strip_locality_external"
+  );
   _renderModelLine();
 }
 

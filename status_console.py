@@ -21,27 +21,20 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
+from ui_text import DEFAULT_UI_LANGUAGE, module_label, runtime_state_text, ui_text
 from visibility_mode import VisibilityModeState
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
 TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
 
-# Labels/default substatus text for each RuntimeState. Kept here (not in
-# app.js) so a later task can localize or reuse them without touching the
-# front-end, and so this mapping is covered by a pure Python test.
-_RUNTIME_STATE_TEXT: dict[RuntimeState, tuple[str, str]] = {
-    RuntimeState.IDLE: ("Ожидание", "Скажите «Джарвис», чтобы начать."),
-    RuntimeState.WARMING: ("Прогрев (локально)", "Модель загружается в память GPU..."),
-    RuntimeState.LISTENING: ("Слушаю", "Жду голосовую команду..."),
-    RuntimeState.THINKING: ("Думаю", "Собираю контекст и формирую ответ..."),
-    RuntimeState.SPEAKING: ("Отвечаю", "Произношу ответ вслух..."),
-    RuntimeState.ERROR: ("Ошибка", ""),
-}
 
-
-def runtime_state_payload(state: RuntimeState, substatus: str | None = None) -> dict:
-    label, default_substatus = _RUNTIME_STATE_TEXT[state]
+def runtime_state_payload(
+    state: RuntimeState,
+    substatus: str | None = None,
+    language: str = DEFAULT_UI_LANGUAGE,
+) -> dict:
+    label, default_substatus = runtime_state_text(state, language)
     return {
         "state": state.value,
         "label": label,
@@ -226,14 +219,6 @@ _MODULE_RESET_SOURCE: dict[ModuleId, str] = {
     ModuleId.VISION: "CAPTURE",
 }
 
-_MODULE_LABELS_RU: dict[ModuleId, str] = {
-    ModuleId.BACKEND: "модели/backend",
-    ModuleId.MICROPHONE: "микрофона",
-    ModuleId.TTS: "TTS",
-    ModuleId.MEMORY: "памяти",
-    ModuleId.VISION: "vision/экрана",
-}
-
 ModelOptionsSource = Callable[[], Awaitable[list[str]]]
 MicrophoneOptionsSource = Callable[[], Awaitable[list[str]]]
 
@@ -296,6 +281,7 @@ class StatusConsoleApi:
         self._shutdown_event = shutdown_event
         self._pending_shutdown = False
         self._settings = settings or Settings()
+        self._language = self._settings.ui.language
         self._ui_config_path = Path(ui_config_path)
         self._model_options_source = model_options_source or (
             lambda: _default_model_options_source(self._settings.backend.endpoint)
@@ -359,7 +345,7 @@ class StatusConsoleApi:
             source="ENGINE",
             level=EventLevel.INFO,
             log_message="Conversation context reset by user",
-            ui_message="Контекст диалога сброшен",
+            ui_message=ui_text("context_reset", self._language),
         )
 
     def reset_module(self, module_id: str) -> None:
@@ -383,9 +369,10 @@ class StatusConsoleApi:
                 f"Reset requested for module {module.value}, but no engine "
                 "reset API exists yet"
             ),
-            ui_message=(
-                f"Сброс {_MODULE_LABELS_RU[module]} запрошен, но пока не "
-                "поддерживается движком"
+            ui_message=ui_text(
+                "module_reset_unsupported",
+                self._language,
+                module=module_label(module, self._language),
             ),
         )
 
@@ -412,10 +399,11 @@ class StatusConsoleApi:
             source="ENGINE",
             level=EventLevel.INFO,
             log_message=f"Visibility mode set to {mode.value}",
-            ui_message=(
-                "Режим Hidden активирован: превью экрана скрыто"
+            ui_message=ui_text(
+                "hidden_mode_enabled"
                 if mode is VisibilityMode.HIDDEN
-                else "Режим Open восстановлен"
+                else "open_mode_restored",
+                self._language,
             ),
         )
 
@@ -451,7 +439,7 @@ class StatusConsoleApi:
             source="ENGINE",
             level=EventLevel.INFO,
             log_message="Shutdown requested via Status Console",
-            ui_message="Запрошено завершение работы Jarvis",
+            ui_message=ui_text("shutdown_requested", self._language),
         )
         self._shutdown_event.set()
 
@@ -470,7 +458,7 @@ class StatusConsoleApi:
                 source="ENGINE",
                 level=EventLevel.WARN,
                 log_message="Failed to enumerate Ollama models; degrading to current value",
-                ui_message="Не удалось получить список моделей Ollama - показано текущее значение",
+                ui_message=ui_text("model_options_failed", self._language),
             )
             options = []
         if current not in options:
@@ -496,9 +484,7 @@ class StatusConsoleApi:
                 log_message=(
                     "Failed to enumerate microphone devices; degrading to current value"
                 ),
-                ui_message=(
-                    "Не удалось получить список микрофонов - показано текущее значение"
-                ),
+                ui_message=ui_text("microphone_options_failed", self._language),
             )
             options = []
         if current not in options:
@@ -521,7 +507,7 @@ class StatusConsoleApi:
                 source="ENGINE",
                 level=EventLevel.WARN,
                 log_message="Config menu save rejected: model was empty",
-                ui_message="Сохранение отменено: модель не выбрана",
+                ui_message=ui_text("config_save_rejected_no_model", self._language),
             )
             return
         write_ui_config(self._ui_config_path, model=model, microphone_device=microphone_device)
@@ -534,6 +520,6 @@ class StatusConsoleApi:
                 f"Config menu saved (model={model!r}, microphone={microphone_device!r}); "
                 "restart to apply"
             ),
-            ui_message="Настройки сохранены - перезапустите Jarvis, чтобы применить",
+            ui_message=ui_text("config_saved_restart_to_apply", self._language),
         )
         await self._bus.publish(UiConfigSaved, UiConfigSaved())

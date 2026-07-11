@@ -38,6 +38,7 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
+from ui_text import DEFAULT_UI_LANGUAGE, ui_text
 from visibility_mode import VisibilityModeChanged
 
 PROTOCOL_VERSION = 1
@@ -150,9 +151,13 @@ class UiStateStore:
         data_locality: DataLocality = DataLocality.LOCAL,
         thinking_enabled: bool = False,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
+        language: str = DEFAULT_UI_LANGUAGE,
     ) -> None:
+        self._language = language
         self._state: JsonObject = {
-            "runtime": cast(JsonObject, runtime_state_payload(runtime_state)),
+            "runtime": cast(
+                JsonObject, runtime_state_payload(runtime_state, language=language)
+            ),
             "modules": {},
             "data_locality": cast(JsonObject, data_locality_payload(data_locality)),
             "model": {"label": model_label},
@@ -162,7 +167,12 @@ class UiStateStore:
             "model_options": {"options": [], "current": model_label},
             "microphone_options": {"options": [], "current": ""},
             "pending_restart": {"pending": False},
+            "ui_language": {"language": language},
         }
+
+    @property
+    def language(self) -> str:
+        return self._language
 
     def snapshot(self) -> JsonObject:
         return json.loads(json.dumps(self._state, ensure_ascii=False))
@@ -179,7 +189,10 @@ class UiStateStore:
     def set_runtime_state(
         self, state: RuntimeState, substatus: str | None = None
     ) -> JsonObject | None:
-        return self._replace("runtime", cast(JsonObject, runtime_state_payload(state, substatus)))
+        return self._replace(
+            "runtime",
+            cast(JsonObject, runtime_state_payload(state, substatus, self._language)),
+        )
 
     def set_module_health(self, health: ModuleHealth) -> JsonObject | None:
         modules = cast(dict[str, JSONValue], self._state["modules"])
@@ -378,13 +391,18 @@ class UiTransportServer:
 
     async def _on_response_token(self, event: ResponseToken) -> None:
         del event
-        self.set_runtime_state(RuntimeState.SPEAKING, "Произношу ответ...")
+        self.set_runtime_state(
+            RuntimeState.SPEAKING, ui_text("speaking_response", self._state.language)
+        )
 
     async def _on_mic_sleep_toggled(self, event: MicSleepToggled) -> None:
         health = ModuleHealth(
             module=ModuleId.MICROPHONE,
             status=HealthStatus.OK if event.is_awake else HealthStatus.UNAVAILABLE,
-            detail="слушает" if event.is_awake else "усыплён",
+            detail=ui_text(
+                "mic_detail_listening" if event.is_awake else "mic_detail_muted",
+                self._state.language,
+            ),
         )
         self._publish_delta(self._state.set_module_health(health))
 

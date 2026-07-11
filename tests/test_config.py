@@ -778,6 +778,55 @@ def test_microphone_device_defaults_to_empty_string_when_section_omitted(tmp_pat
     assert settings.microphone.device == ""
 
 
+def test_ui_language_defaults_to_english(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.ui.language == "en"
+
+
+def test_ui_language_parses_russian_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [ui]
+        language = "ru"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.ui.language == "ru"
+
+
+def test_unsupported_ui_language_raises_config_error_naming_the_field(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [ui]
+        language = "de"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[ui\].language"):
+        load_settings(config_path)
+
+
+def test_ui_language_of_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [ui]
+        language = 2
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[ui\].language"):
+        load_settings(config_path)
+
+
 def test_write_ui_config_then_load_settings_round_trips(tmp_path):
     ui_config_path = tmp_path / "config.ui.toml"
 
