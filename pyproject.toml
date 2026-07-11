@@ -1,0 +1,31 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["graphify-out"]
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "C4",
+    "C90",
+    "E",
+    "F",
+    "I",
+    "RUF",
+    "SIM",
+    "UP",
+    "W",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "B011",
+]
+"manual/**/*.py" = [
+    # Manual scripts currently add the repository root to sys.path. The
+    # package-layout story removes that workaround before lint becomes a gate.
+    "E402",
+]

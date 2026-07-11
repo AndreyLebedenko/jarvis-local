@@ -1,7 +1,7 @@
 # Task: Establish quality-tooling baseline
 
 **Story:** `tasks/story-quality-tooling-and-package-layout.md`
-**Status:** In progress.
+**Status:** Completed.
 **Release:** Maintenance.
 
 ## Summary
@@ -76,3 +76,28 @@ files or refactor production behavior in this task.
 - The baseline reached the task stop condition: adopting Ruff formatting now
   is wide-ranging, while enforcing default lint before package migration would
   either require temporary suppressions or preserve the `sys.path` workaround.
+
+## Adopted Ruff Baseline
+
+- Ruff 0.12.x is the only retained quality-tool dependency. Configuration is
+  centralized in `pyproject.toml` for Python 3.11 with lint families `B`, `C4`,
+  `C90`, `E`, `F`, `I`, `RUF`, `SIM`, `UP`, and `W`.
+- Complexity ceiling: `C901 <= 10`. Existing exceptions are not suppressed:
+  `audio_in.run_microphone_loop` scores 14 and
+  `ui_transport._dispatch_control` scores 12. They remain visible work for a
+  bounded redesign rather than becoming permanent ignores.
+- The expanded configured scan reports 312 findings: 217 `E501`, 54 `RUF001`,
+  15 import-order findings, 5 unused imports, 2 complexity findings, and 19
+  other modernization/simplification findings. These are baseline inventory,
+  not a green gate. Formatting is isolated in Task 7; migration tasks remove
+  import-path workarounds before lint enforcement.
+- `RUF001` includes canonical Russian runtime strings, which project policy
+  explicitly treats as data. The later lint-enforcement task must scope this
+  rule without rewriting those strings.
+- Ruff's `B023` finding in `tests/test_audio_in.py` is a loop variable captured
+  by a lambda that is awaited to completion inside the same iteration. It is
+  safe in the current control flow, but remains inventory for the later
+  mechanical lint cleanup.
+- Verification: `python -m pytest` passes all 526 tests. Ruff lint and format
+  checks intentionally remain red with the recorded baseline until their
+  scheduled tasks.

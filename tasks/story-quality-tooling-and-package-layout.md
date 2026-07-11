@@ -45,7 +45,7 @@ unrelated modules in the repository root.
 
 ## Task Card Sequence
 
-1. `tasks/story-quality-task-1-tooling-baseline.md`
+1. `tasks/done/story-quality-task-1-tooling-baseline.md`
    Establish measured Ruff, complexity, Pyright, and Semdup baselines and
    commit the approved deterministic tooling configuration.
 2. `tasks/story-quality-task-2-package-skeleton.md`
