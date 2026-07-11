@@ -48,7 +48,7 @@ unrelated modules in the repository root.
 1. `tasks/done/story-quality-task-1-tooling-baseline.md`
    Establish measured Ruff, complexity, Pyright, and Semdup baselines and
    commit the approved deterministic tooling configuration.
-2. `tasks/story-quality-task-2-package-skeleton.md`
+2. `tasks/done/story-quality-task-2-package-skeleton.md`
    Add packaging metadata, `src/jarvis`, and the canonical module entry point.
 3. `tasks/story-quality-task-3-core-and-dialog-migration.md`
    Move core contracts, configuration, backend, and dialog state.

@@ -1,3 +1,38 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-jarvis"
+version = "1.2.12"
+requires-python = ">=3.11,<3.12"
+
+[tool.setuptools]
+packages = ["jarvis"]
+package-dir = {jarvis = "src/jarvis"}
+py-modules = [
+    "audio_in",
+    "audio_utils",
+    "backend",
+    "bus",
+    "capture",
+    "clipboard_input",
+    "config",
+    "hotkey_provider",
+    "language_segments",
+    "main",
+    "sound_cues",
+    "speech_markup",
+    "status_console",
+    "system_log",
+    "thinking_mode",
+    "tts",
+    "ui_contract",
+    "ui_text",
+    "ui_transport",
+    "visibility_mode",
+]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 88
