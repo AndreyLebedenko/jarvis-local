@@ -20,6 +20,7 @@ from jarvis.audio.tts import TtsOutput
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.lifecycle import (
+    BackendRequestFailed,
     TurnAccepted,
     TurnCompleted,
     TurnSource,
@@ -45,6 +46,7 @@ from jarvis.ui.contract import (
     ModuleId,
     RuntimeState,
 )
+from jarvis.ui.module_health import ModuleHealthTracker
 from jarvis.ui.runtime_state import RuntimeStateChanged, RuntimeStateTracker
 from jarvis.ui.status_console import (
     StatusConsoleApi,
@@ -196,6 +198,8 @@ class Orchestrator:
             )
         except Exception:
             logger.exception("Request failed")
+            if self._bus is not None:
+                await self._bus.publish(BackendRequestFailed, BackendRequestFailed())
             await self._sound_cues.play("error")
             self._busy = False
 
@@ -276,7 +280,9 @@ def build_app(
     # for why (sounddevice's play()/wait() share one implicit stream per
     # process; concurrent calls stop/replace each other, not mix).
     playback_lock = asyncio.Lock()
-    tts_output = tts_output or TtsOutput(settings.tts, playback_lock=playback_lock)
+    tts_output = tts_output or TtsOutput(
+        settings.tts, playback_lock=playback_lock, bus=bus
+    )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
     thinking_mode = ThinkingModeState(bus)
@@ -402,8 +408,10 @@ def wire_status_console(
         _push_runtime_state(live_console, event.state, substatus)
 
     tracker = RuntimeStateTracker(app.bus)
+    health_tracker = ModuleHealthTracker(app.bus)
     subscriptions: list[Subscription] = [
         *tracker.subscribe(),
+        *health_tracker.subscribe(),
         (RuntimeStateChanged, on_runtime_state_changed),
     ]
     app.bus.subscribe(RuntimeStateChanged, on_runtime_state_changed)

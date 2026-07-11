@@ -34,6 +34,14 @@ class TurnAccepted:
 
 
 @dataclass(frozen=True)
+class BackendRequestFailed:
+    """A turn's backend request raised; the turn was abandoned. The next
+    ResponseComplete is the recovery signal."""
+
+    pass
+
+
+@dataclass(frozen=True)
 class TurnCompleted:
     """The turn is fully over: history recorded, speech finished, mic
     resumed. Published after the post-turn cooldown, so LISTENING is not

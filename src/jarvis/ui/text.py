@@ -77,6 +77,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         # the wording settled by story-v1.2.10-task-5-ui-cosmetic-polish.md.
         "mic_detail_listening": "listening",
         "mic_detail_muted": "not in use",
+        # Module-health details published by ModuleHealthTracker.
+        "backend_detail_ready": "responding",
+        "backend_detail_warmup_failed": "warm-up failed",
+        "backend_detail_request_failed": "request failed",
+        "tts_detail_ready": "speaking",
+        "tts_detail_failed": "synthesis failed",
+        "vision_detail_ready": "capture ok",
+        "vision_detail_failed": "capture failed",
         # System event ui_message strings.
         "context_reset": "Conversation context reset",
         "module_reset_unsupported": (
@@ -108,6 +116,13 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "speaking_response": "Произношу ответ...",
         "mic_detail_listening": "слушает",
         "mic_detail_muted": "не используется",
+        "backend_detail_ready": "отвечает",
+        "backend_detail_warmup_failed": "прогрев не удался",
+        "backend_detail_request_failed": "сбой запроса",
+        "tts_detail_ready": "озвучивает",
+        "tts_detail_failed": "сбой синтеза",
+        "vision_detail_ready": "захват в норме",
+        "vision_detail_failed": "сбой захвата",
         "context_reset": "Контекст диалога сброшен",
         "module_reset_unsupported": (
             "Сброс {module} запрошен, но пока не поддерживается движком"

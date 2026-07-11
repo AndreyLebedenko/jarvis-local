@@ -15,6 +15,7 @@ text at request time); this module only produces the PNG.
 """
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -24,6 +25,8 @@ import mss.tools
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings
 from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
+
+logger = logging.getLogger(__name__)
 
 Region = dict[str, int]  # {"left": int, "top": int, "width": int, "height": int}
 
@@ -41,6 +44,15 @@ class ScreenshotCaptured:
     mode: str
     width: int
     height: int
+
+
+@dataclass(frozen=True)
+class CaptureFailed:
+    """A capture attempt raised instead of producing a screenshot. Raw
+    health signal for ModuleHealthTracker; the exception itself is logged
+    where it is caught (CaptureInput)."""
+
+    mode: str
 
 
 GrabFn = Callable[[Region | None], RawCapture]
@@ -77,11 +89,21 @@ class CaptureInput:
         self._engine = engine
 
     async def publish_full_screen(self) -> None:
-        screenshot = await asyncio.to_thread(self._engine.capture_full_screen)
+        try:
+            screenshot = await asyncio.to_thread(self._engine.capture_full_screen)
+        except Exception:
+            logger.exception("Full-screen capture failed")
+            await self._bus.publish(CaptureFailed, CaptureFailed(mode="full"))
+            return
         await self._bus.publish(ScreenshotCaptured, screenshot)
 
     async def publish_region(self, region: Region) -> None:
-        screenshot = await asyncio.to_thread(self._engine.capture_region, region)
+        try:
+            screenshot = await asyncio.to_thread(self._engine.capture_region, region)
+        except Exception:
+            logger.exception("Region capture failed")
+            await self._bus.publish(CaptureFailed, CaptureFailed(mode="region"))
+            return
         await self._bus.publish(ScreenshotCaptured, screenshot)
 
 

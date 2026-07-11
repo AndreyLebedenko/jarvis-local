@@ -13,18 +13,16 @@ from typing import Protocol, cast
 
 from aiohttp import web
 
-from jarvis.audio.input import MicSleepToggled
 from jarvis.core.bus import EventBus
 from jarvis.dialog.thinking_mode import ThinkingModeToggled
 from jarvis.ui.contract import (
     DataLocality,
-    HealthStatus,
     ModuleHealth,
-    ModuleId,
     RuntimeState,
     SystemEvent,
     VisibilityMode,
 )
+from jarvis.ui.module_health import ModuleHealthChanged
 from jarvis.ui.status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
@@ -381,7 +379,7 @@ class UiTransportServer:
             (SystemEvent, self._on_system_event),
             (ThinkingModeToggled, self._on_thinking_mode_toggled),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
-            (MicSleepToggled, self._on_mic_sleep_toggled),
+            (ModuleHealthChanged, self._on_module_health_changed),
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
@@ -401,14 +399,13 @@ class UiTransportServer:
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self._publish_delta(self._state.set_visibility_mode(event.mode))
 
-    async def _on_mic_sleep_toggled(self, event: MicSleepToggled) -> None:
+    async def _on_module_health_changed(self, event: ModuleHealthChanged) -> None:
+        # One mechanism for every module (v1.2.14 task 2): the tracker
+        # decides status, this server localizes the detail and projects it.
         health = ModuleHealth(
-            module=ModuleId.MICROPHONE,
-            status=HealthStatus.OK if event.is_awake else HealthStatus.UNAVAILABLE,
-            detail=ui_text(
-                "mic_detail_listening" if event.is_awake else "mic_detail_muted",
-                self._state.language,
-            ),
+            module=event.module,
+            status=event.status,
+            detail=ui_text(event.detail_key, self._state.language),
         )
         self._publish_delta(self._state.set_module_health(health))
 
