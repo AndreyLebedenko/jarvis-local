@@ -372,8 +372,8 @@ Boundary:
   new architectural dependency appears, move it back into a v1.2.x preparation
   release.
 
-Story/task readiness: not ready for implementation until the prerequisite
-v1.2.x work lands.
+Story/task readiness: deferred to `tasks/backlog/`. The previous task-card
+sequence was removed; replan the story before implementation.
 
 ## v1.4.0 - File attachments
 
