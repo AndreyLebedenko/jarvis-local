@@ -1,6 +1,7 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned, blocked by v1.2.14 UI State Foundation.
+**Status:** Planned; all prerequisites complete. Task 1 (IA document) in
+progress.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the
@@ -46,8 +47,8 @@ layering, TTS engine choices, and unified hotkeys.
       complete: local HTTP+WebSocket server bound to loopback, registration
       handshake in protocol v1, Status Console and touchstrip migrated from
       the `evaluate_js` bridge to the WS channels.
-- [ ] v1.2.14 UI State Foundation
-      (`tasks/story-v1.2.14-ui-state-foundation.md`) is complete:
+- [x] v1.2.14 UI State Foundation
+      (`tasks/done/story-v1.2.14-ui-state-foundation.md`) is complete:
       RuntimeStateTracker owns state transitions, authoritative module
       health events exist for backend/TTS/vision/microphone, and the
       surface contract is capability-based.
