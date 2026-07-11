@@ -1284,8 +1284,10 @@ Runtime locality and CI verification are separate guarantees:
   Ollama endpoint (see the top of this file). This is unconditional and is
   not relaxed by anything below.
 - Cloud CI (GitHub Actions) is allowed, but only for the pure, hardware-free
-  automated suite: installing `requirements.txt` and running
-  `python -m pytest`. CI may reach the network to install dependencies.
+  automated suite: installing `requirements.txt`, `requirements-dev.txt`, and
+  the local package in editable mode; running `python -m ruff format --check .`,
+  `python -m ruff check .`, and `python -m pytest`. CI may reach the network to
+  install dependencies.
 - CI must never run, and must never be extended to run: live Ollama calls,
   model downloads, anything requiring secrets, or hardware-dependent checks
   (GPU/VRAM, WebView visual review, microphone, speakers, global hotkeys,
