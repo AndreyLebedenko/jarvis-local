@@ -52,7 +52,9 @@ def test_resolve_config_path_raises_when_no_config_exists(tmp_path):
         resolve_config_path(model_path, None)
 
 
-def test_resolve_model_path_uses_the_repo_local_default_when_present(monkeypatch, tmp_path):
+def test_resolve_model_path_uses_the_repo_local_default_when_present(
+    monkeypatch, tmp_path
+):
     default_model = tmp_path / DEFAULT_MODEL_PATH
     default_model.parent.mkdir(parents=True)
     default_model.write_bytes(b"model")

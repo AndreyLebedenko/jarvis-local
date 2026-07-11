@@ -55,7 +55,9 @@ class _Int16Bytes:
         self._values = values
 
     def tobytes(self) -> bytes:
-        return b"".join(value.to_bytes(2, "little", signed=True) for value in self._values)
+        return b"".join(
+            value.to_bytes(2, "little", signed=True) for value in self._values
+        )
 
 
 class _FakePiperVoice:
@@ -114,7 +116,10 @@ def test_bilingual_tts_engine_routes_supported_languages_to_child_engines():
         }
     )
 
-    assert asyncio.run(engine.synthesize("Привет", language="ru")) == "silero:Привет".encode()
+    assert (
+        asyncio.run(engine.synthesize("Привет", language="ru"))
+        == "silero:Привет".encode()
+    )
     assert asyncio.run(engine.synthesize("Hello", language="en")) == b"piper:Hello"
     assert seen == [
         ("silero", "Привет", "ru"),
@@ -164,7 +169,8 @@ def test_build_tts_engine_builds_configured_bilingual_route_with_injected_builde
     engine = build_tts_engine(
         settings,
         engine_builders={
-            "silero": lambda route: seen.append(("silero", route.model)) or _FakeEngine(),
+            "silero": lambda route: seen.append(("silero", route.model))
+            or _FakeEngine(),
             "piper": lambda route: seen.append(("piper", route.model)) or _FakeEngine(),
         },
     )
@@ -230,7 +236,9 @@ def test_ensure_model_cached_raises_when_repo_manifest_missing(tmp_path, monkeyp
 def test_ensure_model_cached_raises_when_model_weights_missing(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    (repo_root / "latest_silero_models.yml").write_text("fake manifest", encoding="utf-8")
+    (repo_root / "latest_silero_models.yml").write_text(
+        "fake manifest", encoding="utf-8"
+    )
     (repo_root / "silero_pkg").mkdir()
     # model/v3_1_ru.pt deliberately not created
     monkeypatch.chdir(repo_root)
@@ -245,7 +253,9 @@ def test_ensure_model_cached_raises_when_cwd_lacks_manifest(tmp_path, monkeypatc
     repo_root = tmp_path / "repo"
     (repo_root / "silero_pkg" / "model").mkdir(parents=True)
     (repo_root / "silero_pkg" / "model" / "v3_1_ru.pt").write_bytes(b"fake")
-    (repo_root / "latest_silero_models.yml").write_text("fake manifest", encoding="utf-8")
+    (repo_root / "latest_silero_models.yml").write_text(
+        "fake manifest", encoding="utf-8"
+    )
 
     launched_from = tmp_path / "elsewhere"
     launched_from.mkdir()
@@ -262,7 +272,9 @@ def test_ensure_model_cached_passes_when_everything_lines_up(tmp_path, monkeypat
     model_dir = repo_root / "silero_pkg" / "model"
     model_dir.mkdir(parents=True)
     (model_dir / "v3_1_ru.pt").write_bytes(b"fake")
-    (repo_root / "latest_silero_models.yml").write_text("fake manifest", encoding="utf-8")
+    (repo_root / "latest_silero_models.yml").write_text(
+        "fake manifest", encoding="utf-8"
+    )
     monkeypatch.chdir(repo_root)  # launched from the repo root, as documented
 
     _ensure_model_cached(
@@ -400,11 +412,17 @@ def test_piper_chunks_reject_mixed_sample_rates():
 
 
 def test_normalize_numbers_converts_decimal_to_words():
-    assert normalize_numbers("число 3.14 и всё") == "число три целых четырнадцать сотых и всё"
+    assert (
+        normalize_numbers("число 3.14 и всё")
+        == "число три целых четырнадцать сотых и всё"
+    )
 
 
 def test_normalize_numbers_converts_decimal_with_comma_to_words():
-    assert normalize_numbers("число 3,14 и всё") == "число три целых четырнадцать сотых и всё"
+    assert (
+        normalize_numbers("число 3,14 и всё")
+        == "число три целых четырнадцать сотых и всё"
+    )
 
 
 def test_normalize_numbers_converts_integer_to_words():
@@ -636,7 +654,10 @@ async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )
@@ -688,7 +709,10 @@ async def test_on_response_complete_pads_the_final_default_playback_unit():
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )
@@ -795,7 +819,10 @@ async def _speak_tokens(engine, *tokens: str) -> None:
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )
@@ -898,7 +925,10 @@ async def test_connectives_stay_in_their_own_language_when_engines_differ():
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )
@@ -916,7 +946,10 @@ async def test_second_turn_starts_fresh_after_english_text():
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )
@@ -924,7 +957,10 @@ async def test_second_turn_starts_fresh_after_english_text():
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )

@@ -37,7 +37,9 @@ async def test_publish_system_event_publishes_a_system_event_to_the_bus():
     assert before <= event.timestamp <= after
 
 
-async def test_publish_system_event_logs_the_english_log_message_not_the_ui_message(caplog):
+async def test_publish_system_event_logs_the_english_log_message_not_the_ui_message(
+    caplog,
+):
     bus = EventBus()
 
     with caplog.at_level(logging.INFO, logger="test_system_log"):

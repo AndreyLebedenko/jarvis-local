@@ -293,7 +293,9 @@ class _CtypesWin32Api:
     (no real global hotkeys in CI - see the module docstring); verified by
     the human manual handoff."""
 
-    def __init__(self, user32: object | None = None, kernel32: object | None = None) -> None:
+    def __init__(
+        self, user32: object | None = None, kernel32: object | None = None
+    ) -> None:
         import ctypes
         from ctypes import wintypes
 

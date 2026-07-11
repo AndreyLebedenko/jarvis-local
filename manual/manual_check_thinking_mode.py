@@ -34,9 +34,7 @@ ThinkingMode = Literal["off", "on"]
 Variant = Literal["text", "media"]
 
 THINKING_PARAM = "think"
-TEXT_PROMPT = (
-    "Answer in one short sentence only: which is larger, 9.9 or 9.11?"
-)
+TEXT_PROMPT = "Answer in one short sentence only: which is larger, 9.9 or 9.11?"
 MEDIA_PROMPT = (
     "Look at the attached image and answer in one short sentence only: "
     "what two colors are visible?"

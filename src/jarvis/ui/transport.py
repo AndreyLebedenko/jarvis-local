@@ -62,7 +62,9 @@ class ProtocolMessage:
     payload: JsonObject
 
 
-def make_message(channel: str, message_type: str, payload: Mapping[str, JSONValue]) -> JsonObject:
+def make_message(
+    channel: str, message_type: str, payload: Mapping[str, JSONValue]
+) -> JsonObject:
     if channel not in {"state", "control"}:
         raise ProtocolError(f"unsupported channel: {channel}")
     return {
@@ -200,10 +202,14 @@ class UiStateStore:
         if modules.get(health.module.value) == value:
             return None
         modules[health.module.value] = value
-        return make_message("state", "delta", {"key": "modules", "value": dict(modules)})
+        return make_message(
+            "state", "delta", {"key": "modules", "value": dict(modules)}
+        )
 
     def set_data_locality(self, locality: DataLocality) -> JsonObject | None:
-        return self._replace("data_locality", cast(JsonObject, data_locality_payload(locality)))
+        return self._replace(
+            "data_locality", cast(JsonObject, data_locality_payload(locality))
+        )
 
     def set_model_label(self, label: str) -> JsonObject | None:
         return self._replace("model", {"label": label})
@@ -220,16 +226,24 @@ class UiStateStore:
         )
 
     def set_thinking_mode(self, is_enabled: bool) -> JsonObject | None:
-        return self._replace("thinking", cast(JsonObject, thinking_mode_payload(is_enabled)))
+        return self._replace(
+            "thinking", cast(JsonObject, thinking_mode_payload(is_enabled))
+        )
 
     def set_visibility_mode(self, mode: VisibilityMode) -> JsonObject | None:
-        return self._replace("visibility", cast(JsonObject, visibility_mode_payload(mode)))
+        return self._replace(
+            "visibility", cast(JsonObject, visibility_mode_payload(mode))
+        )
 
     def set_model_options(self, options: list[str], current: str) -> JsonObject | None:
         return self._replace("model_options", {"options": options, "current": current})
 
-    def set_microphone_options(self, options: list[str], current: str) -> JsonObject | None:
-        return self._replace("microphone_options", {"options": options, "current": current})
+    def set_microphone_options(
+        self, options: list[str], current: str
+    ) -> JsonObject | None:
+        return self._replace(
+            "microphone_options", {"options": options, "current": current}
+        )
 
     def set_pending_restart(self, pending: bool) -> JsonObject | None:
         return self._replace("pending_restart", {"pending": pending})
@@ -505,7 +519,9 @@ class UiTransportServer:
                     if message.type is web.WSMsgType.TEXT:
                         self._handle_client_message(client, message.data)
                     elif message.type is web.WSMsgType.ERROR:
-                        self._logger.warning("UI WebSocket error: %s", websocket.exception())
+                        self._logger.warning(
+                            "UI WebSocket error: %s", websocket.exception()
+                        )
             finally:
                 await self._close_client(client)
         except asyncio.TimeoutError:
@@ -541,7 +557,11 @@ class UiTransportServer:
         except ProtocolError as error:
             self._enqueue_message(
                 client,
-                make_message("control", "error", {"code": "invalid_message", "message": str(error)}),
+                make_message(
+                    "control",
+                    "error",
+                    {"code": "invalid_message", "message": str(error)},
+                ),
             )
             return
         if message.channel != "control" or message.message_type != "command":
@@ -550,8 +570,11 @@ class UiTransportServer:
                 make_message(
                     "control",
                     "error",
-                    {"code": "unsupported_message", "message": "only control/command is accepted"},
-                )
+                    {
+                        "code": "unsupported_message",
+                        "message": "only control/command is accepted",
+                    },
+                ),
             )
             return
         command = message.payload.get("command")
@@ -562,8 +585,11 @@ class UiTransportServer:
                 make_message(
                     "control",
                     "error",
-                    {"code": "invalid_command", "message": "command and arguments are invalid"},
-                )
+                    {
+                        "code": "invalid_command",
+                        "message": "command and arguments are invalid",
+                    },
+                ),
             )
             return
         try:
@@ -571,7 +597,11 @@ class UiTransportServer:
         except ProtocolError as error:
             self._enqueue_message(
                 client,
-                make_message("control", "error", {"code": "invalid_command", "message": str(error)}),
+                make_message(
+                    "control",
+                    "error",
+                    {"code": "invalid_command", "message": str(error)},
+                ),
             )
             return
         self._enqueue_message(
@@ -616,5 +646,7 @@ class UiTransportServer:
         websocket: web.WebSocketResponse, code: str, message: str = "handshake required"
     ) -> None:
         if not websocket.closed:
-            await websocket.send_json(make_message("control", "error", {"code": code, "message": message}))
+            await websocket.send_json(
+                make_message("control", "error", {"code": code, "message": message})
+            )
             await websocket.close()

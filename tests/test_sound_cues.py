@@ -45,7 +45,9 @@ def test_ensure_generated_does_not_overwrite_existing_file(tmp_path):
 
     ensure_generated(settings)
 
-    assert (tmp_path / "listening.wav").read_bytes() == b"not-really-a-wav-but-untouched"
+    assert (
+        tmp_path / "listening.wav"
+    ).read_bytes() == b"not-really-a-wav-but-untouched"
 
 
 async def test_play_calls_play_file_with_configured_path(tmp_path):

@@ -246,7 +246,9 @@ def _matches_type(value: Any, expected_type: type) -> bool:
             return isinstance(value, list) and all(
                 _matches_type(item, item_type) for item in value
             )
-        return any(_matches_type(value, nested_type) for nested_type in get_args(expected_type))
+        return any(
+            _matches_type(value, nested_type) for nested_type in get_args(expected_type)
+        )
     if isinstance(value, bool):
         return expected_type is bool
     if expected_type is float:
@@ -260,7 +262,9 @@ def _describe_type(expected_type: type) -> str:
     origin = get_origin(expected_type)
     if origin is None:
         return expected_type.__name__
-    return " | ".join(_describe_type(nested_type) for nested_type in get_args(expected_type))
+    return " | ".join(
+        _describe_type(nested_type) for nested_type in get_args(expected_type)
+    )
 
 
 def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:

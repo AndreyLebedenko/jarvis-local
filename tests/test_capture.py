@@ -69,8 +69,11 @@ def test_capture_region_returns_expected_dimensions():
 
     def fake_grab(region):
         captured_region.update(region)
-        return RawCapture(rgb=_solid_rgb(region["width"], region["height"]),
-                           width=region["width"], height=region["height"])
+        return RawCapture(
+            rgb=_solid_rgb(region["width"], region["height"]),
+            width=region["width"],
+            height=region["height"],
+        )
 
     engine = CaptureEngine(grab=fake_grab)
     region = {"left": 10, "top": 20, "width": 6, "height": 3}
@@ -107,7 +110,9 @@ async def test_publish_full_screen_publishes_expected_metadata():
         received.append(event)
 
     bus.subscribe(ScreenshotCaptured, on_event)
-    engine = CaptureEngine(grab=lambda r: RawCapture(rgb=_solid_rgb(5, 5), width=5, height=5))
+    engine = CaptureEngine(
+        grab=lambda r: RawCapture(rgb=_solid_rgb(5, 5), width=5, height=5)
+    )
     capture = CaptureInput(bus=bus, engine=engine)
 
     await capture.publish_full_screen()
@@ -128,8 +133,11 @@ async def test_publish_region_publishes_expected_metadata():
     bus.subscribe(ScreenshotCaptured, on_event)
 
     def fake_grab(region):
-        return RawCapture(rgb=_solid_rgb(region["width"], region["height"]),
-                           width=region["width"], height=region["height"])
+        return RawCapture(
+            rgb=_solid_rgb(region["width"], region["height"]),
+            width=region["width"],
+            height=region["height"],
+        )
 
     capture = CaptureInput(bus=bus, engine=CaptureEngine(grab=fake_grab))
 
@@ -145,15 +153,21 @@ async def test_publish_region_publishes_expected_metadata():
 
 
 async def test_hotkey_listener_registers_bindings_from_config():
-    hotkeys = HotkeySettings(screenshot_full="ctrl+alt+x", screenshot_region="ctrl+alt+y")
+    hotkeys = HotkeySettings(
+        screenshot_full="ctrl+alt+x", screenshot_region="ctrl+alt+y"
+    )
     fake_kb = _FakeKeyboardModule()
     capture = CaptureInput(
         bus=EventBus(),
-        engine=CaptureEngine(grab=lambda r: RawCapture(rgb=_solid_rgb(2, 2), width=2, height=2)),
+        engine=CaptureEngine(
+            grab=lambda r: RawCapture(rgb=_solid_rgb(2, 2), width=2, height=2)
+        ),
     )
 
     task = asyncio.create_task(
-        run_hotkey_listener(capture, hotkeys, provider=fake_kb, select_region=lambda: None)
+        run_hotkey_listener(
+            capture, hotkeys, provider=fake_kb, select_region=lambda: None
+        )
     )
     await asyncio.sleep(0)
 
@@ -182,11 +196,15 @@ async def test_hotkey_full_screen_callback_publishes_capture():
     fake_kb = _FakeKeyboardModule()
     capture = CaptureInput(
         bus=bus,
-        engine=CaptureEngine(grab=lambda r: RawCapture(rgb=_solid_rgb(4, 4), width=4, height=4)),
+        engine=CaptureEngine(
+            grab=lambda r: RawCapture(rgb=_solid_rgb(4, 4), width=4, height=4)
+        ),
     )
 
     task = asyncio.create_task(
-        run_hotkey_listener(capture, hotkeys, provider=fake_kb, select_region=lambda: None)
+        run_hotkey_listener(
+            capture, hotkeys, provider=fake_kb, select_region=lambda: None
+        )
     )
     await asyncio.sleep(0)
 
@@ -213,8 +231,11 @@ async def test_hotkey_region_callback_publishes_capture_from_selected_region():
     fake_kb = _FakeKeyboardModule()
 
     def fake_grab(region):
-        return RawCapture(rgb=_solid_rgb(region["width"], region["height"]),
-                           width=region["width"], height=region["height"])
+        return RawCapture(
+            rgb=_solid_rgb(region["width"], region["height"]),
+            width=region["width"],
+            height=region["height"],
+        )
 
     capture = CaptureInput(bus=bus, engine=CaptureEngine(grab=fake_grab))
     fixed_region = {"left": 1, "top": 2, "width": 12, "height": 8}
@@ -251,7 +272,9 @@ async def test_hotkey_region_callback_skips_zero_size_selection():
     fake_kb = _FakeKeyboardModule()
     capture = CaptureInput(
         bus=bus,
-        engine=CaptureEngine(grab=lambda r: RawCapture(rgb=_solid_rgb(1, 1), width=1, height=1)),
+        engine=CaptureEngine(
+            grab=lambda r: RawCapture(rgb=_solid_rgb(1, 1), width=1, height=1)
+        ),
     )
     empty_region = {"left": 0, "top": 0, "width": 0, "height": 0}
 

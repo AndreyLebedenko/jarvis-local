@@ -40,7 +40,7 @@ SCRIPTED_TOKENS = [
     "<speak>\n",
     '<lang xml:lang="ru">Здравствуйте. Я проанализировал ваш вопрос ',
     "о поэзии Уильяма Шекспира.</lang>\n",
-    '<lang xml:l',
+    "<lang xml:l",
     'ang="en">William Shakespeare</lang>\n',
     '<lang xml:lang="ru">Основная причина кроется в его предпочтении ',
     "белого стиха.</lang>\n",
@@ -87,7 +87,10 @@ async def main() -> None:
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )

@@ -21,7 +21,9 @@ def _read(name: str) -> str:
 def _strings_js_keys() -> dict[str, set[str]]:
     source = _read("strings.js")
     catalogs: dict[str, set[str]] = {}
-    for language_match in re.finditer(r"^  (\w+): \{\n(.*?)^  \},", source, re.S | re.M):
+    for language_match in re.finditer(
+        r"^  (\w+): \{\n(.*?)^  \},", source, re.S | re.M
+    ):
         language, body = language_match.group(1), language_match.group(2)
         catalogs[language] = set(re.findall(r"^    (\w+):", body, re.M))
     return catalogs
@@ -29,8 +31,16 @@ def _strings_js_keys() -> dict[str, set[str]]:
 
 @pytest.mark.parametrize(
     "filename",
-    ["index.html", "touchstrip.html", "app.js", "touchstrip.js", "transport.js",
-     "contract.js", "demo.html", "demo.js"],
+    [
+        "index.html",
+        "touchstrip.html",
+        "app.js",
+        "touchstrip.js",
+        "transport.js",
+        "contract.js",
+        "demo.html",
+        "demo.js",
+    ],
 )
 def test_default_ui_surfaces_contain_no_russian_text(filename):
     assert not _CYRILLIC.search(_read(filename))

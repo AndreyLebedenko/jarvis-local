@@ -60,7 +60,7 @@ unrelated modules in the repository root.
 6. `tasks/story-quality-task-6-tests-manual-and-docs.md`
    Normalize test/manual imports and update README, CI, Graphify, and
    `PROJECT.md`.
-7. `tasks/story-quality-task-7-repository-formatting.md`
+7. `tasks/done/story-quality-task-7-repository-formatting.md`
    Apply Ruff formatting as one isolated mechanical change after moves are
    complete, preserving readable file history during the migration.
 8. `tasks/story-quality-task-8-advisory-tool-evaluation.md`

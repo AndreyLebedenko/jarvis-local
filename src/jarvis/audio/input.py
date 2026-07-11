@@ -83,7 +83,9 @@ def _merge_close_segments(segments: list[dict], max_gap_seconds: float) -> list[
     return merged
 
 
-def _cap_segment_durations(segments: list[dict], max_duration_seconds: float) -> list[dict]:
+def _cap_segment_durations(
+    segments: list[dict], max_duration_seconds: float
+) -> list[dict]:
     capped = []
     for segment in segments:
         start = segment["start"]
@@ -112,7 +114,9 @@ class VadChunker:
             sampling_rate=SAMPLE_RATE,
             return_seconds=True,
         )
-        merged = _merge_close_segments(raw_segments, self._settings.request_end_pause_seconds)
+        merged = _merge_close_segments(
+            raw_segments, self._settings.request_end_pause_seconds
+        )
         capped = _cap_segment_durations(merged, float(self._settings.max_chunk_seconds))
 
         chunks = []
@@ -226,7 +230,9 @@ class AudioInput:
                 try:
                     while self._awake.is_set() and not self._stop_requested:
                         try:
-                            data, _ = await asyncio.to_thread(stream.read, block_samples)
+                            data, _ = await asyncio.to_thread(
+                                stream.read, block_samples
+                            )
                         except Exception:
                             if self._stop_requested or not self._awake.is_set():
                                 # The pause/sleep transition stopped the
@@ -252,9 +258,12 @@ class AudioInput:
                         buffer_duration = len(buffer) / SAMPLE_RATE
 
                         for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
-                            already_published = utterance.end_seconds <= published_end_seconds
+                            already_published = (
+                                utterance.end_seconds <= published_end_seconds
+                            )
                             still_extending = (
-                                buffer_duration - utterance.end_seconds < request_end_pause_seconds
+                                buffer_duration - utterance.end_seconds
+                                < request_end_pause_seconds
                             )
                             if already_published or still_extending:
                                 continue
@@ -263,7 +272,7 @@ class AudioInput:
 
                         trim_seconds = max(published_end_seconds - 1.0, 0.0)
                         if trim_seconds > 0:
-                            buffer = buffer[int(trim_seconds * SAMPLE_RATE):]
+                            buffer = buffer[int(trim_seconds * SAMPLE_RATE) :]
                             published_end_seconds -= trim_seconds
                 finally:
                     self._active_stream = None

@@ -94,7 +94,9 @@ def test_long_utterance_is_split_at_max_chunk_seconds():
 
     assert len(chunks) >= 2
     assert all(c.end_seconds - c.start_seconds <= 30.0 + 1e-6 for c in chunks)
-    assert sum(c.end_seconds - c.start_seconds for c in chunks) == pytest.approx(40.0, abs=0.5)
+    assert sum(c.end_seconds - c.start_seconds for c in chunks) == pytest.approx(
+        40.0, abs=0.5
+    )
 
 
 def test_chunk_wav_bytes_round_trip_to_same_sample_count(vad_model):
@@ -194,7 +196,9 @@ class _FakeChunker:
     real Silero model would only add noise and load time."""
 
     def __init__(self, request_end_pause_seconds: float = 2.0) -> None:
-        self.settings = SimpleNamespace(request_end_pause_seconds=request_end_pause_seconds)
+        self.settings = SimpleNamespace(
+            request_end_pause_seconds=request_end_pause_seconds
+        )
 
     def chunk(self, samples):
         return []
@@ -260,7 +264,9 @@ async def test_sleeping_stops_new_reads_from_the_stream():
         bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
     )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
     await asyncio.sleep(0.05)
     assert fake_stream.read_calls > 0
 
@@ -286,7 +292,9 @@ async def test_asleep_loop_never_reads_and_blocks_without_busy_polling():
     )
     await audio_input.toggle_user_sleep()
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
     await asyncio.sleep(0.05)
 
     assert fake_stream.read_calls == 0
@@ -309,7 +317,9 @@ async def test_waking_recreates_capture_stream_instead_of_restarting_the_old_one
         bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory
     )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
     await asyncio.sleep(0.02)
 
     await audio_input.toggle_user_sleep()
@@ -426,7 +436,9 @@ async def _wait_until(condition, timeout=2.0, message="condition never became tr
         await asyncio.sleep(0.005)
 
 
-async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wake_audio(vad_model):
+async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wake_audio(
+    vad_model,
+):
     """Regression for the buffer-reset requirement: a2's speech is fed but
     left unconfirmed (no trailing silence yet) when sleep is triggered - it
     must be discarded, not merged with a1's speech fed after wake. If the
@@ -447,7 +459,9 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     # sleep() is called, see below) actually receives - short enough that
     # a2 + filler still falls short of the 2.0s pause-to-confirm threshold.
     leaked_read_filler = np.zeros(int(SAMPLE_RATE * 0.3), dtype=np.float32)
-    silence_block = np.zeros(SAMPLE_RATE, dtype=np.float32)  # 1s of silence per subsequent read
+    silence_block = np.zeros(
+        SAMPLE_RATE, dtype=np.float32
+    )  # 1s of silence per subsequent read
 
     fake_stream = _SteppedFakeStream(
         blocks=[a2_samples, leaked_read_filler, a1_samples], fill_value=silence_block
@@ -462,9 +476,13 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     bus.subscribe(UtteranceChunk, on_chunk)
 
     chunker = VadChunker(VadSettings(), model=vad_model)
-    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream)
+    audio_input = AudioInput(
+        bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream
+    )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
 
     # Read #1: a2's whole clip lands in the buffer, with no trailing silence
     # yet - still "extending", not yet confirmed/published.
@@ -530,7 +548,9 @@ async def test_auto_pause_stops_the_stream_to_interrupt_a_pending_read():
         bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
     )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
     await _wait_until_read_pending(fake_stream)
     assert fake_stream.stop_calls == 0
 
@@ -561,9 +581,13 @@ async def test_data_read_across_a_pause_is_discarded_not_published(vad_model):
 
     bus.subscribe(UtteranceChunk, on_chunk)
     chunker = VadChunker(VadSettings(), model=vad_model)
-    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream)
+    audio_input = AudioInput(
+        bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream
+    )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
     await _wait_until_read_pending(fake_stream)
 
     await audio_input.auto_pause_for_speech()
@@ -613,7 +637,9 @@ async def test_stalled_read_buffer_is_dropped_on_resume_instead_of_replayed(vad_
     chunker = VadChunker(VadSettings(), model=vad_model)
     audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=stream_factory)
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
 
     # Read #1: a2's speech lands in the buffer, unconfirmed (no trailing
     # silence yet). The loop parks on read #2 - the "stalled device".
@@ -695,7 +721,9 @@ async def test_read_exception_from_a_pause_stop_recreates_the_stream_without_cra
         bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory
     )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
     await _wait_until(lambda: len(created_streams) == 1)
     await _wait_until_read_pending(created_streams[0])
 
@@ -721,9 +749,13 @@ async def test_read_exception_from_a_pause_stop_recreates_the_stream_without_cra
 async def test_stop_unblocks_a_microphone_loop_waiting_inside_stream_read():
     fake_stream = _StopUnblocksFakeStream(block_samples=160)
     chunker = _CountingFakeChunker()
-    audio_input = AudioInput(bus=EventBus(), chunker=chunker, stream_factory=lambda bs: fake_stream)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=chunker, stream_factory=lambda bs: fake_stream
+    )
 
-    task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
     await _wait_until_read_pending(fake_stream)
 
     await audio_input.stop()

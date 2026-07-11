@@ -27,9 +27,7 @@ SUPPORTED_LANGUAGES = {"ru", "en"}
 logger = logging.getLogger(__name__)
 
 _CONTROL_NAME_RE = re.compile(r"</?(?:speak|lang)\b", re.IGNORECASE)
-_LANG_ATTR_RE = re.compile(
-    r"(?:xml:)?lang\s*=\s*['\"]([^'\"]*)['\"]", re.IGNORECASE
-)
+_LANG_ATTR_RE = re.compile(r"(?:xml:)?lang\s*=\s*['\"]([^'\"]*)['\"]", re.IGNORECASE)
 _LANG_ATTR_STRIP_RE = re.compile(
     r"(?:xml:)?lang\s*=\s*['\"][^'\"]*['\"]?", re.IGNORECASE
 )
@@ -120,7 +118,9 @@ class SpeechMarkupStream:
                 if len(self._languages) > 1:
                     self._languages.pop()
                 else:
-                    logger.warning("Ignoring unmatched speech markup closing tag: %s", token)
+                    logger.warning(
+                        "Ignoring unmatched speech markup closing tag: %s", token
+                    )
             return
         if token.lower().startswith("<lang"):
             self._languages.append(_language_from_token(token))
@@ -130,7 +130,9 @@ class SpeechMarkupStream:
         (soft fallback - never spoken, never changes language); anything
         else is literal text."""
         if _CONTROL_NAME_RE.match(fragment):
-            logger.warning("Ignoring malformed speech markup control fragment: %s", fragment)
+            logger.warning(
+                "Ignoring malformed speech markup control fragment: %s", fragment
+            )
             fragment = _CONTROL_NAME_RE.sub("", fragment, count=1)
             fragment = _LANG_ATTR_STRIP_RE.sub("", fragment)
         self._emit(pieces, fragment)
@@ -186,7 +188,9 @@ def _smooth_punctuation(segments: list[SpeechSegment]) -> list[SpeechSegment]:
         if _is_punctuation_only(segment.text):
             if smoothed:
                 previous = smoothed[-1]
-                smoothed[-1] = SpeechSegment(previous.language, previous.text + segment.text)
+                smoothed[-1] = SpeechSegment(
+                    previous.language, previous.text + segment.text
+                )
             else:
                 pending_prefix += segment.text
             continue

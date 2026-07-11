@@ -43,7 +43,9 @@ except ModuleNotFoundError:
     from manual_check_tts_engines import PROMPTS, split_text_into_chunks
 
 TOKEN_DELAY_SECONDS = 0.05
-DEFAULT_MODEL_PATH = Path(".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx")
+DEFAULT_MODEL_PATH = Path(
+    ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+)
 
 
 @dataclass(frozen=True)
@@ -141,7 +143,9 @@ async def measure_prompt(voice, label: str, text: str) -> PiperMeasurement:
         # first-token-to-first-audio latency, not just raw synthesis time.
         await asyncio.sleep(TOKEN_DELAY_SECONDS)
 
-    first_play_at, chunk_count = await asyncio.to_thread(synthesize_and_play, voice, text)
+    first_play_at, chunk_count = await asyncio.to_thread(
+        synthesize_and_play, voice, text
+    )
     total_seconds = time.perf_counter() - start
     return PiperMeasurement(
         label=label,

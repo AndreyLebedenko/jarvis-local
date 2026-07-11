@@ -40,11 +40,7 @@ class CharsetLanguageStream:
             self._emit(segments, self._language, self._neutral)
             self._language = language
             self._emit(segments, language, char)
-        if (
-            self._language is not None
-            and self._neutral
-            and self._neutral[-1].isspace()
-        ):
+        if self._language is not None and self._neutral and self._neutral[-1].isspace():
             self._emit(segments, self._language, self._neutral)
         return segments
 
@@ -76,7 +72,9 @@ def _merge_adjacent(segments: list[LanguageSegment]) -> list[LanguageSegment]:
             continue
         if merged and merged[-1].language == segment.language:
             previous = merged[-1]
-            merged[-1] = LanguageSegment(previous.language, previous.text + segment.text)
+            merged[-1] = LanguageSegment(
+                previous.language, previous.text + segment.text
+            )
         else:
             merged.append(segment)
     return [

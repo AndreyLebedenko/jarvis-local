@@ -80,11 +80,9 @@ class SegmentMeasurement:
 
 
 class SpeechEngine(Protocol):
-    async def warm_up(self) -> None:
-        ...
+    async def warm_up(self) -> None: ...
 
-    async def synthesize(self, text: str) -> bytes:
-        ...
+    async def synthesize(self, text: str) -> bytes: ...
 
 
 ROUTES: tuple[RouteSpec, ...] = (
@@ -110,7 +108,9 @@ SAMPLES: tuple[SampleText, ...] = (
 
 
 class SileroRouteEngine:
-    def __init__(self, language: str, package: str, voice: str, sample_rate: int) -> None:
+    def __init__(
+        self, language: str, package: str, voice: str, sample_rate: int
+    ) -> None:
         self._language = language
         self._package = package
         self._voice = voice
@@ -146,7 +146,9 @@ class SileroRouteEngine:
 
 
 class PiperRouteEngine:
-    def __init__(self, model_path: Path, config_path: Path | None, use_cuda: bool) -> None:
+    def __init__(
+        self, model_path: Path, config_path: Path | None, use_cuda: bool
+    ) -> None:
         self._model_path = model_path
         self._config_path = config_path
         self._use_cuda = use_cuda
@@ -157,7 +159,9 @@ class PiperRouteEngine:
 
     async def synthesize(self, text: str) -> bytes:
         voice = await self._ensure_voice()
-        return await asyncio.to_thread(_piper_chunks_to_wav_bytes, voice.synthesize(text))
+        return await asyncio.to_thread(
+            _piper_chunks_to_wav_bytes, voice.synthesize(text)
+        )
 
     async def _ensure_voice(self):
         if self._voice is None:
@@ -166,7 +170,9 @@ class PiperRouteEngine:
             self._voice = await asyncio.to_thread(
                 PiperVoice.load,
                 model_path=str(self._model_path),
-                config_path=str(self._config_path) if self._config_path is not None else None,
+                config_path=str(self._config_path)
+                if self._config_path is not None
+                else None,
                 use_cuda=self._use_cuda,
             )
         return self._voice
@@ -202,7 +208,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Russian Piper .onnx model path. Required for piper_ru_en.",
     )
     parser.add_argument("--piper-ru-config", help="Russian Piper .json config path.")
-    parser.add_argument("--use-cuda", action="store_true", help="Pass use_cuda=True to Piper.")
+    parser.add_argument(
+        "--use-cuda", action="store_true", help="Pass use_cuda=True to Piper."
+    )
     return parser
 
 
@@ -262,7 +270,9 @@ def resolve_piper_config(model_path: Path, config_arg: str | None) -> Path | Non
 
 def resolve_required_model(path_arg: str | None, language: str) -> Path:
     if not path_arg:
-        raise FileNotFoundError(f"{language} Piper route requires a --piper-{language}-model path")
+        raise FileNotFoundError(
+            f"{language} Piper route requires a --piper-{language}-model path"
+        )
     model_path = Path(path_arg)
     if not model_path.exists():
         raise FileNotFoundError(f"Piper model file does not exist: {model_path}")
@@ -282,7 +292,9 @@ def validate_piper_models_for_routes(
         resolve_required_model(piper_en_model, "en")
 
 
-async def build_engines(args: argparse.Namespace, routes: tuple[RouteSpec, ...]) -> dict[str, SpeechEngine]:
+async def build_engines(
+    args: argparse.Namespace, routes: tuple[RouteSpec, ...]
+) -> dict[str, SpeechEngine]:
     validate_piper_models_for_routes(routes, args.piper_ru_model, args.piper_en_model)
     engines: dict[str, SpeechEngine] = {}
     if any(route.ru_engine == SILERO for route in routes):
@@ -372,7 +384,9 @@ async def main() -> None:
         for sample in samples:
             print_segment_plan(route, sample)
             start = time.perf_counter()
-            measurements = await run_route_sample(route, sample, engines, play_wav_bytes)
+            measurements = await run_route_sample(
+                route, sample, engines, play_wav_bytes
+            )
             total_seconds = time.perf_counter() - start
             print(f"metric,{route.label},{sample.label},{total_seconds:.2f}")
             for item in measurements:

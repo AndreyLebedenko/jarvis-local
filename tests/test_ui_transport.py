@@ -4,7 +4,14 @@ import aiohttp
 import pytest
 
 from jarvis.core.bus import EventBus
-from jarvis.ui.contract import EventLevel, HealthStatus, ModuleHealth, ModuleId, RuntimeState, SystemEvent
+from jarvis.ui.contract import (
+    EventLevel,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+)
 from jarvis.ui.transport import (
     PROTOCOL_VERSION,
     _Client,
@@ -48,7 +55,9 @@ class _FakeControlApi:
 
 
 def test_protocol_message_round_trips_with_channel_and_payload():
-    message = make_message("state", "delta", {"key": "model", "value": {"label": "demo"}})
+    message = make_message(
+        "state", "delta", {"key": "model", "value": {"label": "demo"}}
+    )
 
     parsed = parse_message(serialize_message(message))
 
@@ -128,7 +137,9 @@ def test_module_delta_keeps_the_value_present_when_it_was_enqueued():
     first_delta = state.set_module_health(
         ModuleHealth(ModuleId.MICROPHONE, HealthStatus.UNAVAILABLE, "sleeping")
     )
-    state.set_module_health(ModuleHealth(ModuleId.MICROPHONE, HealthStatus.OK, "listening"))
+    state.set_module_health(
+        ModuleHealth(ModuleId.MICROPHONE, HealthStatus.OK, "listening")
+    )
 
     assert first_delta is not None
     assert first_delta["payload"]["value"] == {
@@ -160,7 +171,9 @@ async def test_full_client_queue_drops_and_closes_the_client():
     client.queue.put_nowait("already-full")
     server._clients.add(client)
 
-    server._publish_delta(make_message("state", "delta", {"key": "runtime", "value": {}}))
+    server._publish_delta(
+        make_message("state", "delta", {"key": "runtime", "value": {}})
+    )
     await asyncio.sleep(0)
 
     assert client not in server._clients
@@ -196,7 +209,9 @@ def test_server_dispatches_all_existing_status_console_control_paths():
 
 @pytest.mark.asyncio
 async def test_server_rejects_connection_without_valid_token():
-    server = UiTransportServer(EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token")
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
     info = await server.start()
     try:
         async with aiohttp.ClientSession() as session:
@@ -209,7 +224,9 @@ async def test_server_rejects_connection_without_valid_token():
 
 @pytest.mark.asyncio
 async def test_server_requires_hello_before_state_or_control_traffic():
-    server = UiTransportServer(EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token")
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
     info = await server.start()
     try:
         async with aiohttp.ClientSession() as session:
@@ -246,7 +263,9 @@ async def test_server_runs_handshake_snapshot_delta_and_control_cycle():
             await response.read()
 
             async with session.ws_connect(info.websocket_url) as websocket:
-                await websocket.send_json(hello_message("status-console", ["state", "control"]))
+                await websocket.send_json(
+                    hello_message("status-console", ["state", "control"])
+                )
 
                 hello_ack = await websocket.receive_json()
                 snapshot = await websocket.receive_json()
@@ -264,7 +283,14 @@ async def test_server_runs_handshake_snapshot_delta_and_control_cycle():
                 assert delta["payload"]["key"] == "system_event"
 
                 await websocket.send_json(
-                    make_message("control", "command", {"command": "set_visibility_mode", "arguments": {"mode": "hidden"}})
+                    make_message(
+                        "control",
+                        "command",
+                        {
+                            "command": "set_visibility_mode",
+                            "arguments": {"mode": "hidden"},
+                        },
+                    )
                 )
                 acknowledgement = await websocket.receive_json()
                 assert acknowledgement["type"] == "command_ack"
@@ -294,5 +320,7 @@ async def test_server_stop_closes_connected_clients_and_unsubscribes_bus_handler
     assert restarted_info.token == "valid-token"
     await server.stop()
     await session.close()
-    await bus.publish(SystemEvent, SystemEvent(3.0, "ENGINE", EventLevel.INFO, "ignored"))
+    await bus.publish(
+        SystemEvent, SystemEvent(3.0, "ENGINE", EventLevel.INFO, "ignored")
+    )
     await asyncio.sleep(0)

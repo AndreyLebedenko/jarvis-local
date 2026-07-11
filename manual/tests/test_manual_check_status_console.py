@@ -23,7 +23,9 @@ class _FakeTransport:
     def __init__(self) -> None:
         self.runtime_states: list[RuntimeState] = []
 
-    def set_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
+    def set_runtime_state(
+        self, state: RuntimeState, substatus: str | None = None
+    ) -> None:
         del substatus
         self.runtime_states.append(state)
 

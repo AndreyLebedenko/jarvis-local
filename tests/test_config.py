@@ -899,7 +899,9 @@ def test_prompt_of_wrong_type_raises_config_error(tmp_path):
 def test_write_ui_config_then_load_settings_round_trips(tmp_path):
     ui_config_path = tmp_path / "config.ui.toml"
 
-    write_ui_config(ui_config_path, model="custom-model", microphone_device="USB Headset")
+    write_ui_config(
+        ui_config_path, model="custom-model", microphone_device="USB Headset"
+    )
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
 
     assert settings.backend.model == "custom-model"
@@ -913,7 +915,10 @@ def test_write_ui_config_never_touches_the_base_config_file(tmp_path):
 
     write_ui_config(ui_config_path, model="new-model", microphone_device="")
 
-    assert base_config_path.read_text(encoding="utf-8") == '[backend]\nmodel = "do-not-touch"\n'
+    assert (
+        base_config_path.read_text(encoding="utf-8")
+        == '[backend]\nmodel = "do-not-touch"\n'
+    )
 
 
 def test_write_ui_config_escapes_values_with_quotes_and_backslashes(tmp_path):

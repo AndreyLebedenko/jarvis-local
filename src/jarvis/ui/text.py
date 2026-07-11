@@ -22,15 +22,24 @@ DEFAULT_UI_LANGUAGE = "en"
 _RUNTIME_STATE_TEXT: dict[str, dict[RuntimeState, tuple[str, str]]] = {
     "en": {
         RuntimeState.IDLE: ("Idle", 'Say "Jarvis" to begin.'),
-        RuntimeState.WARMING: ("Warming up (local)", "Loading the model into GPU memory..."),
+        RuntimeState.WARMING: (
+            "Warming up (local)",
+            "Loading the model into GPU memory...",
+        ),
         RuntimeState.LISTENING: ("Listening", "Waiting for a voice command..."),
-        RuntimeState.THINKING: ("Thinking", "Gathering context and composing a response..."),
+        RuntimeState.THINKING: (
+            "Thinking",
+            "Gathering context and composing a response...",
+        ),
         RuntimeState.SPEAKING: ("Speaking", "Speaking the response aloud..."),
         RuntimeState.ERROR: ("Error", ""),
     },
     "ru": {
         RuntimeState.IDLE: ("Ожидание", "Скажите «Джарвис», чтобы начать."),
-        RuntimeState.WARMING: ("Прогрев (локально)", "Модель загружается в память GPU..."),
+        RuntimeState.WARMING: (
+            "Прогрев (локально)",
+            "Модель загружается в память GPU...",
+        ),
         RuntimeState.LISTENING: ("Слушаю", "Жду голосовую команду..."),
         RuntimeState.THINKING: ("Думаю", "Собираю контекст и формирую ответ..."),
         RuntimeState.SPEAKING: ("Отвечаю", "Произношу ответ вслух..."),

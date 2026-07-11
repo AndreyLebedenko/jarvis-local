@@ -6,7 +6,12 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
-from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.backend import (
+    LatencyMetrics,
+    OllamaBackend,
+    ResponseComplete,
+    ResponseToken,
+)
 
 
 def _fake_audio_b64() -> str:
@@ -251,7 +256,9 @@ async def test_thinking_chunks_never_published_as_response_token():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
+    await backend.chat(
+        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+    )
 
     assert received == ["Hello"]
 
@@ -272,7 +279,9 @@ async def test_thinking_only_stream_publishes_no_response_token():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}], thinking_enabled=True)
+    await backend.chat(
+        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+    )
 
     assert received == []
 

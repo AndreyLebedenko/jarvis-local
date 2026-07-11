@@ -1,7 +1,7 @@
 # Task: Apply repository-wide formatting
 
 **Story:** `tasks/story-quality-tooling-and-package-layout.md`
-**Status:** Not started.
+**Status:** Completed.
 
 ## Summary
 
@@ -16,7 +16,7 @@ migration, so movement history and behavior changes remain reviewable.
 
 ## Acceptance Criteria
 
-- [ ] `python -m ruff format --check .` passes.
-- [ ] The diff contains formatting changes only.
-- [ ] `python -m pytest` passes.
+- [x] `python -m ruff format --check .` passes.
+- [x] The diff contains formatting changes only.
+- [x] `python -m pytest` passes.
 

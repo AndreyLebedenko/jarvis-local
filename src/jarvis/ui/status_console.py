@@ -21,7 +21,12 @@ from jarvis.ui.contract import (
     SystemEvent,
     VisibilityMode,
 )
-from jarvis.ui.text import DEFAULT_UI_LANGUAGE, module_label, runtime_state_text, ui_text
+from jarvis.ui.text import (
+    DEFAULT_UI_LANGUAGE,
+    module_label,
+    runtime_state_text,
+    ui_text,
+)
 from jarvis.ui.visibility import VisibilityModeState
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
@@ -191,6 +196,7 @@ class StatusConsoleWindow:
             raise RuntimeError("create() must be called before load_url()")
         self._window.load_url(url)
 
+
 class TouchstripWindow(StatusConsoleWindow):
     """Compact Status Console surface for touchstrip-sized displays."""
 
@@ -204,6 +210,7 @@ class TouchstripWindow(StatusConsoleWindow):
             min_size=(900, 230),
             resizable=False,
         )
+
 
 class ClearableHistory(Protocol):
     """Shape StatusConsoleApi.reset_context() relies on."""
@@ -464,7 +471,8 @@ class StatusConsoleApi:
         if current not in options:
             options = [current, *options]
         await self._bus.publish(
-            ModelOptionsAvailable, ModelOptionsAvailable(options=options, current=current)
+            ModelOptionsAvailable,
+            ModelOptionsAvailable(options=options, current=current),
         )
 
     def request_microphone_options(self) -> None:
@@ -475,7 +483,9 @@ class StatusConsoleApi:
         try:
             options = await self._microphone_options_source()
         except Exception:
-            self._logger.warning("Failed to enumerate microphone devices", exc_info=True)
+            self._logger.warning(
+                "Failed to enumerate microphone devices", exc_info=True
+            )
             await publish_system_event(
                 self._bus,
                 self._logger,
@@ -497,7 +507,9 @@ class StatusConsoleApi:
     def save_config_selection(self, model: str, microphone_device: str) -> None:
         self._schedule(self._save_config_selection_async(model, microphone_device))
 
-    async def _save_config_selection_async(self, model: str, microphone_device: str) -> None:
+    async def _save_config_selection_async(
+        self, model: str, microphone_device: str
+    ) -> None:
         """Writes restart-to-apply UI config after validating selections."""
         if not model.strip():
             self._logger.warning("Ignoring config menu save with an empty model")
@@ -510,7 +522,9 @@ class StatusConsoleApi:
                 ui_message=ui_text("config_save_rejected_no_model", self._language),
             )
             return
-        write_ui_config(self._ui_config_path, model=model, microphone_device=microphone_device)
+        write_ui_config(
+            self._ui_config_path, model=model, microphone_device=microphone_device
+        )
         await publish_system_event(
             self._bus,
             self._logger,

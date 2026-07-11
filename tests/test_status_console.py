@@ -47,13 +47,17 @@ def test_runtime_state_payload_covers_every_contract_state(state):
 
 
 def test_runtime_state_payload_uses_given_substatus_over_the_default():
-    payload = runtime_state_payload(RuntimeState.ERROR, substatus="TTS: device not found")
+    payload = runtime_state_payload(
+        RuntimeState.ERROR, substatus="TTS: device not found"
+    )
 
     assert payload["substatus"] == "TTS: device not found"
 
 
 def test_module_health_payload_shape():
-    health = ModuleHealth(module=ModuleId.TTS, status=HealthStatus.DEGRADED, detail="slow")
+    health = ModuleHealth(
+        module=ModuleId.TTS, status=HealthStatus.DEGRADED, detail="slow"
+    )
 
     assert module_health_payload(health) == {
         "module": "tts",
@@ -68,7 +72,10 @@ def test_data_locality_payload_shape():
 
 def test_system_event_payload_shape():
     event = SystemEvent(
-        timestamp=1234.5, source="WARMUP", level=EventLevel.WARN, message="слишком долго"
+        timestamp=1234.5,
+        source="WARMUP",
+        level=EventLevel.WARN,
+        message="слишком долго",
     )
 
     assert system_event_payload(event) == {
@@ -388,7 +395,7 @@ def test_style_css_has_a_narrow_width_media_query():
 def test_app_js_clears_module_detail_when_payload_detail_is_empty():
     js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert "meta.textContent = payload.detail || \"\";" in js
+    assert 'meta.textContent = payload.detail || "";' in js
     assert "if (payload.detail)" not in js
 
 
@@ -472,7 +479,9 @@ def test_app_js_visibility_mode_never_touches_the_locality_badge():
     apply_visibility_start = js.index("function applyVisibilityMode")
     apply_visibility_end = js.index("\n}\n", apply_visibility_start)
     body = js[apply_visibility_start:apply_visibility_end]
-    code_lines = [line for line in body.splitlines() if not line.strip().startswith("//")]
+    code_lines = [
+        line for line in body.splitlines() if not line.strip().startswith("//")
+    ]
     code_only = "\n".join(code_lines)
 
     assert 'getElementById("localityBadge")' not in code_only
@@ -565,7 +574,9 @@ async def test_request_model_options_degrades_to_current_value_on_failure():
     await asyncio.sleep(0.05)
 
     assert received == [
-        ModelOptionsAvailable(options=[settings.backend.model], current=settings.backend.model)
+        ModelOptionsAvailable(
+            options=[settings.backend.model], current=settings.backend.model
+        )
     ]
     assert len(system_events) == 1
     assert system_events[0].level is EventLevel.WARN
@@ -653,7 +664,7 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
 
     ui_config_path = tmp_path / "config.ui.toml"
     base_config_path = tmp_path / "config.toml"
-    base_config_path.write_text("[backend]\nmodel = \"do-not-touch\"\n", encoding="utf-8")
+    base_config_path.write_text('[backend]\nmodel = "do-not-touch"\n', encoding="utf-8")
 
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
@@ -672,7 +683,10 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
     assert "new-model" in written
     assert "USB Headset" in written
     # never touched the base config.toml-shaped file
-    assert base_config_path.read_text(encoding="utf-8") == '[backend]\nmodel = "do-not-touch"\n'
+    assert (
+        base_config_path.read_text(encoding="utf-8")
+        == '[backend]\nmodel = "do-not-touch"\n'
+    )
     assert len(saved_events) == 1
     assert len(system_events) == 1
 
@@ -719,7 +733,7 @@ async def test_save_config_selection_rejects_an_empty_model(tmp_path, empty_mode
 
 
 async def test_save_config_selection_allows_an_empty_microphone_device(tmp_path):
-    """"" is the legitimate system-default sentinel for microphone
+    """ "" is the legitimate system-default sentinel for microphone
     (MicrophoneSettings.device's own default) - only an empty model is
     ever rejected."""
     bus = EventBus()
@@ -783,8 +797,12 @@ def test_index_html_groups_lower_controls_in_one_action_row():
     config_panel_start = html.index('<div class="config-panel"', row_start)
     action_row = html[row_start:config_panel_start]
 
-    assert action_row.index('id="btnConfigToggle"') < action_row.index('id="btnResetGlobal"')
-    assert action_row.index('id="btnResetGlobal"') < action_row.index('id="btnShutdown"')
+    assert action_row.index('id="btnConfigToggle"') < action_row.index(
+        'id="btnResetGlobal"'
+    )
+    assert action_row.index('id="btnResetGlobal"') < action_row.index(
+        'id="btnShutdown"'
+    )
 
 
 def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
@@ -796,7 +814,7 @@ def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
     assert "display: flex" in rule
     assert "flex-wrap: nowrap" in rule
     assert "justify-content: center" in rule
-    responsive_css = css[css.index("@media"):]
+    responsive_css = css[css.index("@media") :]
     assert ".action-row" in responsive_css
     assert "flex-wrap: wrap" in responsive_css
 
@@ -865,7 +883,11 @@ def test_index_html_config_apply_button_starts_disabled():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
     apply_button_start = html.index('id="btnConfigApply"')
-    apply_button_tag = html[html.rindex("<button", 0, apply_button_start) : html.index(">", apply_button_start)]
+    apply_button_tag = html[
+        html.rindex("<button", 0, apply_button_start) : html.index(
+            ">", apply_button_start
+        )
+    ]
     assert "disabled" in apply_button_tag
 
 
@@ -969,9 +991,9 @@ def test_status_console_app_uses_ws_transport_instead_of_the_pywebview_api():
     transport_js = (UI_DIR / "transport.js").read_text(encoding="utf-8")
 
     assert "new WebSocket" in transport_js
-    assert "channel: \"control\"" in transport_js
+    assert 'channel: "control"' in transport_js
     assert "createTransportStatusHandler" in transport_js
     assert "dispatchStateDelta" in transport_js
     assert "status-console" in app_js
-    assert "default: throw new Error(\"Unknown state delta" not in app_js
+    assert 'default: throw new Error("Unknown state delta' not in app_js
     assert "window.pywebview" not in app_js

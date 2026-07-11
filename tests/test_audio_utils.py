@@ -12,7 +12,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Other modules in this repo. audio_utils.py must not import any of them -
 # that is the whole point of factoring it out (task-05 review: tts.py was
 # importing audio_in.py just to reuse this one function).
-_OTHER_PROJECT_MODULES = {"bus", "config", "backend", "audio_in", "tts", "capture", "main"}
+_OTHER_PROJECT_MODULES = {
+    "bus",
+    "config",
+    "backend",
+    "audio_in",
+    "tts",
+    "capture",
+    "main",
+}
 
 
 def test_samples_to_wav_bytes_round_trips_sample_count_and_rate():

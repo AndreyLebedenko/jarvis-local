@@ -1,2 +1,1 @@
 """Jarvis application package."""
-

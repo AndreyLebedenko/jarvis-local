@@ -267,9 +267,7 @@ def test_provider_can_restart_after_stop():
             (1, _MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S")),
             (1, _MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S")),
         ]
-        assert fake.registered == {
-            1: (_MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S"))
-        }
+        assert fake.registered == {1: (_MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S"))}
     finally:
         provider.stop()
 
@@ -308,7 +306,5 @@ async def test_async_provider_lifecycle_registers_and_stops_on_cancellation():
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert fake.register_calls == [
-        (1, _MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S"))
-    ]
+    assert fake.register_calls == [(1, _MOD_CTRL | _MOD_ALT | MOD_NOREPEAT, ord("S"))]
     assert fake.unregistered == [1]

@@ -22,7 +22,11 @@ _RUNTIME_COLOR_PROPERTIES = ("--live", "--live-dim", "--live-tint")
 
 
 def _all_ui_source_files() -> list[Path]:
-    return sorted(UI_DIR.glob("*.html")) + sorted(UI_DIR.glob("*.css")) + sorted(UI_DIR.glob("*.js"))
+    return (
+        sorted(UI_DIR.glob("*.html"))
+        + sorted(UI_DIR.glob("*.css"))
+        + sorted(UI_DIR.glob("*.js"))
+    )
 
 
 def test_every_status_console_ui_file_is_covered_by_the_network_asset_scan():
@@ -86,7 +90,9 @@ def _runtime_color_rules(css_text: str) -> dict[str, dict[str, str]]:
         for property_name in _RUNTIME_COLOR_PROPERTIES:
             color_start = rule.index(f"{property_name}:") + len(property_name) + 1
             raw_value = rule[color_start : rule.index(";", color_start)].strip()
-            state_colors[property_name] = _resolve_css_value(raw_value, custom_properties)
+            state_colors[property_name] = _resolve_css_value(
+                raw_value, custom_properties
+            )
         colors[state.value] = state_colors
     return colors
 
@@ -110,8 +116,12 @@ def test_style_css_and_touchstrip_css_agree_on_every_runtime_state_color():
     independently-tuned palettes that could drift apart color by color.
     Compare resolved custom-property values, not just matching var(...)
     references, so changing --amber-warm in only one CSS file fails here."""
-    desktop_colors = _runtime_color_rules((UI_DIR / "style.css").read_text(encoding="utf-8"))
-    touchstrip_colors = _runtime_color_rules((UI_DIR / "touchstrip.css").read_text(encoding="utf-8"))
+    desktop_colors = _runtime_color_rules(
+        (UI_DIR / "style.css").read_text(encoding="utf-8")
+    )
+    touchstrip_colors = _runtime_color_rules(
+        (UI_DIR / "touchstrip.css").read_text(encoding="utf-8")
+    )
 
     assert desktop_colors == touchstrip_colors
 
@@ -131,5 +141,5 @@ def test_demo_html_respects_style_css_narrow_width_breakpoint():
     demo_html = (UI_DIR / "demo.html").read_text(encoding="utf-8")
 
     assert "@media (max-width: 720px)" in demo_html
-    media_query_body = demo_html[demo_html.index("@media (max-width: 720px)"):]
+    media_query_body = demo_html[demo_html.index("@media (max-width: 720px)") :]
     assert '"main" "log"' in media_query_body

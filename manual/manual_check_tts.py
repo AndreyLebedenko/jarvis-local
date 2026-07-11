@@ -30,10 +30,18 @@ from jarvis.audio.tts import TtsOutput
 # Deliberately includes a decimal number and a known abbreviation, so the
 # sentence buffer's handling of both is also audible, not just tested.
 SCRIPTED_TOKENS = [
-    "Привет! ", "Это тестовое ", "предложение, ", "чтобы проверить, ",
-    "как звучит ", "синтез речи. ", "А вот и второе, ",
-    "чуть подлиннее, ", "предложение с числом 3.14 ", "и сокращением т.е. ",
-    "так далее. ", "Последнее предложение без пробела в конце",
+    "Привет! ",
+    "Это тестовое ",
+    "предложение, ",
+    "чтобы проверить, ",
+    "как звучит ",
+    "синтез речи. ",
+    "А вот и второе, ",
+    "чуть подлиннее, ",
+    "предложение с числом 3.14 ",
+    "и сокращением т.е. ",
+    "так далее. ",
+    "Последнее предложение без пробела в конце",
 ]
 
 
@@ -60,7 +68,10 @@ async def main() -> None:
     await tts.on_response_complete(
         ResponseComplete(
             metrics=LatencyMetrics(
-                load_seconds=0.0, prompt_eval_seconds=0.0, eval_seconds=0.0, eval_count=0
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
             )
         )
     )

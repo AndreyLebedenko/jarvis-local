@@ -54,4 +54,7 @@ async def test_set_mode_back_and_forth_publishes_each_real_change():
     await state.set_mode(VisibilityMode.HIDDEN)  # redundant, no-op
     await state.set_mode(VisibilityMode.OPEN)
 
-    assert [event.mode for event in received] == [VisibilityMode.HIDDEN, VisibilityMode.OPEN]
+    assert [event.mode for event in received] == [
+        VisibilityMode.HIDDEN,
+        VisibilityMode.OPEN,
+    ]

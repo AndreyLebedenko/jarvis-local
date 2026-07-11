@@ -20,7 +20,9 @@ from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
-from jarvis.dialog.thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
+from jarvis.dialog.thinking_mode import (
+    run_hotkey_listener as run_thinking_hotkey_listener,
+)
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
@@ -138,7 +140,9 @@ class Orchestrator:
             await self._sound_cues.play("input_error")
             return
         if self._busy:
-            logger.info("Ignoring clipboard submission: previous request still in flight")
+            logger.info(
+                "Ignoring clipboard submission: previous request still in flight"
+            )
             return
         # Must check busy before playing the ack/warning cue: playing it
         # and then having _start_turn() silently reject the turn would
@@ -146,9 +150,7 @@ class Orchestrator:
         await self._sound_cues.play("input_error" if event.truncated else "clipboard")
         await self._start_turn(event.text, None)
 
-    async def _start_turn(
-        self, history_text: str, media_b64: list[str] | None
-    ) -> None:
+    async def _start_turn(self, history_text: str, media_b64: list[str] | None) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
         # `await` in between - so this can only fire for a caller that
@@ -171,7 +173,9 @@ class Orchestrator:
         # this turn's request is already in flight cannot retroactively
         # change what was already passed - see thinking_mode.py and the
         # story's "sampled at turn start, not the live stream" decision.
-        thinking_enabled = self._thinking_mode.is_enabled if self._thinking_mode else False
+        thinking_enabled = (
+            self._thinking_mode.is_enabled if self._thinking_mode else False
+        )
         try:
             await self._backend.chat(
                 messages, images_b64=media_b64, thinking_enabled=thinking_enabled
@@ -463,7 +467,11 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
         await app.orchestrator.on_utterance(event)
 
     async def on_clipboard(event: ClipboardSubmitted) -> None:
-        if live_console is not None and not app.orchestrator.is_busy and not event.is_empty:
+        if (
+            live_console is not None
+            and not app.orchestrator.is_busy
+            and not event.is_empty
+        ):
             _push_runtime_state(
                 live_console,
                 RuntimeState.THINKING,
@@ -471,8 +479,12 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
             )
         await app.orchestrator.on_clipboard(event)
 
-    utterance_handler = on_utterance if live_console is not None else app.orchestrator.on_utterance
-    clipboard_handler = on_clipboard if live_console is not None else app.orchestrator.on_clipboard
+    utterance_handler = (
+        on_utterance if live_console is not None else app.orchestrator.on_utterance
+    )
+    clipboard_handler = (
+        on_clipboard if live_console is not None else app.orchestrator.on_clipboard
+    )
 
     subscriptions: list[Subscription] = [
         (UtteranceChunk, utterance_handler),
@@ -578,7 +590,9 @@ async def run(
     # makes every such internal event observable without re-instrumenting
     # each one at WARNING level, which would misrepresent normal events as
     # warnings.
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
     settings = settings or load_settings()
     ensure_generated(settings.sound_cues)
@@ -593,9 +607,7 @@ async def run(
         )
     else:
         status_console_subscriptions = []
-    await warm_up(
-        app.backend, app.bus, settings.ui.language, settings.prompts.warmup
-    )
+    await warm_up(app.backend, app.bus, settings.ui.language, settings.prompts.warmup)
     if live_console is not None:
         _push_runtime_state(
             live_console,
@@ -615,12 +627,18 @@ async def run(
 
     background_tasks = [
         asyncio.create_task(app.audio_input.run_microphone_loop()),
-        asyncio.create_task(run_capture_hotkey_listener(app.capture_input, settings.hotkeys)),
+        asyncio.create_task(
+            run_capture_hotkey_listener(app.capture_input, settings.hotkeys)
+        ),
         asyncio.create_task(
             run_clipboard_hotkey_listener(app.bus, settings.hotkeys, settings.clipboard)
         ),
-        asyncio.create_task(run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)),
-        asyncio.create_task(run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)),
+        asyncio.create_task(
+            run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)
+        ),
+        asyncio.create_task(
+            run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
+        ),
     ]
 
     await app.sound_cues.play("listening")
@@ -643,7 +661,9 @@ def run_with_status_console(
 ) -> None:
     settings = settings or load_settings()
     app = build_app(settings)
-    live_console = create_live_status_console(app, include_touchstrip=include_touchstrip)
+    live_console = create_live_status_console(
+        app, include_touchstrip=include_touchstrip
+    )
     live_console.transport = UiTransportServer(
         app.bus,
         live_console.api,

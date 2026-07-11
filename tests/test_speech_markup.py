@@ -52,9 +52,7 @@ def test_region_variants_normalize_to_base_language():
 
 
 def test_text_outside_lang_tags_is_preserved_as_default_language():
-    assert parse_speech_markup(
-        'До <lang xml:lang="en">hello</lang> после.'
-    ) == [
+    assert parse_speech_markup('До <lang xml:lang="en">hello</lang> после.') == [
         SpeechSegment("ru", "До"),
         SpeechSegment("en", "hello"),
         SpeechSegment("ru", "после."),
@@ -146,7 +144,5 @@ def test_stream_feed_routes_language_across_a_tag_split_between_chunks():
     pieces += stream.close()
 
     assert [
-        (piece.language, piece.text.strip())
-        for piece in pieces
-        if piece.text.strip()
+        (piece.language, piece.text.strip()) for piece in pieces if piece.text.strip()
     ] == [("ru", "Привет"), ("en", "hello"), ("ru", "пока")]

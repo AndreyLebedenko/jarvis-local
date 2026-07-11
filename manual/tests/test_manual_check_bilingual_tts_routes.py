@@ -38,7 +38,9 @@ def test_sample_catalog_exercises_mixed_charset_text():
     assert sample_labels() == ("code_switch_short", "technical_terms", "sentence_mix")
 
     for sample in SAMPLES:
-        languages = {plan.language for plan in build_segment_plan(ROUTES[0], sample.text)}
+        languages = {
+            plan.language for plan in build_segment_plan(ROUTES[0], sample.text)
+        }
 
         assert languages == {"ru", "en"}
 
@@ -180,4 +182,6 @@ class _Int16Bytes:
         self._values = values
 
     def tobytes(self) -> bytes:
-        return b"".join(value.to_bytes(2, "little", signed=True) for value in self._values)
+        return b"".join(
+            value.to_bytes(2, "little", signed=True) for value in self._values
+        )

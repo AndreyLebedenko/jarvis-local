@@ -4,7 +4,11 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import ClipboardSettings, HotkeySettings
-from jarvis.inputs.clipboard import ClipboardSubmitted, read_clipboard_submission, run_hotkey_listener
+from jarvis.inputs.clipboard import (
+    ClipboardSubmitted,
+    read_clipboard_submission,
+    run_hotkey_listener,
+)
 
 
 def test_reads_clean_short_text_unchanged():
@@ -12,7 +16,9 @@ def test_reads_clean_short_text_unchanged():
 
     event = read_clipboard_submission(settings, read_clipboard=lambda: "print('hi')")
 
-    assert event == ClipboardSubmitted(text="print('hi')", truncated=False, is_empty=False)
+    assert event == ClipboardSubmitted(
+        text="print('hi')", truncated=False, is_empty=False
+    )
 
 
 def test_truncates_text_over_max_chars_with_visible_marker():
@@ -84,9 +90,7 @@ async def test_hotkey_listener_registers_binding_from_config():
     fake_kb = _FakeKeyboardModule()
 
     task = asyncio.create_task(
-        run_hotkey_listener(
-                EventBus(), hotkeys, ClipboardSettings(), provider=fake_kb
-        )
+        run_hotkey_listener(EventBus(), hotkeys, ClipboardSettings(), provider=fake_kb)
     )
     await asyncio.sleep(0)
 

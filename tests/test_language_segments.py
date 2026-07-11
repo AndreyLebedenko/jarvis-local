@@ -1,4 +1,8 @@
-from jarvis.audio.language_segments import CharsetLanguageStream, LanguageSegment, segment_by_charset
+from jarvis.audio.language_segments import (
+    CharsetLanguageStream,
+    LanguageSegment,
+    segment_by_charset,
+)
 
 
 def collect(*chunks: str) -> list[LanguageSegment]:

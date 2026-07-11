@@ -104,10 +104,11 @@ async def test_subscriber_exception_does_not_break_bus_or_starve_others(caplog):
     assert received == ["payload"]
 
     error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
-    assert error_records, "expected the subscriber exception to be logged, not swallowed"
+    assert error_records, (
+        "expected the subscriber exception to be logged, not swallowed"
+    )
     assert any(
-        r.exc_info and isinstance(r.exc_info[1], ValueError)
-        for r in error_records
+        r.exc_info and isinstance(r.exc_info[1], ValueError) for r in error_records
     )
 
 

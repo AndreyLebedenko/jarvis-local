@@ -41,9 +41,7 @@ def test_stream_tokens_reassemble_to_the_original_text():
 async def test_reporting_engine_reports_and_delegates():
     reports = []
 
-    engine = ReportingEngine(
-        "piper", _FakeEngine(), lambda *args: reports.append(args)
-    )
+    engine = ReportingEngine("piper", _FakeEngine(), lambda *args: reports.append(args))
 
     assert await engine.synthesize("Hello.", "en") == b"Hello."
     assert reports == [("piper", "en", "Hello.")]

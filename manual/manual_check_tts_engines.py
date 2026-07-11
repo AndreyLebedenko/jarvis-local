@@ -55,7 +55,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings, Settings, load_settings
-from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.backend import (
+    LatencyMetrics,
+    OllamaBackend,
+    ResponseComplete,
+    ResponseToken,
+)
 from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
 
 BACKEND_PROBE_PROMPT = "Ответь одним коротким предложением: проверка готова?"
@@ -65,6 +70,8 @@ DEFAULT_KOKORO_VOICE = "af_heart"
 DEFAULT_KOKORO_DEVICE = "cuda"
 DEFAULT_XTTS_LANGUAGE = "en"
 DEFAULT_XTTS_DEVICE = "cuda"
+
+
 @dataclass(frozen=True)
 class PromptSample:
     label: str
@@ -140,7 +147,9 @@ class EnginePaths:
 PROMPTS = (
     PromptSample("russian", "Скажи коротко: проект готов и все работает.", "ru"),
     PromptSample("english", "Answer in one short sentence: the build is ready.", "en"),
-    PromptSample("mixed_latin", "Скажи, как произносятся Gemma4, Jarvis и OpenAI.", "ru"),
+    PromptSample(
+        "mixed_latin", "Скажи, как произносятся Gemma4, Jarvis и OpenAI.", "ru"
+    ),
     PromptSample("numbers", "Продиктуй числа 3.1415 и 42.", "ru"),
     PromptSample("short_answer", "Ответь очень коротко: да или нет?", "ru"),
     PromptSample("code_like", "Say this code-like phrase: if x == 1: return y.", "en"),
@@ -232,7 +241,9 @@ class VramSampler:
                 if self._peak_delta_mib is None or delta > self._peak_delta_mib:
                     self._peak_delta_mib = delta
             try:
-                await asyncio.wait_for(self._stop.wait(), timeout=self._interval_seconds)
+                await asyncio.wait_for(
+                    self._stop.wait(), timeout=self._interval_seconds
+                )
             except asyncio.TimeoutError:
                 continue
 
@@ -287,7 +298,9 @@ async def run_backend_probe(settings: Settings) -> BackendProbeResult:
     )
 
 
-def _prepare_wav_bytes(samples: torch.Tensor | list[float] | tuple[float, ...], sample_rate: int) -> bytes:
+def _prepare_wav_bytes(
+    samples: torch.Tensor | list[float] | tuple[float, ...], sample_rate: int
+) -> bytes:
     tensor = torch.as_tensor(samples, dtype=torch.float32).flatten().cpu()
     return samples_to_wav_bytes(tensor, sample_rate)
 
@@ -296,7 +309,9 @@ async def load_silero_engine(settings: Settings) -> LoadedEngine:
     import silero
 
     load_started = time.perf_counter()
-    model, _ = await asyncio.to_thread(silero.silero_tts, language="ru", speaker="v3_1_ru")
+    model, _ = await asyncio.to_thread(
+        silero.silero_tts, language="ru", speaker="v3_1_ru"
+    )
     load_seconds = time.perf_counter() - load_started
 
     async def synthesize(text: str, language: str) -> bytes:
@@ -310,7 +325,9 @@ async def load_silero_engine(settings: Settings) -> LoadedEngine:
         )
         return _prepare_wav_bytes(audio_tensor, 48000)
 
-    return LoadedEngine("silero", {"speaker": settings.tts.voice}, load_seconds, synthesize)
+    return LoadedEngine(
+        "silero", {"speaker": settings.tts.voice}, load_seconds, synthesize
+    )
 
 
 async def load_piper_engine(paths: EnginePaths) -> LoadedEngine:
@@ -369,7 +386,9 @@ async def load_kokoro_engine(paths: EnginePaths) -> LoadedEngine:
             segments.append(torch.as_tensor(audio, dtype=torch.float32))
         if not segments:
             raise RuntimeError("Kokoro returned no audio")
-        return _prepare_wav_bytes(torch.cat([segment.flatten() for segment in segments]), 24000)
+        return _prepare_wav_bytes(
+            torch.cat([segment.flatten() for segment in segments]), 24000
+        )
 
     return LoadedEngine(
         "kokoro",
@@ -403,10 +422,14 @@ async def load_xtts_engine(paths: EnginePaths) -> LoadedEngine:
     speakers = list(getattr(tts, "speakers", []) or [])
     speaker = speakers[0] if speakers else "default"
     languages = list(getattr(tts, "languages", []) or [])
-    default_language = DEFAULT_XTTS_LANGUAGE if DEFAULT_XTTS_LANGUAGE in languages else (
-        languages[0] if languages else DEFAULT_XTTS_LANGUAGE
+    default_language = (
+        DEFAULT_XTTS_LANGUAGE
+        if DEFAULT_XTTS_LANGUAGE in languages
+        else (languages[0] if languages else DEFAULT_XTTS_LANGUAGE)
     )
-    sample_rate = int(getattr(getattr(tts, "synthesizer", None), "output_sample_rate", 24000))
+    sample_rate = int(
+        getattr(getattr(tts, "synthesizer", None), "output_sample_rate", 24000)
+    )
 
     async def synthesize(text: str, language: str) -> bytes:
         chosen_language = language if language in languages else default_language
@@ -422,7 +445,9 @@ async def load_xtts_engine(paths: EnginePaths) -> LoadedEngine:
         "xtts-v2",
         {
             "model_path": str(paths.xtts_model_path),
-            "config_path": str(paths.xtts_config_path) if paths.xtts_config_path else "",
+            "config_path": str(paths.xtts_config_path)
+            if paths.xtts_config_path
+            else "",
             "device": device,
             "speaker": speaker,
             "language": default_language,
@@ -455,7 +480,13 @@ async def load_available_engines(
     ):
         try:
             engine = await loader()
-        except (ImportError, FileNotFoundError, RuntimeError, TypeError, ValueError) as exc:
+        except (
+            ImportError,
+            FileNotFoundError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
             print(f"[skip] {name}: {exc}")
             continue
         engines.append((name, engine))
@@ -543,7 +574,9 @@ def print_engine_summary(summary: EngineSummary) -> None:
     for key, value in summary.details.items():
         print(f"{key}: {value}")
     print(f"load_seconds: {summary.load_seconds:.2f}")
-    print("engine,prompt,load_seconds,first_audio_seconds,total_seconds,peak_vram_delta_mib")
+    print(
+        "engine,prompt,load_seconds,first_audio_seconds,total_seconds,peak_vram_delta_mib"
+    )
     for row in summary.prompts:
         print(
             f"{summary.name},{row.label},{row.load_seconds:.2f},"
@@ -571,10 +604,14 @@ async def main() -> None:
     print("Ollama backend config comes from config.toml/config.ui.toml.")
     print(f"backend.model = {settings.backend.model}")
     print(f"backend.num_ctx = {settings.backend.num_ctx}")
-    print(f"backend.flash_attention = {_bool_or_none(settings.backend.flash_attention)}")
+    print(
+        f"backend.flash_attention = {_bool_or_none(settings.backend.flash_attention)}"
+    )
     print(f"backend.kv_cache_type = {settings.backend.kv_cache_type or 'unset'}")
     print(f"token_delay_seconds = {TOKEN_DELAY_SECONDS}")
-    print("Run this script once with kv_cache_type=f16 and once with kv_cache_type=q8_0 to compare the cache profiles.\n")
+    print(
+        "Run this script once with kv_cache_type=f16 and once with kv_cache_type=q8_0 to compare the cache profiles.\n"
+    )
 
     backend_result = await run_backend_probe(settings)
     print_backend_probe(backend_result)

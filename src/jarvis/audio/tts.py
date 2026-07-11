@@ -55,7 +55,11 @@ from num2words import num2words
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
-from jarvis.audio.language_segments import DEFAULT_LANGUAGE, ENGLISH, CharsetLanguageStream
+from jarvis.audio.language_segments import (
+    DEFAULT_LANGUAGE,
+    ENGLISH,
+    CharsetLanguageStream,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,10 +237,32 @@ _LATIN_RUN_RE = re.compile(r"[a-zA-Z]+")
 _LATIN_DIGRAPHS = {"sh": "ш", "ch": "ч", "ck": "к", "ph": "ф", "qu": "кв", "th": "т"}
 
 _LATIN_LETTERS = {
-    "a": "а", "b": "б", "c": "к", "d": "д", "e": "е", "f": "ф", "g": "г",
-    "h": "х", "i": "и", "j": "дж", "k": "к", "l": "л", "m": "м", "n": "н",
-    "o": "о", "p": "п", "q": "к", "r": "р", "s": "с", "t": "т", "u": "у",
-    "v": "в", "w": "в", "x": "кс", "y": "й", "z": "з",
+    "a": "а",
+    "b": "б",
+    "c": "к",
+    "d": "д",
+    "e": "е",
+    "f": "ф",
+    "g": "г",
+    "h": "х",
+    "i": "и",
+    "j": "дж",
+    "k": "к",
+    "l": "л",
+    "m": "м",
+    "n": "н",
+    "o": "о",
+    "p": "п",
+    "q": "к",
+    "r": "р",
+    "s": "с",
+    "t": "т",
+    "u": "у",
+    "v": "в",
+    "w": "в",
+    "x": "кс",
+    "y": "й",
+    "z": "з",
 }
 
 
@@ -273,9 +299,30 @@ def transliterate_latin(text: str) -> str:
 # utterance; a false boundary would cut off mid-abbreviation and produce
 # broken speech, which is the worse failure mode.
 _ABBREVIATIONS = {
-    "т.е", "т.д", "т.п", "др", "пр", "см", "мм", "кг", "г", "гг",
-    "им", "проф", "акад", "руб", "коп", "стр", "рис", "табл", "гл",
-    "ст", "разд", "тов", "г-н", "г-жа",
+    "т.е",
+    "т.д",
+    "т.п",
+    "др",
+    "пр",
+    "см",
+    "мм",
+    "кг",
+    "г",
+    "гг",
+    "им",
+    "проф",
+    "акад",
+    "руб",
+    "коп",
+    "стр",
+    "рис",
+    "табл",
+    "гл",
+    "ст",
+    "разд",
+    "тов",
+    "г-н",
+    "г-жа",
 }
 
 _BOUNDARY_RE = re.compile(r"[.!?]+(?=\s)")
@@ -298,7 +345,7 @@ class SentenceBuffer:
                 search_start = match.end()
                 continue
             sentences.append(self._buffer[: match.end()].strip())
-            self._buffer = self._buffer[match.end():]
+            self._buffer = self._buffer[match.end() :]
             search_start = 0
         return sentences
 
@@ -367,7 +414,9 @@ class SpeechUnitBuffer:
         self._language = DEFAULT_LANGUAGE
         return units
 
-    def _feed_piece(self, units: list[tuple[str, str]], language: str, text: str) -> None:
+    def _feed_piece(
+        self, units: list[tuple[str, str]], language: str, text: str
+    ) -> None:
         if language != self._language:
             remainder = self._sentences.flush()
             if remainder:
@@ -464,7 +513,9 @@ class PiperEngine:
     async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
         del language
         voice = await self._ensure_voice()
-        return await asyncio.to_thread(_piper_chunks_to_wav_bytes, voice.synthesize(text))
+        return await asyncio.to_thread(
+            _piper_chunks_to_wav_bytes, voice.synthesize(text)
+        )
 
     async def _ensure_voice(self):
         if self._voice is None:
@@ -510,7 +561,9 @@ def _routes_share_one_engine(settings: TtsSettings) -> bool:
     return len({route.engine for route in settings.languages.values()}) == 1
 
 
-def _build_silero_engine(settings: TtsSettings, route: TtsLanguageSettings) -> "TtsEngine":
+def _build_silero_engine(
+    settings: TtsSettings, route: TtsLanguageSettings
+) -> "TtsEngine":
     if route.model != SILERO_MODEL:
         raise ValueError(
             f"SileroEngine supports only model {SILERO_MODEL!r} (its cache "
@@ -534,9 +587,7 @@ def build_tts_engine(
         return SileroEngine(settings)
 
     missing = [
-        language
-        for language in _ROUTED_LANGUAGES
-        if language not in settings.languages
+        language for language in _ROUTED_LANGUAGES if language not in settings.languages
     ]
     if missing:
         raise ValueError(
@@ -615,7 +666,9 @@ class TtsOutput:
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
 
-    async def _synthesize_and_submit(self, index: int, text: str, language: str) -> None:
+    async def _synthesize_and_submit(
+        self, index: int, text: str, language: str
+    ) -> None:
         try:
             audio = await self._engine.synthesize(text, language)
         except Exception:
@@ -625,8 +678,7 @@ class TtsOutput:
             # recoverable, silently losing all speech for the rest of the
             # session is not.
             logger.exception(
-                "TTS synthesis failed for unit %d (language=%r); "
-                "skipping its playback",
+                "TTS synthesis failed for unit %d (language=%r); skipping its playback",
                 index,
                 language,
             )

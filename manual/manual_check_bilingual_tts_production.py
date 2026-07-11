@@ -35,7 +35,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from jarvis.core.config import TtsSettings, load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 from jarvis.audio.language_segments import DEFAULT_LANGUAGE, ENGLISH
-from jarvis.audio.tts import EngineBuilder, TtsEngine, TtsOutput, _default_engine_builders, build_tts_engine
+from jarvis.audio.tts import (
+    EngineBuilder,
+    TtsEngine,
+    TtsOutput,
+    _default_engine_builders,
+    build_tts_engine,
+)
 
 ReportFn = Callable[[str, str, str], None]
 
@@ -86,7 +92,11 @@ def reporting_builders(
 ) -> dict[str, EngineBuilder]:
     """The production engine builders, each wrapped so the engines they
     build report every unit they synthesize."""
-    base = base_builders if base_builders is not None else _default_engine_builders(settings)
+    base = (
+        base_builders
+        if base_builders is not None
+        else _default_engine_builders(settings)
+    )
 
     def wrap(label: str, builder: EngineBuilder) -> EngineBuilder:
         def build(route) -> TtsEngine:

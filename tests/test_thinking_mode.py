@@ -5,7 +5,11 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings
-from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled, run_hotkey_listener
+from jarvis.dialog.thinking_mode import (
+    ThinkingModeState,
+    ThinkingModeToggled,
+    run_hotkey_listener,
+)
 
 
 def test_state_starts_disabled_by_default():
@@ -62,9 +66,7 @@ async def test_hotkey_listener_registers_binding_from_config():
     fake_kb = _FakeKeyboardModule()
     state = ThinkingModeState(bus=EventBus())
 
-    task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, provider=fake_kb)
-    )
+    task = asyncio.create_task(run_hotkey_listener(state, hotkeys, provider=fake_kb))
     await asyncio.sleep(0)
 
     assert set(fake_kb.registered) == {"ctrl+alt+z"}
@@ -82,9 +84,7 @@ async def test_hotkey_press_schedules_exactly_one_toggle():
     state = ThinkingModeState(bus=EventBus())
     assert state.is_enabled is False
 
-    task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, provider=fake_kb)
-    )
+    task = asyncio.create_task(run_hotkey_listener(state, hotkeys, provider=fake_kb))
     await asyncio.sleep(0)
 
     fake_kb.registered["ctrl+alt+z"]()
@@ -118,9 +118,7 @@ async def test_two_rapid_hotkey_presses_toggle_twice_not_the_same_transition_twi
     state = ThinkingModeState(bus=bus)
     assert state.is_enabled is False
 
-    task = asyncio.create_task(
-        run_hotkey_listener(state, hotkeys, provider=fake_kb)
-    )
+    task = asyncio.create_task(run_hotkey_listener(state, hotkeys, provider=fake_kb))
     await asyncio.sleep(0)
 
     fake_kb.registered["ctrl+alt+z"]()

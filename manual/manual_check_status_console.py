@@ -40,14 +40,20 @@ if str(PROJECT_ROOT) not in sys.path:
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
 from jarvis.app import ConversationHistory
-from jarvis.ui.status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
+from jarvis.ui.status_console import (
+    StatusConsoleApi,
+    StatusConsoleWindow,
+    TouchstripWindow,
+)
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ThinkingModeState
 from jarvis.ui.contract import EventLevel, RuntimeState
 from jarvis.ui.transport import UiStateStore, UiTransportServer
 from jarvis.ui.visibility import VisibilityModeState
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 STATE_CYCLE = list(RuntimeState)
@@ -55,7 +61,12 @@ SAMPLE_EVENTS = [
     ("WARMUP", EventLevel.INFO, "Warm-up request succeeded", "Прогрев модели завершён"),
     ("HOTKEY", EventLevel.INFO, "Thinking mode enabled", "Режим мышления включён"),
     ("HOTKEY", EventLevel.INFO, "Microphone asleep", "Микрофон усыплён"),
-    ("WARMUP", EventLevel.WARN, "Warm-up request slow", "Прогрев модели занял дольше обычного"),
+    (
+        "WARMUP",
+        EventLevel.WARN,
+        "Warm-up request slow",
+        "Прогрев модели занял дольше обычного",
+    ),
     ("ENGINE", EventLevel.ERROR, "Backend request failed", "Ошибка запроса к модели"),
 ]
 
@@ -74,7 +85,9 @@ async def _run_demo_cycle_async(ctx: DemoContext) -> None:
         state = STATE_CYCLE[i % len(STATE_CYCLE)]
         ctx.transport.set_runtime_state(state)
         source, level, log_message, ui_message = SAMPLE_EVENTS[i % len(SAMPLE_EVENTS)]
-        await publish_system_event(ctx.bus, logger, source, level, log_message, ui_message)
+        await publish_system_event(
+            ctx.bus, logger, source, level, log_message, ui_message
+        )
         i += 1
         try:
             await asyncio.wait_for(ctx.shutdown_event.wait(), timeout=2.0)
@@ -106,7 +119,9 @@ def _build_demo_context(settings) -> DemoContext:
         ),
         logger=logger,
     )
-    return DemoContext(api=api, bus=bus, transport=transport, shutdown_event=shutdown_event)
+    return DemoContext(
+        api=api, bus=bus, transport=transport, shutdown_event=shutdown_event
+    )
 
 
 async def _run_manual_session(
@@ -130,6 +145,7 @@ async def _run_manual_session(
 def main() -> None:
     settings = load_settings()
     import webview
+
     context = _build_demo_context(settings)
     console = StatusConsoleWindow()
     touchstrip = TouchstripWindow()
