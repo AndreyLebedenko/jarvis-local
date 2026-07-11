@@ -1,17 +1,22 @@
-# Roadmap: v1.2.x stabilization toward v1.4 file attachments
+# Roadmap: v1.2.x stabilization toward v1.4 MCP and v1.5 file attachments
 
 **Status:** Accepted roadmap.
 **Branch:** codex/roadmap-v1.2-v1.3.
-**Note:** roadmap scope now extends through v1.4.0; the branch name predates
-the v1.4 planning addition.
+**Note:** roadmap scope now extends through v1.5.0; the file name and branch
+name predate the later planning additions. v1.4.0 (MCP) and v1.5.0 (file
+attachments) were swapped by an explicit human decision: MCP unlocks
+capabilities that are otherwise impossible (web search, database access),
+while attachments improve ergonomics of input paths that already have
+workarounds (screen capture for images, microphone for audio).
 **Context:** current release tag is already v1.2.1, so new roadmap work starts
 at v1.2.2.
 
 ## Goal
 
 Move Jarvis from the current v1.2.1 state toward a v1.3.0 Control Center
-release and a later v1.4 file-attachment release through small,
-dependency-ordered engineering releases. Each v1.2.x release should produce at
+release, a v1.4.0 MCP integration release, and a later v1.5.0
+file-attachment release through small, dependency-ordered engineering
+releases. Each v1.2.x release should produce at
 most one major architectural output. If a second major architectural decision
 appears inside a release, split it into a later roadmap item instead of
 expanding scope.
@@ -35,6 +40,12 @@ used only for pure build/test verification.
    One-time setup may require network, such as dependency installation or model
    download scripts. Normal Jarvis runtime must not require network access
    beyond the configured local Ollama endpoint.
+   Note: this wording is pre-v1.4.0. The v1.4.0 locality contract revision
+   (`tasks/story-v1.4.0-task-2-locality-contract-revision.md`) supersedes it
+   with the two-tier contract - core and inference local unconditionally;
+   external access only as a per-component capability, off by default,
+   user-enabled, user-visible - and rewrites this rule in the same change.
+   Until that task lands, the unconditional wording remains in force.
 
 4. Hardware handoffs stay manual.
    Microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView
@@ -231,7 +242,8 @@ Story/task status: completed.
 ## Backlog for v1.4.0+ - Activation and warmup
 
 Decision: deferred from v1.2.7. This work is not a prerequisite for v1.3.0
-Control Center or v1.4.0 file attachments. Until it lands, cold starts after
+Control Center, v1.4.0 MCP integration, or v1.5.0 file attachments. Until it
+lands, cold starts after
 idle periods and the absence of push-to-talk/orb activation remain accepted UX
 debt.
 
@@ -375,7 +387,67 @@ Boundary:
 Story/task readiness: deferred to `tasks/backlog/`. The previous task-card
 sequence was removed; replan the story before implementation.
 
-## v1.4.0 - File attachments
+## v1.4.0 - MCP integration
+
+Purpose: give Jarvis its first tool-use capability class through MCP -
+web search, database access, and other externally provided functions -
+with Jarvis acting as the MCP host, the module fully switchable, and the
+locality contract revised explicitly rather than eroded silently.
+
+Preliminary scope:
+
+- Tool-calling spike as a hard gate before the story:
+  - measure native Ollama `tools` calling against a prompt-based contract
+    on the local model, on a fixed task set;
+  - record verified reliability facts in `PROJECT.md` before choosing the
+    presentation strategy;
+  - the speech-markup contract instability report is the precedent that
+    makes this measurement mandatory, not optional.
+- Locality contract revision as an explicit task, not a side effect:
+  - core and inference remain local unconditionally;
+  - external access is a per-component capability, off by default,
+    enabled explicitly by the user, and visible in the data-source axis;
+  - update `PROJECT.md`, `VISION.md`, and cross-cutting rule 3 in the
+    same change.
+- Jarvis is the MCP host: it connects to MCP servers as registered
+  tool-provider components (see `VISION.md` component model) and decides
+  how tools are presented to the model. Ollama sees only per-request tool
+  declarations; MCP servers never talk to Ollama.
+- Presentation to the model is a swappable layer: native `tools` field
+  where the model template supports it, prompt-based declaration as the
+  fallback; the spike decides the default.
+- The MCP module is switchable:
+  - off by default;
+  - when off, no MCP server connection is opened and no tool declarations
+    reach the model - equivalent to the capability not existing;
+  - state survives restart via the layered config.
+- Control Center integration:
+  - an MCP toggle with clear on/off indication of the current state;
+  - external tool calls reflected honestly in the data-source axis;
+  - nice-to-have, not release-blocking: a read-only list of registered
+    and currently available tools/functions, as a view over the
+    component registry.
+- Initial tool set is small and high-value (for example web search and a
+  local/LAN database), each behind its own capability boundary.
+
+Boundary:
+
+- No silent high-impact actions; every external call is user-visible.
+- All tool calls flow through a single interception point in the host; a
+  later watchdog/policy component attaches there without rewiring. Tool
+  dispatch must not be scattered across call sites.
+- Tool results are current-turn context; no background or autonomous tool
+  loops in the first iteration.
+- Jarvis-as-MCP-server (exposing Jarvis's own capabilities outward) is out
+  of scope.
+- If the spike shows unreliable tool calling on the local model, stop and
+  re-plan the release before writing story task cards.
+
+Story/task readiness: story and task cards exist
+(`tasks/story-v1.4.0-mcp-integration.md`, tasks 1-6). The task-1 spike may
+start before v1.3.0 completes; tasks 5-6 need the Control Center.
+
+## v1.5.0 - File attachments
 
 Purpose: add deliberate file input as a new turn source, including audio files,
 without weakening runtime locality or confusing file upload with live realtime
@@ -383,8 +455,8 @@ listening.
 
 Preliminary scope:
 
-- Add a user-visible attachment/input path after the Control Center foundation
-  exists.
+- Add a user-visible attachment/input path after the Control Center and MCP
+  foundations exist.
 - Treat file upload as a new turn source, separate from microphone and
   clipboard turns.
 - Support an initial focused set of file classes:
@@ -408,6 +480,9 @@ Boundary:
 - Do not store uploaded binary media in conversation history by default.
 - Do not confuse uploaded audio-file processing with realtime microphone
   listening.
+- Treating MCP tool results/resources as attachments is deferred until both
+  features exist; the turn-source contract should not preclude it.
 
-Story/task readiness: create a dedicated v1.4 story later. No v1.4 task cards
-are created in this planning pass.
+Story/task readiness: story card exists as
+`tasks/story-v1.5.0-file-attachments.md`. No task cards are created in this
+planning pass.

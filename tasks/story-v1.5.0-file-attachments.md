@@ -1,8 +1,10 @@
-﻿# Story v1.4.0: File attachments
+﻿# Story v1.5.0: File attachments
 
 **Status:** Backlog, not ready for task cards.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
-**Release:** v1.4.0
+**Release:** v1.5.0 (moved from v1.4.0: MCP integration was promoted to
+v1.4.0 because it unlocks otherwise-impossible capabilities, while
+attachments improve input paths that already have workarounds)
 
 ## User-facing goal
 
@@ -12,17 +14,22 @@ same feature as realtime microphone listening.
 
 ## Boundaries
 
-- This story is planned for v1.4.0, after the v1.3.0 Control Center foundation.
-- Activation/warmup is not a prerequisite; its backlog story may land in
-  v1.4.0 or later independently of file attachments.
-- Do not create task cards until v1.3.0 scope is clearer.
+- This story is planned for v1.5.0, after the v1.3.0 Control Center and
+  v1.4.0 MCP integration foundations.
+- Activation/warmup is not a prerequisite; its backlog story may land
+  independently of file attachments.
+- Do not create task cards until the v1.4.0 MCP story scope is clearer.
+- Treating MCP tool results/resources as attachments is out of scope here,
+  but the turn-source contract must not preclude it.
 - Treat model self-description as a capability hint only, not as a verified
   project fact.
 - Audio and images must follow the verified Ollama media rule: both go through
   the `/api/chat` `images` field.
 - Media is current-turn only by default; conversation history remains text-only
   unless a later verified design changes that.
-- Runtime locality remains unchanged.
+- No new external capability beyond the v1.4.0 two-tier locality contract:
+  attachments are processed locally; this story neither adds external
+  network access nor relaxes the contract further.
 
 ## Preliminary Scope
 

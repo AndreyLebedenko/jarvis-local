@@ -23,6 +23,12 @@ layering, TTS engine choices, and unified hotkeys.
 - Open/Hidden does not imply cloud/offline status.
 - Hidden does not mute ordinary voice turns unless a later explicit product
   decision changes that behavior.
+- Layout reservation only, no implementation: the Control Center layout
+  reserves a place for a hidden-by-default "dangerous capabilities"
+  section (enable control with auto-off timer, outbound-data log). The
+  section itself ships with the first release that has a real
+  action-taking capability behind it (post-v1.4.0 actions/watchdog
+  story); building it earlier would violate the no-fake-success rule.
 
 ## Prerequisites
 
