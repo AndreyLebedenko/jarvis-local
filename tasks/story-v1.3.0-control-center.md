@@ -1,7 +1,7 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned; all prerequisites complete. Task 1 (IA document) in
-progress.
+**Status:** Planned; all prerequisites complete. Task 1 (IA document) is
+complete.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the
@@ -71,7 +71,8 @@ Replanned 2026-07-11 with the product decisions above fixed and the
 architecture gaps moved to v1.2.14.
 
 1. Control Center information architecture
-   (`story-v1.3.0-task-1-control-center-ia.md`).
+   (`done/story-v1.3.0-task-1-control-center-ia.md`; deliverable:
+   `control-center-v1.3.0-ia.md`).
    Map every dashboard-v3 mock-up element to real state or drop it
    visibly; decide desktop vs touchstrip placement; reserve the
    dangerous-capabilities slot.
