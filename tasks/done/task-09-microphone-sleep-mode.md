@@ -34,10 +34,11 @@ In scope:
 - `run_microphone_loop()` must not busy-poll while asleep: block
   efficiently (e.g. on an `asyncio.Event`) until woken, rather than
   looping with a sleep/check cadence.
-- Pause/resume must reuse the *same* `sd.InputStream` object via its own
-  `.stop()`/`.start()` methods, not tear down and reconstruct the stream.
-  Reconstructing adds wake-up latency and is unnecessary - `InputStream`
-  is designed to be paused and resumed in place.
+- The original implementation reused the same `sd.InputStream` object via
+  `.stop()`/`.start()`. That design is superseded by the MME recovery task:
+  each pause closes the stream context and each resume creates a fresh
+  `InputStream`, because the affected Windows MME device rejected in-place
+  restart after media playback.
 - The internal audio buffer must be reset on the sleep transition (and
   verified clean on wake). Without this, audio captured just before sleep
   and audio captured just after wake could be merged by the VAD/merge
@@ -85,8 +86,8 @@ Automated tests (fakes/mocks for hardware, no real microphone needed):
   (e.g. assert the fake stream's read call count stays flat for the
   whole sleep duration, or use a fake awake-event and confirm the loop
   doesn't proceed past it).
-- Waking resumes capture on the *same* stream instance (fake stream
-  object identity check), not a newly constructed one.
+- Waking resumes capture through a newly constructed stream instance; the
+  paused stream is never started again.
 - The buffer is empty/reset immediately after a sleep transition -
   audio captured before sleep never merges with audio captured after a
   subsequent wake into one utterance (construct a fixture: speech, sleep,
@@ -99,8 +100,8 @@ Manual handoff (microphone/hotkey-dependent, human runs and reports):
 - Exact command/script to toggle sleep and wake via the real hotkey;
   confirm speaking while "asleep" produces no utterance and no response,
   the sleep/wake cues play at the right moments, and speaking again after
-  wake works normally with reasonable latency (no noticeable extra delay
-  from reusing the stream vs. reconstructing it).
+  wake works normally; the fresh-stream open latency is acceptable on the
+  verified device.
 - If Windows exposes a microphone-in-use indicator, confirm it reflects
   the sleep state (off while asleep) - a direct check that capture is
   genuinely paused at the device level, not just at the application

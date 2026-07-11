@@ -208,79 +208,70 @@ class AudioInput:
         block_samples = int(SAMPLE_RATE * poll_interval_seconds)
 
         self._stop_requested = False
-        with self._stream_factory(block_samples) as stream:
-            self._active_stream = stream
-            try:
-                while not self._stop_requested:
-                    if not self._awake.is_set():
-                        await asyncio.to_thread(stream.stop)
-                        buffer = np.zeros(0, dtype=np.float32)
-                        published_end_seconds = 0.0
-                        self._buffer_invalidated = False
-                        await self._awake.wait()
-                        if self._stop_requested:
-                            break
-                        await asyncio.to_thread(stream.start)
-                        continue
+        while not self._stop_requested:
+            await self._awake.wait()
+            if self._stop_requested:
+                break
+            if self._buffer_invalidated:
+                buffer = np.zeros(0, dtype=np.float32)
+                published_end_seconds = 0.0
+                self._buffer_invalidated = False
 
-                    try:
-                        data, _ = await asyncio.to_thread(stream.read, block_samples)
-                    except Exception:
-                        if self._stop_requested:
+            # A paused sounddevice stream is closed by the context manager.
+            # The next active period must enter a fresh stream instead of
+            # calling start() on the object that PortAudio rejected after
+            # wake on Windows MME.
+            with self._stream_factory(block_samples) as stream:
+                self._active_stream = stream
+                try:
+                    while self._awake.is_set() and not self._stop_requested:
+                        try:
+                            data, _ = await asyncio.to_thread(stream.read, block_samples)
+                        except Exception:
+                            if self._stop_requested or not self._awake.is_set():
+                                # The pause/sleep transition stopped the
+                                # stream to interrupt this read. Closing this
+                                # context completes the transition.
+                                break
+                            if self._buffer_invalidated:
+                                # A pause and resume both happened while this
+                                # read was in flight. The next outer-loop
+                                # iteration creates a fresh stream.
+                                break
+                            raise
+                        if self._stop_requested or not self._awake.is_set():
                             break
-                        if not self._awake.is_set():
-                            # The pause/sleep transition stopped the stream
-                            # to interrupt this read; the pause branch at
-                            # the top of the loop takes over.
-                            continue
                         if self._buffer_invalidated:
-                            # A pause AND a resume both happened while this
-                            # read was in flight (stalled device): the pause
-                            # stopped the stream and this loop never reached
-                            # the pause branch to restart it. Recover here.
-                            buffer = np.zeros(0, dtype=np.float32)
-                            published_end_seconds = 0.0
-                            self._buffer_invalidated = False
-                            await asyncio.to_thread(stream.start)
-                            continue
-                        raise
-                    if self._stop_requested:
-                        break
-                    if self._buffer_invalidated:
-                        # A pause happened while this read was in flight
-                        # (possibly a resume too, if the device stalled
-                        # long enough): both the accumulated buffer and
-                        # this read's data straddle the pause boundary and
-                        # must never be published as fresh speech.
-                        buffer = np.zeros(0, dtype=np.float32)
-                        published_end_seconds = 0.0
-                        self._buffer_invalidated = False
-                        if self._awake.is_set():
-                            # Same stalled-device recovery as above: the
-                            # pause stopped the stream, the pause branch
-                            # never ran, and capture must restart for the
-                            # reads that follow.
-                            await asyncio.to_thread(stream.start)
-                        continue
-                    buffer = np.concatenate([buffer, data[:, 0]])
-                    buffer_duration = len(buffer) / SAMPLE_RATE
+                            # A pause happened while this read was in flight
+                            # (possibly a resume too, if the device stalled
+                            # long enough): both the accumulated buffer and
+                            # this read's data straddle the pause boundary and
+                            # must never be published as fresh speech.
+                            break
+                        buffer = np.concatenate([buffer, data[:, 0]])
+                        buffer_duration = len(buffer) / SAMPLE_RATE
 
-                    for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
-                        already_published = utterance.end_seconds <= published_end_seconds
-                        still_extending = (
-                            buffer_duration - utterance.end_seconds < request_end_pause_seconds
-                        )
-                        if already_published or still_extending:
-                            continue
-                        await self._bus.publish(UtteranceChunk, utterance)
-                        published_end_seconds = utterance.end_seconds
+                        for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
+                            already_published = utterance.end_seconds <= published_end_seconds
+                            still_extending = (
+                                buffer_duration - utterance.end_seconds < request_end_pause_seconds
+                            )
+                            if already_published or still_extending:
+                                continue
+                            await self._bus.publish(UtteranceChunk, utterance)
+                            published_end_seconds = utterance.end_seconds
 
-                    trim_seconds = max(published_end_seconds - 1.0, 0.0)
-                    if trim_seconds > 0:
-                        buffer = buffer[int(trim_seconds * SAMPLE_RATE):]
-                        published_end_seconds -= trim_seconds
-            finally:
-                self._active_stream = None
+                        trim_seconds = max(published_end_seconds - 1.0, 0.0)
+                        if trim_seconds > 0:
+                            buffer = buffer[int(trim_seconds * SAMPLE_RATE):]
+                            published_end_seconds -= trim_seconds
+                finally:
+                    self._active_stream = None
+
+            if not self._awake.is_set() or self._buffer_invalidated:
+                buffer = np.zeros(0, dtype=np.float32)
+                published_end_seconds = 0.0
+                self._buffer_invalidated = False
 
 
 async def run_hotkey_listener(

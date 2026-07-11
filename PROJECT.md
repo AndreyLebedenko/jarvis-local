@@ -187,6 +187,16 @@ system is intended to grow.
   `request_end_pause_seconds`: it is a short grace period before capture
   resumes, `config.vad.resume_cooldown_seconds` (default 1.0 s).
 
+  MME wake recovery (2026-07-11, see
+  `tasks/bug_reports/microphone-wake-portaudio-restart-failure.md`): the
+  affected Windows device rejected `start()` on an `InputStream` that had
+  been stopped for sleep/pause. `run_microphone_loop()` now closes the
+  paused stream context and creates a fresh stream through `StreamFactory`
+  for every resume, including the automatic speech-pause path. The old
+  stream is never restarted; buffer invalidation and pause-spanning read
+  discard remain unchanged. Human verification confirmed repeated
+  sleep/wake capture on the MME device without the PortAudio restart error.
+
   Privacy guard, redesigned after a human review caught two real bugs in
   the first version (which tracked a single `Orchestrator`-side
   `_mic_paused_by_us` boolean plus a single `AudioInput.is_awake` bit):
@@ -462,10 +472,12 @@ Task-09 landed second:
   the separate `auto_pause_for_speech()`/`auto_resume_after_speech()`
   pair, since a single awake bit could not represent the user's privacy
   intent and the internal echo-mitigation pause independently.)
-- `run_microphone_loop()` reuses the *same* `sd.InputStream` across
-  sleep/wake cycles via its own `.stop()`/`.start()` rather than
-  reconstructing it (avoids wake-up latency), and blocks on
-  `self._awake.wait()` while asleep instead of busy-polling.
+- The original task-09 implementation reused the *same* `sd.InputStream`
+  across sleep/wake cycles via `.stop()`/`.start()`. That behavior is
+  superseded by the MME wake-recovery fix: `run_microphone_loop()` now closes
+  the paused stream context and creates a fresh stream through
+  `StreamFactory` on each resume, while still blocking on
+  `self._awake.wait()` instead of busy-polling.
 - The accumulated capture buffer is dropped on the sleep transition.
   Without this, audio captured but not yet confirmed as a complete
   utterance when sleep is triggered could still be sitting in the

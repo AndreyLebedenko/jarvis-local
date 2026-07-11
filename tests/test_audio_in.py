@@ -219,12 +219,16 @@ class _FreeRunningFakeStream:
         self.read_calls = 0
         self.stop_calls = 0
         self.start_calls = 0
+        self.enter_calls = 0
+        self.exit_calls = 0
         self._block_samples = block_samples
 
     def __enter__(self):
+        self.enter_calls += 1
         return self
 
     def __exit__(self, *exc_info):
+        self.exit_calls += 1
         return False
 
     def read(self, block_samples):
@@ -236,6 +240,12 @@ class _FreeRunningFakeStream:
 
     def start(self):
         self.start_calls += 1
+
+
+class _RestartingStreamProbe(_FreeRunningFakeStream):
+    def start(self):
+        self.start_calls += 1
+        raise AssertionError("the paused stream must not be started again")
 
 
 async def _run_until_cancelled(task):
@@ -284,30 +294,42 @@ async def test_asleep_loop_never_reads_and_blocks_without_busy_polling():
     await _run_until_cancelled(task)
 
 
-async def test_waking_resumes_capture_on_the_same_stream_instance():
-    fake_stream = _FreeRunningFakeStream(block_samples=160)
-    factory_calls = []
+async def test_waking_recreates_capture_stream_instead_of_restarting_the_old_one():
+    first_stream = _RestartingStreamProbe(block_samples=160)
+    second_stream = _FreeRunningFakeStream(block_samples=160)
+    stream_sequence = iter([first_stream, second_stream])
+    created_streams = []
 
     def stream_factory(block_samples):
-        factory_calls.append(fake_stream)
-        return fake_stream
+        stream = next(stream_sequence)
+        created_streams.append(stream)
+        return stream
 
-    audio_input = AudioInput(bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory
+    )
 
     task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
     await asyncio.sleep(0.02)
 
     await audio_input.toggle_user_sleep()
     await asyncio.sleep(0.02)
-    assert fake_stream.stop_calls >= 1
+    assert first_stream.stop_calls >= 1
 
     await audio_input.toggle_user_sleep()
-    await asyncio.sleep(0.02)
+    await _wait_until(
+        lambda: second_stream.read_calls > 0,
+        message="wake never created a fresh capture stream",
+    )
 
-    assert len(factory_calls) == 1
-    assert fake_stream.start_calls >= 1
+    assert created_streams == [first_stream, second_stream]
+    assert first_stream.start_calls == 0
+    assert first_stream.exit_calls == 1
+    assert not task.done()
 
-    await _run_until_cancelled(task)
+    await audio_input.stop()
+    await asyncio.wait_for(task, timeout=2)
+    assert second_stream.exit_calls == 1
 
 
 class _SteppedFakeStream:
@@ -547,7 +569,7 @@ async def test_data_read_across_a_pause_is_discarded_not_published(vad_model):
     await audio_input.auto_pause_for_speech()
     fake_stream.release_next_read()  # speech + confirming silence arrive across the pause
     await _wait_until(
-        lambda: fake_stream.stop_calls >= 2,  # _apply_combined_state + pause branch
+        lambda: fake_stream.stop_calls >= 1,
         message="loop never reached the pause branch",
     )
     assert received == []
@@ -575,6 +597,11 @@ async def test_stalled_read_buffer_is_dropped_on_resume_instead_of_replayed(vad_
     fake_stream = _SteppedFakeStream(
         blocks=[a2_samples, confirming_silence], fill_value=silence
     )
+    created_streams = []
+
+    def stream_factory(block_samples):
+        created_streams.append(fake_stream)
+        return fake_stream
 
     bus = EventBus()
     received = []
@@ -584,7 +611,7 @@ async def test_stalled_read_buffer_is_dropped_on_resume_instead_of_replayed(vad_
 
     bus.subscribe(UtteranceChunk, on_chunk)
     chunker = VadChunker(VadSettings(), model=vad_model)
-    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream)
+    audio_input = AudioInput(bus=bus, chunker=chunker, stream_factory=stream_factory)
 
     task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=1.0))
 
@@ -612,7 +639,7 @@ async def test_stalled_read_buffer_is_dropped_on_resume_instead_of_replayed(vad_
 
     await _run_until_cancelled(task)
     assert received == []
-    assert fake_stream.start_calls >= 1  # capture restarted after the missed pause
+    assert len(created_streams) >= 2  # capture resumed with a fresh stream context
 
 
 class _PauseRaisingFakeStream:
@@ -656,26 +683,33 @@ class _PauseRaisingFakeStream:
         self._stopped.clear()
 
 
-async def test_read_exception_from_a_pause_stop_is_treated_as_pause_not_crash():
-    fake_stream = _PauseRaisingFakeStream(block_samples=160)
+async def test_read_exception_from_a_pause_stop_recreates_the_stream_without_crashing():
+    created_streams: list[_PauseRaisingFakeStream] = []
+
+    def stream_factory(block_samples):
+        stream = _PauseRaisingFakeStream(block_samples)
+        created_streams.append(stream)
+        return stream
+
     audio_input = AudioInput(
-        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory
     )
 
     task = asyncio.create_task(audio_input.run_microphone_loop(poll_interval_seconds=0.01))
-    await _wait_until_read_pending(fake_stream)
+    await _wait_until(lambda: len(created_streams) == 1)
+    await _wait_until_read_pending(created_streams[0])
 
     await audio_input.auto_pause_for_speech()  # stop() makes the blocked read raise
     await _wait_until(
-        lambda: fake_stream.stop_calls >= 2,  # _apply_combined_state + pause branch
+        lambda: created_streams[0].stop_calls >= 1,
         message="loop never reached the pause branch after the read raised",
     )
     assert not task.done()  # the loop survived the interrupted read
 
     await audio_input.auto_resume_after_speech()
     await _wait_until(
-        lambda: fake_stream.start_calls >= 1,
-        message="loop never restarted capture after resume",
+        lambda: len(created_streams) >= 2 and created_streams[1].read_calls >= 1,
+        message="loop never created a fresh stream after resume",
     )
 
     # stop() unblocks the read parked after resume, so the loop (and its
