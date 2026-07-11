@@ -827,6 +827,75 @@ def test_ui_language_of_wrong_type_raises_config_error(tmp_path):
         load_settings(config_path)
 
 
+def test_prompts_default_to_the_russian_dialog_prompts(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.prompts.system.startswith("Ты - Джарвис")
+    assert settings.prompts.warmup == "Привет"
+
+
+def test_prompts_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [prompts]
+        system = "You are Jarvis. Answer in English."
+        warmup = "Hello"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.prompts.system == "You are Jarvis. Answer in English."
+    assert settings.prompts.warmup == "Hello"
+
+
+def test_prompts_allow_partial_override_keeping_other_default(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [prompts]
+        warmup = "Hello"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.prompts.warmup == "Hello"
+    assert settings.prompts.system.startswith("Ты - Джарвис")
+
+
+@pytest.mark.parametrize("field_name", ["system", "warmup"])
+def test_empty_prompt_raises_config_error_naming_the_field(tmp_path, field_name):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+        [prompts]
+        {field_name} = "   "
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
+def test_prompt_of_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [prompts]
+        warmup = 5
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[prompts\].warmup"):
+        load_settings(config_path)
+
+
 def test_write_ui_config_then_load_settings_round_trips(tmp_path):
     ui_config_path = tmp_path / "config.ui.toml"
 
