@@ -48,7 +48,7 @@ privacy or complicating the main voice pipeline.
       instead of dropped.
 - [ ] Push-to-talk uses `HotkeyProvider`.
 - [ ] Orb click uses the same activation path as push-to-talk.
-- [ ] `day0_checks.py` includes human-run warmup and trigger checks.
+- [ ] `manual/day0_checks.py` includes human-run warmup and trigger checks.
 - [ ] Human-confirmed timing is recorded in `PROJECT.md`.
 
 ## Task Card Sequence

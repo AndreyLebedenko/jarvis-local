@@ -1333,5 +1333,5 @@ Runtime locality and CI verification are separate guarantees:
 
 ## Day-0 artifacts
 
-- `day0_checks.py` — verification script (fidelity / intonation / ocr / vram),
+- `manual/day0_checks.py` — verification script (fidelity / intonation / ocr / vram),
   keep in repo; rerun after any backend, model, or driver change.

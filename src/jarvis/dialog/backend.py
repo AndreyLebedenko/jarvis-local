@@ -6,7 +6,7 @@ bus as they arrive. Kept thin (one class, one obvious seam - the injected
 httpx client) so the backend can be swapped later with one config change,
 per PROJECT.md's Architecture v1.0 section.
 
-Verified fact (PROJECT.md, day0_checks.py): Ollama silently drops a
+Verified fact (PROJECT.md, manual/day0_checks.py): Ollama silently drops a
 dedicated `audio` field. Audio and images both go through `images`. This
 is codified as a regression test, not a style preference.
 

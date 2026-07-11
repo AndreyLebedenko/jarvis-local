@@ -177,7 +177,7 @@ python -m pytest
 
 The same command runs in GitHub Actions (`.github/workflows/ci.yml`) on push and pull request: install `requirements.txt`, then `python -m pytest`. CI does not start Ollama, download models, touch secrets, or exercise hardware.
 
-Hardware-dependent and live checks stay human-run manual handoffs, never CI jobs: microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView visual review, and the live Ollama endpoint. Use the `manual/manual_check_*.py` scripts and `day0_checks.py` for those. Pure tests for manual-check helpers live under `manual/tests/`.
+Hardware-dependent and live checks stay human-run manual handoffs, never CI jobs: microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView visual review, and the live Ollama endpoint. Use the `manual/manual_check_*.py` scripts and `manual/day0_checks.py` for those. Pure tests for manual-check helpers live under `manual/tests/`.
 
 A green CI run only proves the pure suite passes on a clean dependency install. It does not prove the running app stays free of network calls at run time - that is an architecture/code-review guarantee (see `PROJECT.md`), not something the pytest suite measures.
 

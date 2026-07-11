@@ -254,7 +254,7 @@ Scope:
 - Add activation triggers:
   - push-to-talk through `HotkeyProvider`;
   - orb click as a universal fallback.
-- Extend `day0_checks.py` for human-run timing and trigger verification.
+- Extend `manual/day0_checks.py` for human-run timing and trigger verification.
 - Record measured warmup timing in `PROJECT.md` after human confirmation.
 
 Boundary:

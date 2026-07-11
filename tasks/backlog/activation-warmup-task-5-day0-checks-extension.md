@@ -8,7 +8,7 @@
 
 ## Summary
 
-Extend `day0_checks.py` so the human can verify warmup timing and activation
+Extend `manual/day0_checks.py` so the human can verify warmup timing and activation
 trigger behavior on the real machine.
 
 ## Current Boundary
@@ -32,7 +32,7 @@ trigger behavior on the real machine.
 ## Verification
 
 - Run `python -m pytest`.
-- Human runs extended `day0_checks.py` and reports output.
+- Human runs extended `manual/day0_checks.py` and reports output.
 
 ## Stop Conditions
 
