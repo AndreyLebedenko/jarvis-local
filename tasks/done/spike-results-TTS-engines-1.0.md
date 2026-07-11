@@ -1,6 +1,6 @@
 # TTS Engines Spike Results 1.0
 
-Status: completed (closed 2026-07-11)
+Status: Completed (closed 2026-07-11).
 
 Scope: local TTS engine research for Jarvis v1.2.5, focused on Silero,
 Piper, Kokoro, and XTTS-v2 behavior, installability, and multilingual

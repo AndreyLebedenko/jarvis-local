@@ -32,7 +32,7 @@ touch `audio_in.py`/`tts.py`/`Orchestrator` in any way - ordinary voice turns
 speak normally regardless of Open/Hidden. This also resolves the story's own
 related open question ("does `Hidden` mute TTS globally or only for
 UI-triggered turns?") the same way: neither, because it never touches TTS.
-`tasks/task-ui-privacy-and-touchstrip-requirements.md`'s Decisions section
+`task-ui-privacy-and-touchstrip-requirements.md`'s Decisions section
 ("TTS muted/text-only") predates this decision and has been corrected to
 match. Scope's "TTS muted/text-only" line above and the AC below about TTS
 being "explicitly tested or manually handed off if it touches audio output"

@@ -1,6 +1,6 @@
 # Task: UI privacy semantics and touchstrip requirements
 
-**Статус:** Backlog
+**Статус:** Completed.
 **Родитель:** future Status Console / UI roadmap
 **Связано с:** .planning/UI/mock-ups, backlog/activation-warmup.md
 **Дата создания:** 2026-07-06
@@ -41,12 +41,12 @@
 
 ## Acceptance Criteria
 
-- [ ] В Status Console и touchstrip используется одна терминология для system
+- [x] В Status Console и touchstrip используется одна терминология для system
       visibility mode.
-- [ ] Data locality визуально отделена от visibility mode цветом, текстом и
+- [x] Data locality визуально отделена от visibility mode цветом, текстом и
       расположением.
-- [ ] `WARMING` визуально не читается как cloud/network warning.
-- [ ] Touchstrip не показывает плотный event log и не требует чтения мелких
+- [x] `WARMING` визуально не читается как cloud/network warning.
+- [x] Touchstrip не показывает плотный event log и не требует чтения мелких
       карточек на узком экране.
-- [ ] Модель в UI берется из runtime config; mock-up literal names не должны
+- [x] Модель в UI берется из runtime config; mock-up literal names не должны
       противоречить `PROJECT.md`.
