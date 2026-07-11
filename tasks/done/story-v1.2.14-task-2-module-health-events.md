@@ -1,7 +1,7 @@
 # Task: Authoritative module-health events
 
 **Story:** `tasks/story-v1.2.14-ui-state-foundation.md`
-**Status:** Planned. Runs after task 1 (same ownership pattern).
+**Status:** Completed.
 **Release:** v1.2.14
 
 ## Summary
@@ -33,13 +33,30 @@ state instead of the current microphone-only snapshot.
 
 ## Acceptance Criteria
 
-- [ ] Backend, TTS, vision, and microphone health all flow through
+- [x] Backend, TTS, vision, and microphone health all flow through
       `ModuleHealthChanged`; no direct `set_module_health` pushes remain
-      outside the transport fold.
-- [ ] Every published health value traces to a named authoritative signal
+      outside the transport fold. (Recorded deviation: the microphone
+      seed in `wire_status_console()` remains a direct call as the
+      initial snapshot value, mirroring task 1's WARMING seed decision -
+      see PROJECT.md.)
+- [x] Every published health value traces to a named authoritative signal
       (documented in the card or code, asserted in tests).
-- [ ] A module with no signal yet shows as unknown, never as OK.
-- [ ] `python -m pytest` passes.
+- [x] A module with no signal yet shows as unknown, never as OK.
+- [x] `python -m pytest` passes.
+
+## Verification record
+
+- Automated: 545 passed, Ruff clean (2026-07-11).
+- Manual (human-run, 2026-07-11): backend chip OK after warm-up, mic
+  chip toggling, vision chip OK after capture, memory honest grey. TTS
+  chip showed DEGRADED "synthesis failed" against a genuinely missing
+  Silero model cache (environment issue, fixed by setup_tts_model.py),
+  then OK after the model was cached - a live validation of both the
+  failure and recovery paths.
+- Noted for the v1.3.0 IA document: total TTS failure and a single
+  skipped unit both display as DEGRADED; an escalation rule was
+  deliberately not built here (it would be a heuristic bordering on the
+  probes this card forbids).
 
 ## Stop Conditions
 

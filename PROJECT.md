@@ -1307,6 +1307,39 @@ Task 1 (RuntimeStateTracker) landed first:
   by the Orchestrator publishes no `TurnAccepted`, so the tracker never
   announces THINKING (`test_rejected_busy_turn_does_not_render_thinking`).
 
+Task 2 (module health events) landed second:
+
+- `ui/module_health.py`'s `ModuleHealthTracker` is the single owner of
+  module-health projection, publishing `ModuleHealthChanged(module,
+  status, detail_key)`; the transport resolves the detail via `ui_text`
+  in its own language and folds it into the snapshot. The transport's own
+  `MicSleepToggled` health handler is gone - one mechanism for every
+  module.
+- Sources are strictly existing signals, no polling or probes:
+  - backend: `WarmupCompleted(succeeded)` -> OK/ERROR;
+    `BackendRequestFailed` (new, published by `Orchestrator._start_turn`'s
+    except path) -> ERROR; `ResponseComplete` -> OK (recovery; per-module
+    dedup keeps the steady state quiet);
+  - TTS: `TtsSynthesisResult(language, succeeded)` (new, published by
+    `TtsOutput._synthesize_and_submit` on both branches) -> OK on
+    success, DEGRADED on a failed unit (playback continues, the unit is
+    skipped - so not ERROR); the next success recovers;
+  - vision: `ScreenshotCaptured` -> OK; `CaptureFailed` (new, published
+    by `CaptureInput` where the capture exception is now caught -
+    previously that exception died silently inside the hotkey thread's
+    `run_coroutine_threadsafe` future) -> ERROR;
+  - microphone: `MicSleepToggled` -> OK/UNAVAILABLE with the settled
+    v1.2.10 wording keys.
+- "Unknown before first signal" is honest by construction: the tracker
+  publishes nothing until a signal arrives, and the module chips' markup
+  default is `data-status="unavailable"`. Memory publishes nothing (no
+  engine implementation).
+- Deliberate deviation from the task card's letter: the microphone seed
+  in `wire_status_console()` still calls `set_module_health` directly -
+  it is the initial snapshot value (mirroring task 1's WARMING seed
+  decision), not a transition; every transition goes through the
+  tracker.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

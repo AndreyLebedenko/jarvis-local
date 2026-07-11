@@ -45,6 +45,7 @@ import logging
 import re
 import wave
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -58,10 +59,22 @@ from jarvis.audio.language_segments import (
     CharsetLanguageStream,
 )
 from jarvis.audio.utils import samples_to_wav_bytes
+from jarvis.core.bus import EventBus
 from jarvis.core.config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TtsSynthesisResult:
+    """Outcome of synthesizing one speech unit. Raw health signal for
+    ModuleHealthTracker; playback is unaffected either way (a failed unit
+    is skipped, see _synthesize_and_submit)."""
+
+    language: str
+    succeeded: bool
+
 
 SAMPLE_RATE = 48000
 FINAL_PLAYBACK_TAIL_SECONDS = 1.0
@@ -620,8 +633,10 @@ class TtsOutput:
         engine: TtsEngine | None = None,
         play: Callable[[bytes], Awaitable[None]] | None = None,
         playback_lock: asyncio.Lock | None = None,
+        bus: "EventBus | None" = None,
     ) -> None:
         self._settings = settings
+        self._bus = bus
         # Carrying a short language-switch remainder into the next unit is
         # only safe when one engine voices everything; with per-language
         # engines it would hand text to an engine that cannot pronounce it
@@ -682,9 +697,18 @@ class TtsOutput:
                 index,
                 language,
             )
+            await self._publish_result(language, succeeded=False)
             await self._playback.submit(index, None)
             return
+        await self._publish_result(language, succeeded=True)
         await self._playback.submit(index, audio)
+
+    async def _publish_result(self, language: str, succeeded: bool) -> None:
+        if self._bus is not None:
+            await self._bus.publish(
+                TtsSynthesisResult,
+                TtsSynthesisResult(language=language, succeeded=succeeded),
+            )
 
     async def _play_unit(self, index: int, audio: bytes) -> None:
         """Playback callback for OrderedPlayback, applying the final-unit
