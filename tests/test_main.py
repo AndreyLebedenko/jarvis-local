@@ -476,6 +476,7 @@ class _FakeAudioInputForEcho:
     def __init__(self) -> None:
         self.auto_pause_calls = 0
         self.auto_resume_calls = 0
+        self.is_awake = True
 
     async def auto_pause_for_speech(self) -> None:
         self.auto_pause_calls += 1
@@ -918,7 +919,11 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
 
     subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
 
-    assert subscriptions == []
+    # Runtime state is no longer seeded here: the initial snapshot value is
+    # set where the UiStateStore is constructed, and every transition comes
+    # from RuntimeStateTracker (subscribed by this call, hence non-empty
+    # subscriptions).
+    assert len(subscriptions) > 0
     assert transport.calls == [
         ("model", app.settings.backend.model),
         ("locality", DataLocality.LOCAL),
@@ -930,7 +935,6 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
                 module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="listening"
             ),
         ),
-        ("runtime", (RuntimeState.WARMING, "Warming up the model...")),
     ]
 
     unwire(app, subscriptions)
@@ -958,30 +962,48 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    assert len(transport.calls) == 6
-    assert transport.calls[-1] == (
-        "runtime",
-        (RuntimeState.WARMING, "Warming up the model..."),
-    )
+    # Only the five snapshot seeds: mic-toggle projection belongs to the
+    # real transport server's own bus subscription, not to this wiring.
+    assert len(transport.calls) == 5
+    assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)
 
 
-async def test_wire_with_live_status_console_reports_thinking_before_accepted_turn():
+async def test_accepted_voice_turn_renders_thinking_through_the_tracker():
     app = _fake_app()
     live_console = create_live_status_console(app, include_touchstrip=False)
     transport = _FakeTransport()
     live_console.transport = transport
-    wire(app, live_console)
+    wire_status_console(app, live_console, asyncio.get_running_loop())
+    wire(app)
 
     await app.bus.publish(
         UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
     )
 
-    assert transport.calls[-1] == (
-        "runtime",
-        (RuntimeState.THINKING, "Processing voice..."),
+    runtime_calls = [call for call in transport.calls if call[0] == "runtime"]
+    assert ("runtime", (RuntimeState.THINKING, "Processing voice...")) in runtime_calls
+
+
+async def test_rejected_busy_turn_does_not_render_thinking():
+    """The busy guard lives in the Orchestrator alone: a turn rejected
+    there publishes no TurnAccepted, so the tracker never announces
+    THINKING - previously this required duplicating the busy check in the
+    wire() closures."""
+    app = _fake_app()
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
+    wire_status_console(app, live_console, asyncio.get_running_loop())
+    wire(app)
+    app.orchestrator._busy = True
+
+    await app.bus.publish(
+        UtteranceChunk, UtteranceChunk(wav_bytes=b"x", start_seconds=0, end_seconds=1)
     )
+
+    assert [call for call in transport.calls if call[0] == "runtime"] == []
 
 
 async def test_wire_pushes_listening_state_after_response_complete():
@@ -989,14 +1011,14 @@ async def test_wire_pushes_listening_state_after_response_complete():
     stayed stuck on SPEAKING ("Отвечаю") forever after the very first
     turn - nothing ever pushed the orb back to LISTENING once
     ResponseComplete fired, even though the engine kept handling later
-    turns correctly in the background (sound_cues' own "listening" cue
-    already played correctly every turn in _on_full_response_complete();
-    only the Status Console's own runtime-state push was missing). The
-    SPEAKING push itself is registered by wire_status_console(), not
-    wire() (this fix's home) - both run together in main.py's real run(),
-    so this test only needs to prove wire()'s own ResponseComplete
-    handler pushes LISTENING, independent of that other wiring."""
-    settings = Settings(vad=VadSettings(request_end_pause_seconds=0.001))
+    turns correctly in the background. Since v1.2.14 the guarantee is
+    owned by one chain: _on_full_response_complete publishes
+    TurnCompleted after the turn fully finishes, RuntimeStateTracker
+    turns it into RuntimeStateChanged(LISTENING), and
+    wire_status_console()'s render handler pushes it to the transport."""
+    settings = Settings(
+        vad=VadSettings(request_end_pause_seconds=0.001, resume_cooldown_seconds=0.001)
+    )
     app = build_app(
         settings,
         backend=_FakeBackend(),
@@ -1007,7 +1029,8 @@ async def test_wire_pushes_listening_state_after_response_complete():
     live_console = create_live_status_console(app, include_touchstrip=False)
     transport = _FakeTransport()
     live_console.transport = transport
-    wire(app, live_console)
+    wire_status_console(app, live_console, asyncio.get_running_loop())
+    wire(app)
 
     await app.bus.publish(
         ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))

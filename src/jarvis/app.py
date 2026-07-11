@@ -19,6 +19,13 @@ from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
+from jarvis.core.lifecycle import (
+    TurnAccepted,
+    TurnCompleted,
+    TurnSource,
+    WarmupCompleted,
+    WarmupStarted,
+)
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
@@ -38,6 +45,7 @@ from jarvis.ui.contract import (
     ModuleId,
     RuntimeState,
 )
+from jarvis.ui.runtime_state import RuntimeStateChanged, RuntimeStateTracker
 from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
@@ -100,6 +108,7 @@ class Orchestrator:
         system_prompt: str = SYSTEM_PROMPT,
         audio_input: AudioInput | None = None,
         thinking_mode: ThinkingModeState | None = None,
+        bus: EventBus | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -107,6 +116,7 @@ class Orchestrator:
         self._system_prompt = system_prompt
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
+        self._bus = bus
         self._pending_screenshot_b64: str | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
@@ -131,7 +141,7 @@ class Orchestrator:
         if self._pending_screenshot_b64 is not None:
             media.append(self._pending_screenshot_b64)
             self._pending_screenshot_b64 = None
-        await self._start_turn(VOICE_PLACEHOLDER_TEXT, media)
+        await self._start_turn(VOICE_PLACEHOLDER_TEXT, media, TurnSource.VOICE)
 
     async def on_clipboard(self, event: ClipboardSubmitted) -> None:
         if event.is_empty:
@@ -148,9 +158,11 @@ class Orchestrator:
         # and then having _start_turn() silently reject the turn would
         # tell the user their input was received when it was not.
         await self._sound_cues.play("input_error" if event.truncated else "clipboard")
-        await self._start_turn(event.text, None)
+        await self._start_turn(event.text, None, TurnSource.TEXT)
 
-    async def _start_turn(self, history_text: str, media_b64: list[str] | None) -> None:
+    async def _start_turn(
+        self, history_text: str, media_b64: list[str] | None, source: TurnSource
+    ) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
         # `await` in between - so this can only fire for a caller that
@@ -159,6 +171,8 @@ class Orchestrator:
             logger.info("Ignoring new turn: previous request still in flight")
             return
         self._busy = True
+        if self._bus is not None:
+            await self._bus.publish(TurnAccepted, TurnAccepted(source=source))
         await self._sound_cues.play("thinking")
 
         messages = [{"role": "system", "content": self._system_prompt}]
@@ -275,6 +289,7 @@ def build_app(
         system_prompt=settings.prompts.system,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
+        bus=bus,
     )
     return App(
         bus=bus,
@@ -365,7 +380,10 @@ def wire_status_console(
     live_console: LiveStatusConsole,
     loop: asyncio.AbstractEventLoop,
 ) -> list[Subscription]:
-    """Seeds the transport snapshot from authoritative engine state."""
+    """Seeds the transport snapshot from authoritative engine state and
+    wires the runtime-state pipeline: RuntimeStateTracker turns lifecycle
+    events into RuntimeStateChanged, and the render handler below is the
+    only place that pushes RuntimeState to the transport."""
     live_console.api.set_loop(loop)
     if app.visibility_mode is None or live_console.transport is None:
         raise RuntimeError("live Status Console requires an App created by build_app()")
@@ -376,12 +394,20 @@ def wire_status_console(
     live_console.transport.set_module_health(
         _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
     )
-    _push_runtime_state(
-        live_console,
-        RuntimeState.WARMING,
-        ui_text("warming_model", app.settings.ui.language),
-    )
-    return []
+
+    async def on_runtime_state_changed(event: RuntimeStateChanged) -> None:
+        substatus = event.substatus_text
+        if substatus is None and event.substatus_key is not None:
+            substatus = ui_text(event.substatus_key, app.settings.ui.language)
+        _push_runtime_state(live_console, event.state, substatus)
+
+    tracker = RuntimeStateTracker(app.bus)
+    subscriptions: list[Subscription] = [
+        *tracker.subscribe(),
+        (RuntimeStateChanged, on_runtime_state_changed),
+    ]
+    app.bus.subscribe(RuntimeStateChanged, on_runtime_state_changed)
+    return subscriptions
 
 
 async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
@@ -395,9 +421,12 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
         await app.sound_cues.play("error")
         return
     finally:
+        # TurnCompleted must follow finish_turn's cooldown so LISTENING is
+        # not announced while this turn's speech may still be audible.
         await app.orchestrator.finish_turn(
             cooldown_seconds=app.settings.vad.resume_cooldown_seconds
         )
+        await app.bus.publish(TurnCompleted, TurnCompleted())
     await app.sound_cues.play("listening")
 
 
@@ -434,19 +463,19 @@ async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> Non
     await app.sound_cues.play("thinking_on" if enabled else "thinking_off")
 
 
-def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscription]:
+def wire(app: App) -> list[Subscription]:
     """Subscribes every module to the bus events it consumes. Returns the
     (event_type, handler) pairs so shutdown can unsubscribe them - see
-    unwire()."""
+    unwire().
+
+    Runtime-state ownership note: no handler here decides RuntimeState.
+    The Orchestrator publishes TurnAccepted behind its own busy guard,
+    _on_full_response_complete publishes TurnCompleted, and
+    RuntimeStateTracker (wired by wire_status_console) turns lifecycle
+    events into RuntimeStateChanged."""
 
     async def on_full_response_complete(event: ResponseComplete) -> None:
         await _on_full_response_complete(app, event)
-        if live_console is not None:
-            _push_runtime_state(
-                live_console,
-                RuntimeState.LISTENING,
-                ui_text("ready_to_listen", app.settings.ui.language),
-            )
 
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
@@ -454,39 +483,10 @@ def wire(app: App, live_console: LiveStatusConsole | None = None) -> list[Subscr
     async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
         await _on_thinking_mode_toggled(app, event)
 
-    async def on_utterance(event: UtteranceChunk) -> None:
-        if live_console is not None and not app.orchestrator.is_busy:
-            _push_runtime_state(
-                live_console,
-                RuntimeState.THINKING,
-                ui_text("processing_voice", app.settings.ui.language),
-            )
-        await app.orchestrator.on_utterance(event)
-
-    async def on_clipboard(event: ClipboardSubmitted) -> None:
-        if (
-            live_console is not None
-            and not app.orchestrator.is_busy
-            and not event.is_empty
-        ):
-            _push_runtime_state(
-                live_console,
-                RuntimeState.THINKING,
-                ui_text("processing_text", app.settings.ui.language),
-            )
-        await app.orchestrator.on_clipboard(event)
-
-    utterance_handler = (
-        on_utterance if live_console is not None else app.orchestrator.on_utterance
-    )
-    clipboard_handler = (
-        on_clipboard if live_console is not None else app.orchestrator.on_clipboard
-    )
-
     subscriptions: list[Subscription] = [
-        (UtteranceChunk, utterance_handler),
+        (UtteranceChunk, app.orchestrator.on_utterance),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
-        (ClipboardSubmitted, clipboard_handler),
+        (ClipboardSubmitted, app.orchestrator.on_clipboard),
         (ResponseToken, app.tts_output.on_token),
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
@@ -513,8 +513,11 @@ async def warm_up(
 
     The warm-up prompt is dialog data configured via [prompts].warmup,
     independent of ui_language, which governs UI text only."""
+    await bus.publish(WarmupStarted, WarmupStarted())
+    succeeded = False
     try:
         await backend.chat([{"role": "user", "content": warmup_prompt}])
+        succeeded = True
     except Exception:
         logger.exception("Warm-up request failed; continuing anyway")
         await publish_system_event(
@@ -534,6 +537,7 @@ async def warm_up(
             log_message="Warm-up request succeeded",
             ui_message=ui_text("warmup_succeeded", ui_language),
         )
+    await bus.publish(WarmupCompleted, WarmupCompleted(succeeded=succeeded))
 
 
 async def run_until_shutdown(
@@ -605,13 +609,7 @@ async def run(
     else:
         status_console_subscriptions = []
     await warm_up(app.backend, app.bus, settings.ui.language, settings.prompts.warmup)
-    if live_console is not None:
-        _push_runtime_state(
-            live_console,
-            RuntimeState.LISTENING,
-            ui_text("ready_to_listen", settings.ui.language),
-        )
-    subscriptions = [*status_console_subscriptions, *wire(app, live_console)]
+    subscriptions = [*status_console_subscriptions, *wire(app)]
 
     loop = asyncio.get_running_loop()
 
@@ -666,6 +664,9 @@ def run_with_status_console(
         live_console.api,
         state=UiStateStore(
             model_label=settings.backend.model,
+            # Initial snapshot value only; every later transition comes
+            # from RuntimeStateTracker via RuntimeStateChanged.
+            runtime_state=RuntimeState.WARMING,
             thinking_enabled=app.thinking_mode.is_enabled,
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,

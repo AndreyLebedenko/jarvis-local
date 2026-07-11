@@ -15,7 +15,6 @@ from aiohttp import web
 
 from jarvis.audio.input import MicSleepToggled
 from jarvis.core.bus import EventBus
-from jarvis.dialog.backend import ResponseToken
 from jarvis.dialog.thinking_mode import ThinkingModeToggled
 from jarvis.ui.contract import (
     DataLocality,
@@ -382,7 +381,6 @@ class UiTransportServer:
             (SystemEvent, self._on_system_event),
             (ThinkingModeToggled, self._on_thinking_mode_toggled),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
-            (ResponseToken, self._on_response_token),
             (MicSleepToggled, self._on_mic_sleep_toggled),
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
@@ -393,21 +391,15 @@ class UiTransportServer:
         self._subscriptions = subscriptions
 
     async def _on_system_event(self, event: SystemEvent) -> None:
+        # Runtime-state reaction to errors lives in RuntimeStateTracker;
+        # this server only projects state it is told about.
         self._publish_delta(self._state.add_system_event(event))
-        if event.level.value == "error":
-            self.set_runtime_state(RuntimeState.ERROR, event.message)
 
     async def _on_thinking_mode_toggled(self, event: ThinkingModeToggled) -> None:
         self._publish_delta(self._state.set_thinking_mode(event.is_enabled))
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self._publish_delta(self._state.set_visibility_mode(event.mode))
-
-    async def _on_response_token(self, event: ResponseToken) -> None:
-        del event
-        self.set_runtime_state(
-            RuntimeState.SPEAKING, ui_text("speaking_response", self._state.language)
-        )
 
     async def _on_mic_sleep_toggled(self, event: MicSleepToggled) -> None:
         health = ModuleHealth(

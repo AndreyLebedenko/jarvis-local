@@ -1276,6 +1276,37 @@ source literals:
   type checking, unknown-key detection, and per-key precedence; a second
   file would add a second loader for two strings.
 
+## Architecture v1.2.14 (UI state foundation)
+
+Task 1 (RuntimeStateTracker) landed first:
+
+- `core/lifecycle.py` defines the engine lifecycle events: `WarmupStarted`/
+  `WarmupCompleted` (published by `warm_up()`), `TurnAccepted` (published by
+  `Orchestrator._start_turn()` behind its own busy guard, carrying
+  `TurnSource.VOICE`/`TEXT`), and `TurnCompleted` (published by
+  `_on_full_response_complete()` after `finish_turn()`'s cooldown, so
+  LISTENING is never announced while the turn's speech may still be
+  audible).
+- `ui/runtime_state.py`'s `RuntimeStateTracker` is the single owner of
+  RuntimeState transitions: it subscribes to the lifecycle events plus
+  `ResponseToken`/`SystemEvent` and publishes `RuntimeStateChanged` with a
+  `substatus_key` (ui_text catalog key, localized by the renderer) or
+  `substatus_text` (literal, e.g. an error message). SPEAKING is only
+  entered from THINKING - the warm-up request streams `ResponseToken`
+  through the same bus, and the tracker is subscribed before `warm_up()`
+  runs, so unguarded tokens would have shown SPEAKING during WARMING.
+- Rendering is one handler in `wire_status_console()`: RuntimeStateChanged
+  -> `ui_text` resolution -> transport push. `wire()`'s closures lost all
+  push logic and busy-guard duplication (`not orchestrator.is_busy` is
+  gone from wiring); `transport.py` no longer decides SPEAKING on tokens
+  or ERROR on error system events - it projects what it is told.
+- The WARMING shown at startup is the UiStateStore's initial snapshot
+  value (set at construction in `run_with_status_console()`), not a
+  pushed transition; the tracker takes over from `WarmupStarted` on.
+- The busy-rejection contract is now testable end to end: a turn rejected
+  by the Orchestrator publishes no `TurnAccepted`, so the tracker never
+  announces THINKING (`test_rejected_busy_turn_does_not_render_thinking`).
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
