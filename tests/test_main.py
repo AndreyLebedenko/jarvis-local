@@ -22,6 +22,7 @@ from main import (
     App,
     ConversationHistory,
     Orchestrator,
+    _microphone_health,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
     _on_thinking_mode_toggled,
@@ -842,6 +843,14 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
     ]
 
     unwire(app, subscriptions)
+
+
+def test_microphone_health_reports_user_muted_as_not_in_use():
+    assert _microphone_health(False) == ModuleHealth(
+        module=ModuleId.MICROPHONE,
+        status=HealthStatus.UNAVAILABLE,
+        detail="не используется",
+    )
 
 
 async def test_wire_status_console_leaves_bus_projection_to_the_transport_server():

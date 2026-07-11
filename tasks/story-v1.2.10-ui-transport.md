@@ -1,6 +1,6 @@
 # Story v1.2.10: UI Transport
 
-**Status:** In progress - Task 5 pending.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.10
 **Vision:** `VISION.md`, section "Component Model (Jarvis 2.0 direction)".
@@ -43,19 +43,19 @@ protocol rewrite.
 
 ## Acceptance Criteria
 
-- [ ] One local server serves UI static files and holds WS connections for
+- [x] One local server serves UI static files and holds WS connections for
       all UI surfaces.
-- [ ] Protocol v1 starts with a hello/handshake message in which the client
+- [x] Protocol v1 starts with a hello/handshake message in which the client
       declares its identity and capabilities.
-- [ ] The `state` channel delivers a full snapshot on connect and deltas
+- [x] The `state` channel delivers a full snapshot on connect and deltas
       afterwards, carrying the existing `ui_contract.py` values.
-- [ ] The `control` channel carries the commands currently exposed through
+- [x] The `control` channel carries the commands currently exposed through
       `js_api` (think toggle, reset, shutdown, visibility mode).
-- [ ] Status Console and touchstrip run through the server with pixel-level
+- [x] Status Console and touchstrip run through the server with pixel-level
       visual parity; the `evaluate_js`/`js_api` bridge is removed.
-- [ ] The same URL opened in Chrome shows a working, controllable console.
-- [ ] `python -m pytest` passes; protocol logic is covered by pure tests.
-- [ ] `PROJECT.md` records the loopback guarantee and the transport decision.
+- [x] The same URL opened in Chrome shows a working, controllable console.
+- [x] `python -m pytest` passes; protocol logic is covered by pure tests.
+- [x] `PROJECT.md` records the loopback guarantee and the transport decision.
 
 ## Task Card Sequence
 
@@ -65,9 +65,9 @@ protocol rewrite.
    Status Console becomes a WS client; pywebview reduced to a window shell.
 3. `done/story-v1.2.10-task-3-touchstrip-migration-and-bridge-removal.md`
    Touchstrip migrates; `evaluate_js`/`js_api` bridge code is deleted.
-4. `story-v1.2.10-task-4-manual-handoff-and-docs.md`
+4. `done/story-v1.2.10-task-4-manual-handoff-and-docs.md`
    Manual verification (real windows plus Chrome) and documentation updates.
-5. `story-v1.2.10-task-5-ui-cosmetic-polish.md`
+5. `done/story-v1.2.10-task-5-ui-cosmetic-polish.md`
    Explicit Russian microphone-status wording and centered action-button layout.
 
 ## Stop Conditions

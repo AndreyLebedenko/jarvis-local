@@ -328,7 +328,7 @@ def _microphone_health(is_awake: bool) -> ModuleHealth:
     return ModuleHealth(
         module=ModuleId.MICROPHONE,
         status=HealthStatus.OK if is_awake else HealthStatus.UNAVAILABLE,
-        detail="слушает" if is_awake else "усыплён",
+        detail="слушает" if is_awake else "не используется",
     )
 
 

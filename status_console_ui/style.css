@@ -209,11 +209,22 @@ body {
 .think-tag { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9px; color: var(--text-faint); }
 .think-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
-/* task-ui-04: global context reset. Requires confirmation before the
-   destructive action (Scope: "requires confirmation") - showResetConfirm()/
-   hideResetConfirm() only toggle this row's visibility locally; only
-   confirmContextReset() calls back into the engine. */
-.reset-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+/* story-v1.2.10-task-5: keep the three primary actions in one stable row.
+   The confirmation panels live below it so opening one never moves another
+   primary action to a different row. */
+.action-row {
+  display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: center;
+  gap: 10px 16px; width: 100%; max-width: 760px;
+}
+.config-zone, .reset-zone, .shutdown-zone {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  min-width: 0;
+}
+.config-zone { width: auto; }
+.action-feedback {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 100%; max-width: 760px; min-width: 0;
+}
 .btn-reset-global {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
   padding: 9px 20px; border-radius: 8px; border: 1px solid var(--amber-dim);
@@ -221,9 +232,9 @@ body {
 }
 .btn-reset-global:hover { filter: brightness(1.1); }
 .confirm-row {
-  display: none; align-items: center; gap: 10px;
+  display: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
   background: var(--panel-2); border: 1px solid var(--red-dim); border-radius: 8px;
-  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim);
+  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim); width: 100%;
 }
 .confirm-row.show { display: flex; }
 .confirm-row button {
@@ -239,7 +250,6 @@ body {
    saving here is not itself destructive (it only ever touches
    config.ui.toml, applied on next restart), so it does not need amber/red
    severity coloring. */
-.config-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 420px; }
 .btn-config-toggle {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
   padding: 9px 20px; border-radius: 8px; border: 1px solid var(--cyan-dim);
@@ -247,7 +257,8 @@ body {
 }
 .btn-config-toggle:hover { filter: brightness(1.1); }
 .config-panel {
-  display: none; flex-direction: column; gap: 12px; width: 100%;
+  display: none; flex-direction: column; gap: 12px; width: 100%; max-width: 420px;
+  align-self: center;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 18px;
 }
@@ -285,7 +296,6 @@ body {
    amber is already reserved for warning/cloud/warmup-adjacent states
    project-wide (see PROJECT.md), so red keeps this visually the most
    severe control on the page. */
-.shutdown-zone { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .btn-shutdown {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
   padding: 9px 20px; border-radius: 8px; border: 1px solid var(--red-dim);
@@ -373,4 +383,5 @@ html[data-transport="offline"] .transport-status {
   .logpanel { border-left: none; border-top: 1px solid var(--border); max-height: 220px; }
   .topbar { flex-wrap: wrap; height: auto; padding: 10px 16px; gap: 8px; }
   .chip { min-width: 130px; }
+  .action-row { flex-wrap: wrap; }
 }

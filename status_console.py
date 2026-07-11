@@ -130,7 +130,7 @@ class StatusConsoleWindow:
         title: str = "Jarvis - Status Console",
         url: str | Path = INDEX_HTML,
         width: int = 960,
-        height: int = 640,
+        height: int = 900,
         min_size: tuple[int, int] = (480, 420),
         resizable: bool = True,
     ) -> None:

@@ -1,7 +1,7 @@
 # Task: UI cosmetic polish
 
 **Story:** `tasks/story-v1.2.10-ui-transport.md`
-**Status:** Not started.
+**Status:** Completed.
 **Release:** v1.2.10
 
 ## Summary
@@ -31,14 +31,14 @@ Out of scope:
 
 ## Acceptance Criteria
 
-- [ ] A user-muted microphone reports the detail `не используется` in the
+- [x] A user-muted microphone reports the detail `не используется` in the
       Status Console module-health state.
-- [ ] Settings, Reset context, and Shutdown appear in one centered horizontal
+- [x] Settings, Reset context, and Shutdown appear in one centered horizontal
       action row at ordinary desktop Status Console widths.
-- [ ] At narrow widths, the controls do not overflow or overlap and remain
+- [x] At narrow widths, the controls do not overflow or overlap and remain
       centered and operable.
-- [ ] Existing confirmation flows and control commands are unchanged.
-- [ ] Focused automated tests cover the text and layout contract; `python -m
+- [x] Existing confirmation flows and control commands are unchanged.
+- [x] Focused automated tests cover the text and layout contract; `python -m
       pytest` passes.
 
 ## Verification

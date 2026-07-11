@@ -11,6 +11,7 @@ from status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
     StatusConsoleApi,
+    StatusConsoleWindow,
     UiConfigSaved,
     data_locality_payload,
     module_health_payload,
@@ -774,6 +775,65 @@ def test_index_html_has_a_real_config_menu_not_a_placeholder():
     assert "toggleConfigMenu()" in html
     assert "applyConfigSelection()" in html
     assert "task-3" not in html
+
+
+def test_index_html_groups_lower_controls_in_one_action_row():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    row_start = html.index('<div class="action-row">')
+    config_panel_start = html.index('<div class="config-panel"', row_start)
+    action_row = html[row_start:config_panel_start]
+
+    assert action_row.index('id="btnConfigToggle"') < action_row.index('id="btnResetGlobal"')
+    assert action_row.index('id="btnResetGlobal"') < action_row.index('id="btnShutdown"')
+
+
+def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    marker = ".action-row {"
+    start = css.index(marker)
+    rule = css[start : css.index("}", start)]
+
+    assert "display: flex" in rule
+    assert "flex-wrap: nowrap" in rule
+    assert "justify-content: center" in rule
+    responsive_css = css[css.index("@media"):]
+    assert ".action-row" in responsive_css
+    assert "flex-wrap: wrap" in responsive_css
+
+
+def test_index_html_keeps_confirmation_panels_below_the_action_row():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    row_start = html.index('<div class="action-row">')
+    feedback_start = html.index('<div class="action-feedback">', row_start)
+    action_row = html[row_start:feedback_start]
+
+    assert 'id="confirmRow"' not in action_row
+    assert 'id="shutdownConfirmRow"' not in action_row
+    assert 'id="confirmRow"' in html[feedback_start:]
+    assert 'id="shutdownConfirmRow"' in html[feedback_start:]
+
+
+def test_style_css_confirmation_feedback_spans_the_action_area():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    feedback_start = css.index(".action-feedback {")
+    feedback_rule = css[feedback_start : css.index("}", feedback_start)]
+    confirm_start = css.index(".confirm-row {")
+    confirm_rule = css[confirm_start : css.index("}", confirm_start)]
+
+    assert "width: 100%" in feedback_rule
+    assert "width: 100%" in confirm_rule
+
+
+def test_status_console_default_height_allows_the_config_panel_to_open():
+    captured: dict[str, object] = {}
+
+    def window_factory(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    StatusConsoleWindow(window_factory=window_factory).create()
+
+    assert captured["height"] == 900
 
 
 def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():

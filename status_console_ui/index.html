@@ -87,38 +87,44 @@
     </div>
   </div>
 
-  <div class="config-zone">
-    <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Настройки</button>
-    <div class="config-panel" id="configPanel">
-      <div class="config-field">
-        <label for="modelSelect">Модель</label>
-        <select id="modelSelect"></select>
-      </div>
-      <div class="config-field">
-        <label for="micSelect">Микрофон</label>
-        <select id="micSelect"></select>
-      </div>
-      <button class="btn-config-apply" id="btnConfigApply" disabled onclick="applyConfigSelection()">Применить</button>
-      <div class="pending-restart" id="pendingRestart">Изменения сохранены - перезапустите Jarvis, чтобы применить.</div>
+  <div class="action-row">
+    <div class="config-zone">
+      <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Настройки</button>
+    </div>
+
+    <div class="reset-zone">
+      <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Сбросить контекст</button>
+    </div>
+
+    <div class="shutdown-zone">
+      <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Завершить работу</button>
     </div>
   </div>
 
-  <div class="reset-zone">
-    <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Сбросить контекст</button>
+  <div class="action-feedback">
     <div class="confirm-row" id="confirmRow">
       <span>Диалог и текущий контекст будут удалены. Отменить нельзя.</span>
       <button onclick="hideResetConfirm()">Отмена</button>
       <button class="danger" onclick="confirmContextReset()">Сбросить</button>
     </div>
-  </div>
-
-  <div class="shutdown-zone">
-    <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Завершить работу</button>
     <div class="confirm-row" id="shutdownConfirmRow">
       <span>Jarvis будет остановлен. Потребуется запустить процесс заново.</span>
       <button onclick="hideShutdownConfirm()">Отмена</button>
       <button class="danger" onclick="confirmShutdown()">Завершить</button>
     </div>
+  </div>
+
+  <div class="config-panel" id="configPanel">
+    <div class="config-field">
+      <label for="modelSelect">Модель</label>
+      <select id="modelSelect"></select>
+    </div>
+    <div class="config-field">
+      <label for="micSelect">Микрофон</label>
+      <select id="micSelect"></select>
+    </div>
+    <button class="btn-config-apply" id="btnConfigApply" disabled onclick="applyConfigSelection()">Применить</button>
+    <div class="pending-restart" id="pendingRestart">Изменения сохранены - перезапустите Jarvis, чтобы применить.</div>
   </div>
 
 </div>

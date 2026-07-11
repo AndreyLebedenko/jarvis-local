@@ -301,8 +301,8 @@ created before coding.
 
 ## v1.2.10 - UI transport
 
-**Status:** Transport implementation and human visual/browser handoff complete;
-the explicitly requested Task 5 cosmetic polish remains pending.
+**Status:** Complete. Transport implementation, human visual/browser handoff,
+and Task 5 cosmetic polish are accepted.
 
 Purpose: move all UI surfaces onto one local HTTP+WebSocket transport as the
 architectural prerequisite for the v1.3.0 Control Center, aligned with the
@@ -330,9 +330,11 @@ Boundary:
 - Loopback only. LAN binding, pairing/mTLS, audio channels, and multi-host
   operation are out of scope.
 - `bus.py` is unchanged; the server is a bus client, not a distributed bus.
-- No visual changes to existing surfaces.
+- No visual changes to existing surfaces beyond the explicit Task 5 cosmetic
+  polish.
 
-Story/task readiness: story and task cards exist.
+Story/task readiness: story complete; all v1.2.10 task cards are under
+`tasks/done/`.
 
 ## v1.3.0 - Control Center
 
