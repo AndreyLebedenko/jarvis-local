@@ -310,7 +310,7 @@ component-model direction in `VISION.md`.
 
 Scope:
 
-- Complete `tasks/story-v1.2.10-ui-transport.md`.
+- Complete `tasks/done/story-v1.2.10-ui-transport.md`.
 - Local server (aiohttp) in the engine asyncio loop: loopback bind,
   ephemeral port, one-time token.
 - Protocol v1: hello/handshake with client capability declaration; `state`

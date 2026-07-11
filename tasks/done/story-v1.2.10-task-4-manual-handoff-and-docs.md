@@ -1,6 +1,6 @@
 # Task: UI transport manual handoff and documentation
 
-**Story:** `tasks/story-v1.2.10-ui-transport.md`
+**Story:** `tasks/done/story-v1.2.10-ui-transport.md`
 **Status:** Completed.
 **Release:** v1.2.10
 

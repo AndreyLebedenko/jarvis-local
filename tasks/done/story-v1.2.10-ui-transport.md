@@ -59,15 +59,15 @@ protocol rewrite.
 
 ## Task Card Sequence
 
-1. `done/story-v1.2.10-task-1-local-ws-server-and-protocol.md`
+1. `tasks/done/story-v1.2.10-task-1-local-ws-server-and-protocol.md`
    Local HTTP+WS server, protocol v1 (hello, state, control), token auth.
-2. `done/story-v1.2.10-task-2-status-console-migration.md`
+2. `tasks/done/story-v1.2.10-task-2-status-console-migration.md`
    Status Console becomes a WS client; pywebview reduced to a window shell.
-3. `done/story-v1.2.10-task-3-touchstrip-migration-and-bridge-removal.md`
+3. `tasks/done/story-v1.2.10-task-3-touchstrip-migration-and-bridge-removal.md`
    Touchstrip migrates; `evaluate_js`/`js_api` bridge code is deleted.
-4. `done/story-v1.2.10-task-4-manual-handoff-and-docs.md`
+4. `tasks/done/story-v1.2.10-task-4-manual-handoff-and-docs.md`
    Manual verification (real windows plus Chrome) and documentation updates.
-5. `done/story-v1.2.10-task-5-ui-cosmetic-polish.md`
+5. `tasks/done/story-v1.2.10-task-5-ui-cosmetic-polish.md`
    Explicit Russian microphone-status wording and centered action-button layout.
 
 ## Stop Conditions

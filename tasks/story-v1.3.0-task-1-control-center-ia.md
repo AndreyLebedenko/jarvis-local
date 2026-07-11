@@ -1,7 +1,7 @@
 # Task: Control Center information architecture
 
 **Story:** `tasks/story-v1.3.0-control-center.md`
-**Status:** Backlog, blocked by v1.2.10 UI transport.
+**Status:** Backlog, ready to start now that v1.2.10 UI transport is complete.
 **Release:** v1.3.0
 
 ## Summary
