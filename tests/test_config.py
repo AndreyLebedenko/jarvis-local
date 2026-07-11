@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from conftest import assert_stdlib_only_imports
 
 from jarvis.core.config import (
     BackendSettings,
@@ -15,7 +16,6 @@ from jarvis.core.config import (
     load_settings,
     write_ui_config,
 )
-from conftest import assert_stdlib_only_imports
 
 EXAMPLE_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.example.toml"
 

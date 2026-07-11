@@ -14,8 +14,11 @@ extra moving parts from the larger TTS-engine spike.
 
 Usage examples:
   python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx
-  python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --use-cuda
-  python manual/manual_check_piper.py --model D:\\voices\\en_US-lessac-medium.onnx --config D:\\voices\\en_US-lessac-medium.onnx.json
+  python manual/manual_check_piper.py
+    --model D:\\voices\\en_US-lessac-medium.onnx --use-cuda
+  python manual/manual_check_piper.py
+    --model D:\\voices\\en_US-lessac-medium.onnx
+    --config D:\\voices\\en_US-lessac-medium.onnx.json
 
 Expected output fields:
   model, config, use_cuda, load_seconds
@@ -67,7 +70,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        help="Optional path to the Piper .json config (defaults to <model>.json if present)",
+        help=(
+            "Optional path to the Piper .json config "
+            "(defaults to <model>.json if present)"
+        ),
     )
     parser.add_argument(
         "--use-cuda",
@@ -103,7 +109,8 @@ def resolve_model_path(model_arg: str | None) -> Path:
         return DEFAULT_MODEL_PATH
 
     raise FileNotFoundError(
-        f"No Piper model was supplied and the default {DEFAULT_MODEL_PATH} was not found."
+        "No Piper model was supplied and the default "
+        f"{DEFAULT_MODEL_PATH} was not found."
     )
 
 

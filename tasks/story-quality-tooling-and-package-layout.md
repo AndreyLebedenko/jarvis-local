@@ -66,6 +66,9 @@ unrelated modules in the repository root.
 8. `tasks/story-quality-task-8-advisory-tool-evaluation.md`
    Evaluate Pyright and Semdup on the final layout and decide their future
    enforcement status from recorded evidence.
+9. `tasks/done/story-quality-task-9-ruff-lint-green-baseline.md`
+   Make Ruff lint green so deterministic lint and complexity checks can be
+   enabled in CI.
 
 ## Stop Conditions
 

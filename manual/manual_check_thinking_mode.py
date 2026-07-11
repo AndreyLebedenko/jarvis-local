@@ -14,8 +14,8 @@ import argparse
 import asyncio
 import base64
 import json
-import sys
 import struct
+import sys
 import time
 import zlib
 from dataclasses import dataclass, field

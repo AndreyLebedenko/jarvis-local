@@ -5,6 +5,17 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings
+from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.ui.contract import (
+    DataLocality,
+    EventLevel,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+    VisibilityMode,
+)
 from jarvis.ui.status_console import (
     INDEX_HTML,
     UI_DIR,
@@ -18,19 +29,7 @@ from jarvis.ui.status_console import (
     options_payload,
     runtime_state_payload,
     system_event_payload,
-    thinking_mode_payload,
     visibility_mode_payload,
-)
-from jarvis.dialog.thinking_mode import ThinkingModeState
-from jarvis.ui.contract import (
-    DataLocality,
-    EventLevel,
-    HealthStatus,
-    ModuleHealth,
-    ModuleId,
-    RuntimeState,
-    SystemEvent,
-    VisibilityMode,
 )
 from jarvis.ui.visibility import VisibilityModeState
 

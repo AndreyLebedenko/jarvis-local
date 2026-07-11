@@ -1,7 +1,7 @@
 """Process entry point and module wiring."""
 
-import asyncio
 import argparse
+import asyncio
 import base64
 import logging
 from collections.abc import Callable
@@ -15,6 +15,8 @@ from jarvis.audio.input import (
     stream_factory_for_device,
 )
 from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
+from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.audio.tts import TtsOutput
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.system_log import publish_system_event
@@ -23,18 +25,11 @@ from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
 from jarvis.dialog.thinking_mode import (
     run_hotkey_listener as run_thinking_hotkey_listener,
 )
-from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
-from jarvis.audio.tts import TtsOutput
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
-from jarvis.ui.status_console import (
-    StatusConsoleApi,
-    StatusConsoleWindow,
-    TouchstripWindow,
-)
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -42,6 +37,11 @@ from jarvis.ui.contract import (
     ModuleHealth,
     ModuleId,
     RuntimeState,
+)
+from jarvis.ui.status_console import (
+    StatusConsoleApi,
+    StatusConsoleWindow,
+    TouchstripWindow,
 )
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import UiStateStore, UiTransportInfo, UiTransportServer
@@ -355,10 +355,7 @@ def create_live_status_console(
         settings=app.settings,
     )
     console = console or StatusConsoleWindow()
-    if include_touchstrip:
-        touchstrip = touchstrip or TouchstripWindow()
-    else:
-        touchstrip = None
+    touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
     live_console = LiveStatusConsole(console=console, touchstrip=touchstrip, api=api)
     return live_console
 
@@ -558,7 +555,7 @@ async def run_until_shutdown(
         for task in background_tasks:
             task.cancel()
         results = await asyncio.gather(*background_tasks, return_exceptions=True)
-        for task, result in zip(background_tasks, results):
+        for task, result in zip(background_tasks, results, strict=False):
             if isinstance(result, Exception):
                 logger.error(
                     "Shutdown: background task %s raised instead of exiting cleanly",

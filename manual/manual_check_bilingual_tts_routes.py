@@ -12,9 +12,11 @@ segments concurrently, and submits playback through OrderedPlayback so audible
 output stays in text order even when one engine finishes earlier.
 
 Usage examples:
-  python manual/manual_check_bilingual_tts_routes.py --piper-ru-model D:\\voices\\ru.onnx
+  python manual/manual_check_bilingual_tts_routes.py
+    --piper-ru-model D:\\voices\\ru.onnx
   python manual/manual_check_bilingual_tts_routes.py --route silero_ru_piper_en
-  python manual/manual_check_bilingual_tts_routes.py --route piper_ru_en --piper-ru-model D:\\voices\\ru.onnx
+  python manual/manual_check_bilingual_tts_routes.py
+    --route piper_ru_en --piper-ru-model D:\\voices\\ru.onnx
 """
 
 from __future__ import annotations
@@ -25,9 +27,10 @@ import io
 import sys
 import time
 import wave
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable, Protocol
+from typing import Protocol
 
 import sounddevice as sd
 import soundfile as sf
@@ -36,10 +39,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from jarvis.audio.utils import samples_to_wav_bytes
-from jarvis.core.config import TtsSettings
 from jarvis.audio.language_segments import segment_by_charset
 from jarvis.audio.tts import OrderedPlayback, normalize_numbers, transliterate_latin
+from jarvis.audio.utils import samples_to_wav_bytes
+from jarvis.core.config import TtsSettings
 
 SILERO = "silero"
 PIPER = "piper"
@@ -421,7 +424,8 @@ def _piper_chunks_to_wav_bytes(chunks) -> bytes:
                 wav_file.setframerate(sample_rate)
             elif current_sample_rate != sample_rate:
                 raise RuntimeError(
-                    f"Piper returned mixed sample rates: {sample_rate} and {current_sample_rate}"
+                    "Piper returned mixed sample rates: "
+                    f"{sample_rate} and {current_sample_rate}"
                 )
             wav_file.writeframes(chunk.audio_int16_array.tobytes())
     return buffer.getvalue()

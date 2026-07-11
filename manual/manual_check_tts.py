@@ -23,9 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from jarvis.audio.tts import TtsOutput
 from jarvis.core.config import load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
-from jarvis.audio.tts import TtsOutput
 
 # Deliberately includes a decimal number and a known abbreviation, so the
 # sentence buffer's handling of both is also audible, not just tested.

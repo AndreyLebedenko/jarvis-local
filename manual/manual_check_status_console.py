@@ -37,17 +37,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
-from jarvis.app import ConversationHistory
+from jarvis.core.system_log import publish_system_event
+from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.ui.contract import EventLevel, RuntimeState
 from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
 )
-from jarvis.core.system_log import publish_system_event
-from jarvis.dialog.thinking_mode import ThinkingModeState
-from jarvis.ui.contract import EventLevel, RuntimeState
 from jarvis.ui.transport import UiStateStore, UiTransportServer
 from jarvis.ui.visibility import VisibilityModeState
 
@@ -91,7 +91,7 @@ async def _run_demo_cycle_async(ctx: DemoContext) -> None:
         i += 1
         try:
             await asyncio.wait_for(ctx.shutdown_event.wait(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
 
 

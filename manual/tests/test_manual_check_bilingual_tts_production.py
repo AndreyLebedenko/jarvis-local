@@ -1,5 +1,7 @@
 import asyncio
 
+from jarvis.audio.language_segments import segment_by_charset
+from jarvis.audio.tts import BilingualTtsEngine, TtsOutput, build_tts_engine
 from jarvis.core.config import TtsLanguageSettings, TtsSettings
 from manual.manual_check_bilingual_tts_production import (
     SAMPLES,
@@ -8,8 +10,6 @@ from manual.manual_check_bilingual_tts_production import (
     run_samples,
     stream_tokens,
 )
-from jarvis.audio.language_segments import segment_by_charset
-from jarvis.audio.tts import BilingualTtsEngine, TtsOutput, build_tts_engine
 
 
 class _FakeEngine:

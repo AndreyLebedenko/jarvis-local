@@ -1,10 +1,9 @@
+import io
 from pathlib import Path
 from types import SimpleNamespace
 
-import io
-import soundfile as sf
-
 import pytest
+import soundfile as sf
 
 from manual.manual_check_bilingual_tts_routes import (
     DEFAULT_PIPER_EN_MODEL,
@@ -12,6 +11,7 @@ from manual.manual_check_bilingual_tts_routes import (
     ROUTES,
     SAMPLES,
     SILERO,
+    _piper_chunks_to_wav_bytes,
     build_arg_parser,
     build_segment_plan,
     engine_for_language,
@@ -22,7 +22,6 @@ from manual.manual_check_bilingual_tts_routes import (
     selected_routes,
     selected_samples,
     validate_piper_models_for_routes,
-    _piper_chunks_to_wav_bytes,
 )
 
 

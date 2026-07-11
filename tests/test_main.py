@@ -10,29 +10,6 @@ import httpx
 import pytest
 
 import jarvis.app as main_module
-
-from jarvis.audio.input import AudioInput, MicSleepToggled, UtteranceChunk
-from jarvis.audio.sound_cues import SoundCuePlayer
-from jarvis.audio.tts import BilingualTtsEngine
-from jarvis.inputs.capture import ScreenshotCaptured
-from jarvis.inputs.clipboard import ClipboardSubmitted
-from jarvis.core.bus import EventBus
-from jarvis.core.config import (
-    BackendSettings,
-    MicrophoneSettings,
-    PromptSettings,
-    Settings,
-    TtsLanguageSettings,
-    TtsSettings,
-    VadSettings,
-)
-from jarvis.dialog.backend import (
-    LatencyMetrics,
-    OllamaBackend,
-    ResponseComplete,
-    ResponseToken,
-)
-from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
 from jarvis.app import (
     APP_LOGGER_NAME,
     SYSTEM_PROMPT,
@@ -55,7 +32,28 @@ from jarvis.app import (
     wire,
     wire_status_console,
 )
-from jarvis.ui.transport import UiTransportInfo
+from jarvis.audio.input import AudioInput, MicSleepToggled, UtteranceChunk
+from jarvis.audio.sound_cues import SoundCuePlayer
+from jarvis.audio.tts import BilingualTtsEngine
+from jarvis.core.bus import EventBus
+from jarvis.core.config import (
+    BackendSettings,
+    MicrophoneSettings,
+    PromptSettings,
+    Settings,
+    TtsLanguageSettings,
+    TtsSettings,
+    VadSettings,
+)
+from jarvis.dialog.backend import (
+    LatencyMetrics,
+    OllamaBackend,
+    ResponseComplete,
+    ResponseToken,
+)
+from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
+from jarvis.inputs.capture import ScreenshotCaptured
+from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -66,6 +64,7 @@ from jarvis.ui.contract import (
     SystemEvent,
     VisibilityMode,
 )
+from jarvis.ui.transport import UiTransportInfo
 
 
 class _FakeBackend:
@@ -1114,7 +1113,7 @@ class _FakeKeyboardModuleForShutdownTest:
         self.removed_handles.append(object())
 
 
-async def test_run_until_shutdown_cancels_clipboard_mic_sleep_and_thinking_hotkey_listeners():
+async def test_run_until_shutdown_cancels_real_hotkey_listeners():
     """Same shape as test_run_until_shutdown_cancels_tasks_and_unsubscribes,
     but with the real listener coroutines (task-10's clipboard/mic-sleep,
     task-13's thinking-mode) instead of arbitrary fake tasks - confirms
@@ -1460,8 +1459,8 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(
     crackling/tempo artifacts reported live."""
     from jarvis.audio import sound_cues as sound_cues_module
     from jarvis.audio import tts as tts_module
-    from jarvis.core.config import SoundCueSettings, TtsSettings
     from jarvis.audio.tts import TtsOutput
+    from jarvis.core.config import SoundCueSettings, TtsSettings
 
     currently_playing = False
 

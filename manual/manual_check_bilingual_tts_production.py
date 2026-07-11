@@ -24,16 +24,14 @@ from __future__ import annotations
 import asyncio
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from jarvis.core.config import TtsSettings, load_settings
-from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 from jarvis.audio.language_segments import DEFAULT_LANGUAGE, ENGLISH
 from jarvis.audio.tts import (
     EngineBuilder,
@@ -42,6 +40,8 @@ from jarvis.audio.tts import (
     _default_engine_builders,
     build_tts_engine,
 )
+from jarvis.core.config import TtsSettings, load_settings
+from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 
 ReportFn = Callable[[str, str, str], None]
 

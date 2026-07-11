@@ -204,6 +204,41 @@ class AudioInput:
         if self._active_stream is not None:
             await asyncio.to_thread(self._active_stream.stop)
 
+    async def _read_stream_block(
+        self, stream: InputStreamLike, block_samples: int
+    ) -> np.ndarray | None:
+        try:
+            data, _ = await asyncio.to_thread(stream.read, block_samples)
+        except Exception:
+            if self._stop_requested or not self._awake.is_set():
+                return None
+            if self._buffer_invalidated:
+                return None
+            raise
+        if self._stop_requested or not self._awake.is_set():
+            return None
+        if self._buffer_invalidated:
+            return None
+        return data[:, 0]
+
+    async def _publish_complete_utterances(
+        self,
+        buffer: np.ndarray,
+        published_end_seconds: float,
+        request_end_pause_seconds: float,
+    ) -> float:
+        buffer_duration = len(buffer) / SAMPLE_RATE
+        for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
+            already_published = utterance.end_seconds <= published_end_seconds
+            still_extending = (
+                buffer_duration - utterance.end_seconds < request_end_pause_seconds
+            )
+            if already_published or still_extending:
+                continue
+            await self._bus.publish(UtteranceChunk, utterance)
+            published_end_seconds = utterance.end_seconds
+        return published_end_seconds
+
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
         """Records microphone audio until cancelled or stopped."""
         request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
@@ -229,46 +264,15 @@ class AudioInput:
                 self._active_stream = stream
                 try:
                     while self._awake.is_set() and not self._stop_requested:
-                        try:
-                            data, _ = await asyncio.to_thread(
-                                stream.read, block_samples
-                            )
-                        except Exception:
-                            if self._stop_requested or not self._awake.is_set():
-                                # The pause/sleep transition stopped the
-                                # stream to interrupt this read. Closing this
-                                # context completes the transition.
-                                break
-                            if self._buffer_invalidated:
-                                # A pause and resume both happened while this
-                                # read was in flight. The next outer-loop
-                                # iteration creates a fresh stream.
-                                break
-                            raise
-                        if self._stop_requested or not self._awake.is_set():
+                        block = await self._read_stream_block(stream, block_samples)
+                        if block is None:
                             break
-                        if self._buffer_invalidated:
-                            # A pause happened while this read was in flight
-                            # (possibly a resume too, if the device stalled
-                            # long enough): both the accumulated buffer and
-                            # this read's data straddle the pause boundary and
-                            # must never be published as fresh speech.
-                            break
-                        buffer = np.concatenate([buffer, data[:, 0]])
-                        buffer_duration = len(buffer) / SAMPLE_RATE
-
-                        for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
-                            already_published = (
-                                utterance.end_seconds <= published_end_seconds
-                            )
-                            still_extending = (
-                                buffer_duration - utterance.end_seconds
-                                < request_end_pause_seconds
-                            )
-                            if already_published or still_extending:
-                                continue
-                            await self._bus.publish(UtteranceChunk, utterance)
-                            published_end_seconds = utterance.end_seconds
+                        buffer = np.concatenate([buffer, block])
+                        published_end_seconds = await self._publish_complete_utterances(
+                            buffer,
+                            published_end_seconds,
+                            request_end_pause_seconds,
+                        )
 
                         trim_seconds = max(published_end_seconds - 1.0, 0.0)
                         if trim_seconds > 0:

@@ -9,13 +9,13 @@ six RuntimeStates map to a distinct color on *both* surfaces, not just
 the three (warming/error/speaking) task-ui-02 originally distinguished.
 """
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
 
-from jarvis.ui.status_console import UI_DIR
 from jarvis.ui.contract import RuntimeState
+from jarvis.ui.status_console import UI_DIR
 
 _NETWORK_MARKERS = ("http://", "https://", "fonts.googleapis.com")
 _RUNTIME_COLOR_PROPERTIES = ("--live", "--live-dim", "--live-tint")

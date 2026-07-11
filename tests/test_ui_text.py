@@ -4,13 +4,15 @@ import pytest
 
 from jarvis.ui.contract import ModuleId, RuntimeState
 from jarvis.ui.text import (
+    _MESSAGES,
+    _MODULE_LABELS,
+    _RUNTIME_STATE_TEXT,
     DEFAULT_UI_LANGUAGE,
     SUPPORTED_UI_LANGUAGES,
     module_label,
     runtime_state_text,
     ui_text,
 )
-from jarvis.ui.text import _MESSAGES, _MODULE_LABELS, _RUNTIME_STATE_TEXT
 
 
 def test_default_language_is_english():

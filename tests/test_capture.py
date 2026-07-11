@@ -4,6 +4,7 @@ import struct
 import pytest
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings
 from jarvis.inputs.capture import (
     CaptureEngine,
     CaptureInput,
@@ -11,7 +12,6 @@ from jarvis.inputs.capture import (
     ScreenshotCaptured,
     run_hotkey_listener,
 )
-from jarvis.core.config import HotkeySettings
 
 
 def _png_dimensions(png_bytes: bytes) -> tuple[int, int]:
@@ -53,7 +53,9 @@ class _FakeKeyboardModule:
 
 
 def test_capture_full_screen_returns_expected_dimensions():
-    fake_grab = lambda region: RawCapture(rgb=_solid_rgb(8, 4), width=8, height=4)
+    def fake_grab(region):
+        return RawCapture(rgb=_solid_rgb(8, 4), width=8, height=4)
+
     engine = CaptureEngine(grab=fake_grab)
 
     screenshot = engine.capture_full_screen()

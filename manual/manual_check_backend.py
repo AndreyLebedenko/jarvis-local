@@ -46,7 +46,8 @@ async def run(kind: str, path: str) -> None:
         tok_per_s = m.eval_count / m.eval_seconds if m.eval_seconds else 0.0
         print(
             f"\n\n[load {m.load_seconds:.1f}s | prefill {m.prompt_eval_seconds:.1f}s "
-            f"| gen {m.eval_seconds:.1f}s | {m.eval_count} tokens | ~{tok_per_s:.0f} tok/s]"
+            f"| gen {m.eval_seconds:.1f}s | {m.eval_count} tokens "
+            f"| ~{tok_per_s:.0f} tok/s]"
         )
 
     bus.subscribe(ResponseToken, on_token)

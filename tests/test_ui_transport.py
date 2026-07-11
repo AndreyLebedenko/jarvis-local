@@ -14,9 +14,9 @@ from jarvis.ui.contract import (
 )
 from jarvis.ui.transport import (
     PROTOCOL_VERSION,
-    _Client,
     UiStateStore,
     UiTransportServer,
+    _Client,
     hello_message,
     make_message,
     parse_message,
@@ -229,18 +229,20 @@ async def test_server_requires_hello_before_state_or_control_traffic():
     )
     info = await server.start()
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(info.websocket_url) as websocket:
-                await websocket.send_json(
-                    make_message("control", "command", {"command": "reset_context"})
-                )
-                error = await websocket.receive_json()
-                assert error["type"] == "error"
-                assert error["payload"]["code"] == "invalid_hello"
-                assert (await websocket.receive()).type in {
-                    aiohttp.WSMsgType.CLOSE,
-                    aiohttp.WSMsgType.CLOSED,
-                }
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(
+                make_message("control", "command", {"command": "reset_context"})
+            )
+            error = await websocket.receive_json()
+            assert error["type"] == "error"
+            assert error["payload"]["code"] == "invalid_hello"
+            assert (await websocket.receive()).type in {
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+            }
     finally:
         await server.stop()
 

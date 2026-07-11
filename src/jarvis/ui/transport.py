@@ -16,6 +16,16 @@ from aiohttp import web
 from jarvis.audio.input import MicSleepToggled
 from jarvis.core.bus import EventBus
 from jarvis.dialog.backend import ResponseToken
+from jarvis.dialog.thinking_mode import ThinkingModeToggled
+from jarvis.ui.contract import (
+    DataLocality,
+    HealthStatus,
+    ModuleHealth,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+    VisibilityMode,
+)
 from jarvis.ui.status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
@@ -27,16 +37,6 @@ from jarvis.ui.status_console import (
     system_event_payload,
     thinking_mode_payload,
     visibility_mode_payload,
-)
-from jarvis.dialog.thinking_mode import ThinkingModeToggled
-from jarvis.ui.contract import (
-    DataLocality,
-    HealthStatus,
-    ModuleId,
-    ModuleHealth,
-    RuntimeState,
-    SystemEvent,
-    VisibilityMode,
 )
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 from jarvis.ui.visibility import VisibilityModeChanged
@@ -524,7 +524,7 @@ class UiTransportServer:
                         )
             finally:
                 await self._close_client(client)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._close_with_error(websocket, "handshake_timeout")
         finally:
             if not websocket.closed:
@@ -610,36 +610,61 @@ class UiTransportServer:
         )
 
     def _dispatch_control(self, command: str, arguments: JsonObject) -> None:
-        if command == "toggle_thinking":
-            self._control_api.toggle_thinking()
-        elif command == "reset_context":
-            self._control_api.reset_context()
-        elif command == "reset_module":
-            module_id = arguments.get("module_id")
-            if not isinstance(module_id, str):
-                raise ProtocolError("reset_module requires arguments.module_id")
-            self._control_api.reset_module(module_id)
-        elif command == "set_visibility_mode":
-            mode = arguments.get("mode")
-            if not isinstance(mode, str):
-                raise ProtocolError("set_visibility_mode requires arguments.mode")
-            self._control_api.set_visibility_mode(mode)
-        elif command == "request_shutdown":
-            self._control_api.request_shutdown()
-        elif command == "request_model_options":
-            self._control_api.request_model_options()
-        elif command == "request_microphone_options":
-            self._control_api.request_microphone_options()
-        elif command == "save_config_selection":
-            model = arguments.get("model")
-            microphone = arguments.get("microphone")
-            if not isinstance(model, str) or not isinstance(microphone, str):
-                raise ProtocolError(
-                    "save_config_selection requires string model and microphone arguments"
-                )
-            self._control_api.save_config_selection(model, microphone)
-        else:
+        handlers: dict[str, Callable[[JsonObject], None]] = {
+            "toggle_thinking": self._toggle_thinking,
+            "reset_context": self._reset_context,
+            "reset_module": self._reset_module,
+            "set_visibility_mode": self._set_visibility_mode,
+            "request_shutdown": self._request_shutdown,
+            "request_model_options": self._request_model_options,
+            "request_microphone_options": self._request_microphone_options,
+            "save_config_selection": self._save_config_selection,
+        }
+        handler = handlers.get(command)
+        if handler is None:
             raise ProtocolError(f"unsupported control command: {command}")
+        handler(arguments)
+
+    def _toggle_thinking(self, arguments: JsonObject) -> None:
+        del arguments
+        self._control_api.toggle_thinking()
+
+    def _reset_context(self, arguments: JsonObject) -> None:
+        del arguments
+        self._control_api.reset_context()
+
+    def _reset_module(self, arguments: JsonObject) -> None:
+        module_id = arguments.get("module_id")
+        if not isinstance(module_id, str):
+            raise ProtocolError("reset_module requires arguments.module_id")
+        self._control_api.reset_module(module_id)
+
+    def _set_visibility_mode(self, arguments: JsonObject) -> None:
+        mode = arguments.get("mode")
+        if not isinstance(mode, str):
+            raise ProtocolError("set_visibility_mode requires arguments.mode")
+        self._control_api.set_visibility_mode(mode)
+
+    def _request_shutdown(self, arguments: JsonObject) -> None:
+        del arguments
+        self._control_api.request_shutdown()
+
+    def _request_model_options(self, arguments: JsonObject) -> None:
+        del arguments
+        self._control_api.request_model_options()
+
+    def _request_microphone_options(self, arguments: JsonObject) -> None:
+        del arguments
+        self._control_api.request_microphone_options()
+
+    def _save_config_selection(self, arguments: JsonObject) -> None:
+        model = arguments.get("model")
+        microphone = arguments.get("microphone")
+        if not isinstance(model, str) or not isinstance(microphone, str):
+            raise ProtocolError(
+                "save_config_selection requires string model and microphone arguments"
+            )
+        self._control_api.save_config_selection(model, microphone)
 
     @staticmethod
     async def _close_with_error(

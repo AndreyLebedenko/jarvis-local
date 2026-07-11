@@ -34,6 +34,11 @@ select = [
     "UP",
     "W",
 ]
+ignore = [
+    # Jarvis intentionally contains Russian runtime, dialog, and test strings.
+    # RUF001 reports high-volume false positives on legitimate Cyrillic data.
+    "RUF001",
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

@@ -2,7 +2,6 @@ import base64
 import json
 
 import httpx
-import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings

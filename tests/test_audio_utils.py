@@ -41,9 +41,8 @@ def test_audio_utils_has_no_other_project_module_imports():
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imported_top_level_names.add(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and node.level == 0:
-                imported_top_level_names.add(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            imported_top_level_names.add(node.module.split(".")[0])
 
     coupled = imported_top_level_names & _OTHER_PROJECT_MODULES
     assert not coupled, f"audio_utils.py imports other project modules: {coupled}"

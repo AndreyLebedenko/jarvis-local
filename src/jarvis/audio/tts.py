@@ -52,14 +52,14 @@ import sounddevice as sd
 import soundfile as sf
 from num2words import num2words
 
-from jarvis.audio.utils import samples_to_wav_bytes
-from jarvis.core.config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
-from jarvis.dialog.backend import ResponseComplete, ResponseToken
 from jarvis.audio.language_segments import (
     DEFAULT_LANGUAGE,
     ENGLISH,
     CharsetLanguageStream,
 )
+from jarvis.audio.utils import samples_to_wav_bytes
+from jarvis.core.config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
+from jarvis.dialog.backend import ResponseComplete, ResponseToken
 
 logger = logging.getLogger(__name__)
 

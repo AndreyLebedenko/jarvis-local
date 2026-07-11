@@ -46,7 +46,7 @@ class EventBus:
             return_exceptions=True,
         )
         cancelled: asyncio.CancelledError | None = None
-        for handler, result in zip(handlers, results):
+        for handler, result in zip(handlers, results, strict=False):
             if isinstance(result, asyncio.CancelledError):
                 cancelled = cancelled or result
                 continue

@@ -37,10 +37,12 @@ class _AlwaysSpeechModel:
 
 
 def test_a1_fixtures_internal_breath_pause_is_merged_by_default(vad_model):
-    """a1.wav is a synthetic TTS fixture with an internal pause (Silero returns it as two raw
-    segments). With the default request_end_pause_seconds (2.0 s), that
-    pause is a mid-request breath, not the end of the request, so it must
-    be merged into a single utterance."""
+    """a1.wav is a synthetic TTS fixture with an internal pause.
+
+    Silero returns it as two raw segments. With the default
+    request_end_pause_seconds (2.0 s), that pause is a mid-request breath,
+    not the end of the request, so it must be merged into a single utterance.
+    """
     samples = read_audio("audio/a1.wav", sampling_rate=SAMPLE_RATE)
     chunker = VadChunker(VadSettings(), model=vad_model)
 
@@ -522,7 +524,11 @@ async def test_sleep_resets_buffer_so_pre_sleep_audio_never_merges_with_post_wak
     for expected_count in range(4, 9):
         await _wait_until_read_pending(fake_stream)
         fake_stream.release_next_read()
-        await _wait_until(lambda: fake_stream.read_calls >= expected_count)
+        await _wait_until(
+            lambda expected_count=expected_count: (
+                fake_stream.read_calls >= expected_count
+            )
+        )
         if received:
             break
 
@@ -591,7 +597,8 @@ async def test_data_read_across_a_pause_is_discarded_not_published(vad_model):
     await _wait_until_read_pending(fake_stream)
 
     await audio_input.auto_pause_for_speech()
-    fake_stream.release_next_read()  # speech + confirming silence arrive across the pause
+    # Speech + confirming silence arrive across the pause.
+    fake_stream.release_next_read()
     await _wait_until(
         lambda: fake_stream.stop_calls >= 1,
         message="loop never reached the pause branch",
@@ -824,7 +831,7 @@ async def test_auto_pause_does_not_wake_a_user_requested_sleep():
     assert audio_input.is_awake is False  # still asleep - the user never asked to wake
 
 
-async def test_user_toggle_during_auto_pause_reflects_intent_not_current_capture_state():
+async def test_user_toggle_during_auto_pause_keeps_user_intent():
     """Regression for the other half of the same P1 bug: pressing the
     privacy hotkey while auto-paused (e.g. mid-speech) must register
     the user's actual request, not get reinterpreted based on whatever

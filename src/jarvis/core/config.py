@@ -252,7 +252,7 @@ def _matches_type(value: Any, expected_type: type) -> bool:
     if isinstance(value, bool):
         return expected_type is bool
     if expected_type is float:
-        return isinstance(value, (int, float))
+        return isinstance(value, int | float)
     return isinstance(value, expected_type)
 
 

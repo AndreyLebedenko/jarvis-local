@@ -464,7 +464,9 @@ class StatusConsoleApi:
                 self._logger,
                 source="ENGINE",
                 level=EventLevel.WARN,
-                log_message="Failed to enumerate Ollama models; degrading to current value",
+                log_message=(
+                    "Failed to enumerate Ollama models; degrading to current value"
+                ),
                 ui_message=ui_text("model_options_failed", self._language),
             )
             options = []
@@ -531,7 +533,8 @@ class StatusConsoleApi:
             source="ENGINE",
             level=EventLevel.INFO,
             log_message=(
-                f"Config menu saved (model={model!r}, microphone={microphone_device!r}); "
+                "Config menu saved "
+                f"(model={model!r}, microphone={microphone_device!r}); "
                 "restart to apply"
             ),
             ui_message=ui_text("config_saved_restart_to_apply", self._language),

@@ -2,8 +2,8 @@ import logging
 
 import soundfile as sf
 
-from jarvis.core.config import SoundCueSettings
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.core.config import SoundCueSettings
 
 
 def _settings_in(tmp_path) -> SoundCueSettings:

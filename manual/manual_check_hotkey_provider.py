@@ -11,6 +11,7 @@ dispatch. Press Ctrl+C in the owning terminal to stop and unregister it.
 
 import sys
 import threading
+from contextlib import suppress
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -44,7 +45,5 @@ if __name__ == "__main__":
         raise SystemExit(
             "usage: python manual/manual_check_hotkey_provider.py <binding>"
         )
-    try:
+    with suppress(KeyboardInterrupt):
         main(sys.argv[1])
-    except KeyboardInterrupt:
-        pass

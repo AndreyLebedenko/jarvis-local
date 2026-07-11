@@ -5,18 +5,18 @@ import types
 
 import pytest
 
+import manual.manual_check_status_console as manual_check
+from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings
-import manual.manual_check_status_console as manual_check
+from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
+from jarvis.ui.status_console import StatusConsoleApi
+from jarvis.ui.visibility import VisibilityModeState
 from manual.manual_check_status_console import (
     DemoContext,
     _run_demo_cycle_async,
 )
-from jarvis.ui.status_console import StatusConsoleApi
-from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
-from jarvis.ui.visibility import VisibilityModeState
-from jarvis.dialog.thinking_mode import ThinkingModeState
-from jarvis.app import ConversationHistory
 
 
 class _FakeTransport:

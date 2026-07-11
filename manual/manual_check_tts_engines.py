@@ -19,7 +19,8 @@ side.
 
 Usage examples:
   python manual/manual_check_tts_engines.py
-  python manual/manual_check_tts_engines.py --piper-model D:\\voices\\en_US-lessac-medium.onnx
+  python manual/manual_check_tts_engines.py
+    --piper-model D:\\voices\\en_US-lessac-medium.onnx
   python manual/manual_check_tts_engines.py --kokoro-model D:\\models\\kokoro-v1.0.onnx
   python manual/manual_check_tts_engines.py --xtts-model-path D:\\models\\xtts_v2
 
@@ -40,9 +41,9 @@ import subprocess
 import sys
 import time
 import wave
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable
 
 import sounddevice as sd
 import soundfile as sf
@@ -52,16 +53,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings, Settings, load_settings
+from jarvis.core.config import Settings, load_settings
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
     ResponseComplete,
     ResponseToken,
 )
-from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
 
 BACKEND_PROBE_PROMPT = "Ответь одним коротким предложением: проверка готова?"
 TOKEN_DELAY_SECONDS = 0.05
@@ -215,7 +216,7 @@ class VramSampler:
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
 
-    async def __aenter__(self) -> "VramSampler":
+    async def __aenter__(self) -> VramSampler:
         values = _query_gpu_memory_used_mib()
         if values:
             self._baseline_mib = max(values)
@@ -244,7 +245,7 @@ class VramSampler:
                 await asyncio.wait_for(
                     self._stop.wait(), timeout=self._interval_seconds
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
 
@@ -610,7 +611,8 @@ async def main() -> None:
     print(f"backend.kv_cache_type = {settings.backend.kv_cache_type or 'unset'}")
     print(f"token_delay_seconds = {TOKEN_DELAY_SECONDS}")
     print(
-        "Run this script once with kv_cache_type=f16 and once with kv_cache_type=q8_0 to compare the cache profiles.\n"
+        "Run this script once with kv_cache_type=f16 and once with "
+        "kv_cache_type=q8_0 to compare the cache profiles.\n"
     )
 
     backend_result = await run_backend_probe(settings)

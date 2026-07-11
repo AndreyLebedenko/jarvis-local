@@ -125,9 +125,8 @@ async def test_cancelled_subscriber_is_not_logged_as_failure_and_propagates(capl
     bus.subscribe("evt", cancelled_handler)
     bus.subscribe("evt", ok)
 
-    with caplog.at_level(logging.ERROR):
-        with pytest.raises(asyncio.CancelledError):
-            await bus.publish("evt", "payload")
+    with caplog.at_level(logging.ERROR), pytest.raises(asyncio.CancelledError):
+        await bus.publish("evt", "payload")
 
     assert received == ["payload"]
     assert not any(r.levelno >= logging.ERROR for r in caplog.records)
@@ -157,9 +156,8 @@ def test_bus_has_no_project_import_dependencies():
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imported_top_level_names.add(alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and node.level == 0:
-                imported_top_level_names.add(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            imported_top_level_names.add(node.module.split(".")[0])
 
     non_stdlib = imported_top_level_names - set(sys.stdlib_module_names)
     assert not non_stdlib, f"jarvis.core.bus imports non-stdlib modules: {non_stdlib}"
