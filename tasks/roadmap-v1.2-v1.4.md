@@ -348,6 +348,33 @@ Boundary:
 Story/task readiness: story complete; all v1.2.10 task cards are under
 `tasks/done/`.
 
+## v1.2.14 - UI state foundation
+
+Purpose: extract the engine-side prerequisites of the v1.3.0 Control
+Center per its "no new engine architecture" boundary, combining two
+entropy-review debts with the deferred ModuleHealth question.
+
+Scope:
+
+- Complete `tasks/story-v1.2.14-ui-state-foundation.md`:
+  - `RuntimeStateTracker`: one owner for every RuntimeState transition,
+    no busy-guard duplication in wire closures;
+  - `ModuleHealthChanged` bus events from authoritative signals only
+    (backend warm-up/request outcomes, TTS route load/synthesis outcomes,
+    vision capture outcomes, existing microphone state) folded into the
+    transport snapshot; unknown-before-first-signal, never fake OK;
+  - capability-based surface contract replacing the TouchstripWindow
+    NotImplementedError overrides.
+
+Boundary:
+
+- Engine and contract work only; no UI panels, no visual changes.
+- No polling/probes and no CPU/GPU/RAM telemetry (dropped from v1.3.0 by
+  explicit decision, not moved here).
+- Memory module gets no health source (no engine implementation).
+
+Story/task readiness: story and task cards exist.
+
 ## v1.3.0 - Control Center
 
 Purpose: deliver the full UI/control release on top of already-built engine
@@ -362,6 +389,8 @@ Prerequisites:
 - Hotkeys use the unified provider path.
 - v1.2.10 UI transport is complete: all surfaces on the local HTTP+WS
   server, `evaluate_js`/`js_api` bridge removed.
+- v1.2.14 UI state foundation is complete: RuntimeStateTracker, module
+  health events, capability-based surface contract.
 
 Scope:
 
@@ -384,8 +413,11 @@ Boundary:
   new architectural dependency appears, move it back into a v1.2.x preparation
   release.
 
-Story/task readiness: deferred to `tasks/backlog/`. The previous task-card
-sequence was removed; replan the story before implementation.
+Story/task readiness: replanned 2026-07-11. Story and task cards exist
+(`tasks/story-v1.3.0-control-center.md`, tasks 1-4); product decisions
+recorded in the story header: Control Center evolves the existing Status
+Console page, telemetry and memory panels dropped, health foundation in
+v1.2.14. Task 1 (IA document) may run in parallel with v1.2.14.
 
 ## v1.4.0 - MCP integration
 

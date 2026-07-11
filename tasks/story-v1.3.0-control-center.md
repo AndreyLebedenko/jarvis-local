@@ -1,6 +1,11 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Backlog, deferred. Task cards removed pending future replanning.
+**Status:** Planned, blocked by v1.2.14 UI State Foundation.
+**Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
+fixed by the human: Control Center is an evolution of the existing Status
+Console page (not a separate page); module health foundation moves to the
+v1.2.14 prep release; CPU/GPU/RAM telemetry is dropped from this release;
+the mock-up's memory/vector-store panel is dropped (no engine capability).
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.3.0
 
@@ -41,6 +46,11 @@ layering, TTS engine choices, and unified hotkeys.
       complete: local HTTP+WebSocket server bound to loopback, registration
       handshake in protocol v1, Status Console and touchstrip migrated from
       the `evaluate_js` bridge to the WS channels.
+- [ ] v1.2.14 UI State Foundation
+      (`tasks/story-v1.2.14-ui-state-foundation.md`) is complete:
+      RuntimeStateTracker owns state transitions, authoritative module
+      health events exist for backend/TTS/vision/microphone, and the
+      surface contract is capability-based.
 
 ## Acceptance Criteria
 
@@ -56,10 +66,25 @@ layering, TTS engine choices, and unified hotkeys.
 
 ## Task Card Sequence
 
-No active task-card sequence. The previous decomposition was removed when
-the story was deferred because it encoded unresolved product and architecture
-decisions. Create a new sequence only after the story is reconsidered and its
-boundaries are made implementable.
+Replanned 2026-07-11 with the product decisions above fixed and the
+architecture gaps moved to v1.2.14.
+
+1. Control Center information architecture
+   (`story-v1.3.0-task-1-control-center-ia.md`).
+   Map every dashboard-v3 mock-up element to real state or drop it
+   visibly; decide desktop vs touchstrip placement; reserve the
+   dangerous-capabilities slot.
+2. Configuration iteration 2
+   (`story-v1.3.0-task-2-configuration-iteration-2.md`).
+   Per-language TTS engine/model, UI language, VAD settings - all backed
+   by existing config contracts, restart-to-apply preserved.
+3. Modules panel and data axes
+   (`story-v1.3.0-task-3-modules-panel-and-data-axes.md`).
+   Data-driven modules panel over v1.2.14 health events; extensible
+   data-source badge; data-presence from real events only.
+4. Consolidated visual/manual QA
+   (`story-v1.3.0-task-4-visual-manual-qa.md`).
+   Desktop (WebView2 and Chrome), touchstrip, Open/Hidden, config flows.
 
 ## Stop Conditions
 

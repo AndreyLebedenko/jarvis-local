@@ -1,7 +1,12 @@
 # Task: Replace TouchstripWindow NotImplementedError overrides with capability composition
 
-**Status:** Backlog.
+**Story:** `tasks/story-v1.2.14-ui-state-foundation.md`
+**Status:** Planned. Runs after task 2 so the capability split can also
+route the new health events per surface.
+**Release:** v1.2.14
 **Origin:** Entropy-review of v1.2.4/v1.2.5 code (2026-07-09).
+**Note:** file references below predate the src/jarvis package move;
+resolve them against the current layout.
 
 ## Summary
 
