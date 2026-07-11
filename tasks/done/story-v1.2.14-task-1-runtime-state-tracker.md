@@ -1,7 +1,7 @@
 # Task: Single owner for Status Console runtime state
 
 **Story:** `tasks/story-v1.2.14-ui-state-foundation.md`
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.2.14
 **Origin:** Entropy-review of v1.2.4/v1.2.5 code (2026-07-09).
 **Note:** file references below predate the src/jarvis package move;
@@ -30,8 +30,15 @@ renders `RuntimeStateChanged` only; no push logic in `wire()` closures.
 
 ## Acceptance criteria
 
-- [ ] One module owns every RuntimeState transition.
-- [ ] `wire()`/`wire_status_console()` contain no busy-guard duplication.
-- [ ] Existing runtime-state regression tests still pass (stuck-orb test,
+- [x] One module owns every RuntimeState transition.
+- [x] `wire()`/`wire_status_console()` contain no busy-guard duplication.
+- [x] Existing runtime-state regression tests still pass (stuck-orb test,
       dedup test).
-- [ ] `python -m pytest` passes.
+- [x] `python -m pytest` passes.
+
+## Verification record
+
+- Automated: 537 passed, Ruff clean (2026-07-11).
+- Manual (human-run, 2026-07-11): live `python -m jarvis --status-console`
+  session with five full turn cycles, mic sleep/wake, busy rejection,
+  no SPEAKING flash during warm-up, clean Status Console shutdown.
