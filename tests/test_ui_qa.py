@@ -39,6 +39,7 @@ def test_every_status_console_ui_file_is_covered_by_the_network_asset_scan():
         "touchstrip.css",
         "touchstrip.html",
         "touchstrip.js",
+        "transport.js",
     }
     assert found == expected
 

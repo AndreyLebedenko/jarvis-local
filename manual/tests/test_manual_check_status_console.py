@@ -1,114 +1,93 @@
 import asyncio
+import logging
+import sys
+import types
 
 import pytest
 
 from bus import EventBus
-from manual.manual_check_status_console import DemoContext, _run_demo_cycle_async
-from thinking_mode import ThinkingModeState, ThinkingModeToggled
-from ui_contract import VisibilityMode
-from visibility_mode import VisibilityModeChanged, VisibilityModeState
+from config import Settings
+import manual.manual_check_status_console as manual_check
+from manual.manual_check_status_console import (
+    DemoContext,
+    _run_demo_cycle_async,
+)
+from status_console import StatusConsoleApi
+from ui_contract import EventLevel, RuntimeState, SystemEvent
+from visibility_mode import VisibilityModeState
+from thinking_mode import ThinkingModeState
+from main import ConversationHistory
 
 
-class _FakeApi:
-    def set_loop(self, loop) -> None:
-        pass
-
-
-class _FakeConsole:
-    """Records every push_*() call - lets a test catch a missing bus
-    subscription in _run_demo_cycle_async without a real pywebview window,
-    the exact bug class code review caught here: VisibilityModeChanged was
-    published but nothing subscribed push_visibility_mode() to it, so a
-    real click never reflected back into the UI even though the state
-    change and SystemEvent were both real."""
-
+class _FakeTransport:
     def __init__(self) -> None:
-        self.visibility_calls: list[VisibilityMode] = []
-        self.thinking_calls: list[bool] = []
+        self.runtime_states: list[RuntimeState] = []
 
-    def push_visibility_mode(self, mode: VisibilityMode) -> None:
-        self.visibility_calls.append(mode)
+    def set_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
+        del substatus
+        self.runtime_states.append(state)
 
-    def push_thinking_mode(self, is_enabled: bool) -> None:
-        self.thinking_calls.append(is_enabled)
 
-    def push_system_event(self, event) -> None:
+class _FakeWindow:
+    def destroy(self) -> None:
         pass
 
-    def push_model_label(self, label: str) -> None:
-        pass
-
-    def push_module_health(self, health) -> None:
-        pass
-
-    def push_data_locality(self, locality) -> None:
-        pass
-
-    def push_runtime_state(self, state, substatus=None) -> None:
-        pass
+    def load_url(self, url: str) -> None:
+        self.url = url
 
 
-async def test_visibility_mode_change_is_pushed_back_to_both_windows():
+@pytest.mark.asyncio
+async def test_demo_cycle_uses_transport_and_publishes_real_system_events():
     bus = EventBus()
-    console = _FakeConsole()
-    touchstrip = _FakeConsole()
-    ctx = DemoContext(
-        console=console,
-        touchstrip=touchstrip,
-        api=_FakeApi(),
+    events: list[SystemEvent] = []
+
+    async def on_system_event(event: SystemEvent) -> None:
+        events.append(event)
+
+    bus.subscribe(SystemEvent, on_system_event)
+    shutdown_event = asyncio.Event()
+    api = StatusConsoleApi(
+        thinking_mode=ThinkingModeState(bus),
+        history=ConversationHistory(),
         bus=bus,
-        thinking_mode=ThinkingModeState(bus=bus),
-        visibility_mode=VisibilityModeState(bus=bus),
+        logger=logging.getLogger(__name__),
+        visibility_mode=VisibilityModeState(bus),
+    )
+    transport = _FakeTransport()
+    context = DemoContext(
+        api=api,
+        bus=bus,
+        transport=transport,
+        shutdown_event=shutdown_event,
     )
 
-    task = asyncio.create_task(_run_demo_cycle_async(ctx))
-    try:
-        await asyncio.sleep(0.05)  # let it subscribe and do its startup pushes
-        console.visibility_calls.clear()  # ignore the initial push_visibility_mode(OPEN)
-        touchstrip.visibility_calls.clear()
+    task = asyncio.create_task(_run_demo_cycle_async(context))
+    await asyncio.sleep(0.05)
+    shutdown_event.set()
+    await task
 
-        await bus.publish(VisibilityModeChanged, VisibilityModeChanged(mode=VisibilityMode.HIDDEN))
-        await asyncio.sleep(0.05)
-
-        assert console.visibility_calls == [VisibilityMode.HIDDEN]
-        assert touchstrip.visibility_calls == [VisibilityMode.HIDDEN]
-    finally:
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+    assert transport.runtime_states
+    assert transport.runtime_states[0] is RuntimeState.IDLE
+    assert events
+    assert events[0].level is EventLevel.INFO
 
 
-async def test_thinking_mode_toggle_is_pushed_back_to_both_windows():
-    """Same wiring check as above, for the sibling subscription that was
-    already correct - regression coverage for both, not just the one the
-    review found missing. Also covers task-ui-06: both windows share one
-    StatusConsoleApi/ThinkingModeState, so a toggle from either surface
-    must reach both."""
-    bus = EventBus()
-    console = _FakeConsole()
-    touchstrip = _FakeConsole()
-    thinking_mode = ThinkingModeState(bus=bus)
-    ctx = DemoContext(
-        console=console,
-        touchstrip=touchstrip,
-        api=_FakeApi(),
-        bus=bus,
-        thinking_mode=thinking_mode,
-        visibility_mode=VisibilityModeState(bus=bus),
+def test_manual_main_creates_windows_before_starting_pywebview(monkeypatch):
+    created_windows: list[dict[str, object]] = []
+
+    def create_window(**kwargs):
+        created_windows.append(kwargs)
+        return _FakeWindow()
+
+    def start(callback) -> None:
+        del callback
+        assert len(created_windows) == 2
+
+    monkeypatch.setattr(manual_check, "load_settings", lambda: Settings())
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        types.SimpleNamespace(create_window=create_window, start=start),
     )
 
-    task = asyncio.create_task(_run_demo_cycle_async(ctx))
-    try:
-        await asyncio.sleep(0.05)
-        console.thinking_calls.clear()  # ignore the initial push_thinking_mode(False)
-        touchstrip.thinking_calls.clear()
-
-        await bus.publish(ThinkingModeToggled, ThinkingModeToggled(is_enabled=True))
-        await asyncio.sleep(0.05)
-
-        assert console.thinking_calls == [True]
-        assert touchstrip.thinking_calls == [True]
-    finally:
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+    manual_check.main()

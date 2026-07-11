@@ -1192,6 +1192,32 @@ mic-window-before-autopause.md`), tracked as Roadmap item 7. No code
 change made for that part; this session's fix is scoped to the stuck-orb
 symptom only.
 
+## Architecture v1.2.10 (UI transport)
+
+v1.2.10 replaces the in-process pywebview UI bridge with one local transport
+owned by the engine's asyncio loop:
+
+- `ui_transport.py` runs an `aiohttp` HTTP+WebSocket server on `127.0.0.1`
+  and port `0` (an ephemeral port). Startup issues one process-local token;
+  the initial UI URL carries it and each WebSocket URL presents it again.
+- Protocol v1 uses the envelope `{protocol, channel, type, payload}`.
+  `control/hello` declares client identity and capabilities; the server
+  replies with `control/hello_ack` and a complete `state/snapshot`.
+  Subsequent state changes are `state/delta` messages. The implemented
+  channels are `state` and `control`; the envelope reserves channel
+  multiplexing for later audio work.
+- The state projection contains runtime state, module health, data locality,
+  model label, recent system events, thinking mode, visibility mode, and the
+  existing configuration-menu values. Control commands call the existing
+  `StatusConsoleApi` paths; the transport does not add engine behavior.
+- `status_console_ui/transport.js` is the shared browser client. The desktop
+  console identifies as `status-console`; the touchstrip identifies as
+  `touchstrip`. `pywebview` now remains only a window shell that opens the
+  server URL; all UI state and controls use the WebSocket.
+- Listening on loopback is local IPC, not outbound network access. The
+  runtime locality guarantee is unchanged: Jarvis requires no network access
+  beyond the configured local Ollama endpoint.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

@@ -2,7 +2,6 @@
 
 import asyncio
 import concurrent.futures
-import json
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
@@ -115,21 +114,21 @@ def options_payload(options: list[str], current: str) -> dict:
 class WindowLike(Protocol):
     """Shape of the pywebview window object used by StatusConsoleWindow."""
 
-    def evaluate_js(self, script: str) -> object: ...
     def destroy(self) -> None: ...
+    def load_url(self, url: str) -> None: ...
 
 
 WindowFactory = Callable[..., WindowLike]
 
 
 class StatusConsoleWindow:
-    """Owns one pywebview window and pushes typed UI payloads into it."""
+    """Owns one pywebview window shell for a transport-served UI surface."""
 
     def __init__(
         self,
         window_factory: WindowFactory | None = None,
         title: str = "Jarvis - Status Console",
-        url: Path = INDEX_HTML,
+        url: str | Path = INDEX_HTML,
         width: int = 960,
         height: int = 640,
         min_size: tuple[int, int] = (480, 420),
@@ -153,25 +152,23 @@ class StatusConsoleWindow:
 
     def create(
         self,
-        js_api: object | None = None,
         on_closed: Callable[[], None] | None = None,
+        url: str | Path | None = None,
     ) -> WindowLike:
         self._window = self._window_factory(
             title=self._title,
-            url=str(self._url),
+            url=str(self._url if url is None else url),
             width=self._width,
             height=self._height,
             min_size=self._min_size,
             resizable=self._resizable,
-            js_api=js_api,
         )
         self._hook_native_closed(on_closed)
         return self._window
 
     def _hook_native_closed(self, on_closed: Callable[[], None] | None) -> None:
         """Marks this surface closed when the user closes the real window
-        (title-bar X), so later push_*() calls become safe no-ops instead
-        of evaluate_js() calls into a destroyed window - and optionally
+        (title-bar X), so the shell can notify the engine and optionally
         forwards the close to a callback (main.py routes the desktop
         console's close into the engine's clean shutdown path). Fake
         windows in tests have no `.events`, so this is getattr-guarded."""
@@ -187,36 +184,6 @@ class StatusConsoleWindow:
 
         closed_event += handle_closed
 
-    def push_runtime_state(self, state: RuntimeState, substatus: str | None = None) -> None:
-        self._evaluate("applyRuntimeState", runtime_state_payload(state, substatus))
-
-    def push_module_health(self, health: ModuleHealth) -> None:
-        self._evaluate("applyModuleHealth", module_health_payload(health))
-
-    def push_data_locality(self, locality: DataLocality) -> None:
-        self._evaluate("applyDataLocality", data_locality_payload(locality))
-
-    def push_model_label(self, label: str) -> None:
-        self._evaluate("applyModelLabel", {"label": label})
-
-    def push_system_event(self, event: SystemEvent) -> None:
-        self._evaluate("appendSystemEvent", system_event_payload(event))
-
-    def push_thinking_mode(self, is_enabled: bool) -> None:
-        self._evaluate("applyThinkingMode", thinking_mode_payload(is_enabled))
-
-    def push_visibility_mode(self, mode: VisibilityMode) -> None:
-        self._evaluate("applyVisibilityMode", visibility_mode_payload(mode))
-
-    def push_model_options(self, options: list[str], current: str) -> None:
-        self._evaluate("applyModelOptions", options_payload(options, current))
-
-    def push_microphone_options(self, options: list[str], current: str) -> None:
-        self._evaluate("applyMicrophoneOptions", options_payload(options, current))
-
-    def push_pending_restart(self, pending: bool) -> None:
-        self._evaluate("applyPendingRestart", {"pending": pending})
-
     def close(self) -> None:
         window, self._window = self._window, None
         self._closed = True
@@ -224,13 +191,12 @@ class StatusConsoleWindow:
             return
         window.destroy()
 
-    def _evaluate(self, js_function: str, payload: dict) -> None:
+    def load_url(self, url: str) -> None:
         if self._closed:
-            return  # window already closed by the user or by shutdown
+            return
         if self._window is None:
-            raise RuntimeError("create() must be called before pushing state")
-        self._window.evaluate_js(f"{js_function}({json.dumps(payload)})")
-
+            raise RuntimeError("create() must be called before load_url()")
+        self._window.load_url(url)
 
 class TouchstripWindow(StatusConsoleWindow):
     """Compact Status Console surface for touchstrip-sized displays."""
@@ -245,32 +211,6 @@ class TouchstripWindow(StatusConsoleWindow):
             min_size=(900, 230),
             resizable=False,
         )
-
-    def push_system_event(self, event: SystemEvent) -> None:
-        raise NotImplementedError(
-            "TouchstripWindow has no system events panel by design (Scope: "
-            "'No dense event log on touchstrip') - push_system_event() is "
-            "only valid on the desktop StatusConsoleWindow."
-        )
-
-    def push_model_options(self, options: list[str], current: str) -> None:
-        raise NotImplementedError(
-            "TouchstripWindow has no configuration menu by design - "
-            "push_model_options() is only valid on the desktop StatusConsoleWindow."
-        )
-
-    def push_microphone_options(self, options: list[str], current: str) -> None:
-        raise NotImplementedError(
-            "TouchstripWindow has no configuration menu by design - "
-            "push_microphone_options() is only valid on the desktop StatusConsoleWindow."
-        )
-
-    def push_pending_restart(self, pending: bool) -> None:
-        raise NotImplementedError(
-            "TouchstripWindow has no configuration menu by design - "
-            "push_pending_restart() is only valid on the desktop StatusConsoleWindow."
-        )
-
 
 class ClearableHistory(Protocol):
     """Shape StatusConsoleApi.reset_context() relies on."""

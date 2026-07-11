@@ -185,7 +185,7 @@ body {
 .chip-reset:hover { color: var(--cyan); border-color: var(--cyan-dim); background: var(--cyan-tint); }
 
 /* task-ui-04: Think toggle. Clicking calls toggleThinking() (app.js), which
-   only requests a toggle via pywebview's js_api - the switch's visual state
+   only requests a toggle via the local control channel - the switch's visual state
    changes only when applyThinkingMode() is called back from the real
    ThinkingModeToggled event, never optimistically on click. */
 .think-card {
@@ -301,6 +301,24 @@ body {
   padding: 18px 16px;
   overflow-y: auto;
   display: flex; flex-direction: column;
+}
+
+.transport-status {
+  display: none;
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  padding: 6px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  color: var(--amber);
+  background: rgba(10, 14, 20, 0.92);
+  font: 12px Consolas, monospace;
+}
+
+html[data-transport="offline"] .transport-status {
+  display: block;
 }
 .log-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
 .log-sub { font-size: 10.5px; color: var(--text-faint); font-family: "Consolas", "Cascadia Mono", monospace; margin-bottom: 14px; }

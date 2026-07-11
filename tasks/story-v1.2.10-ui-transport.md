@@ -1,6 +1,6 @@
 # Story v1.2.10: UI Transport
 
-**Status:** Planned.
+**Status:** In progress - Task 5 pending.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.10
 **Vision:** `VISION.md`, section "Component Model (Jarvis 2.0 direction)".
@@ -32,8 +32,9 @@ protocol rewrite.
   a format change, but no audio work happens here.
 - No same-process or same-machine assumptions in the protocol design, while
   shipping loopback-only.
-- No visual changes to existing surfaces: the Status Console and touchstrip
-  must look and behave exactly as before the migration.
+- No visual changes to existing surfaces, except the explicit status-label and
+  action-button layout polish in Task 5: the Status Console and touchstrip
+  must otherwise look and behave exactly as before the migration.
 - The in-process event bus (`bus.py`) is unaffected. The server is a bus
   client that projects bus traffic to WS clients; Jarvis does not implement
   a distributed bus.
@@ -58,14 +59,16 @@ protocol rewrite.
 
 ## Task Card Sequence
 
-1. `story-v1.2.10-task-1-local-ws-server-and-protocol.md`
+1. `done/story-v1.2.10-task-1-local-ws-server-and-protocol.md`
    Local HTTP+WS server, protocol v1 (hello, state, control), token auth.
-2. `story-v1.2.10-task-2-status-console-migration.md`
+2. `done/story-v1.2.10-task-2-status-console-migration.md`
    Status Console becomes a WS client; pywebview reduced to a window shell.
-3. `story-v1.2.10-task-3-touchstrip-migration-and-bridge-removal.md`
+3. `done/story-v1.2.10-task-3-touchstrip-migration-and-bridge-removal.md`
    Touchstrip migrates; `evaluate_js`/`js_api` bridge code is deleted.
 4. `story-v1.2.10-task-4-manual-handoff-and-docs.md`
    Manual verification (real windows plus Chrome) and documentation updates.
+5. `story-v1.2.10-task-5-ui-cosmetic-polish.md`
+   Explicit Russian microphone-status wording and centered action-button layout.
 
 ## Stop Conditions
 

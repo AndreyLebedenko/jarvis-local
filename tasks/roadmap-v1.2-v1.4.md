@@ -301,6 +301,9 @@ created before coding.
 
 ## v1.2.10 - UI transport
 
+**Status:** Transport implementation and human visual/browser handoff complete;
+the explicitly requested Task 5 cosmetic polish remains pending.
+
 Purpose: move all UI surfaces onto one local HTTP+WebSocket transport as the
 architectural prerequisite for the v1.3.0 Control Center, aligned with the
 component-model direction in `VISION.md`.
@@ -312,8 +315,9 @@ Scope:
   ephemeral port, one-time token.
 - Protocol v1: hello/handshake with client capability declaration; `state`
   channel (snapshot plus deltas over `ui_contract.py` values); `control`
-  channel (think toggle, reset, shutdown, visibility). Envelope reserves
-  channel multiplexing for later audio channels.
+  channel (think toggle, reset, module reset, shutdown, visibility, and the
+  existing configuration-menu commands). Envelope reserves channel
+  multiplexing for later audio channels.
 - Status Console and touchstrip migrate to the WS transport with visual
   parity; the `evaluate_js`/`js_api` bridge is removed; pywebview remains a
   window shell opening the loopback URL.

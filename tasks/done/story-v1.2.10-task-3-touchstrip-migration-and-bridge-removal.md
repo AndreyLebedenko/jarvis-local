@@ -1,7 +1,7 @@
 # Task: Touchstrip migration and bridge removal
 
 **Story:** `tasks/story-v1.2.10-ui-transport.md`
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.2.10
 
 ## Summary

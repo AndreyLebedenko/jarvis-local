@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 
 import pytest
@@ -12,8 +11,6 @@ from status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
     StatusConsoleApi,
-    StatusConsoleWindow,
-    TouchstripWindow,
     UiConfigSaved,
     data_locality_payload,
     module_health_payload,
@@ -68,83 +65,6 @@ def test_data_locality_payload_shape():
     assert data_locality_payload(DataLocality.EXTERNAL) == {"locality": "external"}
 
 
-class _FakeWindow:
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-        self.destroy_calls = 0
-
-    def evaluate_js(self, script: str) -> None:
-        self.calls.append(script)
-
-    def destroy(self) -> None:
-        self.destroy_calls += 1
-
-
-def _fake_factory_returning(fake_window):
-    def factory(**kwargs):
-        factory.kwargs = kwargs
-        return fake_window
-
-    return factory
-
-
-def test_create_passes_index_html_url_and_no_hardcoded_model_name():
-    fake_window = _FakeWindow()
-    factory = _fake_factory_returning(fake_window)
-    console = StatusConsoleWindow(window_factory=factory)
-
-    console.create()
-
-    assert factory.kwargs["url"] == str(INDEX_HTML)
-    assert "gemma" not in json.dumps(factory.kwargs).lower()
-
-
-def test_push_runtime_state_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_runtime_state(RuntimeState.WARMING)
-
-    assert len(fake_window.calls) == 1
-    assert fake_window.calls[0].startswith("applyRuntimeState(")
-    payload = json.loads(fake_window.calls[0][len("applyRuntimeState("):-1])
-    assert payload["state"] == "warming"
-
-
-def test_push_module_health_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_module_health(ModuleHealth(module=ModuleId.VISION, status=HealthStatus.OK))
-
-    payload = json.loads(fake_window.calls[0][len("applyModuleHealth("):-1])
-    assert payload == {"module": "vision", "status": "ok", "detail": ""}
-
-
-def test_push_data_locality_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_data_locality(DataLocality.LOCAL)
-
-    payload = json.loads(fake_window.calls[0][len("applyDataLocality("):-1])
-    assert payload == {"locality": "local"}
-
-
-def test_push_model_label_evaluates_js_with_given_label():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_model_label("gemma4:12b-it-qat")
-
-    payload = json.loads(fake_window.calls[0][len("applyModelLabel("):-1])
-    assert payload == {"label": "gemma4:12b-it-qat"}
-
-
 def test_system_event_payload_shape():
     event = SystemEvent(
         timestamp=1234.5, source="WARMUP", level=EventLevel.WARN, message="слишком долго"
@@ -159,79 +79,8 @@ def test_system_event_payload_shape():
     }
 
 
-def test_push_system_event_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_system_event(
-        SystemEvent(timestamp=1.0, source="ENGINE", level=EventLevel.INFO, message="ready")
-    )
-
-    assert fake_window.calls[0].startswith("appendSystemEvent(")
-    payload = json.loads(fake_window.calls[0][len("appendSystemEvent("):-1])
-    assert payload["source"] == "ENGINE"
-    assert payload["level"] == "info"
-
-
-def test_pushing_state_before_create_raises():
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(_FakeWindow()))
-
-    with pytest.raises(RuntimeError):
-        console.push_runtime_state(RuntimeState.IDLE)
-
-
-def test_close_destroys_the_created_window_and_is_idempotent():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.close()
-    console.close()
-
-    assert fake_window.destroy_calls == 1
-    # Pushing after close is a safe no-op, never a call into a destroyed
-    # window: a closed window can also happen without our close() (the
-    # user's title-bar X), and engine events keep flowing either way.
-    console.push_runtime_state(RuntimeState.IDLE)
-    assert fake_window.calls == []
-
-
-def test_push_thinking_mode_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_thinking_mode(True)
-
-    payload = json.loads(fake_window.calls[0][len("applyThinkingMode("):-1])
-    assert payload == {"is_enabled": True}
-
-
-def test_create_passes_js_api_through_to_the_window_factory():
-    fake_window = _FakeWindow()
-    factory = _fake_factory_returning(fake_window)
-    console = StatusConsoleWindow(window_factory=factory)
-    sentinel_api = object()
-
-    console.create(js_api=sentinel_api)
-
-    assert factory.kwargs["js_api"] is sentinel_api
-
-
 def test_visibility_mode_payload_shape():
     assert visibility_mode_payload(VisibilityMode.HIDDEN) == {"mode": "hidden"}
-
-
-def test_push_visibility_mode_evaluates_js_with_contract_payload():
-    fake_window = _FakeWindow()
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create()
-
-    console.push_visibility_mode(VisibilityMode.OPEN)
-
-    payload = json.loads(fake_window.calls[0][len("applyVisibilityMode("):-1])
-    assert payload == {"mode": "open"}
 
 
 # --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
@@ -247,8 +96,8 @@ class _FakeHistory:
 
 async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     """Chicken-and-egg ordering (see StatusConsoleApi's docstring):
-    pywebview.create_window(js_api=...) needs this object before the real
-    asyncio loop exists. Nothing should raise, and nothing should happen,
+    the control client may send a command before the real asyncio loop exists.
+    Nothing should raise, and nothing should happen,
     until set_loop() runs."""
     thinking_mode = ThinkingModeState(bus=EventBus())
     api = StatusConsoleApi(
@@ -650,21 +499,6 @@ def test_options_payload_shape():
     assert options_payload(["a", "b"], "a") == {"options": ["a", "b"], "current": "a"}
 
 
-def test_touchstrip_config_menu_pushes_are_not_implemented():
-    """Config menu is desktop-only (Scope decision, mirrors push_system_
-    event()'s existing touchstrip exclusion) - touchstrip.js has none of
-    these functions to call."""
-    touchstrip = TouchstripWindow(window_factory=_fake_factory_returning(_FakeWindow()))
-    touchstrip.create()
-
-    with pytest.raises(NotImplementedError):
-        touchstrip.push_model_options(["m"], "m")
-    with pytest.raises(NotImplementedError):
-        touchstrip.push_microphone_options(["d"], "d")
-    with pytest.raises(NotImplementedError):
-        touchstrip.push_pending_restart(True)
-
-
 async def test_request_model_options_publishes_current_plus_fetched_options():
     bus = EventBus()
     received: list[ModelOptionsAvailable] = []
@@ -1046,58 +880,6 @@ def test_touchstrip_js_ignores_shutdown_hold_after_first_request():
     assert "_shutdownRequested = true;" in body
 
 
-class _FakeClosedEvent:
-    def __init__(self) -> None:
-        self.handlers = []
-
-    def __iadd__(self, handler):
-        self.handlers.append(handler)
-        return self
-
-    def fire(self) -> None:
-        for handler in list(self.handlers):
-            handler()
-
-
-class _FakeEvents:
-    def __init__(self) -> None:
-        self.closed = _FakeClosedEvent()
-
-
-class _FakeWindowWithEvents(_FakeWindow):
-    def __init__(self) -> None:
-        super().__init__()
-        self.events = _FakeEvents()
-
-
-def test_native_window_close_makes_pushes_no_ops_and_fires_callback():
-    """The user's title-bar X was previously invisible to this class: every
-    later push_*() called evaluate_js() on a destroyed window, and the
-    engine kept running headless with no shutdown trigger."""
-    fake_window = _FakeWindowWithEvents()
-    closed_calls = []
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-    console.create(on_closed=lambda: closed_calls.append(True))
-
-    fake_window.events.closed.fire()
-
-    assert closed_calls == [True]
-    console.push_runtime_state(RuntimeState.IDLE)  # safe no-op, not evaluate_js
-    assert fake_window.calls == []
-    console.close()  # must not destroy() a window the user already closed
-    assert fake_window.destroy_calls == 0
-
-
-def test_windows_without_native_close_events_are_still_supported():
-    fake_window = _FakeWindow()  # no .events at all, like every other fake here
-    console = StatusConsoleWindow(window_factory=_fake_factory_returning(fake_window))
-
-    console.create(on_closed=lambda: None)
-    console.push_runtime_state(RuntimeState.IDLE)
-
-    assert len(fake_window.calls) == 1
-
-
 async def test_shutdown_click_before_engine_wiring_is_queued_not_dropped():
     """The window is clickable before run() reaches set_loop()/
     set_shutdown_event(), and the desktop front-end disables its Shutdown
@@ -1119,3 +901,17 @@ async def test_shutdown_click_before_engine_wiring_is_queued_not_dropped():
     api.set_loop(asyncio.get_running_loop())
 
     await asyncio.wait_for(shutdown_event.wait(), timeout=2.0)
+
+
+def test_status_console_app_uses_ws_transport_instead_of_the_pywebview_api():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    transport_js = (UI_DIR / "transport.js").read_text(encoding="utf-8")
+
+    assert "new WebSocket" in transport_js
+    assert "channel: \"control\"" in transport_js
+    assert "createTransportStatusHandler" in transport_js
+    assert "dispatchStateDelta" in transport_js
+    assert "status-console" in app_js
+    assert "default: throw new Error(\"Unknown state delta" not in app_js
+    assert "window.pywebview" not in app_js

@@ -1,7 +1,7 @@
 # Task: UI transport manual handoff and documentation
 
 **Story:** `tasks/story-v1.2.10-ui-transport.md`
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.2.10
 
 ## Summary
@@ -30,14 +30,22 @@ guarantee in project documentation.
 
 ## Acceptance Criteria
 
-- [ ] Manual check script starts server plus windows in the correct order
+- [x] Manual check script starts server plus windows in the correct order
       and exercises every checklist item with exact human-run commands.
-- [ ] Automated tests cover the script's bus/server wiring without a real
+- [x] Automated tests cover the script's bus/server wiring without a real
       window (mirroring `tests/test_manual_check_status_console.py`).
-- [ ] `PROJECT.md` records the transport decision and loopback guarantee.
-- [ ] `python -m pytest` passes.
-- [ ] Human has confirmed the manual checklist; results recorded before the
+- [x] `PROJECT.md` records the transport decision and loopback guarantee.
+- [x] `python -m pytest` passes.
+- [x] Human has confirmed the manual checklist; results recorded before the
       story closes.
+
+## Outcome
+
+Human verification accepted the migrated Status Console and touchstrip on
+2026-07-11. The automated suite passed with 479 tests. The same session found
+the separate MME microphone restart failure after sleep/wake; it is recorded
+in `tasks/bug_reports/microphone-wake-portaudio-restart-failure.md` and is
+outside this UI transport handoff.
 
 ## Stop Conditions
 

@@ -10,15 +10,35 @@
 // dashboard" (Scope).
 //
 // toggleThinking()/toggleVisibilityFromGlance()/onResetHoldStart()/
-// onResetHoldEnd() are the JS -> Python direction, reusing the exact same
-// StatusConsoleApi as the desktop shell (task-ui-04/05) - a real touchstrip
-// device and the desktop window can share one engine-side state (Think
-// mode/visibility mode toggled on one surface is instantly true on the
-// other, once both are pushed to). window.pywebview is undefined outside a
-// real pywebview window, so every call is guarded, matching app.js.
+// onResetHoldEnd() send the same protocol-v1 control messages as the desktop
+// shell. Both surfaces receive the same engine snapshot/deltas.
 
 let _lastModelLabel = "";
 let _lastLocalityText = "";
+
+const _showTransportStatus = typeof createTransportStatusHandler === "function"
+  ? createTransportStatusHandler()
+  : () => {};
+
+function _applyStateSnapshot(state) {
+  applyRuntimeState(state.runtime);
+  Object.values(state.modules || {}).forEach(applyModuleHealth);
+  applyModelLabel(state.model);
+  applyDataLocality(state.data_locality);
+  applyThinkingMode(state.thinking);
+  applyVisibilityMode(state.visibility);
+}
+
+function _applyStateDelta(payload) {
+  dispatchStateDelta(payload, {
+    runtime: applyRuntimeState,
+    modules: (value) => Object.values(value).forEach(applyModuleHealth),
+    model: applyModelLabel,
+    data_locality: applyDataLocality,
+    thinking: applyThinkingMode,
+    visibility: applyVisibilityMode,
+  });
+}
 
 function applyRuntimeState(payload) {
   if (!RUNTIME_STATES.includes(payload.state)) {
@@ -85,20 +105,14 @@ function applyVisibilityMode(payload) {
   document.getElementById("gVisibility").textContent = payload.mode === "open" ? "Open" : "Hidden";
 }
 
-function _pywebviewApi() {
-  return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
-}
-
 function toggleThinking() {
-  const api = _pywebviewApi();
-  if (api) api.toggle_thinking();
+  sendUiControl("toggle_thinking");
 }
 
 function toggleVisibilityFromGlance() {
   const current = document.documentElement.getAttribute("data-visibility");
   const next = current === "open" ? "hidden" : "open";
-  const api = _pywebviewApi();
-  if (api) api.set_visibility_mode(next);
+  sendUiControl("set_visibility_mode", { mode: next });
 }
 
 // Hold-to-confirm reset (Scope: "context reset with hold-to-confirm"; AC:
@@ -114,8 +128,7 @@ function onResetHoldStart() {
   _resetHoldTimer = setTimeout(() => {
     _resetHoldTimer = null;
     document.getElementById("resetBtn").classList.remove("holding");
-    const api = _pywebviewApi();
-    if (api) api.reset_context();
+    sendUiControl("reset_context");
   }, RESET_HOLD_MS);
 }
 
@@ -151,8 +164,7 @@ function onShutdownHoldStart() {
     _shutdownHoldTimer = null;
     _shutdownRequested = true;
     document.getElementById("shutdownBtn").classList.remove("holding");
-    const api = _pywebviewApi();
-    if (api) api.request_shutdown();
+    sendUiControl("request_shutdown");
   }, SHUTDOWN_HOLD_MS);
 }
 
@@ -171,4 +183,13 @@ function showPage(page) {
   document
     .querySelectorAll(".page-dot")
     .forEach((dot, i) => dot.classList.toggle("on", (page === "glance") === (i === 0)));
+}
+
+if (typeof startUiTransport === "function") {
+  startUiTransport("touchstrip", ["state", "control"], {
+    onSnapshot: _applyStateSnapshot,
+    onDelta: _applyStateDelta,
+    onStatus: _showTransportStatus,
+    onError: (message) => console.error("UI transport error:", message),
+  });
 }

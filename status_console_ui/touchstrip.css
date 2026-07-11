@@ -43,6 +43,24 @@ html[data-state="speaking"] { --live: var(--amber); --live-dim: var(--amber-dim)
 html[data-state="error"] { --live: var(--red); --live-dim: var(--red-dim); --live-tint: rgba(232, 91, 91, 0.1); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+.transport-status {
+  display: none;
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 10;
+  padding: 4px 7px;
+  border: 1px solid var(--amber);
+  border-radius: 3px;
+  color: var(--amber);
+  background: rgba(10, 14, 20, 0.92);
+  font: 10px Consolas, monospace;
+}
+
+html[data-transport="offline"] .transport-status {
+  display: block;
+}
 html, body {
   background: var(--bg);
   color: var(--text);
