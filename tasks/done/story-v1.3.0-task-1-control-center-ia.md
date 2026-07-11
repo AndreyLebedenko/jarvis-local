@@ -1,8 +1,9 @@
 # Task: Control Center information architecture
 
 **Story:** `tasks/story-v1.3.0-control-center.md`
-**Status:** Planned. May run in parallel with v1.2.14 (document-only).
+**Status:** Completed.
 **Release:** v1.3.0
+**Deliverable:** `tasks/control-center-v1.3.0-ia.md`
 
 ## Summary
 
@@ -36,12 +37,12 @@ touchstrip placement. Deliverable is a document, not code.
 
 ## Acceptance Criteria
 
-- [ ] Every dashboard-v3 element is classified with its state source
+- [x] Every dashboard-v3 element is classified with its state source
       named, or its removal recorded.
-- [ ] Any "small delta" items are listed with exact contract additions
+- [x] Any "small delta" items are listed with exact contract additions
       small enough for task 3.
-- [ ] Placement decided for every control; reservation slot documented.
-- [ ] Human has reviewed and accepted the document.
+- [x] Placement decided for every control; reservation slot documented.
+- [x] Human has reviewed and accepted the document.
 
 ## Stop Conditions
 
