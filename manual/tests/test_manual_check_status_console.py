@@ -12,11 +12,11 @@ from manual.manual_check_status_console import (
     DemoContext,
     _run_demo_cycle_async,
 )
-from status_console import StatusConsoleApi
-from ui_contract import EventLevel, RuntimeState, SystemEvent
-from visibility_mode import VisibilityModeState
+from jarvis.ui.status_console import StatusConsoleApi
+from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
+from jarvis.ui.visibility import VisibilityModeState
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from main import ConversationHistory
+from jarvis.app import ConversationHistory
 
 
 class _FakeTransport:

@@ -16,7 +16,7 @@ from aiohttp import web
 from jarvis.audio.input import MicSleepToggled
 from jarvis.core.bus import EventBus
 from jarvis.dialog.backend import ResponseToken
-from status_console import (
+from jarvis.ui.status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
     StatusConsoleApi,
@@ -29,7 +29,7 @@ from status_console import (
     visibility_mode_payload,
 )
 from jarvis.dialog.thinking_mode import ThinkingModeToggled
-from ui_contract import (
+from jarvis.ui.contract import (
     DataLocality,
     HealthStatus,
     ModuleId,
@@ -38,8 +38,8 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
-from ui_text import DEFAULT_UI_LANGUAGE, ui_text
-from visibility_mode import VisibilityModeChanged
+from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
+from jarvis.ui.visibility import VisibilityModeChanged
 
 PROTOCOL_VERSION = 1
 MAX_SYSTEM_EVENTS = 200

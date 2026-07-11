@@ -30,7 +30,7 @@ import logging
 import time
 
 from jarvis.core.bus import EventBus
-from ui_contract import EventLevel, SystemEvent
+from jarvis.ui.contract import EventLevel, SystemEvent
 
 _PYTHON_LOG_LEVEL = {
     EventLevel.INFO: logging.INFO,

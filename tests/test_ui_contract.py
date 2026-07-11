@@ -1,6 +1,6 @@
 import pytest
 
-from ui_contract import (
+from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     HealthStatus,

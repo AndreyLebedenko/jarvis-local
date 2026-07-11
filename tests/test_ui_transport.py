@@ -4,8 +4,8 @@ import aiohttp
 import pytest
 
 from jarvis.core.bus import EventBus
-from ui_contract import EventLevel, HealthStatus, ModuleHealth, ModuleId, RuntimeState, SystemEvent
-from ui_transport import (
+from jarvis.ui.contract import EventLevel, HealthStatus, ModuleHealth, ModuleId, RuntimeState, SystemEvent
+from jarvis.ui.transport import (
     PROTOCOL_VERSION,
     _Client,
     UiStateStore,

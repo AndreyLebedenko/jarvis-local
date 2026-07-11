@@ -54,7 +54,7 @@ unrelated modules in the repository root.
    Move core contracts, configuration, backend, and dialog state.
 4. `tasks/done/story-quality-task-4-audio-and-input-migration.md`
    Move audio, TTS, capture, clipboard, and hotkey integrations.
-5. `tasks/story-quality-task-5-ui-and-composition-migration.md`
+5. `tasks/done/story-quality-task-5-ui-and-composition-migration.md`
    Move UI modules and the application composition root; remove root-level
    production-module compatibility paths.
 6. `tasks/story-quality-task-6-tests-manual-and-docs.md`

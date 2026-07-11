@@ -11,7 +11,7 @@ system prompt, TTS output, and speech markup - is runtime data, not UI
 text, and is deliberately not represented here.
 """
 
-from ui_contract import ModuleId, RuntimeState
+from jarvis.ui.contract import ModuleId, RuntimeState
 
 SUPPORTED_UI_LANGUAGES = ("en", "ru")
 DEFAULT_UI_LANGUAGE = "en"

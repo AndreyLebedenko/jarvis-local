@@ -5,7 +5,7 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings
-from status_console import (
+from jarvis.ui.status_console import (
     INDEX_HTML,
     UI_DIR,
     MicrophoneOptionsAvailable,
@@ -22,7 +22,7 @@ from status_console import (
     visibility_mode_payload,
 )
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from ui_contract import (
+from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     HealthStatus,
@@ -32,7 +32,7 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
-from visibility_mode import VisibilityModeState
+from jarvis.ui.visibility import VisibilityModeState
 
 logger = logging.getLogger("test_status_console")
 

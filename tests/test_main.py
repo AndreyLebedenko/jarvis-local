@@ -9,7 +9,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-import main as main_module
+import jarvis.app as main_module
 
 from jarvis.audio.input import AudioInput, MicSleepToggled, UtteranceChunk
 from jarvis.audio.sound_cues import SoundCuePlayer
@@ -28,7 +28,8 @@ from jarvis.core.config import (
 )
 from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
-from main import (
+from jarvis.app import (
+    APP_LOGGER_NAME,
     SYSTEM_PROMPT,
     App,
     ConversationHistory,
@@ -49,8 +50,8 @@ from main import (
     wire,
     wire_status_console,
 )
-from ui_transport import UiTransportInfo
-from ui_contract import (
+from jarvis.ui.transport import UiTransportInfo
+from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     HealthStatus,
@@ -610,13 +611,13 @@ async def test_on_thinking_mode_toggled_logs_an_info_message(caplog):
         settings=_settings(),
     )
 
-    with caplog.at_level(logging.INFO, logger="main"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
 
     assert any("enabled" in record.message for record in caplog.records)
 
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger="main"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=False))
 
     assert any("disabled" in record.message for record in caplog.records)
@@ -640,7 +641,7 @@ async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(capl
         settings=_settings(),
     )
 
-    with caplog.at_level(logging.INFO, logger="main"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
 
     assert len(received) == 1
@@ -674,7 +675,7 @@ async def test_warm_up_publishes_warn_system_event_and_still_logs_exception_on_f
 
     backend = _FakeBackend(chat_impl=failing_chat)
 
-    with caplog.at_level(logging.ERROR, logger="main"):
+    with caplog.at_level(logging.ERROR, logger=APP_LOGGER_NAME):
         await warm_up(backend, bus)
 
     assert any(record.levelno == logging.ERROR for record in caplog.records)  # logger.exception
@@ -1129,7 +1130,7 @@ async def test_on_mic_sleep_toggled_logs_an_info_message(caplog):
         settings=_settings(),
     )
 
-    with caplog.at_level(logging.INFO, logger="main"):
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
 
     assert any("asleep" in record.message for record in caplog.records)
@@ -1457,7 +1458,7 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
 
 
 def test_push_runtime_state_is_not_suppressed_by_a_direct_transport_update():
-    from main import LiveStatusConsole, _push_runtime_state
+    from jarvis.app import LiveStatusConsole, _push_runtime_state
 
     surface = _FakeStatusSurface()
     transport = _FakeTransport()

@@ -1,4 +1,4 @@
-from status_console import TOUCHSTRIP_HTML, UI_DIR, TouchstripWindow
+from jarvis.ui.status_console import TOUCHSTRIP_HTML, UI_DIR, TouchstripWindow
 
 
 class _FakeWindow:

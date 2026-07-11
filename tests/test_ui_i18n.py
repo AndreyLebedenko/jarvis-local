@@ -6,11 +6,10 @@ and both language dictionaries cover the same key set.
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
-UI_DIR = Path(__file__).resolve().parent.parent / "status_console_ui"
+from jarvis.ui.status_console import UI_DIR
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 

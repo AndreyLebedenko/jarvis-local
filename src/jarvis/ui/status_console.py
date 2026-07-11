@@ -12,7 +12,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from ui_contract import (
+from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     ModuleHealth,
@@ -21,8 +21,8 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
-from ui_text import DEFAULT_UI_LANGUAGE, module_label, runtime_state_text, ui_text
-from visibility_mode import VisibilityModeState
+from jarvis.ui.text import DEFAULT_UI_LANGUAGE, module_label, runtime_state_text, ui_text
+from jarvis.ui.visibility import VisibilityModeState
 
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"

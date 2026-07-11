@@ -39,13 +39,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
-from main import ConversationHistory
-from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
+from jarvis.app import ConversationHistory
+from jarvis.ui.status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from ui_contract import EventLevel, RuntimeState
-from ui_transport import UiStateStore, UiTransportServer
-from visibility_mode import VisibilityModeState
+from jarvis.ui.contract import EventLevel, RuntimeState
+from jarvis.ui.transport import UiStateStore, UiTransportServer
+from jarvis.ui.visibility import VisibilityModeState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)

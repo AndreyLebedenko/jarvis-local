@@ -1,6 +1,6 @@
 from jarvis.core.bus import EventBus
-from ui_contract import VisibilityMode
-from visibility_mode import VisibilityModeChanged, VisibilityModeState
+from jarvis.ui.contract import VisibilityMode
+from jarvis.ui.visibility import VisibilityModeChanged, VisibilityModeState
 
 
 def test_state_starts_open_by_default():

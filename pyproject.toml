@@ -8,16 +8,13 @@ version = "1.2.12"
 requires-python = ">=3.11,<3.12"
 
 [tool.setuptools]
-packages = ["jarvis"]
-package-dir = {jarvis = "src/jarvis"}
-py-modules = [
-    "main",
-    "status_console",
-    "ui_contract",
-    "ui_text",
-    "ui_transport",
-    "visibility_mode",
-]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"jarvis.ui" = ["status_console_ui/*.html", "status_console_ui/*.css", "status_console_ui/*.js"]
 
 [tool.ruff]
 target-version = "py311"

@@ -1,7 +1,7 @@
 # Task: Migrate UI and composition root
 
 **Story:** `tasks/story-quality-tooling-and-package-layout.md`
-**Status:** Not started.
+**Status:** Completed.
 
 ## Summary
 
@@ -11,9 +11,9 @@ modules.
 
 ## Acceptance Criteria
 
-- [ ] UI assets are resolved from the installed package, not the working
+- [x] UI assets are resolved from the installed package, not the working
       directory.
-- [ ] Application composition runs through `python -m jarvis`.
-- [ ] No root-level production modules remain.
-- [ ] Pure tests pass; visual/hardware manual verification is handed off.
+- [x] Application composition runs through `python -m jarvis`.
+- [x] No root-level production modules remain.
+- [x] Pure tests pass; visual/hardware manual verification is handed off.
 

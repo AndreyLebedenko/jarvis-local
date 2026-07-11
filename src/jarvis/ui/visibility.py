@@ -21,7 +21,7 @@ for this as a UI-level control.
 from dataclasses import dataclass
 
 from jarvis.core.bus import EventBus
-from ui_contract import VisibilityMode
+from jarvis.ui.contract import VisibilityMode
 
 
 @dataclass(frozen=True)

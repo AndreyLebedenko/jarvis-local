@@ -14,8 +14,8 @@ import re
 
 import pytest
 
-from status_console import UI_DIR
-from ui_contract import RuntimeState
+from jarvis.ui.status_console import UI_DIR
+from jarvis.ui.contract import RuntimeState
 
 _NETWORK_MARKERS = ("http://", "https://", "fonts.googleapis.com")
 _RUNTIME_COLOR_PROPERTIES = ("--live", "--live-dim", "--live-tint")

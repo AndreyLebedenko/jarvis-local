@@ -28,12 +28,12 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
-from status_console import (
+from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
 )
-from ui_contract import (
+from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     HealthStatus,
@@ -41,11 +41,12 @@ from ui_contract import (
     ModuleId,
     RuntimeState,
 )
-from ui_text import ui_text
-from ui_transport import UiStateStore, UiTransportInfo, UiTransportServer
-from visibility_mode import VisibilityModeState
+from jarvis.ui.text import ui_text
+from jarvis.ui.transport import UiStateStore, UiTransportInfo, UiTransportServer
+from jarvis.ui.visibility import VisibilityModeState
 
-logger = logging.getLogger(__name__)
+APP_LOGGER_NAME = __name__
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 # Dialog prompts live in config.py's PromptSettings ([prompts] section,
 # task-v1.2.12-external-prompt-config.md); this alias keeps the historical

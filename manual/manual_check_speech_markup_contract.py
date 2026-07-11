@@ -23,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.core.config import BackendSettings, load_settings
 from jarvis.audio.language_segments import LanguageSegment, segment_by_charset
-from main import SYSTEM_PROMPT
+from jarvis.app import SYSTEM_PROMPT
 
 
 SYSTEM_PROMPT_UNDER_TEST = SYSTEM_PROMPT
