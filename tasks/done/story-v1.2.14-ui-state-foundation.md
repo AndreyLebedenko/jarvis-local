@@ -1,6 +1,8 @@
 # Story v1.2.14: UI State Foundation
 
-**Status:** Planned.
+**Status:** Completed (2026-07-11). Tasks 1-2 implemented and verified
+live; task 3 closed as obsolete - its defect was already resolved by the
+v1.2.10 bridge removal.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.14
 
@@ -29,15 +31,16 @@ ModuleHealth question from the Status Console story.
 
 ## Acceptance Criteria
 
-- [ ] One module owns every RuntimeState transition; wire closures contain
+- [x] One module owns every RuntimeState transition; wire closures contain
       no busy-guard duplication.
-- [ ] Backend, TTS, and vision publish health events from authoritative
+- [x] Backend, TTS, and vision publish health events from authoritative
       signals; the transport snapshot reflects them; unpublished modules
       appear as honestly unknown, not as fake OK.
-- [ ] No `NotImplementedError` capability overrides remain in the window
-      surface hierarchy.
-- [ ] Existing regression tests (stuck-orb, dedup) still pass;
-      `python -m pytest` passes.
+- [x] No `NotImplementedError` capability overrides remain in the window
+      surface hierarchy (pre-existing since v1.2.10; task 3 closure note).
+- [x] Existing regression tests (stuck-orb, dedup) still pass;
+      `python -m pytest` passes (545, plus live human verification of
+      both tasks).
 
 ## Task Card Sequence
 

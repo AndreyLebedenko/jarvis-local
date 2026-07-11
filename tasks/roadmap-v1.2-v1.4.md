@@ -373,7 +373,9 @@ Boundary:
   explicit decision, not moved here).
 - Memory module gets no health source (no engine implementation).
 
-Story/task readiness: story and task cards exist.
+Story/task readiness: completed (2026-07-11). Tasks 1-2 implemented and
+verified live; task 3 closed as obsolete (defect already resolved by the
+v1.2.10 bridge removal). Story and cards under `tasks/done/`.
 
 ## v1.3.0 - Control Center
 
