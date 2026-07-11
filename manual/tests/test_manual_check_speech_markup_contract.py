@@ -1,4 +1,4 @@
-from config import BackendSettings
+from jarvis.core.config import BackendSettings
 from main import SYSTEM_PROMPT
 from manual.manual_check_speech_markup_contract import (
     PROMPTS,

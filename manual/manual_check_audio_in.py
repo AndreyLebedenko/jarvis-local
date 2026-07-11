@@ -25,8 +25,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_in import AudioInput, UtteranceChunk, VadChunker
-from bus import EventBus
-from config import load_settings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import load_settings
 
 OUT_DIR = Path("manual_check_audio_out")
 

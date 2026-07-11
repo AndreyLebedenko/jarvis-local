@@ -3,7 +3,7 @@ import asyncio
 import aiohttp
 import pytest
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from ui_contract import EventLevel, HealthStatus, ModuleHealth, ModuleId, RuntimeState, SystemEvent
 from ui_transport import (
     PROTOCOL_VERSION,

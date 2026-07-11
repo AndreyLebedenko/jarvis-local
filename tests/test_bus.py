@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 
 
 async def test_publish_delivers_to_all_subscribers():
@@ -144,8 +144,11 @@ async def test_publish_does_not_raise_when_a_subscriber_raises():
 
 
 def test_bus_has_no_project_import_dependencies():
-    source = Path(__file__).resolve().parent.parent.joinpath("bus.py").read_text(
-        encoding="utf-8"
+    source = (
+        Path(__file__)
+        .resolve()
+        .parent.parent.joinpath("src/jarvis/core/bus.py")
+        .read_text(encoding="utf-8")
     )
     tree = ast.parse(source)
     imported_top_level_names = set()
@@ -158,4 +161,4 @@ def test_bus_has_no_project_import_dependencies():
                 imported_top_level_names.add(node.module.split(".")[0])
 
     non_stdlib = imported_top_level_names - set(sys.stdlib_module_names)
-    assert not non_stdlib, f"bus.py imports non-stdlib modules: {non_stdlib}"
+    assert not non_stdlib, f"jarvis.core.bus imports non-stdlib modules: {non_stdlib}"

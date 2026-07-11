@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from bus import EventBus
-from config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
-from system_log import publish_system_event
-from thinking_mode import ThinkingModeState
+from jarvis.core.bus import EventBus
+from jarvis.core.config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
+from jarvis.core.system_log import publish_system_event
+from jarvis.dialog.thinking_mode import ThinkingModeState
 from ui_contract import (
     DataLocality,
     EventLevel,

@@ -28,7 +28,7 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from config import SoundCueSettings
+from jarvis.core.config import SoundCueSettings
 
 logger = logging.getLogger(__name__)
 

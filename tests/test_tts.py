@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from backend import LatencyMetrics, ResponseComplete, ResponseToken
-from config import TtsLanguageSettings, TtsSettings
+from jarvis.core.config import TtsLanguageSettings, TtsSettings
+from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 from tts import (
     BilingualTtsEngine,
     OrderedPlayback,

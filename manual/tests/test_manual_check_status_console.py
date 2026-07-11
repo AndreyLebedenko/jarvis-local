@@ -5,8 +5,8 @@ import types
 
 import pytest
 
-from bus import EventBus
-from config import Settings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import Settings
 import manual.manual_check_status_console as manual_check
 from manual.manual_check_status_console import (
     DemoContext,
@@ -15,7 +15,7 @@ from manual.manual_check_status_console import (
 from status_console import StatusConsoleApi
 from ui_contract import EventLevel, RuntimeState, SystemEvent
 from visibility_mode import VisibilityModeState
-from thinking_mode import ThinkingModeState
+from jarvis.dialog.thinking_mode import ThinkingModeState
 from main import ConversationHistory
 
 

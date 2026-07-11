@@ -50,7 +50,7 @@ unrelated modules in the repository root.
    commit the approved deterministic tooling configuration.
 2. `tasks/done/story-quality-task-2-package-skeleton.md`
    Add packaging metadata, `src/jarvis`, and the canonical module entry point.
-3. `tasks/story-quality-task-3-core-and-dialog-migration.md`
+3. `tasks/done/story-quality-task-3-core-and-dialog-migration.md`
    Move core contracts, configuration, backend, and dialog state.
 4. `tasks/story-quality-task-4-audio-and-input-migration.md`
    Move audio, TTS, capture, clipboard, and hotkey integrations.

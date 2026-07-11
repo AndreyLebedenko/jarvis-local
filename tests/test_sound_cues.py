@@ -2,7 +2,7 @@ import logging
 
 import soundfile as sf
 
-from config import SoundCueSettings
+from jarvis.core.config import SoundCueSettings
 from sound_cues import SoundCuePlayer, ensure_generated
 
 

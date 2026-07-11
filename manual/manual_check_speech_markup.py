@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend import LatencyMetrics, ResponseComplete, ResponseToken
-from config import load_settings
+from jarvis.core.config import load_settings
+from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 from tts import TtsOutput
 
 # A trimmed version of the real marked-up Gemma4 answer, kept verbatim in

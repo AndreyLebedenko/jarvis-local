@@ -1,6 +1,6 @@
 import base64
 
-from config import BackendSettings
+from jarvis.core.config import BackendSettings
 from manual.manual_check_thinking_mode import (
     THINKING_PARAM,
     build_probe_request,

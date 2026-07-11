@@ -37,12 +37,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from bus import EventBus
-from config import load_settings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import load_settings
 from main import ConversationHistory
 from status_console import StatusConsoleApi, StatusConsoleWindow, TouchstripWindow
-from system_log import publish_system_event
-from thinking_mode import ThinkingModeState
+from jarvis.core.system_log import publish_system_event
+from jarvis.dialog.thinking_mode import ThinkingModeState
 from ui_contract import EventLevel, RuntimeState
 from ui_transport import UiStateStore, UiTransportServer
 from visibility_mode import VisibilityModeState

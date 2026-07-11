@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from config import (
+from jarvis.core.config import (
     BackendSettings,
     ClipboardSettings,
     ConfigError,
@@ -310,7 +310,7 @@ def test_unknown_key_within_known_section_raises_config_error(tmp_path):
 
 
 def test_config_has_no_project_import_dependencies():
-    assert_stdlib_only_imports("config.py")
+    assert_stdlib_only_imports("src/jarvis/core/config.py")
 
 
 # --- task-08: ClipboardSettings and new sound cue fields --------------------

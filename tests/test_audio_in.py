@@ -19,8 +19,8 @@ from audio_in import (
     run_hotkey_listener,
     stream_factory_for_device,
 )
-from bus import EventBus
-from config import HotkeySettings, VadSettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings, VadSettings
 
 
 @pytest.fixture(scope="module")

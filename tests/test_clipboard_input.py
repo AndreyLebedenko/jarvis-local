@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from bus import EventBus
-from config import ClipboardSettings, HotkeySettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import ClipboardSettings, HotkeySettings
 from clipboard_input import ClipboardSubmitted, read_clipboard_submission, run_hotkey_listener
 
 

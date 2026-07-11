@@ -1,8 +1,8 @@
 import logging
 import time
 
-from bus import EventBus
-from system_log import publish_system_event
+from jarvis.core.bus import EventBus
+from jarvis.core.system_log import publish_system_event
 from ui_contract import EventLevel, SystemEvent
 
 logger = logging.getLogger("test_system_log")

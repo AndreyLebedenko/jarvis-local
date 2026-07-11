@@ -53,9 +53,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_utils import samples_to_wav_bytes
-from backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
-from bus import EventBus
-from config import BackendSettings, Settings, load_settings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import BackendSettings, Settings, load_settings
+from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from tts import TtsOutput, normalize_numbers, transliterate_latin
 
 BACKEND_PROBE_PROMPT = "Ответь одним коротким предложением: проверка готова?"

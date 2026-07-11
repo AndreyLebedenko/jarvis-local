@@ -20,7 +20,7 @@ for this as a UI-level control.
 
 from dataclasses import dataclass
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from ui_contract import VisibilityMode
 
 

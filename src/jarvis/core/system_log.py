@@ -29,7 +29,7 @@ user-facing fact.
 import logging
 import time
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from ui_contract import EventLevel, SystemEvent
 
 _PYTHON_LOG_LEVEL = {

@@ -3,7 +3,7 @@ import struct
 
 import pytest
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from capture import (
     CaptureEngine,
     CaptureInput,
@@ -11,7 +11,7 @@ from capture import (
     ScreenshotCaptured,
     run_hotkey_listener,
 )
-from config import HotkeySettings
+from jarvis.core.config import HotkeySettings
 
 
 def _png_dimensions(png_bytes: bytes) -> tuple[int, int]:

@@ -1,6 +1,6 @@
 import asyncio
 
-from config import TtsLanguageSettings, TtsSettings
+from jarvis.core.config import TtsLanguageSettings, TtsSettings
 from manual.manual_check_bilingual_tts_production import (
     SAMPLES,
     ReportingEngine,

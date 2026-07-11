@@ -25,8 +25,8 @@ schedule the same transition twice instead of toggling twice.
 import asyncio
 from dataclasses import dataclass
 
-from bus import EventBus
-from config import HotkeySettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings
 from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 

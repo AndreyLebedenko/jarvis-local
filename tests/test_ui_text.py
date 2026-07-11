@@ -22,7 +22,7 @@ def test_catalog_agrees_with_config_module_literals():
     """config.py must not import project modules, so it repeats the
     supported set and the default as literals; this pins the two modules
     together."""
-    import config
+    from jarvis.core import config
 
     assert tuple(config._SUPPORTED_UI_LANGUAGES) == tuple(SUPPORTED_UI_LANGUAGES)
     assert config.UiSettings().language == DEFAULT_UI_LANGUAGE

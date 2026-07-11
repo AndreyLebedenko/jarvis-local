@@ -4,9 +4,9 @@ import json
 import httpx
 import pytest
 
-from backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
-from bus import EventBus
-from config import BackendSettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import BackendSettings
+from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 
 
 def _fake_audio_b64() -> str:

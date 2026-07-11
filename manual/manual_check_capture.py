@@ -24,9 +24,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from capture import CaptureEngine, CaptureInput, ScreenshotCaptured, run_hotkey_listener
-from config import load_settings
+from jarvis.core.config import load_settings
 
 OUT_DIR = Path("manual_check_capture_out")
 

@@ -1,0 +1,16 @@
+audio_in
+audio_utils
+capture
+clipboard_input
+hotkey_provider
+jarvis
+language_segments
+main
+sound_cues
+speech_markup
+status_console
+tts
+ui_contract
+ui_text
+ui_transport
+visibility_mode

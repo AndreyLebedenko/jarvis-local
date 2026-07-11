@@ -35,8 +35,8 @@ from typing import Any
 
 import httpx
 
-from bus import EventBus
-from config import BackendSettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import BackendSettings
 
 logger = logging.getLogger(__name__)
 

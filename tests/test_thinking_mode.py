@@ -3,9 +3,9 @@ from collections.abc import Callable
 
 import pytest
 
-from bus import EventBus
-from config import HotkeySettings
-from thinking_mode import ThinkingModeState, ThinkingModeToggled, run_hotkey_listener
+from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings
+from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled, run_hotkey_listener
 
 
 def test_state_starts_disabled_by_default():

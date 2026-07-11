@@ -37,7 +37,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_utils import samples_to_wav_bytes
-from config import TtsSettings
+from jarvis.core.config import TtsSettings
 from language_segments import segment_by_charset
 from tts import OrderedPlayback, normalize_numbers, transliterate_latin
 

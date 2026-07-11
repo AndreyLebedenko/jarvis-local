@@ -14,8 +14,8 @@ from typing import Protocol, cast
 from aiohttp import web
 
 from audio_in import MicSleepToggled
-from backend import ResponseToken
-from bus import EventBus
+from jarvis.core.bus import EventBus
+from jarvis.dialog.backend import ResponseToken
 from status_console import (
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
@@ -28,7 +28,7 @@ from status_console import (
     thinking_mode_payload,
     visibility_mode_payload,
 )
-from thinking_mode import ThinkingModeToggled
+from jarvis.dialog.thinking_mode import ThinkingModeToggled
 from ui_contract import (
     DataLocality,
     HealthStatus,

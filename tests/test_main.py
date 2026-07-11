@@ -12,10 +12,11 @@ import pytest
 import main as main_module
 
 from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
-from backend import BackendSettings, LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
 from capture import ScreenshotCaptured
 from clipboard_input import ClipboardSubmitted
-from config import (
+from jarvis.core.bus import EventBus
+from jarvis.core.config import (
+    BackendSettings,
     MicrophoneSettings,
     PromptSettings,
     Settings,
@@ -23,7 +24,8 @@ from config import (
     TtsSettings,
     VadSettings,
 )
-from bus import EventBus
+from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
 from main import (
     SYSTEM_PROMPT,
     App,
@@ -47,7 +49,6 @@ from main import (
 )
 from sound_cues import SoundCuePlayer
 from ui_transport import UiTransportInfo
-from thinking_mode import ThinkingModeState, ThinkingModeToggled
 from ui_contract import (
     DataLocality,
     EventLevel,
@@ -1359,7 +1360,7 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(tmp_path,
     crackling/tempo artifacts reported live."""
     import sound_cues as sound_cues_module
     import tts as tts_module
-    from config import SoundCueSettings, TtsSettings
+    from jarvis.core.config import SoundCueSettings, TtsSettings
     from tts import TtsOutput
 
     currently_playing = False

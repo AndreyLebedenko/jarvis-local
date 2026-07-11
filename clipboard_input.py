@@ -28,8 +28,8 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bus import EventBus
-from config import ClipboardSettings, HotkeySettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import ClipboardSettings, HotkeySettings
 from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 ReadClipboard = Callable[[], str]

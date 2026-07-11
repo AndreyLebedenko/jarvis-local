@@ -21,8 +21,8 @@ from dataclasses import dataclass
 import mss
 import mss.tools
 
-from bus import EventBus
-from config import HotkeySettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings
 from hotkey_provider import HotkeyProvider, run_hotkey_provider
 
 Region = dict[str, int]  # {"left": int, "top": int, "width": int, "height": int}

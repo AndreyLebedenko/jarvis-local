@@ -3,8 +3,8 @@ import logging
 
 import pytest
 
-from bus import EventBus
-from config import Settings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import Settings
 from status_console import (
     INDEX_HTML,
     UI_DIR,
@@ -21,7 +21,7 @@ from status_console import (
     thinking_mode_payload,
     visibility_mode_payload,
 )
-from thinking_mode import ThinkingModeState
+from jarvis.dialog.thinking_mode import ThinkingModeState
 from ui_contract import (
     DataLocality,
     EventLevel,

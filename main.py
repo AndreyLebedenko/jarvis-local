@@ -15,13 +15,16 @@ from audio_in import (
     stream_factory_for_device,
 )
 from audio_in import run_hotkey_listener as run_mic_sleep_hotkey_listener
-from backend import OllamaBackend, ResponseComplete, ResponseToken
-from bus import EventBus
+from jarvis.core.bus import EventBus
+from jarvis.core.config import PromptSettings, Settings, load_settings
+from jarvis.core.system_log import publish_system_event
+from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
+from jarvis.dialog.thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
 from capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from capture import run_hotkey_listener as run_capture_hotkey_listener
 from clipboard_input import ClipboardSubmitted
 from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
-from config import PromptSettings, Settings, load_settings
 from hotkey_provider import HotkeyProvider, WindowsHotkeyProvider
 from sound_cues import SoundCuePlayer, ensure_generated
 from status_console import (
@@ -29,9 +32,6 @@ from status_console import (
     StatusConsoleWindow,
     TouchstripWindow,
 )
-from system_log import publish_system_event
-from thinking_mode import ThinkingModeState, ThinkingModeToggled
-from thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
 from tts import TtsOutput
 from ui_contract import (
     DataLocality,

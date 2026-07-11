@@ -1,4 +1,4 @@
-from bus import EventBus
+from jarvis.core.bus import EventBus
 from ui_contract import VisibilityMode
 from visibility_mode import VisibilityModeChanged, VisibilityModeState
 
