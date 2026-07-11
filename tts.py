@@ -93,10 +93,11 @@ class TtsEngine(Protocol):
     container header is the sample-rate contract - playback reads it from
     the bytes, so engines with different native rates need no side channel.
 
-    `language` is the routing hint carried by language_segments.py's segments
-    (the Silero/ru + Piper/en direction recorded in PROJECT.md). An engine
-    that cannot switch languages may ignore it - SileroEngine does, since
-    its transliteration fallback already covers non-Russian text."""
+    `language` is the routing hint carried by language_segments.py's segments.
+    Per-language configuration chooses the engine independently; the verified
+    Silero/ru + Piper/en production setup is not a required mapping. An engine
+    that cannot switch languages may ignore the hint - SileroEngine does,
+    since its transliteration fallback already covers non-Russian text."""
 
     async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
         pass

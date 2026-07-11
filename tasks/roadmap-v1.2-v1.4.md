@@ -227,7 +227,12 @@ Boundary:
 
 Story/task readiness: existing story card is sufficient as the starting point.
 
-## v1.2.7 - Activation and warmup
+## Backlog for v1.4.0+ - Activation and warmup
+
+Decision: deferred from v1.2.7. This work is not a prerequisite for v1.3.0
+Control Center or v1.4.0 file attachments. Until it lands, cold starts after
+idle periods and the absence of push-to-talk/orb activation remain accepted UX
+debt.
 
 Purpose: reduce perceived first-response latency after idle periods without
 weakening privacy or complicating the voice pipeline.
@@ -235,11 +240,11 @@ weakening privacy or complicating the voice pipeline.
 Scope:
 
 - Complete the existing activation/warmup cards:
-  - `tasks/story-v1.2.7-task-1-ollama-keepalive-warmup.md`;
-  - `tasks/story-v1.2.7-task-2-warming-runtime-state.md`;
-  - `tasks/story-v1.2.7-task-3-ptt-hotkey-trigger.md`;
-  - `tasks/story-v1.2.7-task-4-orb-click-trigger.md`;
-  - `tasks/story-v1.2.7-task-5-day0-checks-extension.md`.
+  - `tasks/backlog/activation-warmup-task-1-ollama-keepalive-warmup.md`;
+  - `tasks/backlog/activation-warmup-task-2-warming-runtime-state.md`;
+  - `tasks/backlog/activation-warmup-task-3-ptt-hotkey-trigger.md`;
+  - `tasks/backlog/activation-warmup-task-4-orb-click-trigger.md`;
+  - `tasks/backlog/activation-warmup-task-5-day0-checks-extension.md`.
 - Add configurable Ollama `keep_alive`.
 - Add async `warm_up_model()` using the existing `OllamaBackend`/`httpx` stack.
 - Add WARMING state as a runtime activation state, not a privacy/cloud state.
@@ -305,7 +310,6 @@ Prerequisites:
 - Shutdown control and configuration layering exist.
 - TTS engine boundary and benchmark decisions exist.
 - Hotkeys use the unified provider path.
-- Activation/warmup foundations exist and measured facts are recorded.
 
 Scope:
 

@@ -1,8 +1,8 @@
 # Task: Ollama keep_alive and warmup
 
-**Story:** `tasks/story-v1.2.7-activation-and-warmup.md`
+**Story:** `tasks/backlog/activation-warmup.md`
 **Status:** Backlog.
-**Release:** v1.2.7
+**Target:** v1.4.0 or later
 
 ## Summary
 

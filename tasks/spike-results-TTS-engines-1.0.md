@@ -1,6 +1,6 @@
 # TTS Engines Spike Results 1.0
 
-Status: промежуточный итог
+Status: completed (closed 2026-07-11)
 
 Scope: local TTS engine research for Jarvis v1.2.5, focused on Silero,
 Piper, Kokoro, and XTTS-v2 behavior, installability, and multilingual
@@ -37,13 +37,13 @@ potential.
   than a final engine-quality conclusion.
 - Kokoro was not conclusively evaluated in this environment.
   The local Python stack hit an import-time `torch` / `torchvision`
-  compatibility error, so there was no reliable model-level conclusion
-  from this session.
-- XTTS-v2 remains the strongest documented path for native English and
-  Russian support in one local model.
-  It is explicitly multilingual in the Coqui documentation and is the
-  better fit if the goal is natural mixed-language output rather than
-  language-specific voice routing.
+  compatibility error. Resolving its installation and startup problems made
+  the research cost unacceptable, so Kokoro is unsuitable for the current
+  project boundary; this is not a model-quality conclusion.
+- XTTS-v2 is documented as multilingual, but its installation and startup
+  complexity likewise made further investigation unacceptably expensive.
+  It is unsuitable for the current project boundary; this is not a negative
+  model-quality measurement.
 
 ## Measured run
 
@@ -66,7 +66,9 @@ potential.
   - `numbers`: first_audio_seconds 0.32, total_seconds 5.98
   - `short_answer`: first_audio_seconds 0.24, total_seconds 2.75
   - `code_like`: first_audio_seconds 0.39, total_seconds 4.39
-- Only the q8_0 profile is verified so far; f16 comparison remains open.
+- Human follow-up compared f16 and q8_0 across Gemma4 and gpt-oss at large
+  contexts. Any accuracy loss was not detectable on the owner's tasks, while
+  q8_0 improved speed by 10-20%. q8_0 is the preferred large-context profile.
 
 ## Conclusions
 
@@ -84,8 +86,11 @@ potential.
   - model loading;
   - language-specific text preprocessing;
   - sentence/segment dispatch.
-- If the goal is freer English/Russian code-switching inside the same
-  response, XTTS-v2 remains the cleaner long-term candidate.
+- Production is confirmed for the tested Silero/Russian plus Piper/English
+  configuration. The routing architecture does not bind either engine to a
+  language; Silero or Piper may be configured for either supported language
+  with a compatible model. Kokoro and XTTS-v2 remain out of scope unless
+  their integration cost changes materially.
 
 ## Practical implications for the LLM response format
 
@@ -114,17 +119,12 @@ potential.
 - `latest_silero_models.yml`
 - `PROJECT.md`
 
-## Open follow-up
+## Closed follow-up
 
-- Verify whether a single Silero multilingual voice is sufficient for the
-  desired UX, or whether mixed-language responses should move to XTTS-v2.
-- If a simple first bilingual route is chosen, Silero-for-Russian plus
-  Piper-for-English is now a plausible pragmatic baseline to test behind the
-  future `TtsEngine` boundary.
-- If Silero stays in the stack, define a concrete response contract for
-  language tags before changing runtime code.
-- Record any final architectural choice in `PROJECT.md` when that choice
-  is made.
+- v1.2.9 validated the Silero/Russian plus Piper/English production
+  configuration without making it a required language-to-engine mapping.
+- v1.2.8 replaced language tags with deterministic charset segmentation.
+- Final cache and candidate-engine decisions are recorded in `PROJECT.md`.
 
 ## Sources
 

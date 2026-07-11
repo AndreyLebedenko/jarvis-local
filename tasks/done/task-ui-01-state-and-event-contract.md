@@ -82,7 +82,7 @@ must be built by the task card that needs them:
   nothing is published. Required for task-ui-02/03 to show `THINKING` at all.
 - **Warm-up start/end event** for `RuntimeState.WARMING`. `main.py`'s
   `warm_up()` runs once at startup and publishes nothing; the
-  story-v1.2.7 activation/warmup backlog has not landed yet either.
+  the activation/warmup backlog story has not landed yet either.
   Whichever lands first should publish this.
 - **Structured error event.** Every current failure path
   (`Orchestrator._start_turn`'s `except Exception`,

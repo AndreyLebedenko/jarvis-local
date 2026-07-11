@@ -11,11 +11,15 @@ Piper units by v1.2.8's connective rule and spelled out letter by letter;
 fixed by gating the carry on all routes sharing one engine
 (SpeechUnitBuffer.carry_connectives), re-run confirmed correct.
 
+This confirms production for the tested configuration. It does not constrain
+the routing schema: Silero and Piper may each be configured for either
+supported language when paired with a compatible model.
+
 ## Summary
 
-Prepare and record the human-run verification for production bilingual TTS:
-Russian speech through Silero, English speech through Piper, preserving segment
-order.
+Prepare and record the human-run verification for one production bilingual
+TTS configuration: Russian speech through Silero and English speech through
+Piper, preserving segment order.
 
 ## Boundary
 
@@ -44,5 +48,6 @@ Out of scope:
 
 ## Notes
 
-The spike result already chose `silero_ru_piper_en`; this task verifies that
-the production wiring, not only the spike harness, behaves the same way.
+The spike result selected `silero_ru_piper_en` for this handoff; this task
+verifies that the production wiring, not only the spike harness, behaves the
+same way. It does not make that route mandatory.

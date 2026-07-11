@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 class RuntimeState(enum.Enum):
     """The six states the status orb can be in. WARMING is a runtime
-    activation/warmup state (story-v1.2.7-activation-and-warmup.md), not a
+    activation/warmup state (tasks/backlog/activation-warmup.md), not a
     privacy or data-locality indicator - see VisibilityMode/DataLocality
     below for those, which are independent axes."""
 

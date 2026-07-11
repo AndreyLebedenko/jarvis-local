@@ -13,6 +13,8 @@ same feature as realtime microphone listening.
 ## Boundaries
 
 - This story is planned for v1.4.0, after the v1.3.0 Control Center foundation.
+- Activation/warmup is not a prerequisite; its backlog story may land in
+  v1.4.0 or later independently of file attachments.
 - Do not create task cards until v1.3.0 scope is clearer.
 - Treat model self-description as a capability hint only, not as a verified
   project fact.

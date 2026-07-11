@@ -148,6 +148,7 @@ piper_ru_en:
 
 Subjective listening result: `silero_ru_piper_en` was the best combination.
 
-Decision for follow-up implementation: keep Silero for Russian and route
-English charset segments to Piper. Do not migrate Russian speech to Piper
-based on this spike.
+Decision for the initial follow-up configuration: use Silero for Russian and
+Piper for English because that was the preferred tested combination. This is
+not an architectural language-to-engine restriction: either engine may be
+configured for either supported language when a compatible model is supplied.

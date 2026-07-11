@@ -8,7 +8,7 @@
 
 Deliver the full Control Center experience on top of engine capabilities that
 already exist: verification contract, shutdown/control plane, configuration
-layering, TTS engine choices, unified hotkeys, and activation/warmup.
+layering, TTS engine choices, and unified hotkeys.
 
 ## Boundaries
 
@@ -28,7 +28,6 @@ layering, TTS engine choices, unified hotkeys, and activation/warmup.
 - [ ] v1.2.4 shutdown and configuration layer are complete.
 - [ ] v1.2.5 TTS measurements and engine boundary are complete.
 - [ ] v1.2.6 HotkeyProvider migration is complete.
-- [ ] v1.2.7 activation/warmup is complete.
 
 ## Acceptance Criteria
 
@@ -61,7 +60,6 @@ layering, TTS engine choices, unified hotkeys, and activation/warmup.
    - Touchstrip.
    - Open/Hidden.
    - Locality.
-   - WARMING and activation states.
 
 ## Stop Conditions
 

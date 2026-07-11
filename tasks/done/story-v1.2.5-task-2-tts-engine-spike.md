@@ -1,6 +1,6 @@
 # Task: TTS engine timing and quality spike
 
-**Story:** `tasks/story-v1.2.5-tts-engine-foundation.md`
+**Story:** `tasks/done/story-v1.2.5-tts-engine-foundation.md`
 **Status:** Completed.
 **Release:** v1.2.5
 **Depends on:** `tasks/story-v1.2.5-task-1-ollama-attention-cache-options.md`
@@ -21,16 +21,26 @@ Ollama KV-cache resource trade-offs on the human's machine.
 
 ## Acceptance Criteria
 
-- [ ] Script can compare Silero, Piper, Kokoro, and XTTS-v2 where installed
+- [x] Script can compare Silero, Piper, Kokoro, and XTTS-v2 where installed
       locally.
-- [ ] Script uses fixed Russian, English, mixed Latin, numbers, short answer,
+- [x] Script uses fixed Russian, English, mixed Latin, numbers, short answer,
       and code-like phrases.
-- [ ] Script reports first-sentence latency from first token to audible
+- [x] Script reports first-sentence latency from first token to audible
       playback.
-- [ ] Script reports cold load time.
-- [ ] Script reports peak VRAM delta while Gemma remains resident.
-- [ ] Script compares Gemma 64K f16 KV cache and 64K q8_0 KV cache.
-- [ ] Handoff explains exact commands and expected output fields.
+- [x] Script reports cold load time.
+- [x] Script reports peak VRAM delta while Gemma remains resident.
+- [x] Human follow-up compares f16 and q8_0 on Gemma4 and gpt-oss at large
+      contexts.
+- [x] Handoff explains exact commands and expected output fields.
+
+## Completion Decision
+
+The spike is fully closed. Human checks found no task-detectable accuracy loss
+from q8_0 on Gemma4 or gpt-oss and measured a 10-20% speed improvement at
+large contexts. Kokoro and XTTS-v2 were not forced through costly environment
+work: their installation and startup complexity made further investigation
+unacceptable for the current project boundary, so they are considered
+unsuitable for now.
 
 ## Verification
 

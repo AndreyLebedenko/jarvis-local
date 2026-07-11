@@ -1,10 +1,10 @@
 # Task: Day-0 checks extension for activation and warmup
 
-**Story:** `tasks/story-v1.2.7-activation-and-warmup.md`
+**Story:** `tasks/backlog/activation-warmup.md`
 **Status:** Backlog.
-**Release:** v1.2.7
-**Depends on:** `tasks/story-v1.2.7-task-3-ptt-hotkey-trigger.md`,
-`tasks/story-v1.2.7-task-4-orb-click-trigger.md`
+**Target:** v1.4.0 or later
+**Depends on:** `tasks/backlog/activation-warmup-task-3-ptt-hotkey-trigger.md`,
+`tasks/backlog/activation-warmup-task-4-orb-click-trigger.md`
 
 ## Summary
 

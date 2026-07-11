@@ -1,7 +1,8 @@
 ﻿# Story v1.2.5: TTS engine foundation
 
 **Status:** Completed (closed 2026-07-10; the `[tts] engine` config item
-was superseded by v1.2.9's per-language routes, see task-5).
+was superseded by v1.2.9's per-language routes, see task-5; final spike
+findings recorded 2026-07-11).
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.2.5
 
@@ -33,15 +34,30 @@ buffering and playback orchestration.
       numbers, short answers, and code-like phrases.
 - [x] The spike measures first-sentence latency, cold load time, and peak VRAM
       delta while Gemma remains resident.
-- [x] The spike compares Ollama Gemma with 64K f16 KV cache and 64K q8_0 KV
-      cache, including resource headroom for stronger TTS options.
+- [x] Human comparison of f16 and q8_0 KV cache covers Gemma4 and gpt-oss at
+      large contexts: no task-detectable accuracy loss and a 10-20% speed
+      improvement with q8_0.
 - [x] Human-confirmed measurements are recorded in `PROJECT.md`.
 - [x] `TtsOutput` keeps buffering/playback orchestration while synthesis moves
       behind a `TtsEngine` interface.
 - [x] Current Silero behavior remains covered by tests after refactor.
-- [ ] Config supports `[tts] engine` and engine-specific subsections.
-      SUPERSEDED: v1.2.9's `[tts.languages.<lang>]` per-language routes
-      replaced the global engine switch (see task-5's status note).
+- [x] Config supports engine selection through v1.2.9's
+      `[tts.languages.<lang>]` per-language routes. This supersedes the
+      originally planned global `[tts] engine` switch (see task-5's status
+      note).
+
+## Final Spike Decision
+
+- Keep q8_0 as the preferred KV-cache profile for large-context local use.
+  Across human checks with Gemma4 and gpt-oss, any accuracy loss was not
+  detectable on the owner's tasks, while speed improved by 10-20%.
+- Production is confirmed for the tested Silero/Russian plus Piper/English
+  configuration. This is not a language-to-engine restriction: either engine
+  may be configured for either supported language with a compatible model.
+- Do not continue Kokoro or XTTS-v2 integration research now. Installation
+  and startup complexity made the investigation cost unacceptable, so both
+  are unsuitable for the current project boundary. This is a cost and
+  operability decision, not a negative model-quality measurement.
 
 ## Task Card Sequence
 

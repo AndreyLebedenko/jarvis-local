@@ -20,7 +20,7 @@ engine = "piper"
 model = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
 ```
 
-The first production target is the spike-winning route:
+The production configuration verified by the human was:
 
 ```text
 ru -> Silero
@@ -40,9 +40,11 @@ The v1.2.9 spike `tasks/spike-v1.2.9-bilingual-tts-routing.md` compared:
 2. `ru` -> Silero, `en` -> Piper.
 3. `ru`, `en` -> Piper.
 
-Human listening selected `silero_ru_piper_en` as the best route. Therefore the
-implementation should preserve Silero for Russian and add Piper for English,
-with configuration general enough to describe both languages explicitly.
+Human listening selected `silero_ru_piper_en` as the best tested route, and
+the production handoff confirmed that configuration. This result does not
+bind an engine to a language: the configuration independently selects an
+engine and compatible model for each supported language, so Silero or Piper
+may be used for either `ru` or `en`.
 
 ## Boundaries
 
@@ -52,7 +54,8 @@ with configuration general enough to describe both languages explicitly.
   never play before an earlier segment.
 - Do not implement automatic model downloads in Jarvis runtime.
 - Do not add runtime network access beyond the existing local Ollama endpoint.
-- Do not migrate Russian speech to Piper in this story.
+- Do not change the tested default Russian route to Piper in this story; Piper
+  for Russian remains a valid configuration when a compatible model is used.
 - Do not add a UI for editing per-language TTS settings.
 - Do not make `graphify-out/` or downloaded local model files part of git.
 
@@ -65,8 +68,8 @@ with configuration general enough to describe both languages explicitly.
       names with clear errors.
 - [x] Piper synthesis is behind the existing `TtsEngine` boundary, not mixed
       into sentence buffering or playback code.
-- [x] A bilingual engine routes `ru` segments to Silero and `en` segments to
-      Piper according to config.
+- [x] A bilingual engine routes each `ru` and `en` segment to the engine
+      independently selected for that language in config.
 - [x] `TtsOutput` still owns buffering and ordered playback; it does not know
       Piper-specific details.
 - [x] English Piper model/config paths are validated before first response
@@ -75,7 +78,8 @@ with configuration general enough to describe both languages explicitly.
 - [x] Pure automated tests pass with `python -m pytest`.
 - [x] Human-run manual TTS check confirms mixed Russian/English responses use
       the configured engines and remain ordered.
-- [x] `PROJECT.md` records the verified production route and manual result.
+- [x] `PROJECT.md` records the verified production configuration and manual
+      result without treating it as a required language-to-engine mapping.
 
 ## Task Card Sequence
 

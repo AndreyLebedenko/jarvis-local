@@ -1,8 +1,8 @@
-# Story v1.2.7: Activation and warmup
+# Backlog story: Activation and warmup
 
 **Status:** Backlog.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
-**Release:** v1.2.7
+**Target:** v1.4.0 or later
 
 ## User-facing goal
 
@@ -53,21 +53,21 @@ privacy or complicating the main voice pipeline.
 
 ## Task Card Sequence
 
-1. `story-v1.2.7-task-1-ollama-keepalive-warmup.md`.
+1. `activation-warmup-task-1-ollama-keepalive-warmup.md`.
    - Configurable `keep_alive`.
    - Async `warm_up_model()`.
 
-2. `story-v1.2.7-task-2-warming-runtime-state.md`.
+2. `activation-warmup-task-2-warming-runtime-state.md`.
    - WARMING runtime state.
    - Timeout and event logging.
 
-3. `story-v1.2.7-task-3-ptt-hotkey-trigger.md`.
+3. `activation-warmup-task-3-ptt-hotkey-trigger.md`.
    - Push-to-talk trigger through provider path.
 
-4. `story-v1.2.7-task-4-orb-click-trigger.md`.
+4. `activation-warmup-task-4-orb-click-trigger.md`.
    - Universal UI fallback trigger.
 
-5. `story-v1.2.7-task-5-day0-checks-extension.md`.
+5. `activation-warmup-task-5-day0-checks-extension.md`.
    - Human-run timing and trigger verification.
    - Verified facts update.
 

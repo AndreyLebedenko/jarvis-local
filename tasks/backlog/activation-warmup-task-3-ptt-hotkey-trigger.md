@@ -1,9 +1,9 @@
 # Task: Push-to-talk hotkey trigger
 
-**Story:** `tasks/story-v1.2.7-activation-and-warmup.md`
+**Story:** `tasks/backlog/activation-warmup.md`
 **Status:** Backlog.
-**Release:** v1.2.7
-**Depends on:** `tasks/story-v1.2.7-task-2-warming-runtime-state.md`
+**Target:** v1.4.0 or later
+**Depends on:** `tasks/backlog/activation-warmup-task-2-warming-runtime-state.md`
 
 ## Summary
 

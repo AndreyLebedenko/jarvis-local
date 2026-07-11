@@ -79,7 +79,7 @@ architecture.
   pushes state to both every cycle.
 - **Deferred, per Scope's own wording** ("optional... after warmup story
   lands"): the activation trigger through the orb/touch affordance -
-  `story-v1.2.7-activation-and-warmup.md` has not landed yet, so there is no
+  `tasks/backlog/activation-warmup.md` has not landed yet, so there is no
   `trigger_warmup()`/`WARMING`-transition mechanism for this surface to
   hook into.
 

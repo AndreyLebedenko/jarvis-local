@@ -52,7 +52,10 @@ system is intended to grow.
   first-audio / total times of 1.24 / 4.50 s, 0.99 / 4.87 s, 0.37 / 4.67 s,
   0.32 / 5.98 s, 0.24 / 2.75 s, and 0.39 / 4.39 s respectively. The run
   reported `peak_vram_delta_mib = 0` across those Silero prompts. This is a
-  verified q8_0 profile only; f16 comparison remains open.
+  q8_0 profile was later compared by the human against f16 across Gemma4 and
+  gpt-oss at large contexts. Any accuracy loss was not detectable on the
+  owner's tasks, while q8_0 improved speed by 10-20%. Decision: prefer q8_0
+  for large-context local use.
 - Piper follow-up for English TTS: `python -m pip install piper-tts` succeeded
   as a one-command install, and the human judged the tested English voice as
   subjectively higher quality and lower perceived latency than the current
@@ -206,9 +209,9 @@ system is intended to grow.
 
 ## Open questions (unverified - do not assume an answer)
 
-- TTS cache comparison is still partial: the `q8_0` profile above is
-  verified, but a matched `f16` run has not yet been recorded, so no final
-  cache recommendation is locked in.
+- **Resolved (v1.2.5 human follow-up): prefer q8_0 KV cache for large
+  contexts.** Comparisons across Gemma4 and gpt-oss found no task-detectable
+  accuracy loss and a 10-20% speed improvement over f16.
 - **Resolved (task-07, human decision): history is text-only in v1.0.**
   Media (audio, screenshot) is attached only to the current turn's
   message; conversation history carries text only, never resent media.
@@ -277,8 +280,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   blocking `stream.read()` running inside `asyncio.to_thread()` can return
   before `run_until_shutdown()` awaits all background tasks. Do not replace
   this with a teardown timeout that leaves background tasks alive.
-- `tts.py` — subscribes to response sentences; Silero TTS (Russian) remains
-  the default v1.0 runtime path, with XTTS-v2 as a later quality upgrade.
+- `tts.py` — subscribes to response sentences. Silero remains the compatible
+  default when no explicit bilingual routing table is configured; configured
+  routes may select Silero or Piper independently for each supported language.
   `TtsOutput` owns sentence buffering and ordered playback orchestration;
   synthesis sits behind the `TtsEngine` protocol - the constructor's only
   synthesis seam (the earlier parallel `synthesize=` callable seam was
@@ -286,9 +290,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   `synthesize(text, language="ru") -> bytes` (wav-encoded; the wav header
   carries the sample rate, so playback needs no side channel - the
   earlier `SynthesisResult` wrapper duplicated the header's sample rate
-  and was dropped). `language` is the routing hint for the planned
-  Silero/ru + Piper/en direction; `SileroEngine` ignores it, since its
-  transliteration fallback already covers non-Russian text. `PiperEngine`
+  and was dropped). `language` is a routing hint, not a fixed engine mapping;
+  `SileroEngine` ignores it, since its transliteration fallback already covers
+  non-Russian text. `PiperEngine`
   (v1.2.9 task 2) is the production adapter for local Piper `.onnx` voices:
   it validates the model file and adjacent or explicit `.json` config during
   TTS initialization, imports `piper-tts` lazily, and uses Piper's chunk API
@@ -854,8 +858,11 @@ sharing the desktop window's engine state.
   separate two-button toggle - a deliberate touch-surface simplification,
   not a second implementation of the same control.
 - Deferred, per Scope's own wording ("optional... after warmup story
-  lands"): an activation trigger through the orb/touch affordance -
-  story-v1.2.7-activation-and-warmup.md has not landed yet.
+  lands"): an activation trigger through the orb/touch affordance. The
+  activation/warmup story was moved to `tasks/backlog/` for v1.4.0 or later.
+  It is explicitly not a prerequisite for v1.3.0 Control Center or v1.4.0
+  file attachments. Cold starts after idle periods and the absence of
+  push-to-talk/orb activation remain accepted UX debt until it lands.
 
 Task-ui-07 landed seventh and last: consolidated visual/manual QA across
 every prior task-ui-0X card together, closing
@@ -1213,25 +1220,14 @@ Runtime locality and CI verification are separate guarantees:
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).
-2. XTTS-v2 expressive TTS - also the answer to v1.0's Latin-script
-   limitation (`transliterate_latin()`'s crude phonetic approximation,
-   e.g. "gemma" -> "гемма"): XTTS-v2 (Coqui) supports 17 languages
-   including Russian and English natively in one local model, no network
-   at runtime once weights are downloaded. ~2 GB VRAM at FP16 for
-   inference (comfortable within the ~5 GB headroom left after
-   gemma4:12b-it-qat loads - PROJECT.md's day-0 numbers); RTF ~0.3
-   (faster than real-time), first-audio latency ~150-400 ms depending on
-   GPU - compatible with the sentence-level-streaming requirement. Not a
-   drop-in fix for code-switching: language is set per synthesis call, so
-   a sentence mixing Russian and English still needs the text segmented
-   by language first and each segment synthesized with the matching
-   language tag - but each segment would be genuinely correctly
-   pronounced, not transliterated. Alternatives noted but less
-   established than XTTS-v2: MOSS-TTS (2026, claims strong multilingual
-   synthesis via language tags) and Chatterbox (9 languages incl.
-   Russian). Deliberately deferred past v1.0 to avoid scope creep;
-   v1.0's transliteration heuristic already covers the worst case
-   (silence) reasonably well.
+2. XTTS-v2 and Kokoro are parked. The v1.2.5 spike found their installation
+   and startup complexity made further investigation unacceptably expensive
+   for the current project boundary. This is an operability and research-cost
+   decision, not a negative model-quality result. Reconsider only if their
+   integration cost changes materially. Production is confirmed for the
+   tested Silero/Russian plus Piper/English configuration, but the routing
+   architecture imposes no language-to-engine mapping: either engine may be
+   configured for either supported language with a compatible model.
 3. Re-tuning the model without losing audio (mix audio samples into the
    dataset or low-rank conservative LoRA) — research task.
 4. Optional GUI (dialog history window).
