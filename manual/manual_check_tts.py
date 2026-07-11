@@ -25,7 +25,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.core.config import load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
-from tts import TtsOutput
+from jarvis.audio.tts import TtsOutput
 
 # Deliberately includes a decimal number and a known abbreviation, so the
 # sentence buffer's handling of both is also audible, not just tested.

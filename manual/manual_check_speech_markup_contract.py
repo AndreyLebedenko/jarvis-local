@@ -22,7 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.core.config import BackendSettings, load_settings
-from language_segments import LanguageSegment, segment_by_charset
+from jarvis.audio.language_segments import LanguageSegment, segment_by_charset
 from main import SYSTEM_PROMPT
 
 

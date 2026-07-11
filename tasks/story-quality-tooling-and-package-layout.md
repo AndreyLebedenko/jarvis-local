@@ -52,7 +52,7 @@ unrelated modules in the repository root.
    Add packaging metadata, `src/jarvis`, and the canonical module entry point.
 3. `tasks/done/story-quality-task-3-core-and-dialog-migration.md`
    Move core contracts, configuration, backend, and dialog state.
-4. `tasks/story-quality-task-4-audio-and-input-migration.md`
+4. `tasks/done/story-quality-task-4-audio-and-input-migration.md`
    Move audio, TTS, capture, clipboard, and hotkey integrations.
 5. `tasks/story-quality-task-5-ui-and-composition-migration.md`
    Move UI modules and the application composition root; remove root-level

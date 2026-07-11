@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from hotkey_provider import (
+from jarvis.inputs.hotkeys import (
     MOD_NOREPEAT,
     HotkeyError,
     HotkeyProvider,

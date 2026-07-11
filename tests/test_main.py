@@ -11,9 +11,11 @@ import pytest
 
 import main as main_module
 
-from audio_in import AudioInput, MicSleepToggled, UtteranceChunk
-from capture import ScreenshotCaptured
-from clipboard_input import ClipboardSubmitted
+from jarvis.audio.input import AudioInput, MicSleepToggled, UtteranceChunk
+from jarvis.audio.sound_cues import SoundCuePlayer
+from jarvis.audio.tts import BilingualTtsEngine
+from jarvis.inputs.capture import ScreenshotCaptured
+from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
@@ -47,7 +49,6 @@ from main import (
     wire,
     wire_status_console,
 )
-from sound_cues import SoundCuePlayer
 from ui_transport import UiTransportInfo
 from ui_contract import (
     DataLocality,
@@ -59,7 +60,6 @@ from ui_contract import (
     SystemEvent,
     VisibilityMode,
 )
-from tts import BilingualTtsEngine
 
 
 class _FakeBackend:
@@ -1358,10 +1358,10 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(tmp_path,
     out, sharing one lock - asserts the underlying device is never
     accessed by both at once, which is what caused the audible
     crackling/tempo artifacts reported live."""
-    import sound_cues as sound_cues_module
-    import tts as tts_module
+    from jarvis.audio import sound_cues as sound_cues_module
+    from jarvis.audio import tts as tts_module
     from jarvis.core.config import SoundCueSettings, TtsSettings
-    from tts import TtsOutput
+    from jarvis.audio.tts import TtsOutput
 
     currently_playing = False
 

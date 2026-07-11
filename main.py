@@ -7,32 +7,32 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from audio_in import (
+from jarvis.audio.input import (
     AudioInput,
     MicSleepToggled,
     UtteranceChunk,
     VadChunker,
     stream_factory_for_device,
 )
-from audio_in import run_hotkey_listener as run_mic_sleep_hotkey_listener
+from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
 from jarvis.dialog.thinking_mode import run_hotkey_listener as run_thinking_hotkey_listener
-from capture import CaptureEngine, CaptureInput, ScreenshotCaptured
-from capture import run_hotkey_listener as run_capture_hotkey_listener
-from clipboard_input import ClipboardSubmitted
-from clipboard_input import run_hotkey_listener as run_clipboard_hotkey_listener
-from hotkey_provider import HotkeyProvider, WindowsHotkeyProvider
-from sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.audio.tts import TtsOutput
+from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
+from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
+from jarvis.inputs.clipboard import ClipboardSubmitted
+from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
+from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
 )
-from tts import TtsOutput
 from ui_contract import (
     DataLocality,
     EventLevel,

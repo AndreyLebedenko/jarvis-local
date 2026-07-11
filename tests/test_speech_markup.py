@@ -1,6 +1,6 @@
 import logging
 
-from speech_markup import (
+from jarvis.audio.speech_markup import (
     SpeechMarkupStream,
     SpeechSegment,
     parse_speech_markup,

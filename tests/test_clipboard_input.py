@@ -4,7 +4,7 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import ClipboardSettings, HotkeySettings
-from clipboard_input import ClipboardSubmitted, read_clipboard_submission, run_hotkey_listener
+from jarvis.inputs.clipboard import ClipboardSubmitted, read_clipboard_submission, run_hotkey_listener
 
 
 def test_reads_clean_short_text_unchanged():

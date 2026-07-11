@@ -23,7 +23,7 @@ import mss.tools
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings
-from hotkey_provider import HotkeyProvider, run_hotkey_provider
+from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
 
 Region = dict[str, int]  # {"left": int, "top": int, "width": int, "height": int}
 

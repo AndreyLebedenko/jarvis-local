@@ -9,7 +9,7 @@ import soundfile as sf
 import torch
 from silero_vad import load_silero_vad, read_audio
 
-from audio_in import (
+from jarvis.audio.input import (
     SAMPLE_RATE,
     AudioInput,
     MicSleepToggled,

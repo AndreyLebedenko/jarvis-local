@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from hotkey_provider import WindowsHotkeyProvider
+from jarvis.inputs.hotkeys import WindowsHotkeyProvider
 
 
 def main(binding: str) -> None:

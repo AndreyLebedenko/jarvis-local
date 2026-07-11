@@ -13,7 +13,7 @@ from typing import Protocol, cast
 
 from aiohttp import web
 
-from audio_in import MicSleepToggled
+from jarvis.audio.input import MicSleepToggled
 from jarvis.core.bus import EventBus
 from jarvis.dialog.backend import ResponseToken
 from status_console import (

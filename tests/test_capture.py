@@ -4,7 +4,7 @@ import struct
 import pytest
 
 from jarvis.core.bus import EventBus
-from capture import (
+from jarvis.inputs.capture import (
     CaptureEngine,
     CaptureInput,
     RawCapture,

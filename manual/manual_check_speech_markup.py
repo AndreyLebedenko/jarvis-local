@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.core.config import load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
-from tts import TtsOutput
+from jarvis.audio.tts import TtsOutput
 
 # A trimmed version of the real marked-up Gemma4 answer, kept verbatim in
 # shape: <speak> wrapper, per-sentence <lang> blocks, short English

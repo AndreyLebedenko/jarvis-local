@@ -52,11 +52,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from audio_utils import samples_to_wav_bytes
+from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings, Settings, load_settings
 from jarvis.dialog.backend import LatencyMetrics, OllamaBackend, ResponseComplete, ResponseToken
-from tts import TtsOutput, normalize_numbers, transliterate_latin
+from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
 
 BACKEND_PROBE_PROMPT = "Ответь одним коротким предложением: проверка готова?"
 TOKEN_DELAY_SECONDS = 0.05

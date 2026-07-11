@@ -34,8 +34,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.core.config import TtsSettings, load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
-from language_segments import DEFAULT_LANGUAGE, ENGLISH
-from tts import EngineBuilder, TtsEngine, TtsOutput, _default_engine_builders, build_tts_engine
+from jarvis.audio.language_segments import DEFAULT_LANGUAGE, ENGLISH
+from jarvis.audio.tts import EngineBuilder, TtsEngine, TtsOutput, _default_engine_builders, build_tts_engine
 
 ReportFn = Callable[[str, str, str], None]
 

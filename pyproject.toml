@@ -11,17 +11,8 @@ requires-python = ">=3.11,<3.12"
 packages = ["jarvis"]
 package-dir = {jarvis = "src/jarvis"}
 py-modules = [
-    "audio_in",
-    "audio_utils",
-    "capture",
-    "clipboard_input",
-    "hotkey_provider",
-    "language_segments",
     "main",
-    "sound_cues",
-    "speech_markup",
     "status_console",
-    "tts",
     "ui_contract",
     "ui_text",
     "ui_transport",

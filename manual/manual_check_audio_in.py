@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from audio_in import AudioInput, UtteranceChunk, VadChunker
+from jarvis.audio.input import AudioInput, UtteranceChunk, VadChunker
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
 

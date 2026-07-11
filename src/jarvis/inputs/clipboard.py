@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import ClipboardSettings, HotkeySettings
-from hotkey_provider import HotkeyProvider, run_hotkey_provider
+from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
 
 ReadClipboard = Callable[[], str]
 

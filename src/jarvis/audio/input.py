@@ -15,10 +15,10 @@ import sounddevice as sd
 import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
-from audio_utils import samples_to_wav_bytes
+from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings, VadSettings
-from hotkey_provider import HotkeyProvider, run_hotkey_provider
+from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
 
 SAMPLE_RATE = 16000
 

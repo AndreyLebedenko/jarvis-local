@@ -3,7 +3,7 @@ import logging
 import soundfile as sf
 
 from jarvis.core.config import SoundCueSettings
-from sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 
 
 def _settings_in(tmp_path) -> SoundCueSettings:
@@ -109,7 +109,7 @@ async def test_play_logs_an_info_message_naming_the_cue(tmp_path, caplog):
 
     player = SoundCuePlayer(settings, play_file=fake_play_file)
 
-    with caplog.at_level(logging.INFO, logger="sound_cues"):
+    with caplog.at_level(logging.INFO, logger="jarvis.audio.sound_cues"):
         await player.play("input_error")
         await player.wait_for_pending()
 

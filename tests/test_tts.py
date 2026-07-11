@@ -8,7 +8,7 @@ import pytest
 
 from jarvis.core.config import TtsLanguageSettings, TtsSettings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
-from tts import (
+from jarvis.audio.tts import (
     BilingualTtsEngine,
     OrderedPlayback,
     PiperEngine,

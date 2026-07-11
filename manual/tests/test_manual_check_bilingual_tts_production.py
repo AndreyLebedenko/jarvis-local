@@ -8,8 +8,8 @@ from manual.manual_check_bilingual_tts_production import (
     run_samples,
     stream_tokens,
 )
-from language_segments import segment_by_charset
-from tts import BilingualTtsEngine, TtsOutput, build_tts_engine
+from jarvis.audio.language_segments import segment_by_charset
+from jarvis.audio.tts import BilingualTtsEngine, TtsOutput, build_tts_engine
 
 
 class _FakeEngine:

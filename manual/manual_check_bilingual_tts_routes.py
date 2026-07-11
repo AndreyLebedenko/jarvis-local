@@ -36,10 +36,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from audio_utils import samples_to_wav_bytes
+from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.config import TtsSettings
-from language_segments import segment_by_charset
-from tts import OrderedPlayback, normalize_numbers, transliterate_latin
+from jarvis.audio.language_segments import segment_by_charset
+from jarvis.audio.tts import OrderedPlayback, normalize_numbers, transliterate_latin
 
 SILERO = "silero"
 PIPER = "piper"

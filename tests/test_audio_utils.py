@@ -5,7 +5,7 @@ from pathlib import Path
 import soundfile as sf
 import torch
 
-from audio_utils import samples_to_wav_bytes
+from jarvis.audio.utils import samples_to_wav_bytes
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,7 +26,7 @@ def test_samples_to_wav_bytes_round_trips_sample_count_and_rate():
 
 
 def test_audio_utils_has_no_other_project_module_imports():
-    source = (PROJECT_ROOT / "audio_utils.py").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "src/jarvis/audio/utils.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     imported_top_level_names = set()
     for node in ast.walk(tree):
