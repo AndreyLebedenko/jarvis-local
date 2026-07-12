@@ -78,7 +78,7 @@ architecture gaps moved to v1.2.14.
    dangerous-capabilities slot.
 2. Configuration iteration 2
    (`story-v1.3.0-task-2-configuration-iteration-2.md`).
-   Per-language TTS engine/model, UI language, VAD settings - all backed
+   Fully typed per-language TTS engine settings, UI language, VAD settings - all backed
    by existing config contracts, restart-to-apply preserved.
 3. Modules panel and data axes
    (`story-v1.3.0-task-3-modules-panel-and-data-axes.md`).

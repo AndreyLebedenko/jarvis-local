@@ -1,9 +1,11 @@
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
 from conftest import assert_stdlib_only_imports
 
 from jarvis.core.config import (
+    TTS_ROUTE_TYPES,
     BackendSettings,
     ClipboardSettings,
     ConfigError,
@@ -15,10 +17,33 @@ from jarvis.core.config import (
     TtsSettings,
     VadSettings,
     load_settings,
+    tts_route_field_specs,
     write_ui_config,
 )
 
 EXAMPLE_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.example.toml"
+
+
+@pytest.mark.parametrize("engine", ["silero", "piper"])
+def test_tts_route_schema_projects_every_dataclass_field(engine):
+    route_type = TTS_ROUTE_TYPES[engine]
+
+    specs = tts_route_field_specs(engine)
+
+    assert [spec.name for spec in specs] == [field.name for field in fields(route_type)]
+
+
+def test_tts_route_schema_projects_validator_constraints():
+    silero = {spec.name: spec for spec in tts_route_field_specs("silero")}
+    piper = {spec.name: spec for spec in tts_route_field_specs("piper")}
+
+    assert silero["model"].non_empty
+    assert silero["sample_rate"].minimum == 0
+    assert silero["sample_rate"].exclusive_minimum
+    assert piper["config_path"].nullable
+    assert piper["speaker_id"].minimum == 0
+    assert not piper["speaker_id"].exclusive_minimum
+    assert piper["volume"].exclusive_minimum
 
 
 def _no_ui_layer(tmp_path) -> Path:
@@ -708,6 +733,62 @@ def test_tts_language_routes_merge_base_and_ui_layers_per_language(tmp_path):
     }
 
 
+def test_ui_route_with_engine_replaces_the_base_discriminated_variant(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.en]
+        engine = "silero"
+        model = "english_silero"
+        language = "en"
+        speaker = "speaker"
+        """,
+        encoding="utf-8",
+    )
+    ui_config_path = tmp_path / "config.ui.toml"
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="",
+        tts_routes={
+            "ru": SileroTtsSettings(),
+            "en": PiperTtsSettings(model="en.onnx"),
+        },
+    )
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+
+    assert settings.tts.languages["en"] == PiperTtsSettings(model="en.onnx")
+
+
+def test_full_ui_route_can_clear_optional_base_parameter(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.en]
+        engine = "piper"
+        model = "base.onnx"
+        config_path = "base.json"
+        speaker_id = 3
+        """,
+        encoding="utf-8",
+    )
+    ui_config_path = tmp_path / "config.ui.toml"
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="",
+        tts_routes={
+            "ru": SileroTtsSettings(),
+            "en": PiperTtsSettings(model="ui.onnx"),
+        },
+    )
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+
+    assert settings.tts.languages["en"] == PiperTtsSettings(model="ui.onnx")
+
+
 # --- story-v1.2.4-task-2: config layering (defaults < config.toml <
 # config.ui.toml) ------------------------------------------------------------
 
@@ -1063,3 +1144,96 @@ def test_write_ui_config_escapes_values_with_quotes_and_backslashes(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
 
     assert settings.microphone.device == tricky_name
+
+
+# --- story-v1.3.0-task-2: configuration iteration 2 fields ------------------
+
+
+def test_write_ui_config_iteration_2_fields_round_trip(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="custom-model",
+        microphone_device="USB Headset",
+        ui_language="ru",
+        vad=VadSettings(
+            threshold=0.7,
+            max_chunk_seconds=20,
+            request_end_pause_seconds=1.5,
+            resume_cooldown_seconds=0.5,
+        ),
+        tts_routes={
+            "ru": SileroTtsSettings(
+                model="custom_ru",
+                language="ru",
+                speaker="eugene",
+                sample_rate=24000,
+                put_accent=True,
+                put_yo=False,
+            ),
+            "en": PiperTtsSettings(
+                model="C:\\voices\\en.onnx",
+                config_path="C:\\voices\\en.json",
+                use_cuda=True,
+                espeak_data_dir="C:\\espeak",
+                download_dir="C:\\cache",
+                speaker_id=2,
+                length_scale=1.2,
+                noise_scale=0.6,
+                noise_w_scale=0.8,
+                normalize_audio=False,
+                volume=0.9,
+            ),
+        },
+    )
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.ui.language == "ru"
+    assert settings.vad == VadSettings(
+        threshold=0.7,
+        max_chunk_seconds=20,
+        request_end_pause_seconds=1.5,
+        resume_cooldown_seconds=0.5,
+    )
+    assert settings.tts.languages == {
+        "ru": SileroTtsSettings(
+            model="custom_ru",
+            language="ru",
+            speaker="eugene",
+            sample_rate=24000,
+            put_accent=True,
+            put_yo=False,
+        ),
+        "en": PiperTtsSettings(
+            model="C:\\voices\\en.onnx",
+            config_path="C:\\voices\\en.json",
+            use_cuda=True,
+            espeak_data_dir="C:\\espeak",
+            download_dir="C:\\cache",
+            speaker_id=2,
+            length_scale=1.2,
+            noise_scale=0.6,
+            noise_w_scale=0.8,
+            normalize_audio=False,
+            volume=0.9,
+        ),
+    }
+
+
+def test_write_ui_config_omits_sections_left_as_none(tmp_path):
+    """None means "not chosen in the UI layer": the section is absent from
+    config.ui.toml, so the layered loader falls through to config.toml or
+    the built-in defaults - including the Silero-only TTS default."""
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(ui_config_path, model="m", microphone_device="d")
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    content = ui_config_path.read_text(encoding="utf-8")
+
+    assert "[ui]" not in content
+    assert "[vad]" not in content
+    assert "[tts" not in content
+    assert settings.ui.language == "en"
+    assert settings.vad == VadSettings()
+    assert settings.tts.languages == {"ru": SileroTtsSettings()}

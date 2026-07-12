@@ -4,7 +4,13 @@ import logging
 import pytest
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import Settings
+from jarvis.core.config import (
+    PiperTtsSettings,
+    Settings,
+    SileroTtsSettings,
+    VadSettings,
+    load_settings,
+)
 from jarvis.dialog.thinking_mode import ThinkingModeState
 from jarvis.ui.contract import (
     DataLocality,
@@ -996,3 +1002,84 @@ def test_status_console_app_uses_ws_transport_instead_of_the_pywebview_api():
     assert "status-console" in app_js
     assert 'default: throw new Error("Unknown state delta' not in app_js
     assert "window.pywebview" not in app_js
+
+
+# --- story-v1.3.0-task-2: configuration iteration 2 save path ---------------
+
+
+def _iteration_2_api(bus, ui_config_path):
+    return StatusConsoleApi(
+        loop=asyncio.get_event_loop(),
+        thinking_mode=ThinkingModeState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+
+
+async def test_save_config_selection_writes_iteration_2_sections(tmp_path):
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection(
+        "new-model",
+        "USB Headset",
+        ui_language="ru",
+        vad=VadSettings(threshold=0.7),
+        tts_routes={
+            "ru": SileroTtsSettings(model="custom_ru", speaker="eugene"),
+            "en": PiperTtsSettings(
+                model="voices/en.onnx", length_scale=1.2, normalize_audio=False
+            ),
+        },
+    )
+    await asyncio.sleep(0.05)
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.ui.language == "ru"
+    assert settings.vad.threshold == 0.7
+    assert settings.tts.languages["en"].model == "voices/en.onnx"
+
+
+async def test_save_config_selection_rejects_out_of_range_vad(tmp_path):
+    bus = EventBus()
+    system_events: list[SystemEvent] = []
+    saved_events: list[UiConfigSaved] = []
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    async def on_saved(event: UiConfigSaved) -> None:
+        saved_events.append(event)
+
+    bus.subscribe(SystemEvent, on_system_event)
+    bus.subscribe(UiConfigSaved, on_saved)
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection(
+        "new-model", "USB Headset", vad=VadSettings(threshold=5.0)
+    )
+    await asyncio.sleep(0.05)
+
+    assert not ui_config_path.exists()
+    assert saved_events == []
+    assert len(system_events) == 1
+    assert system_events[0].level is EventLevel.WARN
+
+
+async def test_save_config_selection_rejects_partial_tts_routes(tmp_path):
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection(
+        "new-model",
+        "USB Headset",
+        tts_routes={"ru": SileroTtsSettings()},
+    )
+    await asyncio.sleep(0.05)
+
+    assert not ui_config_path.exists()

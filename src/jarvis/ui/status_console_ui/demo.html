@@ -140,6 +140,33 @@
       <label for="micSelect">Microphone</label>
       <select id="micSelect"></select>
     </div>
+    <div class="config-field">
+      <label for="uiLangSelect">Interface language</label>
+      <select id="uiLangSelect"></select>
+    </div>
+    <div class="config-section-label">Speech synthesis (TTS)</div>
+    <div class="config-field config-field-checkbox">
+      <label for="ttsCustomRoutes">Configure per-language voices</label>
+      <input type="checkbox" id="ttsCustomRoutes" onchange="onTtsRoutingModeChanged()">
+    </div>
+    <div class="config-tts-routes" id="ttsRouteRows"></div>
+    <div class="config-section-label">Voice detection (VAD)</div>
+    <div class="config-field">
+      <label for="vadThreshold">Sensitivity threshold</label>
+      <input type="number" id="vadThreshold" step="0.05" oninput="onConfigInputChanged()">
+    </div>
+    <div class="config-field">
+      <label for="vadMaxChunk">Max phrase length, s</label>
+      <input type="number" id="vadMaxChunk" step="1" oninput="onConfigInputChanged()">
+    </div>
+    <div class="config-field">
+      <label for="vadEndPause">End-of-request pause, s</label>
+      <input type="number" id="vadEndPause" step="0.1" oninput="onConfigInputChanged()">
+    </div>
+    <div class="config-field">
+      <label for="vadCooldown">Resume cooldown, s</label>
+      <input type="number" id="vadCooldown" step="0.1" oninput="onConfigInputChanged()">
+    </div>
     <button class="btn-config-apply" id="btnConfigApply" disabled onclick="applyConfigSelection()">Apply</button>
     <div class="pending-restart" id="pendingRestart">Changes saved - restart Jarvis to apply.</div>
   </div>
