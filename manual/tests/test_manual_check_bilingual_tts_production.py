@@ -1,7 +1,8 @@
 import asyncio
 
 from jarvis.audio.language_segments import segment_by_charset
-from jarvis.audio.tts import BilingualTtsEngine, TtsOutput, build_tts_engine
+from jarvis.audio.tts import BilingualTtsEngine, TtsOutput
+from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, TtsSettings
 from manual.manual_check_bilingual_tts_production import (
     SAMPLES,

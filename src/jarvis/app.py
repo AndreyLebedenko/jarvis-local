@@ -17,6 +17,7 @@ from jarvis.audio.input import (
 from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
+from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.lifecycle import (
@@ -281,7 +282,10 @@ def build_app(
     # process; concurrent calls stop/replace each other, not mix).
     playback_lock = asyncio.Lock()
     tts_output = tts_output or TtsOutput(
-        settings.tts, playback_lock=playback_lock, bus=bus
+        settings.tts,
+        engine=build_tts_engine(settings.tts),
+        playback_lock=playback_lock,
+        bus=bus,
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)

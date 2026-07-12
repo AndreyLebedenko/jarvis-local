@@ -53,7 +53,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
+from jarvis.audio.tts import TtsOutput
+from jarvis.audio.tts_silero import normalize_numbers, transliterate_latin
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings, load_settings

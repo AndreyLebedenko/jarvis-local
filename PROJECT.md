@@ -102,7 +102,7 @@ system is intended to grow.
   Cyrillic + limited punctuation - see `model.symbols`). Verified live:
   asked to say "gemma4" aloud, the digit was spoken (`normalize_numbers`)
   but "gemma" was silently dropped, same root cause class as the digit-
-  stripping bug. `tts.py`'s `transliterate_latin()` does a best-effort
+  stripping bug. `tts_silero.py`'s `transliterate_latin()` does a best-effort
   phonetic Latin-to-Cyrillic conversion before synthesis (e.g. "gemma" ->
   "гемма") - crude, not linguistically rigorous, but strictly better than
   silence.
@@ -296,7 +296,8 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   blocking `stream.read()` running inside `asyncio.to_thread()` can return
   before `run_until_shutdown()` awaits all background tasks. Do not replace
   this with a teardown timeout that leaves background tasks alive.
-- `tts.py` — subscribes to response sentences. Silero remains the compatible
+- `tts.py` - common TTS contracts, response buffering, language routing,
+  ordered playback, and health events. Silero remains the compatible
   default when no explicit bilingual routing table is configured; configured
   routes may select Silero or Piper independently for each supported language.
   `TtsOutput` owns sentence buffering and ordered playback orchestration;
@@ -307,14 +308,16 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   carries the sample rate, so playback needs no side channel - the
   earlier `SynthesisResult` wrapper duplicated the header's sample rate
   and was dropped). `language` is a routing hint, not a fixed engine mapping;
-  `SileroEngine` applies the legacy Russian normalization/transliteration only
-  when its configured model language is `ru`. `PiperEngine` (v1.2.9 task 2,
-  generalized in v1.2.15) is the production adapter for local Piper `.onnx`
+  `tts_silero.py` owns `SileroEngine`, lazy Silero loading, and the legacy
+  Russian normalization/transliteration applied only when the configured
+  model language is `ru`. `tts_piper.py` owns `PiperEngine` (v1.2.9 task 2,
+  generalized in v1.2.15), the production adapter for local Piper `.onnx`
   voices: it imports `piper-tts` lazily and uses Piper's chunk API to write a
   complete wav header itself. Model/config path resolution and voice loading
   happen on first synthesis, not during app construction. v1.2.9 task 3 wires
   configured
-  language routes through `BilingualTtsEngine`: `build_tts_engine()` preserves
+  language routes through `BilingualTtsEngine`: `tts_factory.py` is the
+  composition layer, and `build_tts_engine()` preserves
   the existing Silero-only default when only the built-in `ru -> silero`
   route is present, and otherwise composes one child engine per configured
   language (`ru`/`en`) with clear failure for unsupported language hints.
@@ -377,7 +380,7 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   Loading the Silero TTS model requires network on first use (like
   `ollama pull` for the backend model) - a one-time setup step via
   `setup_tts_model.py`, run once before the offline runtime starts; not
-  part of runtime behavior. tts.py's model loader checks the local cache
+  part of runtime behavior. `tts_silero.py` checks the local cache
   explicitly and raises a clear error instead of silently reaching for
   the network if the one-time setup hasn't been run. `transliterate_latin()`
   converts Latin-script text to a crude phonetic Cyrillic approximation
@@ -1371,6 +1374,13 @@ Task 2 (module health events) landed second:
   identifier, synthesis speaker/sample rate, and optional accent/yo controls.
 - Runtime remains offline and restart-to-apply. `setup_tts_model.py` accepts
   `--language`/`--model` for the explicit one-time network-enabled setup step.
+- TTS modules follow an inward dependency direction: `tts.py` contains only
+  common contracts and orchestration, `tts_silero.py` and `tts_piper.py`
+  contain concrete adapters, and `tts_factory.py` is the composition layer
+  that imports both adapters. `TtsOutput` requires an already-built
+  `TtsEngine`; `app.build_app()` is the production composition root.
+- Human hardware verification passed on 2026-07-12 after the configurable
+  route implementation and SRP module split.
 
 ## Project verification contract (v1.2.2)
 

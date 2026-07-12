@@ -9,22 +9,34 @@ import pytest
 from jarvis.audio.tts import (
     BilingualTtsEngine,
     OrderedPlayback,
-    PiperEngine,
     SentenceBuffer,
-    SileroEngine,
     TtsEngine,
     TtsEngineLoadError,
     TtsEngineLoadFailed,
-    TtsModelNotCachedError,
     TtsOutput,
     _append_wav_tail_silence,
-    _ensure_model_cached,
-    _JitSileroModel,
-    _PackageSileroModel,
-    _piper_chunks_to_wav_bytes,
-    build_tts_engine,
+)
+from jarvis.audio.tts_factory import build_tts_engine
+from jarvis.audio.tts_piper import (
+    PiperEngine,
+)
+from jarvis.audio.tts_piper import (
+    piper_chunks_to_wav_bytes as _piper_chunks_to_wav_bytes,
+)
+from jarvis.audio.tts_silero import (
+    JitSileroModel as _JitSileroModel,
+)
+from jarvis.audio.tts_silero import (
+    PackageSileroModel as _PackageSileroModel,
+)
+from jarvis.audio.tts_silero import (
+    SileroEngine,
+    TtsModelNotCachedError,
     normalize_numbers,
     transliterate_latin,
+)
+from jarvis.audio.tts_silero import (
+    ensure_model_cached as _ensure_model_cached,
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, TtsSettings

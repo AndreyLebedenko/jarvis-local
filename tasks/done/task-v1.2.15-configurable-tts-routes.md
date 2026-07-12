@@ -1,6 +1,6 @@
 # Task v1.2.15: Fully configurable TTS routes
 
-**Status:** In Progress.
+**Status:** Completed.
 **Release:** v1.2.15
 **Role:** Engine prerequisite for the v1.3.0 Control Center
 
@@ -38,6 +38,9 @@ In scope:
   catches. A failed route is not retried repeatedly during the same process.
 - Updated `config.example.toml`, `PROJECT.md`, pure tests, and an exact manual
   handoff for real Silero/Piper verification.
+- SRP module split: `audio/tts.py` owns common buffering/playback/events,
+  `audio/tts_silero.py` and `audio/tts_piper.py` own their adapters, and
+  `audio/tts_factory.py` is the only composition layer importing both.
 
 Out of scope:
 
@@ -78,28 +81,30 @@ engine decides compatibility during lazy load or synthesis.
 
 ## Acceptance Criteria
 
-- [ ] `load_settings()` returns typed Silero/Piper route objects and rejects
+- [x] `load_settings()` returns typed Silero/Piper route objects and rejects
       missing, unknown, wrongly typed, or generally nonsensical parameters with
       route-qualified `ConfigError` messages.
-- [ ] Any non-empty Silero model identifier is accepted by config parsing; the
+- [x] Any non-empty Silero model identifier is accepted by config parsing; the
       hardcoded `SILERO_MODEL` restriction is removed.
-- [ ] Legacy `[tts].voice` and `[tts].rate` fail with a direct migration
+- [x] Legacy `[tts].voice` and `[tts].rate` fail with a direct migration
       message rather than a generic unknown-key error.
-- [ ] Both engine adapters perform model/voice loading only on first synthesis
+- [x] Both engine adapters perform model/voice loading only on first synthesis
       and cache either the loaded engine or its terminal load failure.
-- [ ] Missing local Silero/Piper assets cannot cause a runtime network request.
-- [ ] Silero receives its configured model/language/speaker/synthesis values;
+- [x] Missing local Silero/Piper assets cannot cause a runtime network request.
+- [x] Silero receives its configured model/language/speaker/synthesis values;
       Piper receives its configured load and `SynthesisConfig` values.
-- [ ] A lazy-load failure logs the original exception, publishes route context,
+- [x] A lazy-load failure logs the original exception, publishes route context,
       advances ordered playback, and projects TTS health as `ERROR`.
-- [ ] A non-load synthesis failure still skips only that unit and projects TTS
+- [x] A non-load synthesis failure still skips only that unit and projects TTS
       health as `DEGRADED`; later successful synthesis can recover it.
-- [ ] Existing route coverage, sentence ordering, language segmentation, and
+- [x] Existing route coverage, sentence ordering, language segmentation, and
       offline-runtime tests remain green.
-- [ ] `python -m ruff format --check .`, `python -m ruff check .`, and
+- [x] `python -m ruff format --check .`, `python -m ruff check .`, and
       `python -m pytest` pass.
-- [ ] Manual hardware/live-engine commands are documented for the human and
+- [x] Manual hardware/live-engine commands are documented for the human and
       are not run by the agent.
+- [x] Common `tts.py` has no imports of concrete engine adapters or the
+      factory; `TtsOutput` receives a ready `TtsEngine` dependency.
 
 ## Stop Conditions
 
@@ -128,3 +133,5 @@ verification and human code review:
    one detailed stderr traceback, TTS health `ERROR` in the UI, no network
    request, no repeated load attempts for later units, and continued Jarvis
    operation.
+
+Human hardware verification completed successfully on 2026-07-12.

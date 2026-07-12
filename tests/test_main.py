@@ -1509,7 +1509,12 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(
     cue_path.write_bytes(b"dummy")
 
     lock = asyncio.Lock()
-    tts_output = TtsOutput(TtsSettings(), playback_lock=lock)
+
+    class UnusedEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            raise AssertionError("This playback-lock test must not synthesize")
+
+    tts_output = TtsOutput(TtsSettings(), engine=UnusedEngine(), playback_lock=lock)
     sound_cues = SoundCuePlayer(
         SoundCueSettings(thinking=str(cue_path)), playback_lock=lock
     )
