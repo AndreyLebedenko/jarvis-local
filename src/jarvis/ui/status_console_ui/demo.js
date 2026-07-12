@@ -6,7 +6,7 @@
 const RUNTIME_STATE_LABELS = {
   idle: ["Idle", 'Say "Jarvis" to begin.'],
   warming: ["Warming up (local)", "Loading the model into GPU memory..."],
-  listening: ["Listening", "Waiting for a voice command..."],
+  listening: ["Ready", "Waiting for a request"],
   thinking: ["Thinking", "Gathering context and composing a response..."],
   speaking: ["Speaking", "Speaking the response aloud..."],
   error: ["Error", "See the event in the log (task-ui-03)."],
@@ -44,6 +44,33 @@ function buildControls() {
     const button = document.createElement("button");
     button.textContent = locality;
     button.onclick = () => applyDataLocality({ locality });
+    root.appendChild(button);
+  }
+
+  const requestGroup = document.createElement("span");
+  requestGroup.textContent = "last request:";
+  root.appendChild(requestGroup);
+  const requestSamples = [
+    {
+      label: "voice",
+      payload: { timestamp: Date.now() / 1000, items: [{ kind: "audio", duration_seconds: 4.2 }] },
+    },
+    {
+      label: "voice + screenshot",
+      payload: {
+        timestamp: Date.now() / 1000,
+        items: [{ kind: "audio", duration_seconds: 4.2 }, { kind: "screenshot" }],
+      },
+    },
+    {
+      label: "clipboard",
+      payload: { timestamp: Date.now() / 1000, items: [{ kind: "clipboard" }] },
+    },
+  ];
+  for (const sample of requestSamples) {
+    const button = document.createElement("button");
+    button.textContent = sample.label;
+    button.onclick = () => applyLastModelRequest({ ...sample.payload, timestamp: Date.now() / 1000 });
     root.appendChild(button);
   }
 
@@ -247,6 +274,10 @@ for (const module of ["backend", "microphone", "tts", "memory", "vision"]) {
   applyModuleHealth({ module, status: "ok", detail: "demo:ok" });
 }
 applyModelLabel({ label: "gemma4:12b-it-qat (demo)" });
+applyLastModelRequest({
+  timestamp: Date.now() / 1000,
+  items: [{ kind: "audio", duration_seconds: 4.2 }],
+});
 applyModelOptions({
   options: ["gemma4:12b-it-qat", "llama3:8b"],
   current: "gemma4:12b-it-qat",

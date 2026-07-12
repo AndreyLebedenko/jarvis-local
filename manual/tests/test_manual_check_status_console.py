@@ -10,7 +10,12 @@ from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
+from jarvis.ui.contract import (
+    EventLevel,
+    ModelRequestSummary,
+    RuntimeState,
+    SystemEvent,
+)
 from jarvis.ui.status_console import StatusConsoleApi
 from jarvis.ui.visibility import VisibilityModeState
 from manual.manual_check_status_console import (
@@ -22,12 +27,16 @@ from manual.manual_check_status_console import (
 class _FakeTransport:
     def __init__(self) -> None:
         self.runtime_states: list[RuntimeState] = []
+        self.request_summaries: list[ModelRequestSummary] = []
 
     def set_runtime_state(
         self, state: RuntimeState, substatus: str | None = None
     ) -> None:
         del substatus
         self.runtime_states.append(state)
+
+    def set_last_model_request(self, summary: ModelRequestSummary) -> None:
+        self.request_summaries.append(summary)
 
 
 class _FakeWindow:
@@ -70,6 +79,8 @@ async def test_demo_cycle_uses_transport_and_publishes_real_system_events():
 
     assert transport.runtime_states
     assert transport.runtime_states[0] is RuntimeState.IDLE
+    assert transport.request_summaries
+    assert transport.request_summaries[0].items[0].audio_duration_seconds == 4.2
     assert events
     assert events[0].level is EventLevel.INFO
 

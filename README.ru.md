@@ -15,11 +15,12 @@ routes.
 
 ## Status Console UI
 
-В v1.2 появился локальный desktop Status Console: состояние runtime, события
-движка, Think mode, режим Open/Hidden, сброс контекста, защищённый Shutdown
-control, меню настроек с restart-to-apply (выбор модели и микрофона) и
-компактная touchstrip панель. Начиная с v1.2.11 интерфейс по умолчанию
-английский; русский включается через `[ui].language = "ru"` в
+В v1.3 Status Console развивается в Control Center: состояние runtime и
+здоровье модулей, метаданные последнего запроса к модели с timestamp в начале,
+события движка, Think mode, Open/Hidden, сброс контекста, защищённый Shutdown,
+типизированные restart-to-apply настройки (модель, микрофон, TTS routes, язык
+UI и VAD) и компактная touchstrip панель. Начиная с v1.2.11 интерфейс по
+умолчанию английский; русский включается через `[ui].language = "ru"` в
 `config.toml`.
 
 ![Jarvis Status Console](docs/screenshots/ru/status-console.png)
@@ -49,11 +50,12 @@ Jarvis не связан с Marvel, Disney или правообладателя
   языкам.
 - Захват полного экрана и выделенной области.
 - Интерфейс на горячих клавишах и звуковых сигналах.
-- Локальный Status Console UI: события системы, Think mode, Open/Hidden,
-  сброс контекста, защищённый Shutdown, меню настроек модели/микрофона
-  с restart-to-apply и touchstrip glance surface. Язык интерфейса по
-  умолчанию английский; русский включается через `[ui].language = "ru"`
-  в `config.toml` (это касается только UI - язык диалога и TTS не
+- Control Center UI: data-driven здоровье модулей, метаданные последнего
+  запроса с timestamp в начале (без содержимого запроса), события системы,
+  Think mode, Open/Hidden, сброс контекста, защищённый Shutdown,
+  типизированные restart-to-apply настройки и touchstrip glance surface. Язык
+  интерфейса по умолчанию английский; русский включается через `[ui].language
+  = "ru"` в `config.toml` (это касается только UI - язык диалога и TTS не
   меняются).
 - Асинхронная event-bus архитектура с изолированными модулями.
 - TOML-конфигурация с проверкой типов, включая диалоговые промпты:
@@ -103,19 +105,19 @@ copy config.example.toml config.toml
 Запускайте из корня репозитория:
 
 ```bash
-python main.py
+python -m jarvis
 ```
 
 Запуск с живым Status Console UI:
 
 ```bash
-python main.py --status-console
+python -m jarvis --status-console
 ```
 
 Только desktop-консоль, без touchstrip-окна:
 
 ```bash
-python main.py --status-console --no-touchstrip
+python -m jarvis --status-console --no-touchstrip
 ```
 
 Jarvis регистрирует конкретные сочетания через Windows `RegisterHotKey`.

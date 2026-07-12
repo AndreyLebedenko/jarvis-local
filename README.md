@@ -12,11 +12,13 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.2 adds a local desktop Status Console for runtime state, system events,
-Think mode, Open/Hidden visibility mode, context reset, a guarded Shutdown
-control, a restart-to-apply configuration menu (model and microphone
-selection), and a compact touchstrip glance surface. Since v1.2.11 the UI
-is English by default, with Russian available via `[ui].language = "ru"`.
+v1.3 adds the Control Center evolution of the local desktop Status Console:
+runtime and module health, timestamp-first metadata for the latest request to
+the model, system events, Think mode, Open/Hidden visibility mode, context
+reset, guarded Shutdown, typed restart-to-apply configuration (model,
+microphone, TTS routes, UI language, and VAD), and a compact touchstrip glance
+surface. Since v1.2.11 the UI is English by default, with Russian available
+via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.png)
 
@@ -45,12 +47,12 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   routes for low perceived latency.
 - Full-screen and region screenshot capture.
 - Hotkey and sound-cue interface.
-- Local Status Console UI with system events, Think mode, Open/Hidden mode,
-  context reset, guarded Shutdown, a restart-to-apply model/microphone
-  configuration menu, and touchstrip glance surface. The UI language is
-  English by default; Russian is available via `[ui].language = "ru"` in
-  `config.toml` (UI chrome only - the assistant's dialog language and TTS
-  are not affected).
+- Control Center UI with data-driven module health, timestamp-first latest
+  request metadata (without request content), system events, Think mode,
+  Open/Hidden mode, context reset, guarded Shutdown, typed restart-to-apply
+  configuration, and touchstrip glance surface. The UI language is English by
+  default; Russian is available via `[ui].language = "ru"` in `config.toml`
+  (UI chrome only - the assistant's dialog language and TTS are not affected).
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration, including the dialog prompts: the
   system prompt and warm-up request are set via `[prompts]` in
@@ -99,19 +101,19 @@ copy config.example.toml config.toml
 Run from the repository root:
 
 ```bash
-python main.py
+python -m jarvis
 ```
 
 Run with the live Status Console UI:
 
 ```bash
-python main.py --status-console
+python -m jarvis --status-console
 ```
 
 To open only the desktop console, without the touchstrip window:
 
 ```bash
-python main.py --status-console --no-touchstrip
+python -m jarvis --status-console --no-touchstrip
 ```
 
 Jarvis uses Windows `RegisterHotKey` for concrete shortcuts. Global shortcuts

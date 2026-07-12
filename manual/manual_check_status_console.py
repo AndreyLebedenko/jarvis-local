@@ -10,8 +10,10 @@ Usage:
   python manual/manual_check_status_console.py
 
 Manual checklist:
-  1. Confirm the Status Console and touchstrip look unchanged from the
-     pre-transport reference and both show the cycling states.
+  1. Confirm the Status Console and touchstrip show the cycling states. On
+     desktop, confirm the data-driven modules panel and timestamp-first last
+     request summary are readable; touchstrip remains a compact glance/action
+     surface with no request-summary panel.
   2. Open the printed URL in Chrome. Confirm Chrome receives the same state,
      Think/visibility/reset/shutdown controls work, and the hello identities
      are status-console and touchstrip in the terminal log.
@@ -20,7 +22,8 @@ Manual checklist:
      as live. Restore the server and confirm automatic reconnect plus a fresh
      snapshot.
   4. Exercise Think, Open/Hidden, context reset, module reset, and guarded
-     shutdown. Close the desktop window to verify the clean engine shutdown.
+     shutdown. Confirm Open/Hidden does not change locality or the last
+     request summary. Close the desktop window to verify clean engine shutdown.
 
 The real windows, WebView2, browser, microphone, speakers, and local Ollama
 are human-run checks. This script intentionally uses no external network
@@ -30,6 +33,7 @@ endpoint; only the configured local Ollama path is used by the normal engine.
 import asyncio
 import logging
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,9 +44,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
+from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ThinkingModeState
-from jarvis.ui.contract import EventLevel, RuntimeState
+from jarvis.ui.contract import (
+    EventLevel,
+    ModelRequestItem,
+    ModelRequestSummary,
+    RuntimeState,
+)
 from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
@@ -84,6 +94,19 @@ async def _run_demo_cycle_async(ctx: DemoContext) -> None:
     while not ctx.shutdown_event.is_set():
         state = STATE_CYCLE[i % len(STATE_CYCLE)]
         ctx.transport.set_runtime_state(state)
+        request_items = (
+            (ModelRequestItem(ModelRequestInput.AUDIO, audio_duration_seconds=4.2),)
+            if i % 3 == 0
+            else (
+                ModelRequestItem(ModelRequestInput.AUDIO, audio_duration_seconds=4.2),
+                ModelRequestItem(ModelRequestInput.SCREENSHOT),
+            )
+            if i % 3 == 1
+            else (ModelRequestItem(ModelRequestInput.CLIPBOARD),)
+        )
+        ctx.transport.set_last_model_request(
+            ModelRequestSummary(timestamp=time.time(), items=request_items)
+        )
         source, level, log_message, ui_message = SAMPLE_EVENTS[i % len(SAMPLE_EVENTS)]
         await publish_system_event(
             ctx.bus, logger, source, level, log_message, ui_message
