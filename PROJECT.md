@@ -1282,6 +1282,44 @@ source literals:
   type checking, unknown-key detection, and per-key precedence; a second
   file would add a second loader for two strings.
 
+## Architecture v1.3.0 (Control Center)
+
+Task 2 (configuration iteration 2) landed first after the accepted IA
+document (`tasks/control-center-v1.3.0-ia.md`):
+
+- `ui/config_selection.py` is the single validation authority for what
+  the config menu may write: `UiConfigSelection` + `validate_selection()`
+  with sanity ranges for VAD (threshold exclusive (0,1), max chunk
+  1-120 s, request-end pause 0.1-10 s, resume cooldown 0-10 s). The
+  command handler checks payload shape/types (ProtocolError), the API
+  validates semantics before writing, and the front-end mirrors the same
+  ranges from snapshot data - three layers, one authority.
+  - TTS routes are all-or-nothing by contract: `build_tts_engine` requires
+  a customized `[tts.languages]` to cover every routed language, so the
+  UI writes either both ru+en routes or nothing (Silero-only default).
+    Each route form is a projection of the selected engine's complete typed
+    config contract. Field types, nullable/required state, defaults, and
+    numeric/non-empty constraints come from dataclass metadata shared with
+    TOML validation. Silero model identifiers are not allowlisted; model/file
+    compatibility still surfaces honestly at lazy load through TTS health.
+  - `write_ui_config()` gained optional `[ui]`, `[vad]`, and
+    `[tts.languages.*]` sections; None omits a section so the layered
+    loader falls through. It remains the only config writer and still
+    never touches config.toml.
+    A UI TTS route containing the discriminator `engine` replaces that
+    language's base variant as a unit; otherwise changing engine would mix
+    fields from two dataclasses, and omitted nullable fields could not be
+    cleared. A route override without `engine` retains normal per-key merge.
+- The snapshot gained a `config_values` section
+  (`config_values_payload()`): current values, option lists, and the
+  validation ranges. The front-end renders selectors and range-checks
+  from this data instead of hardcoding a second copy of the contract.
+- Everything stays restart-to-apply with the existing pending-restart
+  indicator; `[prompts]` editing is deliberately out of the panel.
+  - The supported-set constants (`SUPPORTED_UI_LANGUAGES`,
+    `SUPPORTED_TTS_LANGUAGES`, `SUPPORTED_TTS_ENGINES`) were made public
+    in config.py for the selection module and payload builder.
+
 ## Architecture v1.2.14 (UI state foundation)
 
 Task 1 (RuntimeStateTracker) landed first:

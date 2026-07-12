@@ -156,6 +156,90 @@ function buildControls() {
     button.onclick = () => applyPendingRestart({ pending });
     root.appendChild(button);
   }
+
+  // story-v1.3.0-task-2: configuration iteration 2 values, mirroring the
+  // config_values_payload() shape from status_console.py.
+  const configValuesButton = document.createElement("button");
+  configValuesButton.textContent = "config values (default)";
+  configValuesButton.onclick = () => applyConfigValues(_demoConfigValues(false));
+  root.appendChild(configValuesButton);
+
+  const configRoutesButton = document.createElement("button");
+  configRoutesButton.textContent = "config values (bilingual)";
+  configRoutesButton.onclick = () => applyConfigValues(_demoConfigValues(true));
+  root.appendChild(configRoutesButton);
+}
+
+function _demoConfigValues(bilingual) {
+  const schemas = {
+    silero: [
+      _demoTtsSpec("model", "string", false, true, "v3_1_ru", true),
+      _demoTtsSpec("language", "string", false, false, "ru", true),
+      _demoTtsSpec("speaker", "string", false, false, "baya", true),
+      _demoTtsSpec("sample_rate", "integer", false, false, 48000, false, 0, true),
+      _demoTtsSpec("put_accent", "boolean", true, false, null),
+      _demoTtsSpec("put_yo", "boolean", true, false, null),
+    ],
+    piper: [
+      _demoTtsSpec("model", "string", false, true, null, true),
+      _demoTtsSpec("config_path", "string", true, false, null, true),
+      _demoTtsSpec("use_cuda", "boolean", false, false, false),
+      _demoTtsSpec("espeak_data_dir", "string", true, false, null, true),
+      _demoTtsSpec("download_dir", "string", true, false, null, true),
+      _demoTtsSpec("speaker_id", "integer", true, false, null, false, 0),
+      _demoTtsSpec("length_scale", "number", true, false, null, false, 0, true),
+      _demoTtsSpec("noise_scale", "number", true, false, null, false, 0, true),
+      _demoTtsSpec("noise_w_scale", "number", true, false, null, false, 0, true),
+      _demoTtsSpec("normalize_audio", "boolean", false, false, true),
+      _demoTtsSpec("volume", "number", false, false, 1.0, false, 0, true),
+    ],
+  };
+  const routes = {
+    ru: {
+      engine: "silero", model: "v3_1_ru", language: "ru", speaker: "baya",
+      sample_rate: 48000, put_accent: null, put_yo: null,
+    },
+  };
+  if (bilingual) {
+    routes.en = {
+      engine: "piper", model: "C:/voices/en.onnx", config_path: null,
+      use_cuda: false, espeak_data_dir: null, download_dir: null,
+      speaker_id: null, length_scale: 1.0, noise_scale: 0.667,
+      noise_w_scale: 0.8, normalize_audio: true, volume: 1.0,
+    };
+  }
+  return {
+    ui_language: "en",
+    ui_language_options: ["en", "ru"],
+    vad: {
+      threshold: 0.5,
+      max_chunk_seconds: 30,
+      request_end_pause_seconds: 2.0,
+      resume_cooldown_seconds: 1.0,
+    },
+    vad_ranges: {
+      threshold: [0.0, 1.0],
+      max_chunk_seconds: [1, 120],
+      request_end_pause_seconds: [0.1, 10.0],
+      resume_cooldown_seconds: [0.0, 10.0],
+    },
+    tts: {
+      languages: ["en", "ru"],
+      engines: ["piper", "silero"],
+      schemas,
+      routes,
+    },
+  };
+}
+
+function _demoTtsSpec(
+  name, kind, nullable, required, defaultValue, nonEmpty = false,
+  minimum = null, exclusiveMinimum = false
+) {
+  return {
+    name, kind, nullable, required, default: defaultValue, non_empty: nonEmpty,
+    minimum, exclusive_minimum: exclusiveMinimum,
+  };
 }
 
 buildControls();
@@ -163,3 +247,9 @@ for (const module of ["backend", "microphone", "tts", "memory", "vision"]) {
   applyModuleHealth({ module, status: "ok", detail: "demo:ok" });
 }
 applyModelLabel({ label: "gemma4:12b-it-qat (demo)" });
+applyModelOptions({
+  options: ["gemma4:12b-it-qat", "llama3:8b"],
+  current: "gemma4:12b-it-qat",
+});
+applyMicrophoneOptions({ options: ["", "USB Headset"], current: "" });
+applyConfigValues(_demoConfigValues(true));

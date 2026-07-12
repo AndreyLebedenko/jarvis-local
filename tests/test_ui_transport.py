@@ -4,6 +4,7 @@ import aiohttp
 import pytest
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, VadSettings
 from jarvis.ui.contract import (
     EventLevel,
     HealthStatus,
@@ -14,6 +15,7 @@ from jarvis.ui.contract import (
 )
 from jarvis.ui.transport import (
     PROTOCOL_VERSION,
+    ProtocolError,
     UiStateStore,
     UiTransportServer,
     _Client,
@@ -50,8 +52,21 @@ class _FakeControlApi:
     def request_microphone_options(self) -> None:
         self.calls.append(("request_microphone_options", None))
 
-    def save_config_selection(self, model: str, microphone_device: str) -> None:
+    def save_config_selection(
+        self,
+        model: str,
+        microphone_device: str,
+        *,
+        ui_language=None,
+        vad=None,
+        tts_routes=None,
+    ) -> None:
         self.calls.append(("save_config_selection", f"{model}|{microphone_device}"))
+        self.config_kwargs = {
+            "ui_language": ui_language,
+            "vad": vad,
+            "tts_routes": tts_routes,
+        }
 
 
 def test_protocol_message_round_trips_with_channel_and_payload():
@@ -326,3 +341,185 @@ async def test_server_stop_closes_connected_clients_and_unsubscribes_bus_handler
         SystemEvent, SystemEvent(3.0, "ENGINE", EventLevel.INFO, "ignored")
     )
     await asyncio.sleep(0)
+
+
+# --- story-v1.3.0-task-2: configuration iteration 2 command arguments -------
+
+
+def _full_config_arguments() -> dict:
+    return {
+        "model": "demo",
+        "microphone": "mic-1",
+        "ui_language": "ru",
+        "vad": {
+            "threshold": 0.6,
+            "max_chunk_seconds": 25,
+            "request_end_pause_seconds": 1.5,
+            "resume_cooldown_seconds": 0.5,
+        },
+        "tts_routes": {
+            "ru": {
+                "engine": "silero",
+                "model": "custom_ru",
+                "language": "ru",
+                "speaker": "eugene",
+                "sample_rate": 24000,
+                "put_accent": True,
+                "put_yo": None,
+            },
+            "en": {
+                "engine": "piper",
+                "model": "voices/en.onnx",
+                "config_path": None,
+                "use_cuda": False,
+                "espeak_data_dir": None,
+                "download_dir": None,
+                "speaker_id": 2,
+                "length_scale": 1.2,
+                "noise_scale": None,
+                "noise_w_scale": None,
+                "normalize_audio": False,
+                "volume": 0.9,
+            },
+        },
+    }
+
+
+def test_save_config_selection_parses_iteration_2_arguments():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control("save_config_selection", _full_config_arguments())
+
+    assert control_api.config_kwargs["ui_language"] == "ru"
+    assert control_api.config_kwargs["vad"] == VadSettings(
+        threshold=0.6,
+        max_chunk_seconds=25,
+        request_end_pause_seconds=1.5,
+        resume_cooldown_seconds=0.5,
+    )
+    assert control_api.config_kwargs["tts_routes"] == {
+        "ru": SileroTtsSettings(
+            model="custom_ru",
+            language="ru",
+            speaker="eugene",
+            sample_rate=24000,
+            put_accent=True,
+        ),
+        "en": PiperTtsSettings(
+            model="voices/en.onnx",
+            speaker_id=2,
+            length_scale=1.2,
+            normalize_audio=False,
+            volume=0.9,
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("speaker_id", 1.5), ("use_cuda", "yes"), ("volume", True)],
+)
+def test_typed_tts_route_rejects_wrong_engine_parameter_types(field, value):
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+    arguments = _full_config_arguments()
+    arguments["tts_routes"]["en"][field] = value
+
+    with pytest.raises(ProtocolError, match=field):
+        server._dispatch_control("save_config_selection", arguments)
+
+    assert control_api.calls == []
+
+
+def test_typed_tts_route_rejects_fields_from_the_other_engine():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+    arguments = _full_config_arguments()
+    arguments["tts_routes"]["en"]["speaker"] = "wrong variant"
+
+    with pytest.raises(ProtocolError, match="requires exactly"):
+        server._dispatch_control("save_config_selection", arguments)
+
+    assert control_api.calls == []
+
+
+def test_save_config_selection_without_new_fields_passes_none():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control(
+        "save_config_selection", {"model": "demo", "microphone": "mic-1"}
+    )
+
+    assert control_api.config_kwargs == {
+        "ui_language": None,
+        "vad": None,
+        "tts_routes": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        {"ui_language": 5},
+        {"vad": "loud"},
+        {"vad": {"threshold": 0.5}},
+        {
+            "vad": {
+                "threshold": True,
+                "max_chunk_seconds": 25,
+                "request_end_pause_seconds": 1.5,
+                "resume_cooldown_seconds": 0.5,
+            }
+        },
+        {
+            "vad": {
+                "threshold": 0.5,
+                "max_chunk_seconds": 25.5,
+                "request_end_pause_seconds": 1.5,
+                "resume_cooldown_seconds": 0.5,
+            }
+        },
+        {"tts_routes": ["ru"]},
+        {"tts_routes": {"ru": "silero"}},
+        {"tts_routes": {"ru": {"engine": "silero"}}},
+    ],
+)
+def test_malformed_iteration_2_arguments_raise_protocol_error(corruption):
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+    arguments = {"model": "demo", "microphone": "mic-1", **corruption}
+
+    with pytest.raises(ProtocolError):
+        server._dispatch_control("save_config_selection", arguments)
+
+    assert control_api.calls == []
+
+
+def test_snapshot_contains_config_values_section():
+    store = UiStateStore()
+
+    snapshot = store.snapshot()
+
+    values = snapshot["config_values"]
+    assert values["ui_language"] == "en"
+    assert values["vad"]["threshold"] == 0.5
+    assert values["tts"]["routes"]["ru"] == {
+        "engine": "silero",
+        "model": "v3_1_ru",
+        "language": "ru",
+        "speaker": "baya",
+        "sample_rate": 48000,
+        "put_accent": None,
+        "put_yo": None,
+    }
+    assert [field["name"] for field in values["tts"]["schemas"]["silero"]] == [
+        "model",
+        "language",
+        "speaker",
+        "sample_rate",
+        "put_accent",
+        "put_yo",
+    ]
+    assert values["vad_ranges"]["max_chunk_seconds"] == [1, 120]

@@ -222,7 +222,7 @@ Desktop config panel sections:
 | --- | --- | --- |
 | Backend | Model selector | Existing `[backend].model` UI writer |
 | Microphone | Device selector | Existing `[microphone].device` UI writer |
-| TTS routes | Engine and model per supported language | Existing `TtsLanguageSettings` and supported engines |
+| TTS routes | Engine and all parameters of its typed route per language | Existing `SileroTtsSettings` / `PiperTtsSettings` contracts |
 | UI | UI language `en`/`ru` | Existing `[ui].language` |
 | VAD | Threshold, max chunk, request-end pause, resume cooldown | Existing `VadSettings` |
 

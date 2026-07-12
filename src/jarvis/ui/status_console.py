@@ -4,14 +4,33 @@ import asyncio
 import concurrent.futures
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import DEFAULT_UI_CONFIG_PATH, Settings, write_ui_config
+from jarvis.core.config import (
+    DEFAULT_UI_CONFIG_PATH,
+    SUPPORTED_TTS_ENGINES,
+    SUPPORTED_TTS_LANGUAGES,
+    SUPPORTED_UI_LANGUAGES,
+    Settings,
+    TtsLanguageSettings,
+    VadSettings,
+    tts_route_field_specs,
+    tts_route_values,
+    write_ui_config,
+)
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.ui.config_selection import (
+    VAD_MAX_CHUNK_RANGE,
+    VAD_REQUEST_END_PAUSE_RANGE,
+    VAD_RESUME_COOLDOWN_RANGE,
+    VAD_THRESHOLD_RANGE,
+    UiConfigSelection,
+    validate_selection,
+)
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -107,6 +126,43 @@ def options_payload(options: list[str], current: str) -> dict:
     generic "selectable list + current value" contract, not two
     independently-maintained copies of the same dict literal."""
     return {"options": options, "current": current}
+
+
+def config_values_payload(settings: Settings) -> dict:
+    """Snapshot section for configuration iteration 2: current values,
+    option lists, and validation ranges - the front-end renders and
+    range-checks from this data instead of hardcoding a second copy of
+    the contract. TTS routes carry only explicitly configured languages;
+    an absent language means the Silero-only default is in effect."""
+    routes = {
+        language: {"engine": route.engine, **tts_route_values(route)}
+        for language, route in sorted(settings.tts.languages.items())
+    }
+    return {
+        "ui_language": settings.ui.language,
+        "ui_language_options": list(SUPPORTED_UI_LANGUAGES),
+        "vad": {
+            "threshold": settings.vad.threshold,
+            "max_chunk_seconds": settings.vad.max_chunk_seconds,
+            "request_end_pause_seconds": settings.vad.request_end_pause_seconds,
+            "resume_cooldown_seconds": settings.vad.resume_cooldown_seconds,
+        },
+        "vad_ranges": {
+            "threshold": list(VAD_THRESHOLD_RANGE),
+            "max_chunk_seconds": list(VAD_MAX_CHUNK_RANGE),
+            "request_end_pause_seconds": list(VAD_REQUEST_END_PAUSE_RANGE),
+            "resume_cooldown_seconds": list(VAD_RESUME_COOLDOWN_RANGE),
+        },
+        "tts": {
+            "languages": sorted(SUPPORTED_TTS_LANGUAGES),
+            "engines": sorted(SUPPORTED_TTS_ENGINES),
+            "schemas": {
+                engine: [asdict(spec) for spec in tts_route_field_specs(engine)]
+                for engine in sorted(SUPPORTED_TTS_ENGINES)
+            },
+            "routes": routes,
+        },
+    }
 
 
 class WindowLike(Protocol):
@@ -506,26 +562,53 @@ class StatusConsoleApi:
             MicrophoneOptionsAvailable(options=options, current=current),
         )
 
-    def save_config_selection(self, model: str, microphone_device: str) -> None:
-        self._schedule(self._save_config_selection_async(model, microphone_device))
-
-    async def _save_config_selection_async(
-        self, model: str, microphone_device: str
+    def save_config_selection(
+        self,
+        model: str,
+        microphone_device: str,
+        *,
+        ui_language: str | None = None,
+        vad: VadSettings | None = None,
+        tts_routes: dict[str, TtsLanguageSettings] | None = None,
     ) -> None:
-        """Writes restart-to-apply UI config after validating selections."""
-        if not model.strip():
-            self._logger.warning("Ignoring config menu save with an empty model")
+        selection = UiConfigSelection(
+            model=model,
+            microphone_device=microphone_device,
+            ui_language=ui_language,
+            vad=vad,
+            tts_routes=tts_routes,
+        )
+        self._schedule(self._save_config_selection_async(selection))
+
+    async def _save_config_selection_async(self, selection: UiConfigSelection) -> None:
+        """Writes restart-to-apply UI config after validating selections.
+
+        The front-end mirrors the same checks (defense on both sides);
+        validate_selection() is the authority for what gets written."""
+        problems = validate_selection(selection)
+        if problems:
+            self._logger.warning("Ignoring config menu save: %s", "; ".join(problems))
+            rejected_key = (
+                "config_save_rejected_no_model"
+                if problems == ["model must not be empty"]
+                else "config_save_rejected_invalid"
+            )
             await publish_system_event(
                 self._bus,
                 self._logger,
                 source="ENGINE",
                 level=EventLevel.WARN,
-                log_message="Config menu save rejected: model was empty",
-                ui_message=ui_text("config_save_rejected_no_model", self._language),
+                log_message=f"Config menu save rejected: {'; '.join(problems)}",
+                ui_message=ui_text(rejected_key, self._language),
             )
             return
         write_ui_config(
-            self._ui_config_path, model=model, microphone_device=microphone_device
+            self._ui_config_path,
+            model=selection.model,
+            microphone_device=selection.microphone_device,
+            ui_language=selection.ui_language,
+            vad=selection.vad,
+            tts_routes=selection.tts_routes,
         )
         await publish_system_event(
             self._bus,
@@ -534,7 +617,11 @@ class StatusConsoleApi:
             level=EventLevel.INFO,
             log_message=(
                 "Config menu saved "
-                f"(model={model!r}, microphone={microphone_device!r}); "
+                f"(model={selection.model!r}, "
+                f"microphone={selection.microphone_device!r}, "
+                f"ui_language={selection.ui_language!r}, "
+                f"vad={'set' if selection.vad else 'default'}, "
+                f"tts_routes={'set' if selection.tts_routes else 'default'}); "
                 "restart to apply"
             ),
             ui_message=ui_text("config_saved_restart_to_apply", self._language),

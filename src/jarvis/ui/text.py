@@ -101,6 +101,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Failed to fetch the microphone list - showing the current value"
         ),
         "config_save_rejected_no_model": "Save cancelled: no model selected",
+        "config_save_rejected_invalid": (
+            "Save cancelled: some settings values are invalid"
+        ),
         "config_saved_restart_to_apply": "Settings saved - restart Jarvis to apply",
         "warmup_failed": "Model warm-up failed - the first response may be slow",
         "warmup_succeeded": "Model warm-up complete",
@@ -139,6 +142,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Не удалось получить список микрофонов - показано текущее значение"
         ),
         "config_save_rejected_no_model": "Сохранение отменено: модель не выбрана",
+        "config_save_rejected_invalid": (
+            "Сохранение отменено: часть значений настроек недопустима"
+        ),
         "config_saved_restart_to_apply": (
             "Настройки сохранены - перезапустите Jarvis, чтобы применить"
         ),
