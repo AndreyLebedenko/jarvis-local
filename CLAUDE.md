@@ -92,22 +92,30 @@
    explicitly, e.g. `Get-Content -Raw -Encoding UTF8 PROJECT.md`.
 6. Graphify is an agent/dev tool, not a Jarvis runtime dependency.
    Generated graph data lives under `graphify-out/` and is not committed.
+   The graph contains deterministic parser/AST data only. Graphify's code-only
+   path also parses supported documentation formats such as Markdown when a
+   structural extractor exists, but it uses no semantic LLM extraction or LLM
+   community labeling. Read project documentation directly when answering
+   product, requirement, or architectural questions; graph nodes do not
+   replace the documents as sources of truth.
    Use the project wrapper for standard operations:
-   - `tools/graphify.ps1 init` for the first graph build;
-   - `tools/graphify.ps1 update` after code changes when a graph exists;
-   - `tools/graphify.ps1 refresh` after meaningful changes to `PROJECT.md`,
-     agent instructions, README/spec files, task cards, or bug reports;
-   - `tools/graphify.ps1 label` to refresh community labels only;
+   - `tools/graphify.ps1 init` for a fresh AST-only graph build;
+   - `tools/graphify.ps1 update` after source-code changes when a graph
+     exists;
+   - `tools/graphify.ps1 refresh` to delete and fully rebuild the AST-only
+     graph; run it with a 240-second command timeout;
+   - `tools/graphify.ps1 cluster` to rebuild deterministic communities without
+     LLM labels;
    - `tools/graphify.ps1 query "..."` for codebase questions;
    - `tools/graphify.ps1 hook-install` to install local git hooks.
-   The `refresh` command runs full code+docs extraction and community labeling
-   through a generative LLM backend, and is intentionally not part of the fast
-   hook path. For local Ollama use a JSON-capable chat/instruct model such as
-   `gemma4:12b-it-qat`; embedding-only models are not suitable for graphify's
-   semantic extraction step. On Windows, `tools/graphify-refresh.cmd` is the
-   same operation as `tools/graphify.ps1 refresh`.
-   If `graphify-out/graph.json` exists and the task is a codebase question,
-   query the graph before manually reading large parts of the repository.
+   Use `update` after source or structurally parsed documentation changes. Do
+   not run `graphify extract`, `graphify label`, or the removed wrapper
+   commands `semantic`, `docs`, and `label`. On Windows,
+   `tools/graphify-refresh.cmd` is the same operation as
+   `tools/graphify.ps1 refresh`.
+   If `graphify-out/graph.json` exists and the task is about source-code
+   structure or relationships, query the graph before manually reading large
+   parts of the source tree.
    Do not run graph extraction in CI or treat missing graph output as a test
    failure.
 

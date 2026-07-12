@@ -1463,6 +1463,24 @@ Runtime locality and CI verification are separate guarantees:
   calls at run time - that remains a code-review/architecture guarantee,
   not something CI measures.
 
+## Agent/dev graph index
+
+- Graphify is a development aid, not a Jarvis runtime dependency.
+- The project graph is built exclusively through deterministic structural
+  extractors. The code-only Graphify path also parses supported documentation
+  formats such as Markdown when a structural extractor exists.
+- Semantic LLM extraction and LLM community labeling are not part of the
+  project graph pipeline. Graph construction must not contact Ollama or
+  another model. Parsed documentation nodes do not replace project documents
+  as sources of truth.
+- `tools/graphify.ps1 update` is the normal source-change path.
+  `tools/graphify.ps1 refresh` deletes generated graph output and performs a
+  fresh deterministic rebuild. Source and structurally parsed documentation
+  changes use the same code-only update path.
+- Graph queries support source structure and code relationships only. Product
+  and architectural requirements remain authoritative in project documents
+  and must be read directly.
+
 ## Working agreements (for the agent)
 
 - Hardware-dependent tests (microphone, speakers, hotkeys, VRAM) are run by
