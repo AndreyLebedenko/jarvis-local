@@ -21,9 +21,10 @@ convention (config.toml's default path, sound cue paths, etc.), not a
 new one introduced here.
 
 Usage:
-  python setup_tts_model.py
+  python setup_tts_model.py [--language ru] [--model v3_1_ru]
 """
 
+import argparse
 import shutil
 from pathlib import Path
 
@@ -32,11 +33,25 @@ import silero
 _MODELS_MANIFEST_FILENAME = "latest_silero_models.yml"
 
 
-def main() -> None:
-    print("Downloading/verifying the Silero TTS model (ru, v3_1_ru)...")
-    silero.silero_tts(language="ru", speaker="v3_1_ru")
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--language", default="ru")
+    parser.add_argument("--model", default="v3_1_ru")
+    return parser
 
-    repo_target = Path(__file__).resolve().parent / _MODELS_MANIFEST_FILENAME
+
+def cache_model(
+    language: str,
+    model: str,
+    *,
+    silero_module=silero,
+    repo_root: Path | None = None,
+) -> None:
+    print(f"Downloading/verifying the Silero TTS model ({language}, {model})...")
+    silero_module.silero_tts(language=language, speaker=model)
+
+    repo_root = repo_root or Path(__file__).resolve().parent
+    repo_target = repo_root / _MODELS_MANIFEST_FILENAME
     produced = Path(_MODELS_MANIFEST_FILENAME).resolve()
     if produced != repo_target:
         shutil.copyfile(produced, repo_target)
@@ -45,6 +60,11 @@ def main() -> None:
     print("Done. The model is cached locally; tts.py can now run offline")
     print("as long as it is launched with the repo root as its working")
     print("directory.")
+
+
+def main() -> None:
+    args = build_arg_parser().parse_args()
+    cache_model(args.language, args.model)
 
 
 if __name__ == "__main__":

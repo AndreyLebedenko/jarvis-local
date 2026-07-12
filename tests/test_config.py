@@ -9,8 +9,9 @@ from jarvis.core.config import (
     ConfigError,
     HotkeySettings,
     MicrophoneSettings,
+    PiperTtsSettings,
     Settings,
-    TtsLanguageSettings,
+    SileroTtsSettings,
     TtsSettings,
     VadSettings,
     load_settings,
@@ -485,6 +486,138 @@ def test_sound_cues_thinking_on_and_thinking_off_default_when_section_omitted(tm
 # --- story-v1.2.9-task-1: per-language TTS route config ---------------------
 
 
+def test_tts_language_routes_parse_engine_specific_settings(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "v5_ru"
+        language = "ru"
+        speaker = "eugene"
+        sample_rate = 24000
+        put_accent = true
+        put_yo = false
+
+        [tts.languages.en]
+        engine = "piper"
+        model = "voices/en.onnx"
+        config_path = "voices/en.onnx.json"
+        use_cuda = true
+        espeak_data_dir = "voices/espeak-ng-data"
+        download_dir = "voices/resources"
+        speaker_id = 2
+        length_scale = 0.9
+        noise_scale = 0.6
+        noise_w_scale = 0.7
+        normalize_audio = false
+        volume = 0.8
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.tts.languages == {
+        "ru": SileroTtsSettings(
+            model="v5_ru",
+            language="ru",
+            speaker="eugene",
+            sample_rate=24000,
+            put_accent=True,
+            put_yo=False,
+        ),
+        "en": PiperTtsSettings(
+            model="voices/en.onnx",
+            config_path="voices/en.onnx.json",
+            use_cuda=True,
+            espeak_data_dir="voices/espeak-ng-data",
+            download_dir="voices/resources",
+            speaker_id=2,
+            length_scale=0.9,
+            noise_scale=0.6,
+            noise_w_scale=0.7,
+            normalize_audio=False,
+            volume=0.8,
+        ),
+    }
+
+
+def test_silero_config_accepts_an_unlisted_non_empty_model(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "future_ru_model"
+        language = "ru"
+        speaker = "future_speaker"
+        sample_rate = 44100
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.tts.languages["ru"] == SileroTtsSettings(
+        model="future_ru_model",
+        language="ru",
+        speaker="future_speaker",
+        sample_rate=44100,
+    )
+
+
+@pytest.mark.parametrize("legacy_field", ['voice = "baya"', "rate = 1.0"])
+def test_legacy_global_tts_fields_fail_with_migration_guidance(tmp_path, legacy_field):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[tts]\n{legacy_field}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"Move .*\[tts\.languages\."):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    ("route", "message"),
+    [
+        (
+            """
+            engine = "silero"
+            model = "v3_1_ru"
+            language = "ru"
+            speaker = "baya"
+            sample_rate = 0
+            """,
+            "sample_rate",
+        ),
+        (
+            """
+            engine = "piper"
+            model = "voice.onnx"
+            length_scale = 0.0
+            """,
+            "length_scale",
+        ),
+        (
+            """
+            engine = "piper"
+            model = "voice.onnx"
+            speaker = "not-a-piper-setting"
+            """,
+            "Unknown key",
+        ),
+    ],
+)
+def test_engine_specific_tts_settings_reject_invalid_values(tmp_path, route, message):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"[tts.languages.ru]\n{route}",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=message):
+        load_settings(config_path)
+
+
 def test_tts_language_routes_parse_for_supported_languages(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -503,9 +636,8 @@ def test_tts_language_routes_parse_for_supported_languages(tmp_path):
     settings = load_settings(config_path)
 
     assert settings.tts.languages == {
-        "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
-        "en": TtsLanguageSettings(
-            engine="piper",
+        "ru": SileroTtsSettings(),
+        "en": PiperTtsSettings(
             model=".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
         ),
     }
@@ -515,9 +647,7 @@ def test_tts_language_routes_default_to_current_silero_behavior(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
     assert settings.tts == TtsSettings()
-    assert settings.tts.languages == {
-        "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru")
-    }
+    assert settings.tts.languages == {"ru": SileroTtsSettings()}
 
 
 def test_tts_language_routes_reject_unknown_language(tmp_path):
@@ -573,8 +703,8 @@ def test_tts_language_routes_merge_base_and_ui_layers_per_language(tmp_path):
     settings = load_settings(config_path, ui_path=ui_config_path)
 
     assert settings.tts.languages == {
-        "ru": TtsLanguageSettings(engine="silero", model="custom_ru"),
-        "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+        "ru": SileroTtsSettings(model="custom_ru"),
+        "en": PiperTtsSettings(model="en.onnx"),
     }
 
 

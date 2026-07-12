@@ -83,6 +83,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "backend_detail_request_failed": "request failed",
         "tts_detail_ready": "speaking",
         "tts_detail_failed": "synthesis failed",
+        "tts_detail_load_failed": "engine load failed",
         "vision_detail_ready": "capture ok",
         "vision_detail_failed": "capture failed",
         # System event ui_message strings.
@@ -121,6 +122,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "backend_detail_request_failed": "сбой запроса",
         "tts_detail_ready": "озвучивает",
         "tts_detail_failed": "сбой синтеза",
+        "tts_detail_load_failed": "сбой загрузки движка",
         "vision_detail_ready": "захват в норме",
         "vision_detail_failed": "сбой захвата",
         "context_reset": "Контекст диалога сброшен",

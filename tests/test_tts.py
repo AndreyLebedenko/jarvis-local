@@ -13,16 +13,21 @@ from jarvis.audio.tts import (
     SentenceBuffer,
     SileroEngine,
     TtsEngine,
+    TtsEngineLoadError,
+    TtsEngineLoadFailed,
     TtsModelNotCachedError,
     TtsOutput,
     _append_wav_tail_silence,
     _ensure_model_cached,
+    _JitSileroModel,
+    _PackageSileroModel,
     _piper_chunks_to_wav_bytes,
     build_tts_engine,
     normalize_numbers,
     transliterate_latin,
 )
-from jarvis.core.config import TtsLanguageSettings, TtsSettings
+from jarvis.core.bus import EventBus
+from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, TtsSettings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 
 
@@ -63,10 +68,12 @@ class _Int16Bytes:
 class _FakePiperVoice:
     def __init__(self, chunks) -> None:
         self.texts: list[str] = []
+        self.synthesis_configs = []
         self._chunks = chunks
 
-    def synthesize(self, text: str):
+    def synthesize(self, text: str, syn_config=None):
         self.texts.append(text)
+        self.synthesis_configs.append(syn_config)
         return iter(self._chunks)
 
 
@@ -95,14 +102,76 @@ def _fake_engine_builder(label: str, seen: list[tuple[str, str, str]]):
 
 
 def test_silero_engine_satisfies_tts_engine_protocol():
-    engine: TtsEngine = SileroEngine(TtsSettings())
+    engine: TtsEngine = SileroEngine(SileroTtsSettings())
 
     assert engine is not None
 
 
+def test_package_silero_model_receives_route_synthesis_parameters():
+    calls = []
+
+    class _RawModel:
+        def apply_tts(self, **kwargs):
+            calls.append(kwargs)
+            return "audio"
+
+    route = SileroTtsSettings(
+        model="v5_ru",
+        language="ru",
+        speaker="eugene",
+        sample_rate=24000,
+        put_accent=True,
+        put_yo=False,
+    )
+
+    result = _PackageSileroModel(_RawModel(), route).synthesize("Текст")
+
+    assert result == "audio"
+    assert calls == [
+        {
+            "text": "Текст",
+            "speaker": "eugene",
+            "sample_rate": 24000,
+            "put_accent": True,
+            "put_yo": False,
+        }
+    ]
+
+
+def test_jit_silero_model_rejects_incompatible_sample_rate():
+    with pytest.raises(ValueError, match="requires sample_rate 16000"):
+        _JitSileroModel(
+            object(),
+            "symbols",
+            16000,
+            lambda **kwargs: [],
+            SileroTtsSettings(model="baya_16khz", sample_rate=48000),
+        )
+
+
+async def test_silero_engine_caches_a_terminal_load_failure():
+    load_count = 0
+
+    def fail_load(route):
+        nonlocal load_count
+        del route
+        load_count += 1
+        raise FileNotFoundError("weights missing")
+
+    engine = SileroEngine(SileroTtsSettings(), model_loader=fail_load)
+
+    for _ in range(2):
+        with pytest.raises(TtsEngineLoadError, match="weights missing"):
+            await engine.synthesize("Текст")
+
+    assert load_count == 1
+
+
 def test_piper_engine_satisfies_tts_engine_protocol(tmp_path):
     model_path, config_path = _write_piper_model_pair(tmp_path)
-    engine: TtsEngine = PiperEngine(model_path, config_path=config_path)
+    engine: TtsEngine = PiperEngine(
+        PiperTtsSettings(model=str(model_path), config_path=str(config_path))
+    )
 
     assert engine is not None
 
@@ -161,8 +230,8 @@ def test_build_tts_engine_builds_configured_bilingual_route_with_injected_builde
     seen: list[tuple[str, str]] = []
     settings = TtsSettings(
         languages={
-            "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
-            "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+            "ru": SileroTtsSettings(),
+            "en": PiperTtsSettings(model="en.onnx"),
         }
     )
 
@@ -184,9 +253,7 @@ def test_build_tts_engine_rejects_routes_that_do_not_cover_english():
     configured, so a non-default routing table without an English route
     would fail at runtime on the first English word - reject it at
     startup instead."""
-    settings = TtsSettings(
-        languages={"ru": TtsLanguageSettings(engine="piper", model="ru.onnx")}
-    )
+    settings = TtsSettings(languages={"ru": PiperTtsSettings(model="ru.onnx")})
 
     with pytest.raises(ValueError, match="Missing: en"):
         build_tts_engine(
@@ -194,19 +261,17 @@ def test_build_tts_engine_rejects_routes_that_do_not_cover_english():
         )
 
 
-def test_build_tts_engine_rejects_non_default_silero_model():
-    """SileroEngine is bound to the v3_1_ru cache filenames and speaker;
-    another model in a silero route must fail loudly instead of being
-    silently ignored."""
+def test_build_tts_engine_accepts_non_default_silero_model():
     settings = TtsSettings(
         languages={
-            "ru": TtsLanguageSettings(engine="silero", model="v4_ru"),
-            "en": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
+            "ru": SileroTtsSettings(model="future_ru_model"),
+            "en": SileroTtsSettings(model="v3_en", language="en", speaker="en_0"),
         }
     )
 
-    with pytest.raises(ValueError, match="supports only model 'v3_1_ru'"):
-        build_tts_engine(settings)
+    engine = build_tts_engine(settings)
+
+    assert isinstance(engine, BilingualTtsEngine)
 
 
 # --- _ensure_model_cached (offline preflight check) ------------------------
@@ -219,6 +284,19 @@ def test_build_tts_engine_rejects_non_default_silero_model():
 # parameter - see _ensure_model_cached's docstring).
 
 
+def _write_silero_manifest(path, model: str = "v3_1_ru") -> None:
+    path.write_text(
+        f"""
+tts_models:
+  ru:
+    {model}:
+      latest:
+        package: https://models.example/{model}.pt
+""",
+        encoding="utf-8",
+    )
+
+
 def test_ensure_model_cached_raises_when_repo_manifest_missing(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     model_dir = repo_root / "silero_pkg" / "model"
@@ -229,23 +307,25 @@ def test_ensure_model_cached_raises_when_repo_manifest_missing(tmp_path, monkeyp
 
     with pytest.raises(TtsModelNotCachedError):
         _ensure_model_cached(
-            _FakeSileroModule(repo_root / "silero_pkg"), repo_root=repo_root
+            _FakeSileroModule(repo_root / "silero_pkg"),
+            SileroTtsSettings(),
+            repo_root=repo_root,
         )
 
 
 def test_ensure_model_cached_raises_when_model_weights_missing(tmp_path, monkeypatch):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    (repo_root / "latest_silero_models.yml").write_text(
-        "fake manifest", encoding="utf-8"
-    )
+    _write_silero_manifest(repo_root / "latest_silero_models.yml")
     (repo_root / "silero_pkg").mkdir()
     # model/v3_1_ru.pt deliberately not created
     monkeypatch.chdir(repo_root)
 
     with pytest.raises(TtsModelNotCachedError):
         _ensure_model_cached(
-            _FakeSileroModule(repo_root / "silero_pkg"), repo_root=repo_root
+            _FakeSileroModule(repo_root / "silero_pkg"),
+            SileroTtsSettings(),
+            repo_root=repo_root,
         )
 
 
@@ -253,9 +333,7 @@ def test_ensure_model_cached_raises_when_cwd_lacks_manifest(tmp_path, monkeypatc
     repo_root = tmp_path / "repo"
     (repo_root / "silero_pkg" / "model").mkdir(parents=True)
     (repo_root / "silero_pkg" / "model" / "v3_1_ru.pt").write_bytes(b"fake")
-    (repo_root / "latest_silero_models.yml").write_text(
-        "fake manifest", encoding="utf-8"
-    )
+    _write_silero_manifest(repo_root / "latest_silero_models.yml")
 
     launched_from = tmp_path / "elsewhere"
     launched_from.mkdir()
@@ -263,7 +341,9 @@ def test_ensure_model_cached_raises_when_cwd_lacks_manifest(tmp_path, monkeypatc
 
     with pytest.raises(TtsModelNotCachedError):
         _ensure_model_cached(
-            _FakeSileroModule(repo_root / "silero_pkg"), repo_root=repo_root
+            _FakeSileroModule(repo_root / "silero_pkg"),
+            SileroTtsSettings(),
+            repo_root=repo_root,
         )
 
 
@@ -272,14 +352,38 @@ def test_ensure_model_cached_passes_when_everything_lines_up(tmp_path, monkeypat
     model_dir = repo_root / "silero_pkg" / "model"
     model_dir.mkdir(parents=True)
     (model_dir / "v3_1_ru.pt").write_bytes(b"fake")
-    (repo_root / "latest_silero_models.yml").write_text(
-        "fake manifest", encoding="utf-8"
-    )
+    _write_silero_manifest(repo_root / "latest_silero_models.yml")
     monkeypatch.chdir(repo_root)  # launched from the repo root, as documented
 
     _ensure_model_cached(
-        _FakeSileroModule(repo_root / "silero_pkg"), repo_root=repo_root
+        _FakeSileroModule(repo_root / "silero_pkg"),
+        SileroTtsSettings(),
+        repo_root=repo_root,
     )  # must not raise
+
+
+def test_ensure_model_cached_uses_manifest_asset_name(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    model_dir = repo_root / "silero_pkg" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "actual-weights.pt").write_bytes(b"fake")
+    (repo_root / "latest_silero_models.yml").write_text(
+        """
+tts_models:
+  ru:
+    future_model:
+      latest:
+        package: https://models.example/actual-weights.pt
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(repo_root)
+
+    _ensure_model_cached(
+        _FakeSileroModule(repo_root / "silero_pkg"),
+        SileroTtsSettings(model="future_model"),
+        repo_root=repo_root,
+    )
 
 
 # --- PiperEngine ------------------------------------------------------------
@@ -300,47 +404,22 @@ def _piper_chunk(sample_rate: int, values: list[int]):
     )
 
 
-def test_piper_engine_rejects_missing_model_path(tmp_path):
-    config_path = tmp_path / "voice.onnx.json"
-    config_path.write_text("{}", encoding="utf-8")
+def test_piper_engine_constructor_does_not_probe_model_paths(tmp_path):
+    route = PiperTtsSettings(
+        model=str(tmp_path / "missing.onnx"),
+        config_path=str(tmp_path / "missing.json"),
+    )
 
-    with pytest.raises(FileNotFoundError, match="Piper model file does not exist"):
-        PiperEngine(tmp_path / "missing.onnx", config_path=config_path)
+    engine = PiperEngine(route)
 
-
-def test_piper_engine_uses_adjacent_config_path_when_present(tmp_path):
-    model_path, config_path = _write_piper_model_pair(tmp_path)
-
-    engine = PiperEngine(model_path)
-
-    assert engine.model_path == model_path
-    assert engine.config_path == config_path
+    assert engine is not None
 
 
-def test_piper_engine_prefers_explicit_config_path(tmp_path):
-    model_path, _adjacent_config = _write_piper_model_pair(tmp_path)
-    explicit_config = tmp_path / "explicit.json"
-    explicit_config.write_text("{}", encoding="utf-8")
+async def test_piper_engine_reports_missing_model_on_first_synthesis(tmp_path):
+    engine = PiperEngine(PiperTtsSettings(model=str(tmp_path / "missing.onnx")))
 
-    engine = PiperEngine(model_path, config_path=explicit_config)
-
-    assert engine.config_path == explicit_config
-
-
-def test_piper_engine_rejects_missing_adjacent_config_path(tmp_path):
-    model_path = tmp_path / "voice.onnx"
-    model_path.write_bytes(b"model")
-
-    with pytest.raises(FileNotFoundError, match="No Piper config file was supplied"):
-        PiperEngine(model_path)
-
-
-def test_piper_engine_rejects_missing_explicit_config_path(tmp_path):
-    model_path = tmp_path / "voice.onnx"
-    model_path.write_bytes(b"model")
-
-    with pytest.raises(FileNotFoundError, match="Piper config file does not exist"):
-        PiperEngine(model_path, config_path=tmp_path / "missing.json")
+    with pytest.raises(TtsEngineLoadError, match="Piper model file does not exist"):
+        await engine.synthesize("hello", language="en")
 
 
 async def test_piper_engine_synthesize_returns_wav_bytes_from_chunk_api(tmp_path):
@@ -348,11 +427,26 @@ async def test_piper_engine_synthesize_returns_wav_bytes_from_chunk_api(tmp_path
     voice = _FakePiperVoice([_piper_chunk(22050, [0, 100, -100, 0])])
     load_calls = []
 
-    def load_voice(*, model_path, config_path, use_cuda):
-        load_calls.append((model_path, config_path, use_cuda))
+    def load_voice(*, model_path, config_path, use_cuda, espeak_data_dir, download_dir):
+        load_calls.append(
+            (model_path, config_path, use_cuda, espeak_data_dir, download_dir)
+        )
         return voice
 
-    engine = PiperEngine(model_path, config_path=config_path, voice_loader=load_voice)
+    route = PiperTtsSettings(
+        model=str(model_path),
+        config_path=str(config_path),
+        use_cuda=True,
+        espeak_data_dir="espeak-data",
+        download_dir="resources",
+        speaker_id=3,
+        length_scale=0.9,
+        noise_scale=0.6,
+        noise_w_scale=0.7,
+        normalize_audio=False,
+        volume=0.8,
+    )
+    engine = PiperEngine(route, voice_loader=load_voice)
 
     wav_bytes = await engine.synthesize("hello", language="en")
 
@@ -362,7 +456,14 @@ async def test_piper_engine_synthesize_returns_wav_bytes_from_chunk_api(tmp_path
         assert wav_file.getframerate() == 22050
         assert wav_file.readframes(4) == _Int16Bytes([0, 100, -100, 0]).tobytes()
     assert voice.texts == ["hello"]
-    assert load_calls == [(model_path, config_path, False)]
+    assert load_calls == [(model_path, config_path, True, "espeak-data", "resources")]
+    synthesis_config = voice.synthesis_configs[0]
+    assert synthesis_config.speaker_id == 3
+    assert synthesis_config.length_scale == 0.9
+    assert synthesis_config.noise_scale == 0.6
+    assert synthesis_config.noise_w_scale == 0.7
+    assert synthesis_config.normalize_audio is False
+    assert synthesis_config.volume == 0.8
 
 
 async def test_piper_engine_loads_voice_only_once(tmp_path):
@@ -370,13 +471,16 @@ async def test_piper_engine_loads_voice_only_once(tmp_path):
     voice = _FakePiperVoice([_piper_chunk(22050, [0])])
     load_count = 0
 
-    def load_voice(*, model_path, config_path, use_cuda):
+    def load_voice(*, model_path, config_path, use_cuda, espeak_data_dir, download_dir):
         nonlocal load_count
-        del model_path, config_path, use_cuda
+        del model_path, config_path, use_cuda, espeak_data_dir, download_dir
         load_count += 1
         return voice
 
-    engine = PiperEngine(model_path, config_path=config_path, voice_loader=load_voice)
+    engine = PiperEngine(
+        PiperTtsSettings(model=str(model_path), config_path=str(config_path)),
+        voice_loader=load_voice,
+    )
     await engine.synthesize("one", language="en")
     await engine.synthesize("two", language="en")
 
@@ -789,6 +893,38 @@ async def test_failed_synthesis_is_skipped_and_later_units_still_play(caplog):
     assert "TTS synthesis failed" in caplog.text
 
 
+async def test_engine_load_failure_is_published_once_with_route_context(caplog):
+    class _UnavailableEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            del text, language
+            raise TtsEngineLoadError("silero", "future_ru", "weights missing")
+
+    bus = EventBus()
+    failures: list[TtsEngineLoadFailed] = []
+
+    async def record(event: TtsEngineLoadFailed) -> None:
+        failures.append(event)
+
+    bus.subscribe(TtsEngineLoadFailed, record)
+    tts = TtsOutput(
+        TtsSettings(), engine=_UnavailableEngine(), play=_silent_play, bus=bus
+    )
+
+    with caplog.at_level("ERROR", logger="tts"):
+        await tts.on_token(ResponseToken(text="Первая фраза. Вторая фраза. "))
+        await tts.wait_for_pending()
+
+    assert failures == [
+        TtsEngineLoadFailed(
+            language="ru",
+            engine="silero",
+            model="future_ru",
+            message="weights missing",
+        )
+    ]
+    assert caplog.text.count("TTS engine load failed") == 1
+
+
 async def test_tts_output_uses_injected_engine_for_synthesis():
     played = []
     engine = _FakeEngine()
@@ -912,8 +1048,8 @@ async def test_connectives_stay_in_their_own_language_when_engines_differ():
     must reach its own engine, even a short one."""
     bilingual_settings = TtsSettings(
         languages={
-            "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
-            "en": TtsLanguageSettings(engine="piper", model="en.onnx"),
+            "ru": SileroTtsSettings(),
+            "en": PiperTtsSettings(model="en.onnx"),
         }
     )
     ru_engine = _FakeEngine()

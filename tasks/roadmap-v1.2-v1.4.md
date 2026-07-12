@@ -377,6 +377,28 @@ Story/task readiness: completed (2026-07-11). Tasks 1-2 implemented and
 verified live; task 3 closed as obsolete (defect already resolved by the
 v1.2.10 bridge removal). Story and cards under `tasks/done/`.
 
+## v1.2.15 - Configurable TTS routes
+
+Purpose: remove the fixed-Silero-model prerequisite discovered during v1.3.0
+Control Center configuration work, before the UI release consumes that
+contract.
+
+Scope:
+
+- Typed, engine-specific Silero and Piper route settings.
+- Startup config/sanity validation with no model allowlist.
+- Offline-safe lazy engine loading and route-load error signals for UI health.
+- Migration of the legacy global TTS voice/rate fields into route parameters.
+
+Boundary:
+
+- Silero and Piper only; no new engine types.
+- Existing `ru`/`en` charset-routing coverage remains unchanged.
+- No live configuration reload and no model download during Jarvis runtime.
+- Control Center form changes remain in v1.3.0.
+
+Task: `tasks/task-v1.2.15-configurable-tts-routes.md`.
+
 ## v1.3.0 - Control Center
 
 Purpose: deliver the full UI/control release on top of already-built engine

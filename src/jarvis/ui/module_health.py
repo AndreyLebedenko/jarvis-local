@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from jarvis.audio.input import MicSleepToggled
-from jarvis.audio.tts import TtsSynthesisResult
+from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import ResponseComplete
@@ -37,6 +37,7 @@ class ModuleHealthTracker:
     def __init__(self, bus: EventBus) -> None:
         self._bus = bus
         self._last: dict[ModuleId, ModuleHealthChanged] = {}
+        self._failed_tts_routes: set[str] = set()
 
     def subscribe(self) -> list[Subscription]:
         subscriptions: list[Subscription] = [
@@ -44,6 +45,7 @@ class ModuleHealthTracker:
             (BackendRequestFailed, self._on_backend_request_failed),
             (ResponseComplete, self._on_response_complete),
             (MicSleepToggled, self._on_mic_sleep_toggled),
+            (TtsEngineLoadFailed, self._on_tts_engine_load_failed),
             (TtsSynthesisResult, self._on_tts_synthesis_result),
             (ScreenshotCaptured, self._on_screenshot_captured),
             (CaptureFailed, self._on_capture_failed),
@@ -90,12 +92,20 @@ class ModuleHealthTracker:
         # A failed unit is skipped but playback continues (see TtsOutput),
         # so a failure is DEGRADED, not ERROR; the next successful unit
         # recovers.
+        if self._failed_tts_routes:
+            return
         if event.succeeded:
             await self._transition(ModuleId.TTS, HealthStatus.OK, "tts_detail_ready")
         else:
             await self._transition(
                 ModuleId.TTS, HealthStatus.DEGRADED, "tts_detail_failed"
             )
+
+    async def _on_tts_engine_load_failed(self, event: TtsEngineLoadFailed) -> None:
+        self._failed_tts_routes.add(event.language)
+        await self._transition(
+            ModuleId.TTS, HealthStatus.ERROR, "tts_detail_load_failed"
+        )
 
     async def _on_screenshot_captured(self, event: ScreenshotCaptured) -> None:
         del event

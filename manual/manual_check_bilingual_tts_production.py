@@ -92,11 +92,7 @@ def reporting_builders(
 ) -> dict[str, EngineBuilder]:
     """The production engine builders, each wrapped so the engines they
     build report every unit they synthesize."""
-    base = (
-        base_builders
-        if base_builders is not None
-        else _default_engine_builders(settings)
-    )
+    base = base_builders if base_builders is not None else _default_engine_builders()
 
     def wrap(label: str, builder: EngineBuilder) -> EngineBuilder:
         def build(route) -> TtsEngine:

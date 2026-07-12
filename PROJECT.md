@@ -307,21 +307,24 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   carries the sample rate, so playback needs no side channel - the
   earlier `SynthesisResult` wrapper duplicated the header's sample rate
   and was dropped). `language` is a routing hint, not a fixed engine mapping;
-  `SileroEngine` ignores it, since its transliteration fallback already covers
-  non-Russian text. `PiperEngine`
-  (v1.2.9 task 2) is the production adapter for local Piper `.onnx` voices:
-  it validates the model file and adjacent or explicit `.json` config during
-  TTS initialization, imports `piper-tts` lazily, and uses Piper's chunk API
-  to write a complete wav header itself. v1.2.9 task 3 wires configured
+  `SileroEngine` applies the legacy Russian normalization/transliteration only
+  when its configured model language is `ru`. `PiperEngine` (v1.2.9 task 2,
+  generalized in v1.2.15) is the production adapter for local Piper `.onnx`
+  voices: it imports `piper-tts` lazily and uses Piper's chunk API to write a
+  complete wav header itself. Model/config path resolution and voice loading
+  happen on first synthesis, not during app construction. v1.2.9 task 3 wires
+  configured
   language routes through `BilingualTtsEngine`: `build_tts_engine()` preserves
   the existing Silero-only default when only the built-in `ru -> silero`
   route is present, and otherwise composes one child engine per configured
   language (`ru`/`en`) with clear failure for unsupported language hints.
   A non-default routing table must cover both `ru` and `en` (charset
-  segmentation emits both regardless of configuration), and a silero route
-  must name the one supported model (`v3_1_ru`, shared constant
-  `config.SILERO_MODEL`); either violation fails at startup rather than on
-  the first mismatched segment. A synthesis failure at runtime is logged
+  segmentation emits both regardless of configuration). Since v1.2.15 each
+  route is a typed Silero/Piper settings object: config shape, required fields,
+  types, unknown parameters, and general sanity are validated at startup;
+  model identifiers are not project-allowlisted. Model files and concrete
+  engine/model/parameter compatibility are checked by lazy loading on first
+  synthesis. A synthesis failure at runtime is logged
   and its unit skipped: `OrderedPlayback` requires every index to arrive,
   so submitting `None` for the failed index is what keeps one bad sentence
   from silently stalling all later speech in the session. The
@@ -1339,6 +1342,35 @@ Task 2 (module health events) landed second:
   it is the initial snapshot value (mirroring task 1's WARMING seed
   decision), not a transition; every transition goes through the
   tracker.
+
+## Architecture v1.2.15 (configurable TTS routes)
+
+- `TtsSettings.languages` contains a discriminated union of
+  `SileroTtsSettings` and `PiperTtsSettings`; there is no untyped parameter
+  bag. The selected `engine` determines the exact accepted TOML fields.
+- The global `[tts].voice` field moved to each Silero route as `speaker`.
+  The unused global `[tts].rate` field was removed. Either legacy field now
+  raises `ConfigError` with migration guidance instead of being silently
+  ignored.
+- Startup parsing validates required fields, types, unknown keys, non-empty
+  identifiers/paths, and broad numeric sanity only. It deliberately does not
+  allowlist model identifiers or probe files.
+- Both engines load lazily on first synthesis and cache a terminal load
+  failure for the rest of the process. Silero's checked-in manifest is used to
+  locate the selected local package/JIT asset before calling `silero_tts`, so
+  a missing model cannot trigger that library's implicit network downloader.
+  Piper resolves its model/config paths at the same lazy boundary.
+- `TtsEngineLoadFailed(language, engine, model, message)` is the raw route
+  failure signal. `ModuleHealthTracker` maps it to TTS `ERROR`; ordinary
+  `TtsSynthesisResult(succeeded=False)` remains `DEGRADED`, preserving the
+  distinction between an unavailable route and one skipped synthesis unit.
+  The original exception is logged with its traceback at the TTS boundary;
+  repeated units do not repeat the load attempt or error signal.
+- Piper routes expose the installed loader options plus every field of
+  `piper.config.SynthesisConfig`. Silero routes expose model language, package
+  identifier, synthesis speaker/sample rate, and optional accent/yo controls.
+- Runtime remains offline and restart-to-apply. `setup_tts_model.py` accepts
+  `--language`/`--model` for the explicit one-time network-enabled setup step.
 
 ## Project verification contract (v1.2.2)
 

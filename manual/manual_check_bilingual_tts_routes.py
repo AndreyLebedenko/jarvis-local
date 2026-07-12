@@ -196,7 +196,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Sample text to test. Defaults to all samples.",
     )
     parser.add_argument("--silero-ru-package", default="v3_1_ru")
-    parser.add_argument("--silero-ru-voice", default=TtsSettings().voice)
+    parser.add_argument(
+        "--silero-ru-voice",
+        default=TtsSettings().languages["ru"].speaker,
+    )
     parser.add_argument("--silero-en-package", default="v3_en")
     parser.add_argument("--silero-en-voice", default="en_0")
     parser.add_argument("--silero-sample-rate", type=int, default=48000)

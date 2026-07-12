@@ -15,10 +15,6 @@ feed the sentence buffer and schedule synthesis as a background task;
 they never synthesize or play inline, so a slow synthesis call cannot
 stall bus dispatch to any other subscriber.
 
-TtsSettings.rate is intentionally unused here: adjusting speech rate
-would require SSML/prosody control, which this task's card puts out of
-scope for v1.0 (reserved for a later, XTTS-v2-era revision).
-
 Verified live (manual handoff): the v3_1_ru model's symbol set
 (model.symbols) has no digit characters at all - prepare_text_input()
 silently strips any digit before synthesis, so raw numbers are never
@@ -60,7 +56,12 @@ from jarvis.audio.language_segments import (
 )
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
-from jarvis.core.config import SILERO_MODEL, TtsLanguageSettings, TtsSettings
+from jarvis.core.config import (
+    PiperTtsSettings,
+    SileroTtsSettings,
+    TtsLanguageSettings,
+    TtsSettings,
+)
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
 
 logger = logging.getLogger(__name__)
@@ -76,15 +77,20 @@ class TtsSynthesisResult:
     succeeded: bool
 
 
+@dataclass(frozen=True)
+class TtsEngineLoadFailed:
+    """A route could not lazy-load its configured engine/model."""
+
+    language: str
+    engine: str
+    model: str
+    message: str
+
+
 SAMPLE_RATE = 48000
 FINAL_PLAYBACK_TAIL_SECONDS = 1.0
 
-# Filenames Silero's own downloader produces for this exact model/speaker
-# (see setup_tts_model.py). Hardcoded rather than parsed from the models
-# manifest, to avoid an extra dependency (omegaconf) for a single, fixed
-# model choice - revisit if the speaker/model choice ever changes.
 _MODELS_MANIFEST_FILENAME = "latest_silero_models.yml"
-_MODEL_CACHE_FILENAME = "v3_1_ru.pt"
 
 _NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -93,9 +99,23 @@ class TtsModelNotCachedError(RuntimeError):
     pass
 
 
+class TtsEngineLoadError(RuntimeError):
+    def __init__(self, engine: str, model: str, detail: str) -> None:
+        super().__init__(f"{engine} model {model!r} failed to load: {detail}")
+        self.engine = engine
+        self.model = model
+        self.detail = detail
+
+
 class VoiceLoader(Protocol):
     def __call__(
-        self, *, model_path: Path, config_path: Path, use_cuda: bool
+        self,
+        *,
+        model_path: Path,
+        config_path: Path,
+        use_cuda: bool,
+        espeak_data_dir: str | None,
+        download_dir: str | None,
     ) -> object:
         pass
 
@@ -112,15 +132,20 @@ class TtsEngine(Protocol):
 
     `language` is the routing hint carried by language_segments.py's segments.
     Per-language configuration chooses the engine independently; the verified
-    Silero/ru + Piper/en production setup is not a required mapping. An engine
-    that cannot switch languages may ignore the hint - SileroEngine does,
-    since its transliteration fallback already covers non-Russian text."""
+    Silero/ru + Piper/en production setup is not a required mapping. Child
+    engines may ignore the routing hint because their typed route already
+    selects the concrete model language; Russian-only normalization remains a
+    Silero route concern."""
 
     async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
         pass
 
 
-def _ensure_model_cached(silero_module, repo_root: Path | None = None) -> None:
+def _ensure_model_cached(
+    silero_module,
+    route: SileroTtsSettings,
+    repo_root: Path | None = None,
+) -> None:
     """Fails clearly and offline rather than letting silero_tts() fall
     through to a network download when the local cache is missing.
 
@@ -136,14 +161,12 @@ def _ensure_model_cached(silero_module, repo_root: Path | None = None) -> None:
        is an existing constraint, not a new one - but it is flagged
        precisely here rather than silently reached past.
     """
-    repo_root = repo_root or Path(__file__).resolve().parent
+    repo_root = repo_root or Path(__file__).resolve().parents[3]
     repo_manifest = repo_root / _MODELS_MANIFEST_FILENAME
-    model_path = Path(silero_module.__file__).parent / "model" / _MODEL_CACHE_FILENAME
-
-    if not repo_manifest.exists() or not model_path.exists():
+    if not repo_manifest.is_file():
         raise TtsModelNotCachedError(
-            f"Silero TTS model not cached ({repo_manifest} and/or "
-            f"{model_path} missing). Run `python setup_tts_model.py` once "
+            f"Silero model manifest is missing: {repo_manifest}. Run "
+            "`python setup_tts_model.py` once "
             "(requires network) before starting the offline runtime."
         )
 
@@ -154,6 +177,31 @@ def _ensure_model_cached(silero_module, repo_root: Path | None = None) -> None:
             "looks for it relative to the working directory, not next to "
             "this file. Launch the app with the repo root as the working "
             "directory."
+        )
+
+    from omegaconf import OmegaConf
+
+    manifest = OmegaConf.load(repo_manifest)
+    try:
+        model_config = manifest.tts_models[route.language][route.model].latest
+    except (AttributeError, KeyError, TypeError) as exc:
+        raise TtsModelNotCachedError(
+            f"Silero model {route.model!r} for language {route.language!r} is "
+            f"not present in {repo_manifest}"
+        ) from exc
+    model_url = model_config.get("package") or model_config.get("jit")
+    if not model_url:
+        raise TtsModelNotCachedError(
+            f"Silero model {route.model!r} has no package or jit asset in "
+            f"{repo_manifest}"
+        )
+    model_path = Path(silero_module.__file__).parent / "model" / Path(model_url).name
+    if not model_path.is_file():
+        raise TtsModelNotCachedError(
+            f"Silero TTS model not cached: {model_path}. Run "
+            f"`python setup_tts_model.py --language {route.language} "
+            f"--model {route.model}` once (requires network) before starting "
+            "the offline runtime."
         )
 
 
@@ -178,13 +226,27 @@ def _resolve_piper_config(model_path: Path, config_path: str | Path | None) -> P
     )
 
 
-def _load_piper_voice(*, model_path: Path, config_path: Path, use_cuda: bool):
+def _load_piper_voice(
+    *,
+    model_path: Path,
+    config_path: Path,
+    use_cuda: bool,
+    espeak_data_dir: str | None,
+    download_dir: str | None,
+):
     from piper.voice import PiperVoice
 
+    kwargs = {
+        "model_path": str(model_path),
+        "config_path": str(config_path),
+        "use_cuda": use_cuda,
+    }
+    if espeak_data_dir is not None:
+        kwargs["espeak_data_dir"] = espeak_data_dir
+    if download_dir is not None:
+        kwargs["download_dir"] = download_dir
     return PiperVoice.load(
-        model_path=str(model_path),
-        config_path=str(config_path),
-        use_cuda=use_cuda,
+        **kwargs,
     )
 
 
@@ -478,67 +540,183 @@ class OrderedPlayback:
                 self._next_index += 1
 
 
+class _PackageSileroModel:
+    def __init__(self, model, route: SileroTtsSettings) -> None:
+        self._model = model
+        self._route = route
+
+    def synthesize(self, text: str):
+        kwargs = {
+            "text": text,
+            "speaker": self._route.speaker,
+            "sample_rate": self._route.sample_rate,
+        }
+        if self._route.put_accent is not None:
+            kwargs["put_accent"] = self._route.put_accent
+        if self._route.put_yo is not None:
+            kwargs["put_yo"] = self._route.put_yo
+        return self._model.apply_tts(**kwargs)
+
+
+class _JitSileroModel:
+    def __init__(
+        self,
+        model,
+        symbols: str,
+        native_sample_rate: int,
+        apply_tts: Callable,
+        route: SileroTtsSettings,
+    ) -> None:
+        if route.sample_rate != native_sample_rate:
+            raise ValueError(
+                f"Silero JIT model {route.model!r} requires sample_rate "
+                f"{native_sample_rate}, got {route.sample_rate}"
+            )
+        self._model = model
+        self._symbols = symbols
+        self._sample_rate = native_sample_rate
+        self._apply_tts = apply_tts
+
+    def synthesize(self, text: str):
+        import torch
+
+        audios = self._apply_tts(
+            texts=[text],
+            model=self._model,
+            sample_rate=self._sample_rate,
+            symbols=self._symbols,
+            device=torch.device("cpu"),
+        )
+        if not audios:
+            raise RuntimeError("Silero returned no audio")
+        return audios[0]
+
+
+def _load_silero_model(route: SileroTtsSettings):
+    import silero
+
+    _ensure_model_cached(silero, route)
+    loaded = silero.silero_tts(language=route.language, speaker=route.model)
+    if len(loaded) == 2:
+        model, _metadata = loaded
+        return _PackageSileroModel(model, route)
+    if len(loaded) == 5:
+        model, symbols, native_sample_rate, _example, apply_tts = loaded
+        return _JitSileroModel(model, symbols, native_sample_rate, apply_tts, route)
+    raise RuntimeError(
+        f"Silero returned an unsupported loader result for {route.model!r}"
+    )
+
+
 class SileroEngine:
-    def __init__(self, settings: TtsSettings) -> None:
-        self._settings = settings
+    def __init__(
+        self,
+        route: SileroTtsSettings,
+        *,
+        model_loader: Callable[[SileroTtsSettings], object] = _load_silero_model,
+    ) -> None:
+        self._route = route
+        self._model_loader = model_loader
         self._model = None
+        self._load_error: TtsEngineLoadError | None = None
+        self._load_lock = asyncio.Lock()
 
     async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
-        del language  # any language goes through the transliteration fallback
+        del language  # the typed route owns the concrete Silero model language
         model = await self._ensure_model()
+        prepared = text
+        if self._route.language == "ru":
+            prepared = transliterate_latin(normalize_numbers(text))
         audio_tensor = await asyncio.to_thread(
-            model.apply_tts,
-            text=transliterate_latin(normalize_numbers(text)),
-            speaker=self._settings.voice,
-            sample_rate=SAMPLE_RATE,
+            model.synthesize,
+            prepared,
         )
-        return samples_to_wav_bytes(audio_tensor, SAMPLE_RATE)
+        return samples_to_wav_bytes(audio_tensor, self._route.sample_rate)
 
     async def _ensure_model(self):
-        if self._model is None:
-            self._model = await asyncio.to_thread(self._load_model)
+        if self._load_error is not None:
+            raise self._load_error
+        if self._model is not None:
+            return self._model
+        async with self._load_lock:
+            if self._load_error is not None:
+                raise self._load_error
+            if self._model is not None:
+                return self._model
+            try:
+                self._model = await asyncio.to_thread(self._model_loader, self._route)
+            except Exception as exc:
+                self._load_error = TtsEngineLoadError(
+                    self._route.engine, self._route.model, str(exc)
+                )
+                raise self._load_error from exc
         return self._model
-
-    @staticmethod
-    def _load_model():
-        import silero
-
-        _ensure_model_cached(silero)
-        model, _ = silero.silero_tts(language="ru", speaker="v3_1_ru")
-        return model
 
 
 class PiperEngine:
     def __init__(
         self,
-        model_path: str | Path,
+        route: PiperTtsSettings,
         *,
-        config_path: str | Path | None = None,
-        use_cuda: bool = False,
         voice_loader: VoiceLoader = _load_piper_voice,
     ) -> None:
-        self.model_path = _resolve_existing_path(model_path, "Piper model file")
-        self.config_path = _resolve_piper_config(self.model_path, config_path)
-        self._use_cuda = use_cuda
+        self._route = route
         self._voice_loader = voice_loader
         self._voice = None
+        self._synthesis_config = None
+        self._load_error: TtsEngineLoadError | None = None
+        self._load_lock = asyncio.Lock()
 
     async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
         del language
         voice = await self._ensure_voice()
         return await asyncio.to_thread(
-            _piper_chunks_to_wav_bytes, voice.synthesize(text)
+            _piper_chunks_to_wav_bytes,
+            voice.synthesize(text, self._synthesis_config),
         )
 
     async def _ensure_voice(self):
-        if self._voice is None:
-            self._voice = await asyncio.to_thread(
-                self._voice_loader,
-                model_path=self.model_path,
-                config_path=self.config_path,
-                use_cuda=self._use_cuda,
-            )
+        if self._load_error is not None:
+            raise self._load_error
+        if self._voice is not None:
+            return self._voice
+        async with self._load_lock:
+            if self._load_error is not None:
+                raise self._load_error
+            if self._voice is not None:
+                return self._voice
+            try:
+                self._voice, self._synthesis_config = await asyncio.to_thread(
+                    self._load_voice
+                )
+            except Exception as exc:
+                self._load_error = TtsEngineLoadError(
+                    self._route.engine, self._route.model, str(exc)
+                )
+                raise self._load_error from exc
         return self._voice
+
+    def _load_voice(self):
+        from piper.config import SynthesisConfig
+
+        model_path = _resolve_existing_path(self._route.model, "Piper model file")
+        config_path = _resolve_piper_config(model_path, self._route.config_path)
+        voice = self._voice_loader(
+            model_path=model_path,
+            config_path=config_path,
+            use_cuda=self._route.use_cuda,
+            espeak_data_dir=self._route.espeak_data_dir,
+            download_dir=self._route.download_dir,
+        )
+        synthesis_config = SynthesisConfig(
+            speaker_id=self._route.speaker_id,
+            length_scale=self._route.length_scale,
+            noise_scale=self._route.noise_scale,
+            noise_w_scale=self._route.noise_w_scale,
+            normalize_audio=self._route.normalize_audio,
+            volume=self._route.volume,
+        )
+        return voice, synthesis_config
 
 
 class BilingualTtsEngine:
@@ -565,30 +743,17 @@ _ROUTED_LANGUAGES = (DEFAULT_LANGUAGE, ENGLISH)
 
 
 def _is_default_silero_only(settings: TtsSettings) -> bool:
-    return settings.languages == {
-        DEFAULT_LANGUAGE: TtsLanguageSettings(engine="silero", model=SILERO_MODEL)
-    }
+    return settings.languages == {DEFAULT_LANGUAGE: SileroTtsSettings()}
 
 
 def _routes_share_one_engine(settings: TtsSettings) -> bool:
     return len({route.engine for route in settings.languages.values()}) == 1
 
 
-def _build_silero_engine(
-    settings: TtsSettings, route: TtsLanguageSettings
-) -> "TtsEngine":
-    if route.model != SILERO_MODEL:
-        raise ValueError(
-            f"SileroEngine supports only model {SILERO_MODEL!r} (its cache "
-            f"filenames and speaker are bound to it), got {route.model!r}"
-        )
-    return SileroEngine(settings)
-
-
-def _default_engine_builders(settings: TtsSettings) -> dict[str, EngineBuilder]:
+def _default_engine_builders() -> dict[str, EngineBuilder]:
     return {
-        "silero": lambda route: _build_silero_engine(settings, route),
-        "piper": lambda route: PiperEngine(route.model),
+        "silero": lambda route: SileroEngine(route),
+        "piper": lambda route: PiperEngine(route),
     }
 
 
@@ -597,7 +762,7 @@ def build_tts_engine(
     engine_builders: dict[str, EngineBuilder] | None = None,
 ) -> TtsEngine:
     if _is_default_silero_only(settings):
-        return SileroEngine(settings)
+        return SileroEngine(SileroTtsSettings())
 
     missing = [
         language for language in _ROUTED_LANGUAGES if language not in settings.languages
@@ -611,7 +776,7 @@ def build_tts_engine(
             "use the Silero-only default."
         )
 
-    builders = engine_builders or _default_engine_builders(settings)
+    builders = engine_builders or _default_engine_builders()
     engines: dict[str, TtsEngine] = {}
     for language, route in settings.languages.items():
         try:
@@ -658,6 +823,7 @@ class TtsOutput:
         self._playback = OrderedPlayback(self._play_unit)
         self._next_index = 0
         self._pending_tasks: set[asyncio.Task] = set()
+        self._reported_load_failures: set[tuple[str, str, str]] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
         for text, language in self._units.feed(event.text):
@@ -686,6 +852,19 @@ class TtsOutput:
     ) -> None:
         try:
             audio = await self._engine.synthesize(text, language)
+        except TtsEngineLoadError as exc:
+            failure_key = (language, exc.engine, exc.model)
+            if failure_key not in self._reported_load_failures:
+                self._reported_load_failures.add(failure_key)
+                logger.exception(
+                    "TTS engine load failed (language=%r, engine=%r, model=%r)",
+                    language,
+                    exc.engine,
+                    exc.model,
+                )
+                await self._publish_load_failure(language, exc)
+            await self._playback.submit(index, None)
+            return
         except Exception:
             # OrderedPlayback requires every index to arrive or all later
             # units stay buffered forever; a failed unit must therefore
@@ -708,6 +887,20 @@ class TtsOutput:
             await self._bus.publish(
                 TtsSynthesisResult,
                 TtsSynthesisResult(language=language, succeeded=succeeded),
+            )
+
+    async def _publish_load_failure(
+        self, language: str, error: TtsEngineLoadError
+    ) -> None:
+        if self._bus is not None:
+            await self._bus.publish(
+                TtsEngineLoadFailed,
+                TtsEngineLoadFailed(
+                    language=language,
+                    engine=error.engine,
+                    model=error.model,
+                    message=error.detail,
+                ),
             )
 
     async def _play_unit(self, index: int, audio: bytes) -> None:
