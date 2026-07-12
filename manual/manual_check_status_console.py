@@ -7,7 +7,7 @@ same state projection that Chrome receives. The printed console URL can be
 opened in Chrome in parallel; it contains the one-time process token.
 
 Usage:
-  python manual/manual_check_status_console.py
+  python -m manual.manual_check_status_console
 
 Manual checklist:
   1. Confirm the Status Console and touchstrip show the cycling states. On
@@ -32,14 +32,8 @@ endpoint; only the configured local Ollama path is used by the normal engine.
 
 import asyncio
 import logging
-import sys
 import time
 from dataclasses import dataclass
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus

@@ -13,7 +13,7 @@ the human can verify the configured route (ru -> silero, en -> piper)
 segment by segment while listening for quality and ordering.
 
 Usage:
-  python manual/manual_check_bilingual_tts_production.py
+  python -m manual.manual_check_bilingual_tts_production
 
 Requires [tts.languages.en] to be configured in config.toml (a local
 Piper model; Jarvis never downloads models at runtime).
@@ -23,14 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.audio.language_segments import DEFAULT_LANGUAGE, ENGLISH
 from jarvis.audio.tts import TtsEngine, TtsOutput

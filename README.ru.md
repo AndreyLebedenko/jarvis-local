@@ -135,7 +135,10 @@ Jarvis регистрирует конкретные сочетания чере
 
 ## Архитектура
 
-Приложение разделено на небольшие asyncio-модули, связанные через `bus.py`:
+Устанавливаемый пакет приложения находится в `src/jarvis/`. Запускайте его из
+корня репозитория через `python -m jarvis`; production-модули не импортируются
+изменением `sys.path`. Приложение разделено на небольшие asyncio-модули,
+связанные через `bus.py`:
 
 - `audio_in.py`: микрофон, VAD, нарезка высказываний.
 - `backend.py`: streaming adapter для Ollama `/api/chat`.
@@ -187,9 +190,12 @@ Jarvis регистрирует конкретные сочетания чере
 python -m pytest
 ```
 
-Та же команда выполняется в GitHub Actions (`.github/workflows/ci.yml`) при push и pull request: установка `requirements.txt`, затем `python -m pytest`. CI не запускает Ollama, не скачивает модели, не трогает секреты и не задействует железо.
+GitHub Actions (`.github/workflows/ci.yml`) при каждом push и pull request
+выполняет `python -m ruff format --check .`, `python -m ruff check .` и
+`python -m pytest`. CI не запускает Ollama, не скачивает модели, не трогает
+секреты и не задействует железо.
 
-Проверки, зависящие от железа и live-сервисов, остаются ручными и никогда не становятся CI-джобами: микрофон, колонки, глобальные hotkeys, screen capture, GPU/VRAM, визуальный обзор WebView и live Ollama endpoint. Для них используются скрипты `manual/manual_check_*.py` и `manual/day0_checks.py`. Чистые тесты helpers для этих скриптов лежат в `manual/tests/`.
+Проверки, зависящие от железа и live-сервисов, остаются ручными и никогда не становятся CI-джобами: микрофон, колонки, глобальные hotkeys, screen capture, GPU/VRAM, визуальный обзор WebView и live Ollama endpoint. Запускайте ручные проверки из корня репозитория как модули, например `python -m manual.manual_check_status_console`; для day-0 используется `python -m manual.day0_checks`. Чистые тесты helpers для этих скриптов лежат в `manual/tests/`.
 
 Зелёный прогон CI доказывает только то, что чистый набор тестов проходит при чистой установке зависимостей. Он не доказывает, что работающее приложение свободно от сетевых вызовов во время выполнения - это архитектурная гарантия, проверяемая код-ревью (см. `PROJECT.md`), а не то, что измеряет набор pytest.
 

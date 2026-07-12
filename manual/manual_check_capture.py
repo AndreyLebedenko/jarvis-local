@@ -11,18 +11,13 @@ The native provider's elevation behavior is verified by the v1.2.6 manual
 hotkey handoff. Run this check in the privilege mode requested there.
 
 Usage:
-  python manual/manual_check_capture.py
+  python -m manual.manual_check_capture
   (press the full-screen hotkey, then the region hotkey and drag a
   rectangle, Escape cancels a region selection; Ctrl+C to stop)
 """
 
 import asyncio
-import sys
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings

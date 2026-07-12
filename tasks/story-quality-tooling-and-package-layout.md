@@ -57,7 +57,7 @@ unrelated modules in the repository root.
 5. `tasks/done/story-quality-task-5-ui-and-composition-migration.md`
    Move UI modules and the application composition root; remove root-level
    production-module compatibility paths.
-6. `tasks/story-quality-task-6-tests-manual-and-docs.md`
+6. `tasks/done/story-quality-task-6-tests-manual-and-docs.md`
    Normalize test/manual imports and update README, CI, Graphify, and
    `PROJECT.md`.
 7. `tasks/done/story-quality-task-7-repository-formatting.md`

@@ -11,17 +11,11 @@ the full pipeline from audio_in.py's publish to first audio.
 
 Usage:
   python setup_tts_model.py  # once, requires network - see tts.py
-  python manual/manual_check_tts.py
+  python -m manual.manual_check_tts
 """
 
 import asyncio
-import sys
 import time
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
