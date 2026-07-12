@@ -1,7 +1,7 @@
 # Task: Consolidated visual and manual QA
 
 **Story:** `tasks/story-v1.3.0-control-center.md`
-**Status:** Planned. Ready to start.
+**Status:** Completed.
 **Release:** v1.3.0
 
 ## Summary
@@ -38,13 +38,15 @@ everything needing real windows, hardware, or visual judgment.
 
 ## Acceptance Criteria
 
-- [ ] Checklist covers all combinations above with exact human-run
+- [x] Checklist covers all combinations above with exact human-run
       commands.
-- [ ] Automated tests cover harness wiring and the layout checks that can
+- [x] Automated tests cover harness wiring and the layout checks that can
       run headless.
-- [ ] `python -m pytest` passes.
-- [ ] Human has run the checklist; results and bug reports recorded.
-- [ ] Story acceptance criteria checked off against the QA results.
+- [x] `python -m pytest` passes.
+- [x] Human has run the checklist on 2026-07-12: WebView2, Chrome,
+      touchstrip, Open/Hidden, request summary, microphone, screenshot,
+      clipboard, and clean shutdown passed; no bug report is required.
+- [x] Story acceptance criteria checked off against the QA results.
 
 ## Stop Conditions
 

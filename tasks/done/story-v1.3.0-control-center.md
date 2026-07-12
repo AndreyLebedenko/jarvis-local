@@ -1,7 +1,6 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned. Tasks 1-3 and v1.2.16 are complete; task 4 is ready to
-start.
+**Status:** Completed.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the
@@ -59,15 +58,15 @@ layering, TTS engine choices, and unified hotkeys.
 
 ## Acceptance Criteria
 
-- [ ] Control Center uses the existing Status Console design system.
-- [ ] Configuration iteration 2 exposes supported TTS engine, language, voice,
+- [x] Control Center uses the existing Status Console design system.
+- [x] Configuration iteration 2 exposes supported TTS engine, language, voice,
       and likely VAD settings where real engine/config contracts exist.
-- [ ] Data-source and last-request axes are implemented only where supported
+- [x] Data-source and last-request axes are implemented only where supported
       by authoritative runtime state.
-- [ ] Touchstrip remains a glance/control surface, not a miniature dashboard.
-- [ ] Desktop console remains suitable for denser control and event review.
-- [ ] UI does not show fake success for engine capabilities that do not exist.
-- [ ] Manual visual QA covers desktop and touchstrip surfaces.
+- [x] Touchstrip remains a glance/control surface, not a miniature dashboard.
+- [x] Desktop console remains suitable for denser control and event review.
+- [x] UI does not show fake success for engine capabilities that do not exist.
+- [x] Manual visual QA covers desktop and touchstrip surfaces.
 
 ## Task Card Sequence
 
