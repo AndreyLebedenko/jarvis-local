@@ -399,6 +399,30 @@ Boundary:
 
 Task: `tasks/task-v1.2.15-configurable-tts-routes.md`.
 
+## v1.2.16 - Model request composition state
+
+Purpose: expose an authoritative, metadata-only summary of the latest backend
+request before the Control Center presents it.
+
+Scope:
+
+- Complete `tasks/task-v1.2.16-model-request-composition.md`.
+- Publish one event at the exact `backend.chat()` boundary for an accepted
+  request, with local timestamp, included input kinds, and total voice-audio
+  duration where applicable.
+- Project that latest summary into the existing UI transport snapshot without
+  adding UI markup.
+
+Boundary:
+
+- No user content, media payload, waveform data, retention history, or
+  interaction log.
+- Do not claim successful model inference merely because the backend call
+  begins; failure/completion remain separate lifecycle signals.
+
+Story/task readiness: task card created as the v1.3.0 Control Center task-3
+prerequisite.
+
 ## v1.3.0 - Control Center
 
 Purpose: deliver the full UI/control release on top of already-built engine
@@ -424,7 +448,7 @@ Scope:
   - language;
   - voice;
   - likely VAD thresholds if the engine/config contracts support it.
-- Complete data-source/data-presence axes where supported by real engine state.
+- Complete data-source/last-request axes where supported by real engine state.
 - Preserve existing privacy semantics:
   - data locality is independent from system visibility mode;
   - Open/Hidden does not imply cloud/offline;

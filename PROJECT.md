@@ -1420,6 +1420,27 @@ Task 2 (module health events) landed second:
 - Human hardware verification passed on 2026-07-12 after the configurable
   route implementation and SRP module split.
 
+## Architecture v1.2.16 (model request composition state)
+
+- `Orchestrator` owns one metadata-only lifecycle event emitted immediately
+  before each accepted `OllamaBackend.chat()` call. It is the authoritative
+  statement that a backend request has begun, not a claim that inference or a
+  response succeeded.
+- The event carries local wall-clock timestamp, input kinds included in the
+  exact current request, and total voice-audio duration where applicable. It
+  never carries content, audio/image bytes, filenames, dimensions, byte
+  counts, waveform samples, or retention history.
+- A screenshot is listed only when its pending capture is attached to the
+  accepted voice request. Clipboard is listed only for an accepted clipboard
+  request. Empty and busy-rejected inputs produce no request-composition
+  state.
+- The UI transport projects the latest event as `last_model_request`. The
+  Control Center renders the timestamp first, followed by source metadata;
+  microphone awake/asleep remains module health, not request composition.
+- This narrow latest-state projection is deliberately not an interaction log.
+  A later metadata-only model-interaction log may reuse this event stream but
+  requires its own retention, privacy, and UI decisions.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

@@ -23,8 +23,9 @@ everything needing real windows, hardware, or visual judgment.
     is hard to trigger on demand;
   - configuration iteration 2 flows end-to-end including restart-to-apply
     and invalid-value rejection;
-  - data-source and data-presence displays, including their independence
-    from visibility mode;
+  - data-source and timestamp-first last-request displays, including their
+    independence from visibility mode; verify voice duration, clipboard,
+    voice-plus-screenshot, and that rejected/busy input creates no entry;
   - both UI languages (en/ru) for the new sections;
   - layout geometry: no overlapping text or cramped columns on either
     surface (the v1.2.10 QA precedent - measure, do not eyeball).

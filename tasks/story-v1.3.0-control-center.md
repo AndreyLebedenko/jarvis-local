@@ -1,7 +1,7 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned; all prerequisites complete. Task 1 (IA document) is
-complete.
+**Status:** Planned. Task 1 (IA document) and task 2 are complete; task 3 is
+blocked by v1.2.16 model-request composition state.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the
@@ -52,13 +52,17 @@ layering, TTS engine choices, and unified hotkeys.
       RuntimeStateTracker owns state transitions, authoritative module
       health events exist for backend/TTS/vision/microphone, and the
       surface contract is capability-based.
+- [ ] v1.2.16 Model request composition state
+      (`tasks/task-v1.2.16-model-request-composition.md`) is complete:
+      latest accepted backend-request metadata is authoritative and available
+      to the UI transport without exposing request content.
 
 ## Acceptance Criteria
 
 - [ ] Control Center uses the existing Status Console design system.
 - [ ] Configuration iteration 2 exposes supported TTS engine, language, voice,
       and likely VAD settings where real engine/config contracts exist.
-- [ ] Data-source and data-presence axes are implemented only where supported
+- [ ] Data-source and last-request axes are implemented only where supported
       by authoritative runtime state.
 - [ ] Touchstrip remains a glance/control surface, not a miniature dashboard.
 - [ ] Desktop console remains suitable for denser control and event review.
@@ -83,7 +87,7 @@ architecture gaps moved to v1.2.14.
 3. Modules panel and data axes
    (`story-v1.3.0-task-3-modules-panel-and-data-axes.md`).
    Data-driven modules panel over v1.2.14 health events; extensible
-   data-source badge; data-presence from real events only.
+   data-source badge; timestamp-first last-request summary from v1.2.16.
 4. Consolidated visual/manual QA
    (`story-v1.3.0-task-4-visual-manual-qa.md`).
    Desktop (WebView2 and Chrome), touchstrip, Open/Hidden, config flows.
@@ -92,5 +96,5 @@ architecture gaps moved to v1.2.14.
 
 - Stop if a requested UI control has no real engine capability behind it.
 - Stop if Control Center needs live reconfiguration not delivered by v1.2.x.
-- Stop if data locality, data presence, and visibility mode semantics conflict.
+- Stop if data locality, last-request, and visibility mode semantics conflict.
 - Stop if visual QA reveals overlapping text or unreadable touchstrip states.

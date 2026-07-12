@@ -27,6 +27,7 @@ Current authoritative state sources:
 | Module health | `UiStateStore.modules`, populated by `ModuleHealthTracker` via `ModuleHealthChanged` |
 | Backend/model label | `UiStateStore.model.label` |
 | Data locality | `UiStateStore.data_locality.locality` using `DataLocality` |
+| Last model request | `UiStateStore.last_model_request`, populated from v1.2.16 request-composition state |
 | Visibility mode | `UiStateStore.visibility.mode` using `VisibilityMode` |
 | Thinking mode | `UiStateStore.thinking.is_enabled` |
 | System events | `UiStateStore.system_events` and `system_event` deltas |
@@ -46,45 +47,44 @@ These are small enough for task 3 and do not require v1.2.x prep work:
 | --- | --- | --- |
 | Data-driven module rendering | Render `state.modules` plus known `MODULE_IDS` defaults, rather than fixed chip/card markup | The backend already publishes module health by `ModuleId`; the frontend needs to create rows/cards dynamically |
 | Unknown module state | Treat every known `MODULE_IDS` entry absent from `state.modules` as `unavailable` with empty detail | Matches v1.2.14 "unknown before first signal" without fake success |
-| Data presence summary | Add a small `data_presence` snapshot section owned by task 3 | Needed for honest microphone/screen/clipboard presence indicators |
-| Data presence event inputs | Derive only from `ScreenshotCaptured`, `ClipboardSubmitted`, and `MicSleepToggled` | These events already exist and are authoritative |
+| Last request summary | Render v1.2.16's `last_model_request` snapshot section | Needed for an honest, metadata-only account of the latest backend request |
+| Last request event input | Derive only from v1.2.16's request-composition event | The event is emitted at the exact `backend.chat()` boundary |
 
-Proposed `data_presence` shape for task 3:
+Proposed `last_model_request` shape for task 3:
 
 ```json
 {
+  "timestamp": 1783867028.0,
   "items": [
     {
-      "kind": "microphone",
-      "present": true,
-      "detail": "awake"
+      "kind": "audio",
+      "duration_seconds": 4.2
     },
     {
       "kind": "screen",
-      "present": true,
-      "detail": "captured"
+      "included": true
     },
     {
       "kind": "clipboard",
-      "present": true,
-      "detail": "submitted"
+      "included": true
     }
   ]
 }
 ```
 
-Only present, observed sources should render. Absence means omission or
-unknown, not "off", unless a real event says so.
+The desktop renderer formats the local timestamp first on every row, then the
+source label and applicable duration: for example, `14:37:08 - Voice: 4.2 s`.
+Only sources in the exact request render. Absence means omission, not "off";
+the panel never reports current microphone state or model success.
 
 Implementation notes for task 3 (from review):
 
-- `detail` values travel as ui_text catalog keys resolved by the
-  renderer in its own language - the same split as `ModuleHealthChanged`
-  and `RuntimeStateChanged`. The literal strings in the JSON example
-  above illustrate meaning, not wire format.
-- Clipboard presence derives only from accepted submissions: a
-  `ClipboardSubmitted` with `is_empty` is a rejected turn and must not
-  set presence.
+- The transport provides typed kinds and numeric duration. The renderer owns
+  localized source labels and local timestamp formatting; the JSON example
+  illustrates shape, not final UI prose.
+- Empty and busy-rejected clipboard submissions never reach the v1.2.16
+  request-composition event, so task 3 must not infer a row from their input
+  events.
 
 ## Desktop Layout
 
@@ -92,7 +92,8 @@ Desktop Control Center keeps the current Status Console structure and evolves
 it in place:
 
 1. Top bar: brand, model/locality badge, visibility toggle.
-2. Main status area: runtime orb, substatus, module health panel.
+2. Main status area: runtime orb, substatus, module health panel, last request
+   to model panel.
 3. Control area: thinking toggle, settings, reset context, shutdown.
 4. Config panel: model, microphone, TTS routes, UI language, VAD settings,
    pending restart.
@@ -145,7 +146,7 @@ Classification:
 | Pulsing dot | Backed now | Runtime status visual | Glance orb visual | `runtime.state` |
 | Model tag `OLLAMA ... local` | Backed now | Model chip/meta or top badge | Model/locality line | `model.label` plus `data_locality` |
 | Theme toggle dark/light | Drop/disable | No v1.3.0 control | Not shown | No stored setting or contract |
-| Sidebar section `Input` | Small delta | Fold into data-driven modules panel | Module dots only | Module health plus data presence |
+| Sidebar section `Input` | Small delta | Fold into data-driven modules panel | Module dots only | Module health plus last-request metadata |
 | Sidebar Voice item | Backed now | Module card/row | Dot | `ModuleId.MICROPHONE` health |
 | Sidebar Screen item | Backed now | Module card/row | Dot | `ModuleId.VISION` health |
 | Sidebar section `Core` | Small delta | Module panel grouping only | Not grouped | Frontend grouping over module ids |
@@ -184,7 +185,7 @@ Classification:
 | Card progress bars | Drop | Not shown | Not shown | No progress/load metric source |
 | Memory section header | Drop | Not shown as memory panel | Not shown | Vector-store panel excluded |
 | Dialog history card | Drop/disable | No active card | Not shown | No vector memory store/count source |
-| Screen context card | Small delta as presence only | Data presence summary | Not shown | `ScreenshotCaptured`, no stored count/retention |
+| Screen context card | Small delta as last-request metadata only | Last request to model | Not shown | v1.2.16 request composition; only if attached to that request, no stored count/retention |
 | Plugins card | Drop | Not shown | Not shown | No plugin capability |
 | Memory counts and retention | Drop | Not shown | Not shown | No state source |
 | Log panel title `ASYNC EVENT BUS` | Backed now with rename | Event panel | Not shown | `system_events`; title should be user-facing |
@@ -247,19 +248,21 @@ Disallowed v1.3.0 copy:
 - Network transfer meters.
 - Any claim that `Hidden` changes locality.
 
-## Data Presence Rules
+## Last Request Rules
 
-Presence is about recently observed input/context, not about where inference
-runs and not about UI visibility:
+The panel describes the latest request that has begun at the local backend,
+not recently observed input, where inference runs, UI visibility, or a model
+response outcome. Each row starts with the local timestamp.
 
-| Presence kind | Event source | Render rule |
+| Request item | Authoritative source | Render rule |
 | --- | --- | --- |
-| Microphone | `MicSleepToggled` | Show awake/asleep only after event or initial seeded state |
-| Screen | `ScreenshotCaptured` | Show captured/present after capture; hide sensitive detail in Hidden |
-| Clipboard | `ClipboardSubmitted` | Show submitted/present after event |
+| Voice audio | v1.2.16 request-composition event | Show total duration only when audio is in the request |
+| Screen | v1.2.16 request-composition event | Show only when the captured screenshot is attached to this request |
+| Clipboard | v1.2.16 request-composition event | Show only for the accepted clipboard request |
 
-No counts, retention periods, vector-store claims, or persistent memory claims
-are allowed in v1.3.0.
+No microphone awake/asleep indicator, text or media content, waveform samples,
+counts, retention periods, vector-store claims, persistent-memory claims, or
+model-success claims are allowed in v1.3.0.
 
 ## Review Checklist
 
