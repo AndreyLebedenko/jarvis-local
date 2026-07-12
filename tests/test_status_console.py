@@ -422,7 +422,8 @@ def test_style_css_has_a_narrow_width_media_query():
 def test_app_js_clears_module_detail_when_payload_detail_is_empty():
     js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert 'meta.textContent = payload.detail || "";' in js
+    assert 'const detail = module === "backend" && _modelLabel ? ' in js
+    assert "meta.textContent = _moduleDetail(module, detail);" in js
     assert "if (payload.detail)" not in js
 
 
@@ -472,11 +473,32 @@ def test_index_html_has_a_real_think_toggle_not_a_disabled_placeholder():
     assert "disabled" not in think_card_html
 
 
-def test_index_html_has_a_reset_button_for_every_module():
+def test_modules_panel_is_rendered_from_the_shared_module_contract():
     html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    for module in ModuleId:
-        assert f"requestModuleReset('{module.value}')" in html
+    assert 'id="modulesPanel"' in html
+    assert 'id="chip-backend"' not in html
+    assert "for (const module of MODULE_IDS)" in app_js
+    assert 'status: "unavailable"' in app_js
+
+
+def test_last_model_request_panel_renders_the_timestamp_before_metadata():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="lastRequestList"' in html
+    assert "function applyLastModelRequest(payload)" in app_js
+    assert 'formatLogTime(payload.timestamp) + " - "' in app_js
+    assert 'uiString("last_request_" + item.kind)' in app_js
+
+
+def test_status_console_does_not_render_the_observed_input_panel():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "dataPresenceList" not in html
+    assert "applyDataPresence" not in app_js
 
 
 def test_index_html_global_reset_requires_confirmation_before_the_api_call():

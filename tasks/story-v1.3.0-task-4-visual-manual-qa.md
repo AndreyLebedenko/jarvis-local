@@ -1,7 +1,7 @@
 # Task: Consolidated visual and manual QA
 
 **Story:** `tasks/story-v1.3.0-control-center.md`
-**Status:** Planned. Blocked by tasks 2 and 3.
+**Status:** Planned. Ready to start.
 **Release:** v1.3.0
 
 ## Summary

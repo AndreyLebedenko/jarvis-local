@@ -44,6 +44,19 @@ def test_every_module_has_a_label_in_every_language(language):
         assert module_label(module, language)
 
 
+def test_listening_runtime_state_describes_engine_readiness_not_microphone_state():
+    assert runtime_state_text(RuntimeState.LISTENING, "en") == (
+        "Ready",
+        "Waiting for a request",
+    )
+    assert runtime_state_text(RuntimeState.LISTENING, "ru") == (
+        "Готов",
+        "Ожидаю запрос",
+    )
+    assert ui_text("ready_to_listen", "en") == "Waiting for a request"
+    assert ui_text("ready_to_listen", "ru") == "Ожидаю запрос"
+
+
 def test_all_catalogs_cover_exactly_the_supported_languages():
     expected = set(SUPPORTED_UI_LANGUAGES)
     assert set(_RUNTIME_STATE_TEXT) == expected

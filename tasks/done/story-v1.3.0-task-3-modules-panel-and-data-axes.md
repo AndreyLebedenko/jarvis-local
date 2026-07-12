@@ -1,7 +1,7 @@
 # Task: Modules panel and data axes
 
 **Story:** `tasks/story-v1.3.0-control-center.md`
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.3.0
 
 ## Summary

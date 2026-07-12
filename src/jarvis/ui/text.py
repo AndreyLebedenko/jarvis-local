@@ -26,7 +26,7 @@ _RUNTIME_STATE_TEXT: dict[str, dict[RuntimeState, tuple[str, str]]] = {
             "Warming up (local)",
             "Loading the model into GPU memory...",
         ),
-        RuntimeState.LISTENING: ("Listening", "Waiting for a voice command..."),
+        RuntimeState.LISTENING: ("Ready", "Waiting for a request"),
         RuntimeState.THINKING: (
             "Thinking",
             "Gathering context and composing a response...",
@@ -40,7 +40,7 @@ _RUNTIME_STATE_TEXT: dict[str, dict[RuntimeState, tuple[str, str]]] = {
             "Прогрев (локально)",
             "Модель загружается в память GPU...",
         ),
-        RuntimeState.LISTENING: ("Слушаю", "Жду голосовую команду..."),
+        RuntimeState.LISTENING: ("Готов", "Ожидаю запрос"),
         RuntimeState.THINKING: ("Думаю", "Собираю контекст и формирую ответ..."),
         RuntimeState.SPEAKING: ("Отвечаю", "Произношу ответ вслух..."),
         RuntimeState.ERROR: ("Ошибка", ""),
@@ -69,7 +69,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         # Runtime substatus lines pushed by main.py/ui_transport.py.
         "warming_model": "Warming up the model...",
-        "ready_to_listen": "Ready to listen",
+        "ready_to_listen": "Waiting for a request",
         "processing_voice": "Processing voice...",
         "processing_text": "Processing text...",
         "speaking_response": "Speaking the response...",
@@ -114,7 +114,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
     },
     "ru": {
         "warming_model": "Прогреваю модель...",
-        "ready_to_listen": "Готов слушать",
+        "ready_to_listen": "Ожидаю запрос",
         "processing_voice": "Обрабатываю голос...",
         "processing_text": "Обрабатываю текст...",
         "speaking_response": "Произношу ответ...",
