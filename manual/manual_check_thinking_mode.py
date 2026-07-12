@@ -5,9 +5,9 @@ This is not an automated test. It talks to the live local Ollama endpoint
 and the configured model, so the human runs it and reports the output.
 
 Usage:
-  python manual/manual_check_thinking_mode.py text
-  python manual/manual_check_thinking_mode.py media
-  python manual/manual_check_thinking_mode.py both
+  python -m manual.manual_check_thinking_mode text
+  python -m manual.manual_check_thinking_mode media
+  python -m manual.manual_check_thinking_mode both
 """
 
 import argparse
@@ -15,18 +15,12 @@ import asyncio
 import base64
 import json
 import struct
-import sys
 import time
 import zlib
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal
 
 import httpx
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.core.config import BackendSettings, load_settings
 

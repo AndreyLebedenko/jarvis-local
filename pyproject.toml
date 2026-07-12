@@ -47,8 +47,3 @@ max-complexity = 10
 "tests/**/*.py" = [
     "B011",
 ]
-"manual/**/*.py" = [
-    # Manual scripts currently add the repository root to sys.path. The
-    # package-layout story removes that workaround before lint becomes a gate.
-    "E402",
-]

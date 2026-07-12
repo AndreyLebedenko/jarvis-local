@@ -9,20 +9,14 @@ of PROJECT.md's day-0 numbers (load ~0.3 s warm, prefill ~0.1-0.3 s,
 ~87 tok/s generation).
 
 Usage:
-  python manual/manual_check_backend.py audio audio/a1.wav
-  python manual/manual_check_backend.py image path/to/screenshot.png
+  python -m manual.manual_check_backend audio audio/a1.wav
+  python -m manual.manual_check_backend image path/to/screenshot.png
 """
 
 import argparse
 import asyncio
 import base64
-import sys
 import time
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings

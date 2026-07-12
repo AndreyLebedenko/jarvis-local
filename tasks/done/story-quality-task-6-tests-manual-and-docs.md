@@ -1,7 +1,7 @@
 # Task: Normalize tests, manual checks, and documentation
 
 **Story:** `tasks/story-quality-tooling-and-package-layout.md`
-**Status:** Not started.
+**Status:** Completed.
 
 ## Summary
 
@@ -15,4 +15,3 @@ in CI, and document the package and quality contracts.
 - [ ] CI runs Ruff lint, Ruff format check, and `python -m pytest`.
 - [ ] README files and `PROJECT.md` describe the new canonical layout.
 - [ ] Graphify is refreshed for the meaningful documentation changes.
-

@@ -14,11 +14,11 @@ Checks:
   vram        : VRAM behaviour with the 64K context actually filled
 
 Usage:
-  python manual/day0_checks.py fidelity   nonsense.wav
-  python manual/day0_checks.py intonation neutral.wav emotional.wav
-  python manual/day0_checks.py ocr        screenshot.png
-  python manual/day0_checks.py vram
-  python manual/day0_checks.py <check> <files...> --model gemma4:12b-it-qat
+  python -m manual.day0_checks fidelity   nonsense.wav
+  python -m manual.day0_checks intonation neutral.wav emotional.wav
+  python -m manual.day0_checks ocr        screenshot.png
+  python -m manual.day0_checks vram
+  python -m manual.day0_checks <check> <files...> --model gemma4:12b-it-qat
 
 Default model: gemma4:12b-it-qat (override with --model).
 Every request prints latency and, on anything unexpected, the full

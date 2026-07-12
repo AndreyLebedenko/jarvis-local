@@ -18,11 +18,11 @@ the desired backend config in place and keep the resulting summaries side by
 side.
 
 Usage examples:
-  python manual/manual_check_tts_engines.py
-  python manual/manual_check_tts_engines.py
+  python -m manual.manual_check_tts_engines
+  python -m manual.manual_check_tts_engines
     --piper-model D:\\voices\\en_US-lessac-medium.onnx
-  python manual/manual_check_tts_engines.py --kokoro-model D:\\models\\kokoro-v1.0.onnx
-  python manual/manual_check_tts_engines.py --xtts-model-path D:\\models\\xtts_v2
+  python -m manual.manual_check_tts_engines --kokoro-model D:\\models\\kokoro-v1.0.onnx
+  python -m manual.manual_check_tts_engines --xtts-model-path D:\\models\\xtts_v2
 
 Expected output fields:
   backend: model, num_ctx, flash_attention, kv_cache_type,
@@ -38,7 +38,6 @@ import asyncio
 import io
 import json
 import subprocess
-import sys
 import time
 import wave
 from collections.abc import Awaitable, Callable
@@ -48,10 +47,6 @@ from pathlib import Path
 import sounddevice as sd
 import soundfile as sf
 import torch
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_silero import normalize_numbers, transliterate_latin

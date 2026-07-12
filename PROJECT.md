@@ -927,12 +927,12 @@ tasks/done/story-status-console-ui.md.
 Task-ui-08 is the follow-up live integration task for the already-completed
 Status Console story.
 
-- `python main.py --status-console` launches Jarvis and the Status Console in
+- `python -m jarvis --status-console` launches Jarvis and the Status Console in
   one process using the same `pywebview.start(callback)` ordering verified by
   `manual_check_status_console.py`: windows and their shared
   `StatusConsoleApi` are created before `webview.start()`, then the callback
   creates the real `asyncio` runtime and calls `StatusConsoleApi.set_loop()`.
-  The old headless launch path remains `python main.py`; `--no-touchstrip`
+  The headless launch path remains `python -m jarvis`; `--no-touchstrip`
   opens only the desktop console.
 - Live wiring intentionally pushes only state with an authoritative source:
   model label from config, `DataLocality.LOCAL`, current Think state, current
