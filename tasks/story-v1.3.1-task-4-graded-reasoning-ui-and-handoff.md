@@ -31,6 +31,9 @@ In scope:
 10. Prepare one human checklist covering:
     - direct selection of all four levels in Control Center;
     - cycling through all four levels by hotkey and touchstrip;
+    - one hotkey/touchstrip cycle press right after a direct Control Center
+      selection, confirming the cycle continues from the selected level
+      instead of the level before it;
     - audible 1/2/3 enabled-cue sequences and the off cue;
     - one accepted request at each level;
     - a level change during an in-flight response applying only next turn;
