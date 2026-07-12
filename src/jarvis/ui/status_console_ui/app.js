@@ -26,7 +26,8 @@
 // default, sensitive snippets not shown" from tasks/task-ui-privacy-and-
 // touchstrip-requirements.md. The real detail is remembered so switching
 // back to Open restores it without needing another push from Python.
-let _lastVisionDetail = "";
+const _moduleHealth = new Map();
+let _modelLabel = "";
 
 // Caps DOM growth for a long-running process feeding a live-appending log
 // (task-ui-03's Scope: "recent events", not an unbounded transcript).
@@ -50,7 +51,10 @@ function _clearSystemEvents() {
 function _applyStateSnapshot(state) {
   applyUiLanguage(state.ui_language || {});
   applyRuntimeState(state.runtime);
+  _moduleHealth.clear();
   Object.values(state.modules || {}).forEach(applyModuleHealth);
+  renderModules();
+  applyLastModelRequest(state.last_model_request || { timestamp: null, items: [] });
   applyDataLocality(state.data_locality);
   applyModelLabel(state.model);
   _clearSystemEvents();
@@ -67,6 +71,7 @@ function _applyStateDelta(payload) {
   dispatchStateDelta(payload, {
     runtime: applyRuntimeState,
     modules: (value) => Object.values(value).forEach(applyModuleHealth),
+    last_model_request: applyLastModelRequest,
     data_locality: applyDataLocality,
     model: applyModelLabel,
     system_event: appendSystemEvent,
@@ -99,24 +104,68 @@ function applyModuleHealth(payload) {
   if (!HEALTH_STATUSES.includes(payload.status)) {
     throw new Error("Unknown health status: " + payload.status);
   }
-  const chip = document.getElementById("chip-" + payload.module);
-  if (!chip) return;
-  chip.setAttribute("data-status", payload.status);
-  chip.querySelector(".chip-dot").setAttribute("data-status", payload.status);
-  if (payload.module === "vision") {
-    _lastVisionDetail = payload.detail || "";
-    _renderVisionChipMeta();
-    return;
-  }
-  const meta = chip.querySelector(".chip-meta");
-  meta.textContent = payload.detail || "";
+  _moduleHealth.set(payload.module, payload);
+  renderModules();
 }
 
-function _renderVisionChipMeta() {
+function _moduleDetail(module, detail) {
+  if (module !== "vision") return detail || "";
   const isHidden = document.documentElement.getAttribute("data-visibility") === "hidden";
-  document.getElementById("chip-vision").querySelector(".chip-meta").textContent = isHidden
-    ? uiString("vision_preview_hidden")
-    : _lastVisionDetail;
+  return isHidden ? uiString("vision_preview_hidden") : detail || "";
+}
+
+function renderModules() {
+  const panel = document.getElementById("modulesPanel");
+  if (!panel) return;
+  panel.replaceChildren();
+  for (const module of MODULE_IDS) {
+    const payload = _moduleHealth.get(module) || {
+      module,
+      status: "unavailable",
+      detail: "",
+    };
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.id = "chip-" + module;
+    chip.setAttribute("data-status", payload.status);
+
+    const dot = document.createElement("span");
+    dot.className = "chip-dot";
+    dot.setAttribute("data-status", payload.status);
+
+    const body = document.createElement("div");
+    body.className = "chip-body";
+    const label = document.createElement("div");
+    label.className = "chip-label";
+    label.textContent = uiString(module === "backend" ? "chip_model" : "chip_" + module);
+    const meta = document.createElement("div");
+    meta.className = "chip-meta";
+    const detail = module === "backend" && _modelLabel ? _modelLabel : payload.detail;
+    meta.textContent = _moduleDetail(module, detail);
+    body.append(label, meta);
+
+    const reset = document.createElement("button");
+    reset.className = "chip-reset";
+    reset.title = uiString("chip_reset_" + module);
+    reset.textContent = "↻";
+    reset.addEventListener("click", () => requestModuleReset(module));
+    chip.append(dot, body, reset);
+    panel.appendChild(chip);
+  }
+}
+
+function applyLastModelRequest(payload) {
+  const list = document.getElementById("lastRequestList");
+  list.replaceChildren();
+  for (const item of payload.items || []) {
+    const row = document.createElement("li");
+    const detail = item.kind === "audio" && item.duration_seconds !== undefined
+      ? ": " + item.duration_seconds.toFixed(1) + " s"
+      : "";
+    row.textContent = formatLogTime(payload.timestamp) + " - "
+      + uiString("last_request_" + item.kind) + detail;
+    list.appendChild(row);
+  }
 }
 
 function applyDataLocality(payload) {
@@ -127,7 +176,8 @@ function applyDataLocality(payload) {
 }
 
 function applyModelLabel(payload) {
-  document.getElementById("chip-backend").querySelector(".chip-meta").textContent = payload.label;
+  _modelLabel = payload.label;
+  renderModules();
 }
 
 function formatLogTime(timestampSeconds) {
@@ -242,7 +292,7 @@ function applyVisibilityMode(payload) {
   document
     .querySelectorAll("#visibilityToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
-  _renderVisionChipMeta();
+  renderModules();
 }
 
 function setVisibilityMode(modeValue) {

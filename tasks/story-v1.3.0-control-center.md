@@ -1,7 +1,7 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned. Task 1 (IA document), task 2, and v1.2.16 are complete;
-task 3 is ready to start.
+**Status:** Planned. Tasks 1-3 and v1.2.16 are complete; task 4 is ready to
+start.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the

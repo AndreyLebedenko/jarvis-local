@@ -36,48 +36,15 @@
     <div class="orb-sub" id="orbSub"></div>
   </div>
 
-  <div class="chip-row">
-    <div class="chip" id="chip-backend" data-status="unavailable">
-      <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body">
-        <div class="chip-label" data-i18n="chip_model">Model</div>
-        <div class="chip-meta">...</div>
-      </div>
-      <button class="chip-reset" data-i18n-title="chip_reset_backend" title="Request model/backend reset" onclick="requestModuleReset('backend')">&#8635;</button>
-    </div>
-    <div class="chip" id="chip-microphone" data-status="unavailable">
-      <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body">
-        <div class="chip-label" data-i18n="chip_microphone">Microphone</div>
-        <div class="chip-meta">...</div>
-      </div>
-      <button class="chip-reset" data-i18n-title="chip_reset_microphone" title="Request microphone reset" onclick="requestModuleReset('microphone')">&#8635;</button>
-    </div>
-    <div class="chip" id="chip-tts" data-status="unavailable">
-      <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body">
-        <div class="chip-label" data-i18n="chip_tts">TTS</div>
-        <div class="chip-meta">...</div>
-      </div>
-      <button class="chip-reset" data-i18n-title="chip_reset_tts" title="Request TTS reset" onclick="requestModuleReset('tts')">&#8635;</button>
-    </div>
-    <div class="chip" id="chip-memory" data-status="unavailable">
-      <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body">
-        <div class="chip-label" data-i18n="chip_memory">Memory</div>
-        <div class="chip-meta">...</div>
-      </div>
-      <button class="chip-reset" data-i18n-title="chip_reset_memory" title="Request memory reset" onclick="requestModuleReset('memory')">&#8635;</button>
-    </div>
-    <div class="chip" id="chip-vision" data-status="unavailable">
-      <span class="chip-dot" data-status="unavailable"></span>
-      <div class="chip-body">
-        <div class="chip-label" data-i18n="chip_vision">Vision</div>
-        <div class="chip-meta">...</div>
-      </div>
-      <button class="chip-reset" data-i18n-title="chip_reset_vision" title="Request vision/screen reset" onclick="requestModuleReset('vision')">&#8635;</button>
-    </div>
-  </div>
+  <section class="modules-panel" aria-labelledby="modulesHeading">
+    <h2 id="modulesHeading" data-i18n="modules_title">Modules</h2>
+    <div class="chip-row" id="modulesPanel"></div>
+  </section>
+
+  <section class="last-request-panel" aria-labelledby="lastRequestHeading">
+    <h2 id="lastRequestHeading" data-i18n="last_request_title">Last request to model</h2>
+    <ul id="lastRequestList"></ul>
+  </section>
 
   <div class="think-card">
     <div class="switch" id="thinkSwitch" onclick="toggleThinking()"></div>

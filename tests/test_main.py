@@ -1153,7 +1153,7 @@ async def test_wire_pushes_listening_state_after_response_complete():
 
     assert transport.calls[-1] == (
         "runtime",
-        (RuntimeState.LISTENING, "Ready to listen"),
+        (RuntimeState.LISTENING, "Waiting for a request"),
     )
 
 
