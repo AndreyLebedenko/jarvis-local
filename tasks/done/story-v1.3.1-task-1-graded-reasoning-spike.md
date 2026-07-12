@@ -1,7 +1,7 @@
 # Task: Graded reasoning Ollama spike
 
 **Story:** `tasks/story-v1.3.1-graded-reasoning-mode.md`
-**Status:** Not started.
+**Status:** Completed.
 **Release:** v1.3.1
 
 ## Summary

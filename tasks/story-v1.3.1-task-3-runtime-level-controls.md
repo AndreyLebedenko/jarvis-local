@@ -53,6 +53,9 @@ Out of scope:
 - [ ] Every accepted turn receives the level sampled at its start.
 - [ ] Changing the level while busy affects only the next accepted turn.
 - [ ] Rapid hotkey presses produce the same number of ordered cycles.
+- [ ] A hotkey cycle issued after a direct `set_reasoning_level` selection
+      continues the `off -> low -> medium -> high -> off` order from the
+      directly selected level, not from the level before that selection.
 - [ ] Logs name `off`, `low`, `medium`, or `high` exactly.
 - [ ] Sound tests assert 0/1/2/3 enabled-cue plays and one off-cue play as
       specified.

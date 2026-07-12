@@ -222,6 +222,37 @@ system is intended to grow.
   inside `toggle_user_sleep()` on the event loop, never in the hotkey
   callback thread. All three fixes have regression tests confirmed to
   fail without the fix and pass with it.
+- **Graded Ollama `think` values `"low"`, `"medium"`, and `"high"` are all
+  accepted alongside `false` (story-v1.3.1 task 1).** Human-run
+  `python -m manual.manual_check_graded_reasoning` on 2026-07-13 against
+  Ollama **0.31.2**, `gemma4:12b-it-qat`, `num_ctx: 65536`,
+  `flash_attention: true`, `kv_cache_type: q8_0` (all other generation
+  knobs unset) sent all four top-level `think` values — `false`, `"low"`,
+  `"medium"`, `"high"` — across a short deterministic calculation prompt
+  and a multi-step reasoning prompt (3 runs each per level) plus one
+  reproducible 4-quadrant image prompt (1 run per level): 28/28 requests
+  returned a `done` chunk with no transport error. With `think: false`, no
+  `message.thinking` chunks appeared for any prompt (thinking char count
+  0). With `"low"`/`"medium"`/`"high"`, `message.thinking` carried
+  reasoning text and `message.content` held only the clean final answer in
+  all 28 cases — no `<think>`/`<thinking>` markers or other reasoning
+  leaked into `content` at any level. This confirms the isolation rule
+  already established for boolean `think` extends unchanged to the graded
+  string values.
+  Token volume and `message.thinking` length were **not monotonic across
+  low -> medium -> high** in this run (e.g. calculation prompt eval_count
+  averaged ~487/~798/~551 for low/medium/high respectively — medium
+  exceeded high). Per this task's own caution, three runs per level is not
+  enough to claim a stable ordering; do not treat eval_count or thinking
+  length as a monotonic proxy for reasoning quality without a larger,
+  dedicated measurement.
+  Anecdotal accuracy signal (small sample, not a benchmark): with
+  `think: false` the calculation prompt (`47 * 63 - 129`, correct answer
+  2832) was answered incorrectly in all 3 runs (2856, 2856, 2886), and the
+  multi-step train prompt (correct answer 4) was wrong once (6); with
+  `"low"`, `"medium"`, and `"high"`, both text prompts were answered
+  correctly in all 9 runs each. The image prompt (four colored quadrants)
+  was answered correctly at every level, including `off`.
 
 ## Open questions (unverified - do not assume an answer)
 
