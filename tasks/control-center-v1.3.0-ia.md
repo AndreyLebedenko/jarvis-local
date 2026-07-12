@@ -1,6 +1,7 @@
 # Control Center v1.3.0 IA
 
-**Status:** Draft for human review.
+**Status:** Accepted (2026-07-12; authored by the human, reviewed by the
+agent - two implementation notes folded in below).
 **Story:** `tasks/story-v1.3.0-control-center.md`
 **Task:** `tasks/story-v1.3.0-task-1-control-center-ia.md`
 **Source mock-up:** `.planning/UI/mock-ups/jarvis_dashboard_v3.html`
@@ -74,6 +75,16 @@ Proposed `data_presence` shape for task 3:
 
 Only present, observed sources should render. Absence means omission or
 unknown, not "off", unless a real event says so.
+
+Implementation notes for task 3 (from review):
+
+- `detail` values travel as ui_text catalog keys resolved by the
+  renderer in its own language - the same split as `ModuleHealthChanged`
+  and `RuntimeStateChanged`. The literal strings in the JSON example
+  above illustrate meaning, not wire format.
+- Clipboard presence derives only from accepted submissions: a
+  `ClipboardSubmitted` with `is_empty` is a rejected turn and must not
+  set presence.
 
 ## Desktop Layout
 
