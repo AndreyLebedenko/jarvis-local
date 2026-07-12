@@ -60,6 +60,7 @@ function _applyStateSnapshot(state) {
   applyModelOptions(state.model_options, false);
   applyMicrophoneOptions(state.microphone_options, false);
   applyPendingRestart(state.pending_restart);
+  if (state.config_values) applyConfigValues(state.config_values);
 }
 
 function _applyStateDelta(payload) {
@@ -75,6 +76,7 @@ function _applyStateDelta(payload) {
     microphone_options: applyMicrophoneOptions,
     pending_restart: applyPendingRestart,
     ui_language: applyUiLanguage,
+    config_values: applyConfigValues,
   });
 }
 
@@ -276,8 +278,9 @@ let _modelOptionsLoaded = false;
 let _microphoneOptionsLoaded = false;
 
 function _updateApplyButtonEnabled() {
+  const inputsValid = _configInputsValid();
   document.getElementById("btnConfigApply").disabled =
-    !(_modelOptionsLoaded && _microphoneOptionsLoaded);
+    !(_modelOptionsLoaded && _microphoneOptionsLoaded && inputsValid);
 }
 
 function toggleConfigMenu() {
@@ -319,10 +322,209 @@ function applyPendingRestart(payload) {
   document.getElementById("pendingRestart").classList.toggle("show", payload.pending);
 }
 
+// story-v1.3.0-task-2: configuration iteration 2. The snapshot's
+// config_values section carries current values, option lists, and
+// validation ranges - this file renders and range-checks from that data
+// instead of hardcoding a second copy of the Python contract
+// (config_selection.py stays the authority; the engine re-validates on
+// save either way).
+let _configValues = null;
+
+function applyConfigValues(payload) {
+  _configValues = payload;
+  const langSelect = document.getElementById("uiLangSelect");
+  langSelect.innerHTML = "";
+  for (const lang of payload.ui_language_options) {
+    const el = document.createElement("option");
+    el.value = lang;
+    el.textContent = lang;
+    if (lang === payload.ui_language) el.selected = true;
+    langSelect.appendChild(el);
+  }
+  document.getElementById("vadThreshold").value = payload.vad.threshold;
+  document.getElementById("vadMaxChunk").value = payload.vad.max_chunk_seconds;
+  document.getElementById("vadEndPause").value = payload.vad.request_end_pause_seconds;
+  document.getElementById("vadCooldown").value = payload.vad.resume_cooldown_seconds;
+  const custom = payload.tts.languages.every((lang) => lang in payload.tts.routes);
+  document.getElementById("ttsCustomRoutes").checked = custom;
+  _renderTtsRouteRows();
+  onConfigInputChanged();
+}
+
+function _renderTtsRouteRows() {
+  const container = document.getElementById("ttsRouteRows");
+  container.innerHTML = "";
+  if (_configValues === null) return;
+  const enabled = document.getElementById("ttsCustomRoutes").checked;
+  for (const lang of _configValues.tts.languages) {
+    const route = _configValues.tts.routes[lang] || null;
+    const row = document.createElement("div");
+    row.className = "config-tts-route";
+    const header = document.createElement("div");
+    header.className = "config-tts-route-header";
+    const label = document.createElement("label");
+    label.textContent = uiString("config_tts_route_label").replace("{lang}", lang);
+    const engineSelect = document.createElement("select");
+    engineSelect.id = "ttsEngine-" + lang;
+    engineSelect.disabled = !enabled;
+    for (const engine of _configValues.tts.engines) {
+      const el = document.createElement("option");
+      el.value = engine;
+      el.textContent = engine;
+      if (route !== null && engine === route.engine) el.selected = true;
+      engineSelect.appendChild(el);
+    }
+    const fieldsContainer = document.createElement("div");
+    fieldsContainer.className = "config-tts-fields";
+    engineSelect.onchange = () => {
+      _renderTtsFields(lang, engineSelect.value, fieldsContainer, null, enabled);
+      onConfigInputChanged();
+    };
+    header.append(label, engineSelect);
+    row.append(header, fieldsContainer);
+    container.appendChild(row);
+    _renderTtsFields(lang, engineSelect.value, fieldsContainer, route, enabled);
+  }
+}
+
+function _renderTtsFields(lang, engine, container, route, enabled) {
+  container.innerHTML = "";
+  for (const spec of _configValues.tts.schemas[engine]) {
+    const field = document.createElement("div");
+    field.className = "config-field config-tts-field";
+    const label = document.createElement("label");
+    label.htmlFor = `tts-${lang}-${spec.name}`;
+    label.textContent = uiString("config_tts_field_" + spec.name);
+    const input = _createTtsInput(lang, engine, spec, route);
+    input.disabled = !enabled;
+    field.append(label, input);
+    container.appendChild(field);
+  }
+}
+
+function _createTtsInput(lang, engine, spec, route) {
+  const input = document.createElement(spec.kind === "boolean" ? "select" : "input");
+  input.id = `tts-${lang}-${spec.name}`;
+  input.dataset.ttsField = spec.name;
+  input.dataset.ttsEngine = engine;
+  const value = route !== null && route.engine === engine
+    ? route[spec.name]
+    : spec.default;
+  if (spec.kind === "boolean") {
+    if (spec.nullable) input.append(new Option(uiString("config_tts_default_value"), ""));
+    input.append(new Option(uiString("config_tts_false_value"), "false"));
+    input.append(new Option(uiString("config_tts_true_value"), "true"));
+    input.value = value === null ? "" : String(value);
+    input.onchange = onConfigInputChanged;
+    return input;
+  }
+  input.type = spec.kind === "string" ? "text" : "number";
+  if (spec.kind === "integer") input.step = "1";
+  if (spec.kind === "number") input.step = "any";
+  input.value = value === null ? "" : value;
+  input.oninput = onConfigInputChanged;
+  return input;
+}
+
+function onTtsRoutingModeChanged() {
+  _renderTtsRouteRows();
+  onConfigInputChanged();
+}
+
+function _numberInRange(input, range) {
+  const value = Number(input.value);
+  const valid = input.value !== "" && Number.isFinite(value)
+    && value >= range[0] && value <= range[1];
+  input.classList.toggle("invalid", !valid);
+  return valid;
+}
+
+function _thresholdValid(input, range) {
+  const value = Number(input.value);
+  const valid = input.value !== "" && Number.isFinite(value)
+    && value > range[0] && value < range[1];
+  input.classList.toggle("invalid", !valid);
+  return valid;
+}
+
+function _configInputsValid() {
+  if (_configValues === null) return false;
+  const ranges = _configValues.vad_ranges;
+  let valid = _thresholdValid(
+    document.getElementById("vadThreshold"), ranges.threshold);
+  valid = _numberInRange(
+    document.getElementById("vadMaxChunk"), ranges.max_chunk_seconds) && valid;
+  valid = _numberInRange(
+    document.getElementById("vadEndPause"), ranges.request_end_pause_seconds) && valid;
+  valid = _numberInRange(
+    document.getElementById("vadCooldown"), ranges.resume_cooldown_seconds) && valid;
+  if (document.getElementById("ttsCustomRoutes").checked) {
+    for (const lang of _configValues.tts.languages) {
+      const engine = document.getElementById("ttsEngine-" + lang).value;
+      for (const spec of _configValues.tts.schemas[engine]) {
+        const input = document.getElementById(`tts-${lang}-${spec.name}`);
+        const fieldValid = _ttsFieldValid(input, spec);
+        input.classList.toggle("invalid", !fieldValid);
+        valid = fieldValid && valid;
+      }
+    }
+  }
+  return valid;
+}
+
+function _ttsFieldValid(input, spec) {
+  if (input.value === "") return spec.nullable;
+  if (spec.kind === "string") return !spec.non_empty || input.value.trim() !== "";
+  if (spec.kind === "boolean") return input.value === "true" || input.value === "false";
+  const value = Number(input.value);
+  if (!Number.isFinite(value)) return false;
+  if (spec.kind === "integer" && !Number.isInteger(value)) return false;
+  if (spec.minimum === null) return true;
+  return spec.exclusive_minimum ? value > spec.minimum : value >= spec.minimum;
+}
+
+function onConfigInputChanged() {
+  _updateApplyButtonEnabled();
+}
+
+function _collectTtsRoutes() {
+  if (!document.getElementById("ttsCustomRoutes").checked) return null;
+  const routes = {};
+  for (const lang of _configValues.tts.languages) {
+    const engine = document.getElementById("ttsEngine-" + lang).value;
+    const route = { engine };
+    for (const spec of _configValues.tts.schemas[engine]) {
+      const input = document.getElementById(`tts-${lang}-${spec.name}`);
+      route[spec.name] = _readTtsField(input, spec);
+    }
+    routes[lang] = route;
+  }
+  return routes;
+}
+
+function _readTtsField(input, spec) {
+  if (input.value === "" && spec.nullable) return null;
+  if (spec.kind === "boolean") return input.value === "true";
+  if (spec.kind === "integer") return Number.parseInt(input.value, 10);
+  if (spec.kind === "number") return Number(input.value);
+  return input.value;
+}
+
 function applyConfigSelection() {
   const model = document.getElementById("modelSelect").value;
   const microphone = document.getElementById("micSelect").value;
-  _sendControl("save_config_selection", { model, microphone });
+  _sendControl("save_config_selection", {
+    model,
+    microphone,
+    ui_language: document.getElementById("uiLangSelect").value,
+    vad: {
+      threshold: Number(document.getElementById("vadThreshold").value),
+      max_chunk_seconds: Math.round(Number(document.getElementById("vadMaxChunk").value)),
+      request_end_pause_seconds: Number(document.getElementById("vadEndPause").value),
+      resume_cooldown_seconds: Number(document.getElementById("vadCooldown").value),
+    },
+    tts_routes: _collectTtsRoutes(),
+  });
 }
 
 if (typeof startUiTransport === "function") {

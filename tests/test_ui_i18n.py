@@ -6,9 +6,11 @@ and both language dictionaries cover the same key set.
 """
 
 import re
+from dataclasses import fields
 
 import pytest
 
+from jarvis.core.config import TTS_ROUTE_TYPES
 from jarvis.ui.status_console import UI_DIR
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
@@ -66,7 +68,19 @@ def test_every_data_i18n_key_in_markup_exists_in_the_dictionary(filename):
 def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
     keys = _strings_js_keys()["en"]
     used = set(re.findall(r'uiString\(\s*"(\w+)"', _read(filename)))
+    used.discard("config_tts_field_")
     assert used <= keys
+
+
+def test_every_projected_tts_field_has_a_localized_label():
+    keys = _strings_js_keys()["en"]
+    field_names = {
+        field.name
+        for route_type in TTS_ROUTE_TYPES.values()
+        for field in fields(route_type)
+    }
+
+    assert {f"config_tts_field_{name}" for name in field_names} <= keys
 
 
 def test_served_pages_load_strings_js_before_the_scripts_that_use_it():

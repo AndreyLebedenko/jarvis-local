@@ -14,6 +14,13 @@ from typing import Protocol, cast
 from aiohttp import web
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import (
+    TTS_ROUTE_TYPES,
+    Settings,
+    TtsLanguageSettings,
+    VadSettings,
+    tts_route_field_specs,
+)
 from jarvis.dialog.thinking_mode import ThinkingModeToggled
 from jarvis.ui.contract import (
     DataLocality,
@@ -28,6 +35,7 @@ from jarvis.ui.status_console import (
     ModelOptionsAvailable,
     StatusConsoleApi,
     UiConfigSaved,
+    config_values_payload,
     data_locality_payload,
     module_health_payload,
     runtime_state_payload,
@@ -101,6 +109,81 @@ def parse_message(raw: str) -> ProtocolMessage:
     )
 
 
+def _parse_ui_language(raw: JSONValue) -> str | None:
+    """Shape/type checks only; value semantics belong to
+    config_selection.validate_selection() behind the control API."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ProtocolError("ui_language must be a string")
+    return raw
+
+
+def _parse_vad(raw: JSONValue) -> VadSettings | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ProtocolError("vad must be an object")
+    fields = {
+        "threshold": float,
+        "max_chunk_seconds": int,
+        "request_end_pause_seconds": float,
+        "resume_cooldown_seconds": float,
+    }
+    if set(raw) != set(fields):
+        raise ProtocolError("vad requires exactly: " + ", ".join(sorted(fields)))
+    kwargs: dict[str, float | int] = {}
+    for name, kind in fields.items():
+        value = raw[name]
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ProtocolError(f"vad.{name} must be a number")
+        if kind is int and not isinstance(value, int):
+            raise ProtocolError(f"vad.{name} must be an integer")
+        kwargs[name] = kind(value)
+    return VadSettings(**kwargs)  # type: ignore[arg-type]
+
+
+def _parse_tts_routes(raw: JSONValue) -> dict[str, TtsLanguageSettings] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ProtocolError("tts_routes must be an object")
+    routes: dict[str, TtsLanguageSettings] = {}
+    for language, route_raw in raw.items():
+        if not isinstance(route_raw, dict):
+            raise ProtocolError(f"tts_routes[{language}] must be an object")
+        engine = route_raw.get("engine")
+        if not isinstance(engine, str) or engine not in TTS_ROUTE_TYPES:
+            raise ProtocolError(f"tts_routes[{language}].engine is invalid")
+        specs = tts_route_field_specs(engine)
+        expected_fields = {"engine", *(spec.name for spec in specs)}
+        if set(route_raw) != expected_fields:
+            raise ProtocolError(
+                f"tts_routes[{language}] requires exactly: "
+                + ", ".join(sorted(expected_fields))
+            )
+        values: dict[str, object] = {}
+        for spec in specs:
+            value = route_raw[spec.name]
+            if value is None and spec.nullable:
+                values[spec.name] = None
+                continue
+            valid = {
+                "string": isinstance(value, str),
+                "integer": isinstance(value, int) and not isinstance(value, bool),
+                "number": isinstance(value, int | float)
+                and not isinstance(value, bool),
+                "boolean": isinstance(value, bool),
+            }[spec.kind]
+            if not valid:
+                raise ProtocolError(
+                    f"tts_routes[{language}].{spec.name} must be {spec.kind}"
+                )
+            values[spec.name] = value
+        routes[language] = TTS_ROUTE_TYPES[engine](**values)
+    return routes
+
+
 def token_matches(expected: str, actual: str | None) -> bool:
     if actual is None:
         return False
@@ -136,7 +219,15 @@ class ControlApi(Protocol):
 
     def request_microphone_options(self) -> None: ...
 
-    def save_config_selection(self, model: str, microphone_device: str) -> None: ...
+    def save_config_selection(
+        self,
+        model: str,
+        microphone_device: str,
+        *,
+        ui_language: str | None = None,
+        vad: VadSettings | None = None,
+        tts_routes: dict[str, TtsLanguageSettings] | None = None,
+    ) -> None: ...
 
 
 class UiStateStore:
@@ -151,6 +242,7 @@ class UiStateStore:
         thinking_enabled: bool = False,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         language: str = DEFAULT_UI_LANGUAGE,
+        config_values: JsonObject | None = None,
     ) -> None:
         self._language = language
         self._state: JsonObject = {
@@ -167,6 +259,9 @@ class UiStateStore:
             "microphone_options": {"options": [], "current": ""},
             "pending_restart": {"pending": False},
             "ui_language": {"language": language},
+            "config_values": cast(
+                JsonObject, config_values or config_values_payload(Settings())
+            ),
         }
 
     @property
@@ -653,7 +748,13 @@ class UiTransportServer:
             raise ProtocolError(
                 "save_config_selection requires string model and microphone arguments"
             )
-        self._control_api.save_config_selection(model, microphone)
+        self._control_api.save_config_selection(
+            model,
+            microphone,
+            ui_language=_parse_ui_language(arguments.get("ui_language")),
+            vad=_parse_vad(arguments.get("vad")),
+            tts_routes=_parse_tts_routes(arguments.get("tts_routes")),
+        )
 
     @staticmethod
     async def _close_with_error(

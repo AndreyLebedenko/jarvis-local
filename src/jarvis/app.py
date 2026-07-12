@@ -53,6 +53,7 @@ from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
+    config_values_payload,
 )
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import UiStateStore, UiTransportInfo, UiTransportServer
@@ -682,6 +683,7 @@ def run_with_status_console(
             thinking_enabled=app.thinking_mode.is_enabled,
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,
+            config_values=config_values_payload(settings),
         ),
         logger=logger,
     )

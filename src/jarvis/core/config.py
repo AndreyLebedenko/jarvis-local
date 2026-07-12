@@ -32,7 +32,7 @@ v1.2.4 section - "Do not implement live reconfiguration").
 
 import json
 import tomllib
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
@@ -94,10 +94,12 @@ class VadSettings:
 
 @dataclass(frozen=True)
 class SileroTtsSettings:
-    model: str = "v3_1_ru"
-    language: str = "ru"
-    speaker: str = "baya"
-    sample_rate: int = 48000
+    model: str = field(default="v3_1_ru", metadata={"non_empty": True})
+    language: str = field(default="ru", metadata={"non_empty": True})
+    speaker: str = field(default="baya", metadata={"non_empty": True})
+    sample_rate: int = field(
+        default=48000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
     put_accent: bool | None = None
     put_yo: bool | None = None
 
@@ -108,17 +110,25 @@ class SileroTtsSettings:
 
 @dataclass(frozen=True)
 class PiperTtsSettings:
-    model: str
-    config_path: str | None = None
+    model: str = field(metadata={"non_empty": True})
+    config_path: str | None = field(default=None, metadata={"non_empty": True})
     use_cuda: bool = False
-    espeak_data_dir: str | None = None
-    download_dir: str | None = None
-    speaker_id: int | None = None
-    length_scale: float | None = None
-    noise_scale: float | None = None
-    noise_w_scale: float | None = None
+    espeak_data_dir: str | None = field(default=None, metadata={"non_empty": True})
+    download_dir: str | None = field(default=None, metadata={"non_empty": True})
+    speaker_id: int | None = field(default=None, metadata={"minimum": 0})
+    length_scale: float | None = field(
+        default=None, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    noise_scale: float | None = field(
+        default=None, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    noise_w_scale: float | None = field(
+        default=None, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
     normalize_audio: bool = True
-    volume: float = 1.0
+    volume: float = field(
+        default=1.0, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
 
     @property
     def engine(self) -> str:
@@ -126,6 +136,66 @@ class PiperTtsSettings:
 
 
 TtsLanguageSettings = SileroTtsSettings | PiperTtsSettings
+TtsFieldValue = str | int | float | bool | None
+
+
+@dataclass(frozen=True)
+class TtsFieldSpec:
+    name: str
+    kind: str
+    nullable: bool
+    required: bool
+    default: TtsFieldValue
+    non_empty: bool
+    minimum: int | float | None
+    exclusive_minimum: bool
+
+
+TTS_ROUTE_TYPES: dict[str, type[SileroTtsSettings] | type[PiperTtsSettings]] = {
+    "silero": SileroTtsSettings,
+    "piper": PiperTtsSettings,
+}
+
+
+def tts_route_field_specs(engine: str) -> tuple[TtsFieldSpec, ...]:
+    """Return the public projection of the typed TOML route contract."""
+    try:
+        route_type = TTS_ROUTE_TYPES[engine]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported TTS engine: {engine!r}") from exc
+
+    specs = []
+    for route_field in fields(route_type):
+        value_types = get_args(route_field.type)
+        nullable = type(None) in value_types
+        value_type = next(
+            (candidate for candidate in value_types if candidate is not type(None)),
+            route_field.type,
+        )
+        kinds = {str: "string", int: "integer", float: "number", bool: "boolean"}
+        default = None if route_field.default is MISSING else route_field.default
+        specs.append(
+            TtsFieldSpec(
+                name=route_field.name,
+                kind=kinds[value_type],
+                nullable=nullable,
+                required=route_field.default is MISSING,
+                default=default,
+                non_empty=bool(route_field.metadata.get("non_empty", False)),
+                minimum=route_field.metadata.get("minimum"),
+                exclusive_minimum=bool(
+                    route_field.metadata.get("exclusive_minimum", False)
+                ),
+            )
+        )
+    return tuple(specs)
+
+
+def tts_route_values(route: TtsLanguageSettings) -> dict[str, TtsFieldValue]:
+    return {
+        route_field.name: getattr(route, route_field.name)
+        for route_field in fields(route)
+    }
 
 
 def _default_tts_languages() -> dict[str, TtsLanguageSettings]:
@@ -255,9 +325,9 @@ _SECTIONS: dict[str, type] = {
     "prompts": PromptSettings,
 }
 
-_SUPPORTED_UI_LANGUAGES = ("en", "ru")
-_SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
-_SUPPORTED_TTS_ENGINES = frozenset({"silero", "piper"})
+SUPPORTED_UI_LANGUAGES = ("en", "ru")
+SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
+SUPPORTED_TTS_ENGINES = frozenset(TTS_ROUTE_TYPES)
 
 
 def _matches_type(value: Any, expected_type: type) -> bool:
@@ -325,8 +395,8 @@ def _build_plain_section(section_name: str, cls: type, raw: dict[str, Any]) -> A
 
 def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
     settings = _build_plain_section(section_name, UiSettings, raw)
-    if settings.language not in _SUPPORTED_UI_LANGUAGES:
-        supported = ", ".join(_SUPPORTED_UI_LANGUAGES)
+    if settings.language not in SUPPORTED_UI_LANGUAGES:
+        supported = ", ".join(SUPPORTED_UI_LANGUAGES)
         raise ConfigError(
             f"[{section_name}].language must be one of: {supported}; "
             f"got {settings.language!r}"
@@ -395,8 +465,8 @@ def _build_tts_languages(
                 f"TTS language keys must be str, got {type(language).__name__}: "
                 f"{language!r}"
             )
-        if language not in _SUPPORTED_TTS_LANGUAGES:
-            supported = ", ".join(sorted(_SUPPORTED_TTS_LANGUAGES))
+        if language not in SUPPORTED_TTS_LANGUAGES:
+            supported = ", ".join(sorted(SUPPORTED_TTS_LANGUAGES))
             raise ConfigError(
                 f"Unsupported TTS language in [tts.languages.{language}]: "
                 f"{language!r}. Supported languages: {supported}"
@@ -422,8 +492,8 @@ def _build_tts_language_route(
             f"[tts.languages.{language}].engine must be str, got "
             f"{type(engine).__name__}: {engine!r}"
         )
-    if engine not in _SUPPORTED_TTS_ENGINES:
-        supported = ", ".join(sorted(_SUPPORTED_TTS_ENGINES))
+    if engine not in SUPPORTED_TTS_ENGINES:
+        supported = ", ".join(sorted(SUPPORTED_TTS_ENGINES))
         raise ConfigError(
             f"Unsupported TTS engine in [tts.languages.{language}]: {engine!r}. "
             f"Supported engines: {supported}"
@@ -458,50 +528,31 @@ def _build_tts_language_route(
         kwargs[name] = value
 
     route = route_type(**kwargs)
-    _validate_tts_route(language, route)
+    validate_tts_route(language, route)
     return route
 
 
-def _validate_tts_route(language: str, route: TtsLanguageSettings) -> None:
+def validate_tts_route(language: str, route: TtsLanguageSettings) -> None:
     prefix = f"[tts.languages.{language}]"
-    _require_non_empty(prefix, "model", route.model)
-
-    if isinstance(route, SileroTtsSettings):
-        _validate_silero_route(prefix, route)
-        return
-    _validate_piper_route(prefix, route)
-
-
-def _validate_silero_route(prefix: str, route: SileroTtsSettings) -> None:
-    _require_non_empty(prefix, "language", route.language)
-    _require_non_empty(prefix, "speaker", route.speaker)
-    if route.sample_rate <= 0:
-        raise ConfigError(f"{prefix}.sample_rate must be greater than zero")
-
-
-def _validate_piper_route(prefix: str, route: PiperTtsSettings) -> None:
-    optional_paths = {
-        "config_path": route.config_path,
-        "espeak_data_dir": route.espeak_data_dir,
-        "download_dir": route.download_dir,
-    }
-    for name, value in optional_paths.items():
-        if value is not None:
-            _require_non_empty(prefix, name, value, qualifier=" when set")
-
-    if route.speaker_id is not None and route.speaker_id < 0:
-        raise ConfigError(f"{prefix}.speaker_id must be zero or greater")
-    for name in ("length_scale", "noise_scale", "noise_w_scale", "volume"):
-        value = getattr(route, name)
-        if value is not None and value <= 0:
-            raise ConfigError(f"{prefix}.{name} must be greater than zero")
-
-
-def _require_non_empty(
-    prefix: str, name: str, value: str, *, qualifier: str = ""
-) -> None:
-    if not value.strip():
-        raise ConfigError(f"{prefix}.{name} must be a non-empty string{qualifier}")
+    for spec in tts_route_field_specs(route.engine):
+        value = getattr(route, spec.name)
+        if value is None:
+            continue
+        if spec.non_empty and isinstance(value, str) and not value.strip():
+            qualifier = " when set" if spec.nullable else ""
+            raise ConfigError(
+                f"{prefix}.{spec.name} must be a non-empty string{qualifier}"
+            )
+        if spec.minimum is None or not isinstance(value, int | float):
+            continue
+        invalid = (
+            value <= spec.minimum if spec.exclusive_minimum else value < spec.minimum
+        )
+        if invalid:
+            comparison = "greater than" if spec.exclusive_minimum else "at least"
+            raise ConfigError(
+                f"{prefix}.{spec.name} must be {comparison} {spec.minimum}"
+            )
 
 
 def _read_toml_file(path: Path) -> dict[str, Any]:
@@ -555,7 +606,9 @@ def _merge_raw_section(
     for language, ui_route in ui_languages.items():
         base_route = languages.get(language, {})
         if isinstance(base_route, dict) and isinstance(ui_route, dict):
-            languages[language] = {**base_route, **ui_route}
+            languages[language] = (
+                dict(ui_route) if "engine" in ui_route else {**base_route, **ui_route}
+            )
         else:
             languages[language] = ui_route
     merged["languages"] = languages
@@ -596,7 +649,15 @@ def load_settings(
     return Settings(**kwargs)
 
 
-def write_ui_config(path: str | Path, *, model: str, microphone_device: str) -> None:
+def write_ui_config(
+    path: str | Path,
+    *,
+    model: str,
+    microphone_device: str,
+    ui_language: str | None = None,
+    vad: VadSettings | None = None,
+    tts_routes: dict[str, TtsLanguageSettings] | None = None,
+) -> None:
     """Writes config.ui.toml (story-v1.2.4-task-3-config-menu-iteration-1.md:
     "Saving writes only the UI config layer"). Never opens config.toml -
     this is the only writer this project has for any config file, and it
@@ -604,19 +665,57 @@ def write_ui_config(path: str | Path, *, model: str, microphone_device: str) -> 
     overwrite the human-edited file regardless of what path argument it is
     given.
 
-    Always rewrites the whole file with exactly these two fields: iteration
-    1 has nothing else to preserve (config.ui.toml has no other writer, and
-    is documented as machine-owned, not hand-edited - see this module's
-    docstring). json.dumps() produces a quoted, escaped TOML basic string
-    for both values without needing a TOML-writing dependency (Python's
-    stdlib tomllib is read-only)."""
-    content = (
-        "# Auto-generated by the Jarvis Status Console. Do not edit by\n"
-        "# hand - saving from the config menu overwrites this file.\n"
-        "[backend]\n"
-        f"model = {json.dumps(model)}\n"
-        "\n"
-        "[microphone]\n"
-        f"device = {json.dumps(microphone_device)}\n"
-    )
-    Path(path).write_text(content, encoding="utf-8")
+    Always rewrites the whole file (config.ui.toml has no other writer and
+    is machine-owned, not hand-edited - see this module's docstring).
+    Iteration-2 fields are optional: None omits the section entirely, so
+    the layered loader falls through to config.toml or the built-in
+    defaults. tts_routes is all-or-nothing by contract: a customized
+    [tts.languages] must cover every routed language (see tts.py's
+    build_tts_engine), so callers pass either a complete route dict or
+    None for the Silero-only default. json.dumps() produces quoted,
+    escaped TOML basic strings without a TOML-writing dependency
+    (Python's stdlib tomllib is read-only)."""
+    lines = [
+        "# Auto-generated by the Jarvis Status Console. Do not edit by",
+        "# hand - saving from the config menu overwrites this file.",
+        "[backend]",
+        f"model = {json.dumps(model)}",
+        "",
+        "[microphone]",
+        f"device = {json.dumps(microphone_device)}",
+    ]
+    if ui_language is not None:
+        lines += ["", "[ui]", f"language = {json.dumps(ui_language)}"]
+    if vad is not None:
+        lines += [
+            "",
+            "[vad]",
+            f"threshold = {vad.threshold}",
+            f"max_chunk_seconds = {vad.max_chunk_seconds}",
+            f"request_end_pause_seconds = {vad.request_end_pause_seconds}",
+            f"resume_cooldown_seconds = {vad.resume_cooldown_seconds}",
+        ]
+    if tts_routes is not None:
+        for language in sorted(tts_routes):
+            route = tts_routes[language]
+            lines += [
+                "",
+                f"[tts.languages.{language}]",
+                f"engine = {json.dumps(route.engine)}",
+            ]
+            lines.extend(
+                f"{name} = {_toml_scalar(value)}"
+                for name, value in tts_route_values(route).items()
+                if value is not None
+            )
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _toml_scalar(value: TtsFieldValue) -> str:
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, int | float):
+        return str(value)
+    raise TypeError("None values must be omitted before TOML serialization")

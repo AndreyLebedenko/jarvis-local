@@ -26,7 +26,7 @@ def test_catalog_agrees_with_config_module_literals():
     together."""
     from jarvis.core import config
 
-    assert tuple(config._SUPPORTED_UI_LANGUAGES) == tuple(SUPPORTED_UI_LANGUAGES)
+    assert tuple(config.SUPPORTED_UI_LANGUAGES) == tuple(SUPPORTED_UI_LANGUAGES)
     assert config.UiSettings().language == DEFAULT_UI_LANGUAGE
 
 
