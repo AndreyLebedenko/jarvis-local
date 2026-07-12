@@ -1,6 +1,6 @@
 # Task: Model request composition state
 
-**Status:** Planned.
+**Status:** Completed.
 **Release:** v1.2.16
 **Prerequisite for:** `tasks/story-v1.3.0-control-center.md`, task 3.
 

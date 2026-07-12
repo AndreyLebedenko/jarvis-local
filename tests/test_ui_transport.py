@@ -5,9 +5,12 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, VadSettings
+from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.ui.contract import (
     EventLevel,
     HealthStatus,
+    ModelRequestItem,
+    ModelRequestSummary,
     ModuleHealth,
     ModuleId,
     RuntimeState,
@@ -163,6 +166,32 @@ def test_module_delta_keeps_the_value_present_when_it_was_enqueued():
             "status": "unavailable",
             "detail": "sleeping",
         }
+    }
+
+
+def test_last_model_request_delta_contains_metadata_only():
+    state = UiStateStore()
+
+    delta = state.set_last_model_request(
+        ModelRequestSummary(
+            timestamp=123.0,
+            items=(
+                ModelRequestItem(ModelRequestInput.AUDIO, audio_duration_seconds=4.25),
+                ModelRequestItem(ModelRequestInput.SCREENSHOT),
+            ),
+        )
+    )
+
+    assert delta is not None
+    assert delta["payload"] == {
+        "key": "last_model_request",
+        "value": {
+            "timestamp": 123.0,
+            "items": [
+                {"kind": "audio", "duration_seconds": 4.25},
+                {"kind": "screenshot"},
+            ],
+        },
     }
 
 

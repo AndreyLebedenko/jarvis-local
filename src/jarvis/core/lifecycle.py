@@ -16,6 +16,12 @@ class TurnSource(Enum):
     TEXT = "text"
 
 
+class ModelRequestInput(Enum):
+    AUDIO = "audio"
+    SCREENSHOT = "screenshot"
+    CLIPBOARD = "clipboard"
+
+
 @dataclass(frozen=True)
 class WarmupStarted:
     pass
@@ -31,6 +37,15 @@ class TurnAccepted:
     """A user turn passed the busy guard and is being processed."""
 
     source: TurnSource
+
+
+@dataclass(frozen=True)
+class ModelRequestStarted:
+    """Metadata-only statement that an accepted backend call is beginning."""
+
+    timestamp: float
+    inputs: tuple[ModelRequestInput, ...]
+    audio_duration_seconds: float | None
 
 
 @dataclass(frozen=True)

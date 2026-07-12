@@ -21,6 +21,8 @@ reasoning text, only operational statements about what a module is doing.
 import enum
 from dataclasses import dataclass
 
+from jarvis.core.lifecycle import ModelRequestInput
+
 
 class RuntimeState(enum.Enum):
     """The six states the status orb can be in. WARMING is a runtime
@@ -65,6 +67,18 @@ class ModuleHealth:
     module: ModuleId
     status: HealthStatus
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class ModelRequestItem:
+    kind: ModelRequestInput
+    audio_duration_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class ModelRequestSummary:
+    timestamp: float
+    items: tuple[ModelRequestItem, ...]
 
 
 class EventLevel(enum.Enum):
