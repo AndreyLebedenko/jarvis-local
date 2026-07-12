@@ -3,7 +3,7 @@
 **Story:** `tasks/story-v1.3.0-control-center.md`
 **Status:** Completed.
 **Release:** v1.3.0
-**Deliverable:** `tasks/control-center-v1.3.0-ia.md`
+**Deliverable:** `tasks/done/control-center-v1.3.0-ia.md`
 
 ## Summary
 

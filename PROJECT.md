@@ -1285,7 +1285,7 @@ source literals:
 ## Architecture v1.3.0 (Control Center)
 
 Task 2 (configuration iteration 2) landed first after the accepted IA
-document (`tasks/control-center-v1.3.0-ia.md`):
+document (`tasks/done/control-center-v1.3.0-ia.md`):
 
 - `ui/config_selection.py` is the single validation authority for what
   the config menu may write: `UiConfigSelection` + `validate_selection()`
