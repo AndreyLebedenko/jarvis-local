@@ -21,9 +21,12 @@ from jarvis.core.config import (
     VadSettings,
     tts_route_field_specs,
 )
+from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.thinking_mode import ThinkingModeToggled
 from jarvis.ui.contract import (
     DataLocality,
+    ModelRequestItem,
+    ModelRequestSummary,
     ModuleHealth,
     RuntimeState,
     SystemEvent,
@@ -37,6 +40,7 @@ from jarvis.ui.status_console import (
     UiConfigSaved,
     config_values_payload,
     data_locality_payload,
+    model_request_payload,
     module_health_payload,
     runtime_state_payload,
     system_event_payload,
@@ -250,6 +254,7 @@ class UiStateStore:
                 JsonObject, runtime_state_payload(runtime_state, language=language)
             ),
             "modules": {},
+            "last_model_request": {"timestamp": None, "items": []},
             "data_locality": cast(JsonObject, data_locality_payload(data_locality)),
             "model": {"label": model_label},
             "system_events": [],
@@ -301,6 +306,11 @@ class UiStateStore:
     def set_data_locality(self, locality: DataLocality) -> JsonObject | None:
         return self._replace(
             "data_locality", cast(JsonObject, data_locality_payload(locality))
+        )
+
+    def set_last_model_request(self, summary: ModelRequestSummary) -> JsonObject | None:
+        return self._replace(
+            "last_model_request", cast(JsonObject, model_request_payload(summary))
         )
 
     def set_model_label(self, label: str) -> JsonObject | None:
@@ -460,6 +470,9 @@ class UiTransportServer:
     def set_data_locality(self, locality: DataLocality) -> None:
         self._publish_delta(self._state.set_data_locality(locality))
 
+    def set_last_model_request(self, summary: ModelRequestSummary) -> None:
+        self._publish_delta(self._state.set_last_model_request(summary))
+
     def set_model_label(self, label: str) -> None:
         self._publish_delta(self._state.set_model_label(label))
 
@@ -475,6 +488,7 @@ class UiTransportServer:
             (ThinkingModeToggled, self._on_thinking_mode_toggled),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
+            (ModelRequestStarted, self._on_model_request_started),
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
@@ -503,6 +517,23 @@ class UiTransportServer:
             detail=ui_text(event.detail_key, self._state.language),
         )
         self._publish_delta(self._state.set_module_health(health))
+
+    async def _on_model_request_started(self, event: ModelRequestStarted) -> None:
+        summary = ModelRequestSummary(
+            timestamp=event.timestamp,
+            items=tuple(
+                ModelRequestItem(
+                    kind=input_kind,
+                    audio_duration_seconds=(
+                        event.audio_duration_seconds
+                        if input_kind is ModelRequestInput.AUDIO
+                        else None
+                    ),
+                )
+                for input_kind in event.inputs
+            ),
+        )
+        self._publish_delta(self._state.set_last_model_request(summary))
 
     async def _on_model_options_available(self, event: ModelOptionsAvailable) -> None:
         self._publish_delta(self._state.set_model_options(event.options, event.current))

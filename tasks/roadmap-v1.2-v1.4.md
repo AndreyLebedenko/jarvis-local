@@ -420,8 +420,8 @@ Boundary:
 - Do not claim successful model inference merely because the backend call
   begins; failure/completion remain separate lifecycle signals.
 
-Story/task readiness: task card created as the v1.3.0 Control Center task-3
-prerequisite.
+Story/task status: completed. The task card is under `tasks/done/`; v1.3.0
+Control Center task 3 can consume the typed request summary.
 
 ## v1.3.0 - Control Center
 

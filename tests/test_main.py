@@ -45,6 +45,7 @@ from jarvis.core.config import (
     TtsSettings,
     VadSettings,
 )
+from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
@@ -157,7 +158,7 @@ def test_clear_drops_every_recorded_turn():
 
 
 def _orchestrator(
-    chat_impl=None, audio_input=None, thinking_mode=None
+    chat_impl=None, audio_input=None, thinking_mode=None, bus=None, clock=None
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -167,8 +168,122 @@ def _orchestrator(
         sound_cues,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
+        bus=bus,
+        clock=clock,
     )
     return orchestrator, backend, sound_cues
+
+
+class _RequestRecorder:
+    def __init__(self, bus: EventBus) -> None:
+        self.events: list[ModelRequestStarted] = []
+        bus.subscribe(ModelRequestStarted, self._on_event)
+
+    async def _on_event(self, event: ModelRequestStarted) -> None:
+        self.events.append(event)
+
+
+async def test_accepted_voice_request_reports_its_exact_media_composition():
+    bus = EventBus()
+    recorder = _RequestRecorder(bus)
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 123.0)
+    await orchestrator.on_screenshot(
+        ScreenshotCaptured(png_bytes=b"screen", mode="full", width=1, height=1)
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"audio", start_seconds=2.5, end_seconds=6.75)
+    )
+
+    assert recorder.events == [
+        ModelRequestStarted(
+            timestamp=123.0,
+            inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
+            audio_duration_seconds=4.25,
+        )
+    ]
+
+
+async def test_accepted_voice_request_without_screenshot_reports_audio_only():
+    bus = EventBus()
+    recorder = _RequestRecorder(bus)
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 125.0)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"audio", start_seconds=2.0, end_seconds=3.5)
+    )
+
+    assert recorder.events == [
+        ModelRequestStarted(
+            timestamp=125.0,
+            inputs=(ModelRequestInput.AUDIO,),
+            audio_duration_seconds=1.5,
+        )
+    ]
+
+
+async def test_request_composition_event_is_published_before_backend_chat():
+    bus = EventBus()
+    orchestrator, backend, _sound_cues = _orchestrator(bus=bus)
+    backend_call_counts: list[int] = []
+
+    async def on_request_started(event: ModelRequestStarted) -> None:
+        del event
+        backend_call_counts.append(len(backend.calls))
+
+    bus.subscribe(ModelRequestStarted, on_request_started)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"audio", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend_call_counts == [0]
+    assert len(backend.calls) == 1
+
+
+async def test_accepted_clipboard_request_reports_no_content_or_audio_duration():
+    bus = EventBus()
+    recorder = _RequestRecorder(bus)
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 124.0)
+
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="private text", truncated=False, is_empty=False)
+    )
+
+    assert recorder.events == [
+        ModelRequestStarted(
+            timestamp=124.0,
+            inputs=(ModelRequestInput.CLIPBOARD,),
+            audio_duration_seconds=None,
+        )
+    ]
+
+
+async def test_empty_and_busy_rejected_input_does_not_report_a_model_request():
+    bus = EventBus()
+    recorder = _RequestRecorder(bus)
+    pending = asyncio.Event()
+
+    async def slow_chat() -> None:
+        await pending.wait()
+
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, chat_impl=slow_chat)
+    accepted = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"audio", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="ignored", truncated=False, is_empty=False)
+    )
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="", truncated=False, is_empty=True)
+    )
+    pending.set()
+    await accepted
+
+    assert len(recorder.events) == 1
 
 
 async def test_on_utterance_sends_media_and_plays_thinking_cue():

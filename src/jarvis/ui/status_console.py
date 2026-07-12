@@ -34,6 +34,7 @@ from jarvis.ui.config_selection import (
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
+    ModelRequestSummary,
     ModuleHealth,
     ModuleId,
     RuntimeState,
@@ -76,6 +77,16 @@ def module_health_payload(health: ModuleHealth) -> dict:
 
 def data_locality_payload(locality: DataLocality) -> dict:
     return {"locality": locality.value}
+
+
+def model_request_payload(summary: ModelRequestSummary) -> dict:
+    items = []
+    for item in summary.items:
+        payload = {"kind": item.kind.value}
+        if item.audio_duration_seconds is not None:
+            payload["duration_seconds"] = item.audio_duration_seconds
+        items.append(payload)
+    return {"timestamp": summary.timestamp, "items": items}
 
 
 def system_event_payload(event: SystemEvent) -> dict:

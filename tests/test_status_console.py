@@ -11,11 +11,14 @@ from jarvis.core.config import (
     VadSettings,
     load_settings,
 )
+from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.dialog.thinking_mode import ThinkingModeState
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
     HealthStatus,
+    ModelRequestItem,
+    ModelRequestSummary,
     ModuleHealth,
     ModuleId,
     RuntimeState,
@@ -31,6 +34,7 @@ from jarvis.ui.status_console import (
     StatusConsoleWindow,
     UiConfigSaved,
     data_locality_payload,
+    model_request_payload,
     module_health_payload,
     options_payload,
     runtime_state_payload,
@@ -73,6 +77,24 @@ def test_module_health_payload_shape():
 
 def test_data_locality_payload_shape():
     assert data_locality_payload(DataLocality.EXTERNAL) == {"locality": "external"}
+
+
+def test_model_request_payload_shape_contains_only_metadata():
+    assert model_request_payload(
+        ModelRequestSummary(
+            timestamp=123.0,
+            items=(
+                ModelRequestItem(ModelRequestInput.AUDIO, audio_duration_seconds=4.25),
+                ModelRequestItem(ModelRequestInput.SCREENSHOT),
+            ),
+        )
+    ) == {
+        "timestamp": 123.0,
+        "items": [
+            {"kind": "audio", "duration_seconds": 4.25},
+            {"kind": "screenshot"},
+        ],
+    }
 
 
 def test_system_event_payload_shape():

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import base64
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -22,6 +23,8 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.lifecycle import (
     BackendRequestFailed,
+    ModelRequestInput,
+    ModelRequestStarted,
     TurnAccepted,
     TurnCompleted,
     TurnSource,
@@ -113,6 +116,7 @@ class Orchestrator:
         audio_input: AudioInput | None = None,
         thinking_mode: ThinkingModeState | None = None,
         bus: EventBus | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -121,6 +125,7 @@ class Orchestrator:
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
         self._bus = bus
+        self._clock = clock or time.time
         self._pending_screenshot_b64: str | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
@@ -142,10 +147,20 @@ class Orchestrator:
         # it here and then having _start_turn() reject the turn would lose
         # a screenshot that was meant for the next *accepted* turn.
         media = [base64.b64encode(event.wav_bytes).decode()]
-        if self._pending_screenshot_b64 is not None:
+        has_pending_screenshot = self._pending_screenshot_b64 is not None
+        if has_pending_screenshot:
             media.append(self._pending_screenshot_b64)
             self._pending_screenshot_b64 = None
-        await self._start_turn(VOICE_PLACEHOLDER_TEXT, media, TurnSource.VOICE)
+        inputs = [ModelRequestInput.AUDIO]
+        if has_pending_screenshot:
+            inputs.append(ModelRequestInput.SCREENSHOT)
+        await self._start_turn(
+            VOICE_PLACEHOLDER_TEXT,
+            media,
+            TurnSource.VOICE,
+            inputs=tuple(inputs),
+            audio_duration_seconds=event.end_seconds - event.start_seconds,
+        )
 
     async def on_clipboard(self, event: ClipboardSubmitted) -> None:
         if event.is_empty:
@@ -162,10 +177,22 @@ class Orchestrator:
         # and then having _start_turn() silently reject the turn would
         # tell the user their input was received when it was not.
         await self._sound_cues.play("input_error" if event.truncated else "clipboard")
-        await self._start_turn(event.text, None, TurnSource.TEXT)
+        await self._start_turn(
+            event.text,
+            None,
+            TurnSource.TEXT,
+            inputs=(ModelRequestInput.CLIPBOARD,),
+            audio_duration_seconds=None,
+        )
 
     async def _start_turn(
-        self, history_text: str, media_b64: list[str] | None, source: TurnSource
+        self,
+        history_text: str,
+        media_b64: list[str] | None,
+        source: TurnSource,
+        *,
+        inputs: tuple[ModelRequestInput, ...],
+        audio_duration_seconds: float | None,
     ) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
@@ -195,6 +222,15 @@ class Orchestrator:
             self._thinking_mode.is_enabled if self._thinking_mode else False
         )
         try:
+            if self._bus is not None:
+                await self._bus.publish(
+                    ModelRequestStarted,
+                    ModelRequestStarted(
+                        timestamp=self._clock(),
+                        inputs=inputs,
+                        audio_duration_seconds=audio_duration_seconds,
+                    ),
+                )
             await self._backend.chat(
                 messages, images_b64=media_b64, thinking_enabled=thinking_enabled
             )

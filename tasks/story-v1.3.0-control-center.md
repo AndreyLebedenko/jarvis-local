@@ -1,7 +1,7 @@
 ﻿# Story v1.3.0: Control Center
 
-**Status:** Planned. Task 1 (IA document) and task 2 are complete; task 3 is
-blocked by v1.2.16 model-request composition state.
+**Status:** Planned. Task 1 (IA document), task 2, and v1.2.16 are complete;
+task 3 is ready to start.
 **Replanned:** 2026-07-11, after v1.2.10-v1.2.13 landed. Product decisions
 fixed by the human: Control Center is an evolution of the existing Status
 Console page (not a separate page); module health foundation moves to the
@@ -52,8 +52,8 @@ layering, TTS engine choices, and unified hotkeys.
       RuntimeStateTracker owns state transitions, authoritative module
       health events exist for backend/TTS/vision/microphone, and the
       surface contract is capability-based.
-- [ ] v1.2.16 Model request composition state
-      (`tasks/task-v1.2.16-model-request-composition.md`) is complete:
+- [x] v1.2.16 Model request composition state
+      (`tasks/done/task-v1.2.16-model-request-composition.md`) is complete:
       latest accepted backend-request metadata is authoritative and available
       to the UI transport without exposing request content.
 
