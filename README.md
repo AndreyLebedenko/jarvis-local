@@ -85,6 +85,9 @@ Download and cache the default Silero TTS model once:
 python setup_tts_model.py
 ```
 
+For another configured Silero package, pass its manifest language and model,
+for example `python setup_tts_model.py --language en --model v3_en`.
+
 Optionally create a local config:
 
 ```cmd

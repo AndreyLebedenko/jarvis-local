@@ -89,6 +89,9 @@ ollama pull gemma4:12b-it-qat
 python setup_tts_model.py
 ```
 
+Для другой настроенной модели Silero передайте её язык и имя из manifest,
+например `python setup_tts_model.py --language en --model v3_en`.
+
 При необходимости создайте локальный config:
 
 ```cmd

@@ -78,15 +78,18 @@ request_end_pause_seconds = 2.0
 # can leak into the next one regardless of this value.
 resume_cooldown_seconds = 1.0
 
-[tts]
-voice = "baya"
-rate = 1.0
-
-# Silero supports exactly this model (its cache filenames and speaker are
-# bound to it); any other value is a startup error.
+# TTS parameters are route-specific. Config parsing validates their shape;
+# model files and model/parameter compatibility are checked on first use.
 [tts.languages.ru]
 engine = "silero"
 model = "v3_1_ru"
+language = "ru"
+speaker = "baya"
+sample_rate = 48000
+# Optional model.apply_tts parameters. Omit them to use the selected model's
+# own defaults; unsupported model/parameter combinations fail on first use.
+# put_accent = true
+# put_yo = true
 
 # Optional v1.2.9 bilingual route. Jarvis does not download Piper models at
 # runtime; configure this only after placing the local .onnx model yourself.
@@ -95,6 +98,14 @@ model = "v3_1_ru"
 # [tts.languages.en]
 # engine = "piper"
 # model = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+# config_path = ".local-models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx.json"
+# use_cuda = false
+# speaker_id = 0
+# length_scale = 1.0
+# noise_scale = 0.667
+# noise_w_scale = 0.8
+# normalize_audio = true
+# volume = 1.0
 
 [capture]
 default_mode = "full"

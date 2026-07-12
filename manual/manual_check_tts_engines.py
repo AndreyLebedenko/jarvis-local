@@ -53,7 +53,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from jarvis.audio.tts import TtsOutput, normalize_numbers, transliterate_latin
+from jarvis.audio.tts import TtsOutput
+from jarvis.audio.tts_silero import normalize_numbers, transliterate_latin
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings, load_settings
@@ -309,9 +310,13 @@ def _prepare_wav_bytes(
 async def load_silero_engine(settings: Settings) -> LoadedEngine:
     import silero
 
+    route = settings.tts.languages["ru"]
+    if route.engine != "silero":
+        raise ValueError("The Russian TTS route is not configured for Silero")
+
     load_started = time.perf_counter()
     model, _ = await asyncio.to_thread(
-        silero.silero_tts, language="ru", speaker="v3_1_ru"
+        silero.silero_tts, language=route.language, speaker=route.model
     )
     load_seconds = time.perf_counter() - load_started
 
@@ -321,14 +326,12 @@ async def load_silero_engine(settings: Settings) -> LoadedEngine:
         audio_tensor = await asyncio.to_thread(
             model.apply_tts,
             text=cleaned,
-            speaker=settings.tts.voice,
-            sample_rate=48000,
+            speaker=route.speaker,
+            sample_rate=route.sample_rate,
         )
-        return _prepare_wav_bytes(audio_tensor, 48000)
+        return _prepare_wav_bytes(audio_tensor, route.sample_rate)
 
-    return LoadedEngine(
-        "silero", {"speaker": settings.tts.voice}, load_seconds, synthesize
-    )
+    return LoadedEngine("silero", {"speaker": route.speaker}, load_seconds, synthesize)
 
 
 async def load_piper_engine(paths: EnginePaths) -> LoadedEngine:

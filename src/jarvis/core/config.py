@@ -93,25 +93,47 @@ class VadSettings:
 
 
 @dataclass(frozen=True)
-class TtsLanguageSettings:
-    engine: str
+class SileroTtsSettings:
+    model: str = "v3_1_ru"
+    language: str = "ru"
+    speaker: str = "baya"
+    sample_rate: int = 48000
+    put_accent: bool | None = None
+    put_yo: bool | None = None
+
+    @property
+    def engine(self) -> str:
+        return "silero"
+
+
+@dataclass(frozen=True)
+class PiperTtsSettings:
     model: str
+    config_path: str | None = None
+    use_cuda: bool = False
+    espeak_data_dir: str | None = None
+    download_dir: str | None = None
+    speaker_id: int | None = None
+    length_scale: float | None = None
+    noise_scale: float | None = None
+    noise_w_scale: float | None = None
+    normalize_audio: bool = True
+    volume: float = 1.0
+
+    @property
+    def engine(self) -> str:
+        return "piper"
 
 
-# The single Silero model this project supports (see tts.py's SileroEngine:
-# the cache filenames and speaker are bound to this exact model). Defined
-# here so config defaults and tts.py's route validation share one literal.
-SILERO_MODEL = "v3_1_ru"
+TtsLanguageSettings = SileroTtsSettings | PiperTtsSettings
 
 
 def _default_tts_languages() -> dict[str, TtsLanguageSettings]:
-    return {"ru": TtsLanguageSettings(engine="silero", model=SILERO_MODEL)}
+    return {"ru": SileroTtsSettings()}
 
 
 @dataclass(frozen=True)
 class TtsSettings:
-    voice: str = "baya"
-    rate: float = 1.0
     languages: dict[str, TtsLanguageSettings] = field(
         default_factory=_default_tts_languages
     )
@@ -324,6 +346,14 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
 
 
 def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
+    legacy_fields = set(raw) & {"voice", "rate"}
+    if legacy_fields:
+        legacy = ", ".join(sorted(legacy_fields))
+        raise ConfigError(
+            f"Legacy [{section_name}] field(s) {legacy} are no longer supported. "
+            "Move voice to [tts.languages.<language>].speaker; configure "
+            "engine-specific speed parameters in that language route."
+        )
     known_fields = {f.name: f.type for f in fields(TtsSettings)}
     unknown_keys = set(raw) - set(known_fields)
     if unknown_keys:
@@ -385,22 +415,40 @@ def _build_tts_language_route(
     raw: dict[str, object],
     existing_routes: dict[str, TtsLanguageSettings],
 ) -> TtsLanguageSettings:
-    known_fields = {f.name: f.type for f in fields(TtsLanguageSettings)}
-    unknown_keys = set(raw) - set(known_fields)
+    existing = existing_routes.get(language)
+    engine = raw.get("engine", existing.engine if existing is not None else None)
+    if not isinstance(engine, str):
+        raise ConfigError(
+            f"[tts.languages.{language}].engine must be str, got "
+            f"{type(engine).__name__}: {engine!r}"
+        )
+    if engine not in _SUPPORTED_TTS_ENGINES:
+        supported = ", ".join(sorted(_SUPPORTED_TTS_ENGINES))
+        raise ConfigError(
+            f"Unsupported TTS engine in [tts.languages.{language}]: {engine!r}. "
+            f"Supported engines: {supported}"
+        )
+
+    route_type = SileroTtsSettings if engine == "silero" else PiperTtsSettings
+    known_fields = {f.name: f.type for f in fields(route_type)}
+    unknown_keys = set(raw) - set(known_fields) - {"engine"}
     if unknown_keys:
         raise ConfigError(
             f"Unknown key(s) in [tts.languages.{language}]: "
             f"{', '.join(sorted(unknown_keys))}"
         )
 
-    fallback = existing_routes.get(
-        language, TtsLanguageSettings(engine="silero", model="")
-    )
-    kwargs = {"engine": fallback.engine, "model": fallback.model}
+    fallback = existing if isinstance(existing, route_type) else None
+    if fallback is None and "model" not in raw:
+        raise ConfigError(f"[tts.languages.{language}].model is required")
+
+    if route_type is SileroTtsSettings:
+        defaults: TtsLanguageSettings = fallback or SileroTtsSettings(model="")
+    else:
+        defaults = fallback or PiperTtsSettings(model="")
+    kwargs: dict[str, object] = {}
     for name, expected_type in known_fields.items():
-        if name not in raw:
-            continue
-        value = raw[name]
+        value = raw.get(name, getattr(defaults, name))
         if not _matches_type(value, expected_type):
             raise ConfigError(
                 f"[tts.languages.{language}].{name} must be "
@@ -409,14 +457,51 @@ def _build_tts_language_route(
             )
         kwargs[name] = value
 
-    engine = kwargs["engine"]
-    if engine not in _SUPPORTED_TTS_ENGINES:
-        supported = ", ".join(sorted(_SUPPORTED_TTS_ENGINES))
-        raise ConfigError(
-            f"Unsupported TTS engine in [tts.languages.{language}]: {engine!r}. "
-            f"Supported engines: {supported}"
-        )
-    return TtsLanguageSettings(engine=engine, model=kwargs["model"])
+    route = route_type(**kwargs)
+    _validate_tts_route(language, route)
+    return route
+
+
+def _validate_tts_route(language: str, route: TtsLanguageSettings) -> None:
+    prefix = f"[tts.languages.{language}]"
+    _require_non_empty(prefix, "model", route.model)
+
+    if isinstance(route, SileroTtsSettings):
+        _validate_silero_route(prefix, route)
+        return
+    _validate_piper_route(prefix, route)
+
+
+def _validate_silero_route(prefix: str, route: SileroTtsSettings) -> None:
+    _require_non_empty(prefix, "language", route.language)
+    _require_non_empty(prefix, "speaker", route.speaker)
+    if route.sample_rate <= 0:
+        raise ConfigError(f"{prefix}.sample_rate must be greater than zero")
+
+
+def _validate_piper_route(prefix: str, route: PiperTtsSettings) -> None:
+    optional_paths = {
+        "config_path": route.config_path,
+        "espeak_data_dir": route.espeak_data_dir,
+        "download_dir": route.download_dir,
+    }
+    for name, value in optional_paths.items():
+        if value is not None:
+            _require_non_empty(prefix, name, value, qualifier=" when set")
+
+    if route.speaker_id is not None and route.speaker_id < 0:
+        raise ConfigError(f"{prefix}.speaker_id must be zero or greater")
+    for name in ("length_scale", "noise_scale", "noise_w_scale", "volume"):
+        value = getattr(route, name)
+        if value is not None and value <= 0:
+            raise ConfigError(f"{prefix}.{name} must be greater than zero")
+
+
+def _require_non_empty(
+    prefix: str, name: str, value: str, *, qualifier: str = ""
+) -> None:
+    if not value.strip():
+        raise ConfigError(f"{prefix}.{name} must be a non-empty string{qualifier}")
 
 
 def _read_toml_file(path: Path) -> dict[str, Any]:
@@ -441,6 +526,11 @@ def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
         )
     for section_name, cls in _SECTIONS.items():
         known_fields = {f.name for f in fields(cls)}
+        if cls is TtsSettings:
+            # Let _build_tts_section() produce the deliberate migration
+            # message for these removed fields instead of the generic
+            # unknown-key error emitted at this file boundary.
+            known_fields |= {"voice", "rate"}
         unknown_keys = set(raw.get(section_name, {})) - known_fields
         if unknown_keys:
             raise ConfigError(

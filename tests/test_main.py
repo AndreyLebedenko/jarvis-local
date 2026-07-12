@@ -7,7 +7,6 @@ import types
 from collections.abc import Callable
 
 import httpx
-import pytest
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -39,9 +38,10 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
     MicrophoneSettings,
+    PiperTtsSettings,
     PromptSettings,
     Settings,
-    TtsLanguageSettings,
+    SileroTtsSettings,
     TtsSettings,
     VadSettings,
 )
@@ -1435,8 +1435,8 @@ def test_build_app_wires_configured_bilingual_tts_engine(tmp_path):
     settings = Settings(
         tts=TtsSettings(
             languages={
-                "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
-                "en": TtsLanguageSettings(engine="piper", model=str(model_path)),
+                "ru": SileroTtsSettings(),
+                "en": PiperTtsSettings(model=str(model_path)),
             }
         )
     )
@@ -1451,25 +1451,24 @@ def test_build_app_wires_configured_bilingual_tts_engine(tmp_path):
     assert isinstance(app.tts_output._engine, BilingualTtsEngine)
 
 
-def test_build_app_validates_configured_piper_paths_before_playback(tmp_path):
+def test_build_app_does_not_probe_configured_piper_paths_before_playback(tmp_path):
     settings = Settings(
         tts=TtsSettings(
             languages={
-                "ru": TtsLanguageSettings(engine="silero", model="v3_1_ru"),
-                "en": TtsLanguageSettings(
-                    engine="piper", model=str(tmp_path / "missing.onnx")
-                ),
+                "ru": SileroTtsSettings(),
+                "en": PiperTtsSettings(model=str(tmp_path / "missing.onnx")),
             }
         )
     )
 
-    with pytest.raises(FileNotFoundError, match="Piper model file does not exist"):
-        build_app(
-            settings,
-            backend=_FakeBackend(),
-            audio_input=_FakeAudioInput(),
-            capture_input=_FakeCaptureInput(),
-        )
+    app = build_app(
+        settings,
+        backend=_FakeBackend(),
+        audio_input=_FakeAudioInput(),
+        capture_input=_FakeCaptureInput(),
+    )
+
+    assert isinstance(app.tts_output._engine, BilingualTtsEngine)
 
 
 async def test_shared_playback_lock_prevents_overlapping_device_access(
@@ -1510,7 +1509,12 @@ async def test_shared_playback_lock_prevents_overlapping_device_access(
     cue_path.write_bytes(b"dummy")
 
     lock = asyncio.Lock()
-    tts_output = TtsOutput(TtsSettings(), playback_lock=lock)
+
+    class UnusedEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            raise AssertionError("This playback-lock test must not synthesize")
+
+    tts_output = TtsOutput(TtsSettings(), engine=UnusedEngine(), playback_lock=lock)
     sound_cues = SoundCuePlayer(
         SoundCueSettings(thinking=str(cue_path)), playback_lock=lock
     )

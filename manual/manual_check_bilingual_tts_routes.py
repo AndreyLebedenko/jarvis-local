@@ -40,7 +40,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.audio.language_segments import segment_by_charset
-from jarvis.audio.tts import OrderedPlayback, normalize_numbers, transliterate_latin
+from jarvis.audio.tts import OrderedPlayback
+from jarvis.audio.tts_silero import normalize_numbers, transliterate_latin
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.config import TtsSettings
 
@@ -196,7 +197,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Sample text to test. Defaults to all samples.",
     )
     parser.add_argument("--silero-ru-package", default="v3_1_ru")
-    parser.add_argument("--silero-ru-voice", default=TtsSettings().voice)
+    parser.add_argument(
+        "--silero-ru-voice",
+        default=TtsSettings().languages["ru"].speaker,
+    )
     parser.add_argument("--silero-en-package", default="v3_en")
     parser.add_argument("--silero-en-voice", default="en_0")
     parser.add_argument("--silero-sample-rate", type=int, default=48000)

@@ -24,6 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from jarvis.audio.tts import TtsOutput
+from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.config import load_settings
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 
@@ -47,7 +48,7 @@ SCRIPTED_TOKENS = [
 
 async def main() -> None:
     settings = load_settings()
-    tts = TtsOutput(settings.tts)
+    tts = TtsOutput(settings.tts, engine=build_tts_engine(settings.tts))
 
     print("Streaming a scripted response through the real sentence buffer,")
     print("Silero synthesis, and speaker playback. If you haven't already,")

@@ -1,7 +1,7 @@
 """ModuleHealthTracker: authoritative module-health events only."""
 
 from jarvis.audio.input import MicSleepToggled
-from jarvis.audio.tts import TtsSynthesisResult
+from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete
@@ -105,6 +105,45 @@ async def test_tts_unit_failure_degrades_and_next_success_recovers():
         (ModuleId.TTS, HealthStatus.OK),
     ]
     assert recorder.events[1].detail_key == "tts_detail_failed"
+
+
+async def test_tts_engine_load_failure_is_an_error():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        TtsEngineLoadFailed,
+        TtsEngineLoadFailed(
+            language="en",
+            engine="piper",
+            model="voices/en.onnx",
+            message="model file missing",
+        ),
+    )
+
+    assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
+        (ModuleId.TTS, HealthStatus.ERROR, "tts_detail_load_failed")
+    ]
+
+
+async def test_success_on_another_route_does_not_hide_terminal_load_failure():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        TtsEngineLoadFailed,
+        TtsEngineLoadFailed(
+            language="en",
+            engine="piper",
+            model="voices/en.onnx",
+            message="model file missing",
+        ),
+    )
+    await bus.publish(
+        TtsSynthesisResult, TtsSynthesisResult(language="ru", succeeded=True)
+    )
+
+    assert [(e.module, e.status) for e in recorder.events] == [
+        (ModuleId.TTS, HealthStatus.ERROR)
+    ]
 
 
 async def test_screenshot_outcomes_drive_vision_health():
