@@ -1557,6 +1557,79 @@ logs/cues/transport, task 4 replaced the UI and completed live handoff.
   and fixed the two bugs recorded above (source tagging, optimistic
   initial selection).
 
+## Architecture v1.3.2 (current-turn time context)
+
+See [tasks/done/task-v1.3.2-time-context.md](tasks/done/task-v1.3.2-time-context.md).
+Gives the model situational awareness of local date/weekday/time on every
+turn. Deliberately unrelated to the not-scheduled heartbeat/proactive mode
+(dual-context architecture is that feature's blocker - see the 2026-07-13
+project memory note); this task is current-turn only.
+
+- **New pure module:** `time_context.py`'s `format_time_context(epoch:
+  float) -> str`, no bus wiring, no project-module dependencies - same
+  shape as `language_segments.py`/`speech_markup.py`. Format:
+  `"{weekday_ru}, {isoformat}"`, e.g.
+  `понедельник, 2026-07-13T14:35+01:00`. `datetime.fromtimestamp(epoch)
+  .astimezone()` attaches the local system tzinfo; `.isoformat
+  (timespec="minutes")` renders an explicit numeric UTC offset. The weekday
+  name comes from a hardcoded Russian table indexed by `dt.weekday()`, not
+  `strftime("%A")`/`%Z` - both depend on the OS locale/timezone-abbreviation
+  table, unreliable on Windows.
+- **Why an explicit numeric offset, not a bare local time or raw epoch:**
+  during a DST fall-back transition the local wall clock genuinely repeats
+  an hour (e.g. in the UK, 01:30 BST is chronologically before 01:15 GMT
+  even though "01:30" > "01:15" as bare numbers). An explicit offset keeps
+  the two instants distinguishable; a raw epoch would too, but pushes exact
+  calendar/weekday arithmetic onto the model, which `gemma4:12b-it-qat` is
+  not expected to do reliably.
+- **Injection point:** `Orchestrator._start_turn()` (`app.py`) appends the
+  formatted string as a second `system`-role message, immediately before
+  the turn's `user` message (closest to the query, not buried ahead of a
+  potentially long history block). `self._current_turn_history_text` stays
+  exactly `history_text`; the time-context string never reaches
+  `ConversationHistory.add()` - current-turn only, mirroring the existing
+  `media_b64` pattern applied to time instead of images. Every turn source
+  (voice, clipboard) gets this for free since both already funnel through
+  `_start_turn()`.
+- **Clock source:** the existing `Orchestrator._clock` constructor seam
+  (`Callable[[], float] | None`, defaults to `time.time`), already used for
+  `ModelRequestStarted.timestamp` - no new seam needed.
+- **Known accepted limitation, not fixed here:** because history storage
+  never records the time-context string, no two turns' timestamps are ever
+  compared directly by the model. The one indirect leak: if a turn's spoken
+  answer states a time in words (e.g. "сейчас 01:30") and that literal
+  answer text is later resent as accumulated assistant history, a later
+  turn taken within the same DST fall-back hour could show an
+  apparently-earlier time next to that older spoken answer. Narrow window
+  (once a year, one hour, only if the user is discussing time-of-day
+  exactly then) - accepted as-is, the same way the project already accepts
+  a documented, narrowed-but-not-eliminated echo risk elsewhere (see this
+  file's Verified facts entry on echo mitigation).
+- **No config toggle in this first cut.** Always on.
+- **Test-fixture note:** `tests/test_main.py`'s pre-existing
+  `Orchestrator` tests used tiny placeholder epoch values (e.g. `123.0`)
+  for `clock=` before this task. Since `_start_turn()` now runs every
+  turn's epoch through `datetime.fromtimestamp(epoch).astimezone()`, those
+  tiny values broke on Windows: `datetime.astimezone()` on a naive
+  datetime near the epoch resolves through the CRT `mktime()`, which
+  rejects local times that convert to a pre-1970 UTC instant (`OSError:
+  [Errno 22] Invalid argument`, reproduced directly against
+  `datetime.fromtimestamp(123.0).astimezone()`) - never an issue for real
+  `time.time()` values. Fixed by switching those fixtures to realistic
+  large epoch values; not a `format_time_context()` bug.
+- **Verification status:** automated suite green
+  (`tests/test_time_context.py` plus `tests/test_main.py`'s new
+  time-context tests). The DST fall-back test forces `Europe/London` via
+  `time.tzset()` (POSIX-only) and is skipped on the Windows dev machine;
+  it is expected to run on cloud CI. **Human live-Ollama verification:
+  passed.** The human confirmed Jarvis correctly answers date/weekday/time
+  questions against the real backend - this was also the first real test
+  of the Stop Condition's open question (whether Ollama/
+  `gemma4:12b-it-qat` honors a second `system`-role message in one
+  `/api/chat` call the way a single combined system message would be
+  honored): it does, no fallback to concatenating onto the single existing
+  system message was needed.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

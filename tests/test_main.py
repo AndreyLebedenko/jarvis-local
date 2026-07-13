@@ -13,6 +13,7 @@ import jarvis.app as main_module
 from jarvis.app import (
     APP_LOGGER_NAME,
     SYSTEM_PROMPT,
+    VOICE_PLACEHOLDER_TEXT,
     App,
     ConversationHistory,
     Orchestrator,
@@ -58,6 +59,7 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevelChanged,
     ReasoningLevelState,
 )
+from jarvis.dialog.time_context import format_time_context
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.ui.contract import (
@@ -193,7 +195,9 @@ class _RequestRecorder:
 async def test_accepted_voice_request_reports_its_exact_media_composition():
     bus = EventBus()
     recorder = _RequestRecorder(bus)
-    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 123.0)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus, clock=lambda: 1700000123.0
+    )
     await orchestrator.on_screenshot(
         ScreenshotCaptured(png_bytes=b"screen", mode="full", width=1, height=1)
     )
@@ -204,7 +208,7 @@ async def test_accepted_voice_request_reports_its_exact_media_composition():
 
     assert recorder.events == [
         ModelRequestStarted(
-            timestamp=123.0,
+            timestamp=1700000123.0,
             inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
             audio_duration_seconds=4.25,
         )
@@ -214,7 +218,9 @@ async def test_accepted_voice_request_reports_its_exact_media_composition():
 async def test_accepted_voice_request_without_screenshot_reports_audio_only():
     bus = EventBus()
     recorder = _RequestRecorder(bus)
-    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 125.0)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus, clock=lambda: 1700000125.0
+    )
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"audio", start_seconds=2.0, end_seconds=3.5)
@@ -222,7 +228,7 @@ async def test_accepted_voice_request_without_screenshot_reports_audio_only():
 
     assert recorder.events == [
         ModelRequestStarted(
-            timestamp=125.0,
+            timestamp=1700000125.0,
             inputs=(ModelRequestInput.AUDIO,),
             audio_duration_seconds=1.5,
         )
@@ -251,7 +257,9 @@ async def test_request_composition_event_is_published_before_backend_chat():
 async def test_accepted_clipboard_request_reports_no_content_or_audio_duration():
     bus = EventBus()
     recorder = _RequestRecorder(bus)
-    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus, clock=lambda: 124.0)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus, clock=lambda: 1700000124.0
+    )
 
     await orchestrator.on_clipboard(
         ClipboardSubmitted(text="private text", truncated=False, is_empty=False)
@@ -259,7 +267,7 @@ async def test_accepted_clipboard_request_reports_no_content_or_audio_duration()
 
     assert recorder.events == [
         ModelRequestStarted(
-            timestamp=124.0,
+            timestamp=1700000124.0,
             inputs=(ModelRequestInput.CLIPBOARD,),
             audio_duration_seconds=None,
         )
@@ -663,6 +671,46 @@ async def test_error_during_chat_plays_error_cue_and_clears_busy():
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )
     assert len(backend.calls) == 2
+
+
+# --- current-turn time context (v1.3.2) -------------------------------------
+#
+# format_time_context() is injected as an extra system message immediately
+# before the user turn - closest to the query, not buried ahead of a
+# potentially long history block - and must never reach
+# ConversationHistory.add() (mirrors the current-turn-only media_b64
+# pattern applied to time instead of images; see PROJECT.md's v1.3.2 note).
+
+
+async def test_start_turn_appends_time_context_system_message_before_user_turn():
+    orchestrator, backend, _sound_cues = _orchestrator(clock=lambda: 1700000123.0)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    [(messages, _images)] = backend.calls
+    assert messages[-2] == {
+        "role": "system",
+        "content": format_time_context(1700000123.0),
+    }
+    assert messages[-1] == {"role": "user", "content": VOICE_PLACEHOLDER_TEXT}
+
+
+async def test_time_context_message_is_not_recorded_in_history():
+    orchestrator, _backend, _sound_cues = _orchestrator(clock=lambda: 1700000123.0)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_token(ResponseToken(text="Привет"))
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    time_context_text = format_time_context(1700000123.0)
+    recorded_texts = [m["content"] for m in orchestrator._history.as_messages()]
+    assert time_context_text not in recorded_texts
+    assert all(m.get("role") != "system" for m in orchestrator._history.as_messages())
 
 
 # --- graded reasoning level (story-v1.3.1 task 2) ---------------------------

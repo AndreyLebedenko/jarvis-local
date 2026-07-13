@@ -1,6 +1,6 @@
 # Task: Inject current-turn time context for the LLM
 
-**Status:** Ready for implementation.
+**Status:** Completed.
 **Release:** v1.3.2
 
 ## Summary
@@ -117,19 +117,23 @@ Out of scope:
 
 ## Acceptance Criteria
 
-- [ ] `format_time_context()` is pure, takes an injected epoch, and returns
+- [x] `format_time_context()` is pure, takes an injected epoch, and returns
       `"{weekday_ru}, {ISO 8601 with explicit numeric UTC offset, minute
       precision}"`.
-- [ ] Every turn source (voice, clipboard) sends this as an additional
+- [x] Every turn source (voice, clipboard) sends this as an additional
       `system`-role message immediately before the current turn's `user`
       message.
-- [ ] `ConversationHistory` never records the time-context text, verified by
+- [x] `ConversationHistory` never records the time-context text, verified by
       a test that inspects history state after `finish_turn()`.
-- [ ] No dependency on OS locale (`%A`) or timezone-abbreviation lookup
+- [x] No dependency on OS locale (`%A`) or timezone-abbreviation lookup
       (`%Z`) anywhere in the new code.
-- [ ] `python -m pytest` passes.
-- [ ] `PROJECT.md` records the decision and the accepted DST/indirect-leak
+- [x] `python -m pytest` passes.
+- [x] `PROJECT.md` records the decision and the accepted DST/indirect-leak
       limitation in the same commit as the code change.
+- [x] Human live-Ollama verification (see Verification below): passed -
+      confirmed the model correctly answers date/weekday/time, and a
+      second `system`-role message is honored alongside the existing one
+      (no fallback needed).
 
 ## Verification
 

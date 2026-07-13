@@ -41,6 +41,7 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.dialog.thinking_mode import (
     run_hotkey_listener as run_thinking_hotkey_listener,
 )
+from jarvis.dialog.time_context import format_time_context
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -212,6 +213,13 @@ class Orchestrator:
 
         messages = [{"role": "system", "content": self._system_prompt}]
         messages.extend(self._history.as_messages())
+        # Current-turn only, mirroring the media_b64 pattern: this never
+        # reaches ConversationHistory.add(), so no two turns' timestamps
+        # are ever directly compared by the model (see PROJECT.md's
+        # v1.3.2 decision for the accepted DST/indirect-leak limitation).
+        messages.append(
+            {"role": "system", "content": format_time_context(self._clock())}
+        )
         messages.append({"role": "user", "content": history_text})
 
         self._current_turn_history_text = history_text
