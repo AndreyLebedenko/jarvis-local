@@ -15,27 +15,31 @@ routes.
 
 ## Status Console UI
 
-В v1.3 Status Console развивается в Control Center: состояние runtime и
+В v1.3.2 Status Console развивается в Control Center: состояние runtime и
 здоровье модулей, метаданные последнего запроса к модели с timestamp в начале,
-события движка, Think mode, Open/Hidden, сброс контекста, защищённый Shutdown,
-типизированные restart-to-apply настройки (модель, микрофон, TTS routes, язык
-UI и VAD) и компактная touchstrip панель. Начиная с v1.2.11 интерфейс по
-умолчанию английский; русский включается через `[ui].language = "ru"` в
-`config.toml`.
+события движка, уровни reasoning (Off/Low/Medium/High), Open/Hidden, сброс
+контекста, защищённый Shutdown, типизированные restart-to-apply настройки
+(модель, микрофон, TTS routes, язык UI и VAD) и компактная touchstrip панель.
+Начиная с v1.2.11 интерфейс по умолчанию английский; русский включается через
+`[ui].language = "ru"` в `config.toml`.
 
-![Jarvis Status Console](docs/screenshots/ru/status-console.png)
+![Jarvis Status Console](docs/screenshots/ru/status-console.jpg)
 
-![Jarvis Touchstrip](docs/screenshots/ru/touchstrip.png)
+![Jarvis Touchstrip](docs/screenshots/ru/touchstrip.jpg)
 
 ## Статус
 
-Это рабочий v1.2 hobby/research release с проверенным двуязычным TTS: русский
+Это рабочий v1.3.2 hobby/research release с проверенным двуязычным TTS: русский
 текст озвучивает Silero, английский - Piper, а потоковый ответ автоматически
 маршрутизируется по набору символов. TTS-движок и локальная voice model
 настраиваются отдельно для каждого языка. Совместимый zero-config default
 использует только русский Silero; грубая транслитерация латиницы в нём - это
 fallback для пользователей, которые не настроили английский Piper route, а не
 рекомендуемая двуязычная конфигурация.
+
+Текущий релиз также поддерживает четыре уровня reasoning Ollama и передаёт в
+каждый принятый запрос локальные дату, день недели, время и UTC offset. Reasoning
+trace не попадает в обычный ответ, TTS, историю, текст UI или логи.
 
 Главные оставшиеся ограничения - отсутствие полноценного эхоподавления и
 несовершенный OCR плотных скриншотов.
@@ -52,11 +56,13 @@ Jarvis не связан с Marvel, Disney или правообладателя
 - Интерфейс на горячих клавишах и звуковых сигналах.
 - Control Center UI: data-driven здоровье модулей, метаданные последнего
   запроса с timestamp в начале (без содержимого запроса), события системы,
-  Think mode, Open/Hidden, сброс контекста, защищённый Shutdown,
+  уровни reasoning, Open/Hidden, сброс контекста, защищённый Shutdown,
   типизированные restart-to-apply настройки и touchstrip glance surface. Язык
   интерфейса по умолчанию английский; русский включается через `[ui].language
   = "ru"` в `config.toml` (это касается только UI - язык диалога и TTS не
   меняются).
+- Контекст текущих локальных даты, дня недели, времени и числового UTC offset
+  для каждого запроса без сохранения этого контекста в истории диалога.
 - Асинхронная event-bus архитектура с изолированными модулями.
 - TOML-конфигурация с проверкой типов, включая диалоговые промпты:
   системный промпт и запрос прогрева задаются секцией `[prompts]` в
@@ -130,7 +136,7 @@ Jarvis регистрирует конкретные сочетания чере
 - `Ctrl+Alt+R`: захватить выделенную область экрана для следующего запроса.
 - `Ctrl+Alt+V`: отправить текст из clipboard как новый turn.
 - `Ctrl+Alt+M`: переключить sleep/wake микрофона.
-- `Ctrl+Alt+T`: переключить Think mode.
+- `Ctrl+Alt+T`: переключать reasoning по кругу Off, Low, Medium, High и снова Off.
 - `Ctrl+Alt+Q`: выключить Jarvis.
 
 ## Архитектура
@@ -162,7 +168,7 @@ Jarvis регистрирует конкретные сочетания чере
   `HotkeyProvider` и регистрируют только конкретные сочетания Jarvis. Прежняя
   зависимость от глобального key hook пакета Python `keyboard` удалена.
   Захват полного экрана и области, clipboard submit, sleep/wake микрофона,
-  Think mode, сообщение о конфликте и shutdown проверены глобально без
+  уровни reasoning, сообщение о конфликте и shutdown проверены глобально без
   elevation.
 - В Status Console есть защищённый Shutdown control (на десктопе - клик и
   подтверждение; на touchstrip - удержание ~2с), который идёт через тот же

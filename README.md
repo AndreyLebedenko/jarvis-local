@@ -12,27 +12,32 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.3 adds the Control Center evolution of the local desktop Status Console:
+v1.3.2 includes the Control Center evolution of the local desktop Status Console:
 runtime and module health, timestamp-first metadata for the latest request to
-the model, system events, Think mode, Open/Hidden visibility mode, context
-reset, guarded Shutdown, typed restart-to-apply configuration (model,
-microphone, TTS routes, UI language, and VAD), and a compact touchstrip glance
-surface. Since v1.2.11 the UI is English by default, with Russian available
-via `[ui].language = "ru"`.
+the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
+visibility mode, context reset, guarded Shutdown, typed restart-to-apply
+configuration (model, microphone, TTS routes, UI language, and VAD), and a
+compact touchstrip glance surface. Since v1.2.11 the UI is English by default,
+with Russian available via `[ui].language = "ru"`.
 
-![Jarvis Status Console](docs/screenshots/en/status-console.png)
+![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
-![Jarvis Touchstrip](docs/screenshots/en/touchstrip.png)
+![Jarvis Touchstrip](docs/screenshots/en/touchstrip.jpg)
 
 ## Status
 
-This is a usable v1.2 hobby/research release with verified bilingual TTS:
+This is a usable v1.3.2 hobby/research release with verified bilingual TTS:
 Silero handles Russian and Piper handles English, with streamed text routed
 automatically by character set. TTS engines and local voice models remain
 configurable per language. The zero-config compatibility default uses Russian
 Silero only; its rough Latin-to-Cyrillic transliteration is a fallback for
 users who have not configured the English Piper route, not the recommended
 bilingual setup.
+
+The current release also provides four Ollama reasoning levels and injects the
+local date, weekday, time, and UTC offset into every accepted model request.
+Reasoning traces remain isolated from normal output, TTS, history, UI text, and
+logs.
 
 The remaining important limitations are the lack of full echo cancellation
 and imperfect OCR on dense screenshots.
@@ -48,11 +53,13 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 - Full-screen and region screenshot capture.
 - Hotkey and sound-cue interface.
 - Control Center UI with data-driven module health, timestamp-first latest
-  request metadata (without request content), system events, Think mode,
+  request metadata (without request content), system events, graded reasoning,
   Open/Hidden mode, context reset, guarded Shutdown, typed restart-to-apply
   configuration, and touchstrip glance surface. The UI language is English by
   default; Russian is available via `[ui].language = "ru"` in `config.toml`
   (UI chrome only - the assistant's dialog language and TTS are not affected).
+- Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
+  without storing the injected time context in conversation history.
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration, including the dialog prompts: the
   system prompt and warm-up request are set via `[prompts]` in
@@ -126,7 +133,7 @@ Default hotkeys:
 - `Ctrl+Alt+R`: capture a selected screen region for the next request.
 - `Ctrl+Alt+V`: submit clipboard text as a turn.
 - `Ctrl+Alt+M`: toggle microphone sleep/wake.
-- `Ctrl+Alt+T`: toggle Think mode.
+- `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
 ## Architecture
@@ -156,7 +163,7 @@ This repository was built with an agent-assisted workflow: project facts were re
 - Global hotkeys use Windows `RegisterHotKey` through `HotkeyProvider` and
   register only Jarvis's concrete combinations. The former Python `keyboard`
   global-key-hook dependency has been removed. Full-screen capture, region
-  capture, clipboard submit, microphone sleep/wake, Think mode, conflict
+  capture, clipboard submit, microphone sleep/wake, graded reasoning, conflict
   reporting, and shutdown were verified globally without elevation.
 - The Status Console has a guarded Shutdown control (desktop: click,
   confirm; touchstrip: hold ~2s), routed through the same clean shutdown
