@@ -22,7 +22,7 @@ from jarvis.core.config import (
     write_ui_config,
 )
 from jarvis.core.system_log import publish_system_event
-from jarvis.dialog.thinking_mode import ReasoningLevelState
+from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
 from jarvis.ui.config_selection import (
     VAD_MAX_CHUNK_RANGE,
     VAD_REQUEST_END_PAUSE_RANGE,
@@ -99,8 +99,8 @@ def system_event_payload(event: SystemEvent) -> dict:
     }
 
 
-def thinking_mode_payload(is_enabled: bool) -> dict:
-    return {"is_enabled": is_enabled}
+def thinking_mode_payload(level: ReasoningLevel) -> dict:
+    return {"level": level.value, "is_enabled": level is not ReasoningLevel.OFF}
 
 
 def visibility_mode_payload(mode: VisibilityMode) -> dict:
@@ -407,6 +407,14 @@ class StatusConsoleApi:
 
     def toggle_thinking(self) -> None:
         self._schedule(self._thinking_mode.cycle_level())
+
+    def set_reasoning_level(self, level_value: str) -> None:
+        try:
+            level = ReasoningLevel(level_value)
+        except ValueError:
+            self._logger.warning("Ignoring unknown reasoning level %r", level_value)
+            return
+        self._schedule(self._thinking_mode.set_level(level))
 
     def reset_context(self) -> None:
         self._schedule(self._reset_context_async())

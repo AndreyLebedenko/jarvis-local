@@ -38,6 +38,9 @@ class _FakeControlApi:
     def toggle_thinking(self) -> None:
         self.calls.append(("toggle_thinking", None))
 
+    def set_reasoning_level(self, level_value: str) -> None:
+        self.calls.append(("set_reasoning_level", level_value))
+
     def reset_context(self) -> None:
         self.calls.append(("reset_context", None))
 
@@ -230,6 +233,7 @@ def test_server_dispatches_all_existing_status_console_control_paths():
     server = UiTransportServer(EventBus(), control_api)
 
     server._dispatch_control("toggle_thinking", {})
+    server._dispatch_control("set_reasoning_level", {"level": "medium"})
     server._dispatch_control("reset_context", {})
     server._dispatch_control("reset_module", {"module_id": "vision"})
     server._dispatch_control("set_visibility_mode", {"mode": "hidden"})
@@ -242,6 +246,7 @@ def test_server_dispatches_all_existing_status_console_control_paths():
 
     assert control_api.calls == [
         ("toggle_thinking", None),
+        ("set_reasoning_level", "medium"),
         ("reset_context", None),
         ("reset_module", "vision"),
         ("set_visibility_mode", "hidden"),
@@ -252,13 +257,35 @@ def test_server_dispatches_all_existing_status_console_control_paths():
     ]
 
 
+@pytest.mark.parametrize("bad_arguments", [{}, {"level": 3}, {"level": None}])
+def test_set_reasoning_level_rejects_missing_or_non_string_level(bad_arguments):
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="set_reasoning_level"):
+        server._dispatch_control("set_reasoning_level", bad_arguments)
+
+    assert control_api.calls == []
+
+
+def test_set_reasoning_level_rejects_an_unknown_level_value():
+    """story-v1.3.1 task 3 item 11: unknown is rejected the same way as
+    missing/non-string - a ProtocolError, not a silent no-op - so a
+    misbehaving client sees its command actually failed."""
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="unknown reasoning level"):
+        server._dispatch_control("set_reasoning_level", {"level": "max"})
+
+    assert control_api.calls == []
+
+
 @pytest.mark.asyncio
-async def test_reasoning_level_changed_projects_to_the_binary_thinking_delta():
-    """story-v1.3.1 task 2: ReasoningLevelChanged carries the graded level,
-    but the transport payload is deliberately still the pre-task-3 binary
-    {is_enabled} shape - task 3 is what expands this to {level, is_enabled}.
-    Pins that temporary projection so it fails loudly, not silently, once
-    task 3 changes it."""
+async def test_reasoning_level_changed_projects_level_and_derived_is_enabled():
+    """story-v1.3.1 task 3: the transport payload carries the authoritative
+    graded level, plus is_enabled as a derived protocol-v1 compatibility
+    field (false only for off)."""
     bus = EventBus()
     server = UiTransportServer(bus, _FakeControlApi())
     server._subscribe_to_bus()
@@ -266,12 +293,18 @@ async def test_reasoning_level_changed_projects_to_the_binary_thinking_delta():
     await bus.publish(
         ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.OFF)
     )
-    assert server.state.snapshot()["thinking"] == {"is_enabled": False}
+    assert server.state.snapshot()["thinking"] == {
+        "level": "off",
+        "is_enabled": False,
+    }
 
     await bus.publish(
         ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)
     )
-    assert server.state.snapshot()["thinking"] == {"is_enabled": True}
+    assert server.state.snapshot()["thinking"] == {
+        "level": "medium",
+        "is_enabled": True,
+    }
 
 
 @pytest.mark.asyncio

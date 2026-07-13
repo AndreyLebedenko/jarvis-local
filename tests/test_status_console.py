@@ -39,6 +39,7 @@ from jarvis.ui.status_console import (
     options_payload,
     runtime_state_payload,
     system_event_payload,
+    thinking_mode_payload,
     visibility_mode_payload,
 )
 from jarvis.ui.visibility import VisibilityModeState
@@ -118,6 +119,24 @@ def test_visibility_mode_payload_shape():
     assert visibility_mode_payload(VisibilityMode.HIDDEN) == {"mode": "hidden"}
 
 
+@pytest.mark.parametrize(
+    "level,expected_is_enabled",
+    [
+        (ReasoningLevel.OFF, False),
+        (ReasoningLevel.LOW, True),
+        (ReasoningLevel.MEDIUM, True),
+        (ReasoningLevel.HIGH, True),
+    ],
+)
+def test_thinking_mode_payload_carries_level_and_derived_is_enabled(
+    level, expected_is_enabled
+):
+    assert thinking_mode_payload(level) == {
+        "level": level.value,
+        "is_enabled": expected_is_enabled,
+    }
+
+
 # --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
 
 
@@ -143,6 +162,7 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     )
 
     api.toggle_thinking()
+    api.set_reasoning_level("high")
     api.reset_context()
     api.reset_module("backend")
     api.reset_module("not-a-real-module")  # invalid id, still a no-op pre-set_loop
@@ -174,6 +194,7 @@ def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
     )
 
     api.toggle_thinking()
+    api.set_reasoning_level("high")
     api.reset_context()
     api.reset_module("backend")
     api.set_visibility_mode("open")
@@ -300,6 +321,84 @@ async def test_set_visibility_mode_to_the_current_mode_does_not_publish():
     await asyncio.sleep(0.05)
 
     assert received == []
+
+
+@pytest.mark.parametrize(
+    "level_value,expected_level",
+    [
+        ("off", ReasoningLevel.OFF),
+        ("low", ReasoningLevel.LOW),
+        ("medium", ReasoningLevel.MEDIUM),
+        ("high", ReasoningLevel.HIGH),
+    ],
+)
+async def test_set_reasoning_level_accepts_every_product_value(
+    level_value, expected_level
+):
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.set_reasoning_level(level_value)
+    await asyncio.sleep(0.05)
+
+    assert thinking_mode.level is expected_level
+
+
+async def test_set_reasoning_level_api_layer_rejects_unknown_value_as_a_fallback():
+    """The real protocol-error rejection for an unknown level (task 3 item
+    11) happens one layer up, in UiTransportServer._set_reasoning_level()
+    (see test_ui_transport.py) - a WS client gets a ProtocolError, not a
+    silent no-op. This method is never reached with a bad value through
+    that path. It still guards itself the same way set_visibility_mode()
+    does, in case it is ever called directly with one - never raising, per
+    the closed-loop pywebview crash this module's docstring documents."""
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.set_reasoning_level("max")  # not a supported product value
+    await asyncio.sleep(0.05)
+
+    assert thinking_mode.level is ReasoningLevel.OFF
+
+
+async def test_hotkey_cycle_after_a_direct_control_center_selection_continues_from_it():
+    """story-v1.3.1 task 3 acceptance criterion: Control Center's
+    set_reasoning_level and the global hotkey's cycle_level() share one
+    ReasoningLevelState (constructed once in build_app()'s composition
+    root), so a hotkey cycle right after a direct selection must continue
+    the off -> low -> medium -> high -> off order from the selected level,
+    not from wherever the hotkey last left off. The hotkey callback itself
+    only ever calls cycle_level() (see run_hotkey_listener) - exercised
+    directly here rather than through a fake keyboard provider, since that
+    binding is already covered by test_thinking_mode.py."""
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.set_reasoning_level("medium")
+    await asyncio.sleep(0.05)
+    assert thinking_mode.level is ReasoningLevel.MEDIUM
+
+    await thinking_mode.cycle_level()  # what the hotkey callback triggers
+
+    assert thinking_mode.level is ReasoningLevel.HIGH
 
 
 async def test_request_shutdown_sets_the_given_event_and_publishes_an_info_event():

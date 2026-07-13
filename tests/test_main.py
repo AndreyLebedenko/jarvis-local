@@ -7,6 +7,7 @@ import types
 from collections.abc import Callable
 
 import httpx
+import pytest
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -18,7 +19,7 @@ from jarvis.app import (
     _microphone_health,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
-    _on_thinking_mode_toggled,
+    _on_reasoning_level_changed,
     build_app,
     create_live_status_console,
     parse_args,
@@ -753,12 +754,11 @@ async def test_start_turn_with_no_thinking_mode_defaults_to_off():
     assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
 
 
-# --- thinking mode cue/log wiring (task-13) ---------------------------------
+# --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------
 
 
-async def test_on_thinking_mode_toggled_plays_thinking_on_cue_when_enabled():
-    sound_cues = _FakeSoundCues()
-    app = App(
+def _app_with_sound_cues(sound_cues) -> App:
+    return App(
         bus=EventBus(),
         backend=None,
         audio_input=None,
@@ -770,64 +770,46 @@ async def test_on_thinking_mode_toggled_plays_thinking_on_cue_when_enabled():
         settings=_settings(),
     )
 
-    await _on_thinking_mode_toggled(
-        app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
-    )
 
-    assert sound_cues.played == ["thinking_on"]
-
-
-async def test_on_thinking_mode_toggled_plays_thinking_off_cue_when_disabled():
+@pytest.mark.parametrize(
+    "level,expected_plays",
+    [
+        (ReasoningLevel.OFF, ["thinking_off"]),
+        (ReasoningLevel.LOW, ["thinking_on"]),
+        (ReasoningLevel.MEDIUM, ["thinking_on", "thinking_on"]),
+        (ReasoningLevel.HIGH, ["thinking_on", "thinking_on", "thinking_on"]),
+    ],
+)
+async def test_reasoning_level_changed_plays_the_graded_cue_sequence(
+    level, expected_plays
+):
     sound_cues = _FakeSoundCues()
-    app = App(
-        bus=EventBus(),
-        backend=None,
-        audio_input=None,
-        tts_output=None,
-        capture_input=None,
-        orchestrator=None,
-        sound_cues=sound_cues,
-        thinking_mode=None,
-        settings=_settings(),
-    )
+    app = _app_with_sound_cues(sound_cues)
 
-    await _on_thinking_mode_toggled(
-        app, ReasoningLevelChanged(level=ReasoningLevel.OFF)
-    )
+    await _on_reasoning_level_changed(app, ReasoningLevelChanged(level=level))
 
-    assert sound_cues.played == ["thinking_off"]
+    assert sound_cues.played == expected_plays
 
 
-async def test_on_thinking_mode_toggled_logs_an_info_message(caplog):
-    app = App(
-        bus=EventBus(),
-        backend=None,
-        audio_input=None,
-        tts_output=None,
-        capture_input=None,
-        orchestrator=None,
-        sound_cues=_FakeSoundCues(),
-        thinking_mode=None,
-        settings=_settings(),
-    )
+@pytest.mark.parametrize(
+    "level",
+    [
+        ReasoningLevel.OFF,
+        ReasoningLevel.LOW,
+        ReasoningLevel.MEDIUM,
+        ReasoningLevel.HIGH,
+    ],
+)
+async def test_reasoning_level_changed_logs_the_exact_level_name(level, caplog):
+    app = _app_with_sound_cues(_FakeSoundCues())
 
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(
-            app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
-        )
+        await _on_reasoning_level_changed(app, ReasoningLevelChanged(level=level))
 
-    assert any("enabled" in record.message for record in caplog.records)
-
-    caplog.clear()
-    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(
-            app, ReasoningLevelChanged(level=ReasoningLevel.OFF)
-        )
-
-    assert any("disabled" in record.message for record in caplog.records)
+    assert any(level.value in record.message for record in caplog.records)
 
 
-async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(caplog):
+async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui():
     """task-ui-03: the Status Console's events panel gets this through the
     bus, not by scraping the log line above."""
     bus = EventBus()
@@ -845,15 +827,14 @@ async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(capl
         settings=_settings(),
     )
 
-    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(
-            app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
-        )
+    await _on_reasoning_level_changed(
+        app, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)
+    )
 
     assert len(received) == 1
     assert received[0].source == "HOTKEY"
     assert received[0].level is EventLevel.INFO
-    assert "enabled" in received[0].message
+    assert "medium" in received[0].message.lower()
 
 
 # --- warm-up SystemEvent (task-ui-03) ---------------------------------------
@@ -949,8 +930,8 @@ class _FakeTransport:
     def set_data_locality(self, locality: DataLocality) -> None:
         self.calls.append(("locality", locality))
 
-    def set_thinking_mode(self, enabled: bool) -> None:
-        self.calls.append(("thinking", enabled))
+    def set_thinking_mode(self, level: ReasoningLevel) -> None:
+        self.calls.append(("thinking", level))
 
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
         self.calls.append(("visibility", mode))
@@ -1058,7 +1039,7 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
     assert transport.calls == [
         ("model", app.settings.backend.model),
         ("locality", DataLocality.LOCAL),
-        ("thinking", False),
+        ("thinking", ReasoningLevel.OFF),
         ("visibility", VisibilityMode.OPEN),
         (
             "module",
