@@ -22,7 +22,7 @@ from jarvis.core.config import (
     write_ui_config,
 )
 from jarvis.core.system_log import publish_system_event
-from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.ui.config_selection import (
     VAD_MAX_CHUNK_RANGE,
     VAD_REQUEST_END_PAUSE_RANGE,
@@ -334,7 +334,7 @@ class StatusConsoleApi:
 
     def __init__(
         self,
-        thinking_mode: ThinkingModeState,
+        thinking_mode: ReasoningLevelState,
         history: ClearableHistory,
         bus: EventBus,
         logger: logging.Logger,
@@ -406,7 +406,7 @@ class StatusConsoleApi:
             )
 
     def toggle_thinking(self) -> None:
-        self._schedule(self._thinking_mode.toggle())
+        self._schedule(self._thinking_mode.cycle_level())
 
     def reset_context(self) -> None:
         self._schedule(self._reset_context_async())

@@ -37,6 +37,7 @@ import httpx
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
+from jarvis.dialog.thinking_mode import ReasoningLevel
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class OllamaBackend:
         self,
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
-        thinking_enabled: bool = False,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
     ) -> dict[str, Any]:
         messages = [dict(message) for message in messages]
         if images_b64:
@@ -103,11 +104,14 @@ class OllamaBackend:
             for name in _OPTION_FIELDS
             if (value := getattr(self._settings, name)) is not None
         }
+        think: bool | str = (
+            False if reasoning_level is ReasoningLevel.OFF else reasoning_level.value
+        )
         return {
             "model": self._settings.model,
             "messages": messages,
             "stream": True,
-            "think": thinking_enabled,
+            "think": think,
             "options": options,
         }
 
@@ -115,9 +119,9 @@ class OllamaBackend:
         self,
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
-        thinking_enabled: bool = False,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
     ) -> None:
-        payload = self.build_payload(messages, images_b64, thinking_enabled)
+        payload = self.build_payload(messages, images_b64, reasoning_level)
         saw_done = False
         async with self._client.stream("POST", "/api/chat", json=payload) as response:
             async for line in response.aiter_lines():

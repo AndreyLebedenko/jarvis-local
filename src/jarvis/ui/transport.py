@@ -22,7 +22,7 @@ from jarvis.core.config import (
     tts_route_field_specs,
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
-from jarvis.dialog.thinking_mode import ThinkingModeToggled
+from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.ui.contract import (
     DataLocality,
     ModelRequestItem,
@@ -485,7 +485,7 @@ class UiTransportServer:
     def _subscribe_to_bus(self) -> None:
         subscriptions: list[tuple[type[object], Callable[..., object]]] = [
             (SystemEvent, self._on_system_event),
-            (ThinkingModeToggled, self._on_thinking_mode_toggled),
+            (ReasoningLevelChanged, self._on_thinking_mode_toggled),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
@@ -502,8 +502,10 @@ class UiTransportServer:
         # this server only projects state it is told about.
         self._publish_delta(self._state.add_system_event(event))
 
-    async def _on_thinking_mode_toggled(self, event: ThinkingModeToggled) -> None:
-        self._publish_delta(self._state.set_thinking_mode(event.is_enabled))
+    async def _on_thinking_mode_toggled(self, event: ReasoningLevelChanged) -> None:
+        self._publish_delta(
+            self._state.set_thinking_mode(event.level is not ReasoningLevel.OFF)
+        )
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self._publish_delta(self._state.set_visibility_mode(event.mode))

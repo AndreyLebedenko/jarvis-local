@@ -12,7 +12,7 @@ from jarvis.core.config import (
     load_settings,
 )
 from jarvis.core.lifecycle import ModelRequestInput
-from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -134,7 +134,7 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     the control client may send a command before the real asyncio loop exists.
     Nothing should raise, and nothing should happen,
     until set_loop() runs."""
-    thinking_mode = ThinkingModeState(bus=EventBus())
+    thinking_mode = ReasoningLevelState(bus=EventBus())
     api = StatusConsoleApi(
         thinking_mode=thinking_mode,
         history=_FakeHistory(),
@@ -149,7 +149,7 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     api.request_shutdown()
     await asyncio.sleep(0.05)
 
-    assert thinking_mode.is_enabled is False
+    assert thinking_mode.level is ReasoningLevel.OFF
 
 
 def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
@@ -163,7 +163,7 @@ def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
     ever touching the closed loop."""
     closed_loop = asyncio.new_event_loop()
     closed_loop.close()
-    thinking_mode = ThinkingModeState(bus=EventBus())
+    thinking_mode = ReasoningLevelState(bus=EventBus())
     api = StatusConsoleApi(
         thinking_mode=thinking_mode,
         history=_FakeHistory(),
@@ -182,12 +182,12 @@ def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
     api.request_microphone_options()
     api.save_config_selection("model", "device")
 
-    assert thinking_mode.is_enabled is False
+    assert thinking_mode.level is ReasoningLevel.OFF
 
 
 async def test_toggle_thinking_schedules_a_real_toggle_after_set_loop():
     bus = EventBus()
-    thinking_mode = ThinkingModeState(bus=bus)
+    thinking_mode = ReasoningLevelState(bus=bus)
     api = StatusConsoleApi(
         thinking_mode=thinking_mode,
         history=_FakeHistory(),
@@ -199,7 +199,7 @@ async def test_toggle_thinking_schedules_a_real_toggle_after_set_loop():
     api.toggle_thinking()
     await asyncio.sleep(0.05)
 
-    assert thinking_mode.is_enabled is True
+    assert thinking_mode.level is ReasoningLevel.LOW
 
 
 async def test_reset_context_clears_history_and_publishes_an_info_event():
@@ -213,7 +213,7 @@ async def test_reset_context_clears_history_and_publishes_an_info_event():
     history = _FakeHistory()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=history,
         bus=bus,
         logger=logger,
@@ -238,7 +238,7 @@ async def test_reset_module_never_claims_success_and_reports_a_warn_event(module
     bus.subscribe(SystemEvent, on_event)
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -263,7 +263,7 @@ async def test_set_visibility_mode_changes_state_and_publishes_a_system_event():
     visibility_mode = VisibilityModeState(bus=bus)
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -289,7 +289,7 @@ async def test_set_visibility_mode_to_the_current_mode_does_not_publish():
     visibility_mode = VisibilityModeState(bus=bus)  # starts OPEN
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -313,7 +313,7 @@ async def test_request_shutdown_sets_the_given_event_and_publishes_an_info_event
     shutdown_event = asyncio.Event()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -337,7 +337,7 @@ async def test_set_shutdown_event_wires_up_a_previously_unset_api():
     shutdown_event = asyncio.Event()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=EventBus(),
         logger=logger,
@@ -359,7 +359,7 @@ async def test_request_shutdown_is_a_no_op_without_a_shutdown_event_even_with_a_
     shutdown_event_never_set = asyncio.Event()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=EventBus(),
         logger=logger,
@@ -572,7 +572,7 @@ async def test_request_model_options_publishes_current_plus_fetched_options():
 
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -611,7 +611,7 @@ async def test_request_model_options_degrades_to_current_value_on_failure():
     settings = Settings()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -646,7 +646,7 @@ async def test_request_microphone_options_publishes_current_plus_fetched_options
     settings = Settings()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -677,7 +677,7 @@ async def test_request_microphone_options_degrades_to_current_value_on_failure()
     settings = Settings()
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -717,7 +717,7 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
 
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -765,7 +765,7 @@ async def test_save_config_selection_rejects_an_empty_model(tmp_path, empty_mode
     ui_config_path = tmp_path / "config.ui.toml"
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -801,7 +801,7 @@ async def test_save_config_selection_allows_an_empty_microphone_device(tmp_path)
     ui_config_path = tmp_path / "config.ui.toml"
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -818,7 +818,7 @@ async def test_save_config_selection_allows_an_empty_microphone_device(tmp_path)
 
 async def test_config_menu_methods_are_a_no_op_before_set_loop_is_called():
     api = StatusConsoleApi(
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=EventBus(),
         logger=logger,
@@ -1019,7 +1019,7 @@ async def test_shutdown_click_before_engine_wiring_is_queued_not_dropped():
     remembered and dispatched once the wiring completes."""
     bus = EventBus()
     api = StatusConsoleApi(
-        thinking_mode=ThinkingModeState(bus=bus),
+        thinking_mode=ReasoningLevelState(bus=bus),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,
@@ -1054,7 +1054,7 @@ def test_status_console_app_uses_ws_transport_instead_of_the_pywebview_api():
 def _iteration_2_api(bus, ui_config_path):
     return StatusConsoleApi(
         loop=asyncio.get_event_loop(),
-        thinking_mode=ThinkingModeState(bus=EventBus()),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
         history=_FakeHistory(),
         bus=bus,
         logger=logger,

@@ -52,7 +52,11 @@ from jarvis.dialog.backend import (
     ResponseComplete,
     ResponseToken,
 )
-from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
+from jarvis.dialog.thinking_mode import (
+    ReasoningLevel,
+    ReasoningLevelChanged,
+    ReasoningLevelState,
+)
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.ui.contract import (
@@ -71,12 +75,14 @@ from jarvis.ui.transport import UiTransportInfo
 class _FakeBackend:
     def __init__(self, chat_impl=None) -> None:
         self.calls: list[tuple[list[dict], list[str] | None]] = []
-        self.thinking_enabled_calls: list[bool] = []
+        self.reasoning_level_calls: list[ReasoningLevel] = []
         self._chat_impl = chat_impl
 
-    async def chat(self, messages, images_b64=None, thinking_enabled=False) -> None:
+    async def chat(
+        self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF
+    ) -> None:
         self.calls.append((messages, images_b64))
-        self.thinking_enabled_calls.append(thinking_enabled)
+        self.reasoning_level_calls.append(reasoning_level)
         if self._chat_impl is not None:
             await self._chat_impl()
 
@@ -658,50 +664,50 @@ async def test_error_during_chat_plays_error_cue_and_clears_busy():
     assert len(backend.calls) == 2
 
 
-# --- thinking mode (task-13) ------------------------------------------------
+# --- graded reasoning level (story-v1.3.1 task 2) ---------------------------
 #
-# Orchestrator samples ThinkingModeState.is_enabled at turn start (in
+# Orchestrator samples ReasoningLevelState.level at turn start (in
 # _start_turn(), synchronously with no `await` before the value reaches
 # backend.chat()) and passes it through, per the story's decision that a
-# hotkey toggle applies to the next accepted turn, not any request already
-# in flight.
+# hotkey/UI change applies to the next accepted turn, not any request
+# already in flight.
 
 
-async def test_start_turn_passes_thinking_enabled_false_by_default():
-    thinking_mode = ThinkingModeState(bus=EventBus())
+async def test_start_turn_passes_off_by_default():
+    thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(thinking_mode=thinking_mode)
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert backend.thinking_enabled_calls == [False]
+    assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
 
 
-async def test_start_turn_passes_thinking_enabled_true_after_toggle():
-    thinking_mode = ThinkingModeState(bus=EventBus())
+async def test_start_turn_passes_the_sampled_level_after_a_cycle():
+    thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(thinking_mode=thinking_mode)
 
-    await thinking_mode.toggle()
+    await thinking_mode.cycle_level()  # off -> low
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert backend.thinking_enabled_calls == [True]
+    assert backend.reasoning_level_calls == [ReasoningLevel.LOW]
 
 
-async def test_toggle_while_busy_does_not_affect_the_in_flight_turn():
+async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
     """Regression guard for the story's explicit boundary: changing a live
-    Ollama stream mid-response is out of scope. A toggle that lands while
-    a turn's backend.chat() call is already in flight must not retroactively
-    change what was already passed for that call - only the next accepted
-    turn should see the new value."""
+    Ollama stream mid-response is out of scope. A level change that lands
+    while a turn's backend.chat() call is already in flight must not
+    retroactively change what was already passed for that call - only the
+    next accepted turn should see the new value."""
     still_busy = asyncio.Event()
 
     async def slow_chat() -> None:
         await still_busy.wait()
 
-    thinking_mode = ThinkingModeState(bus=EventBus())
+    thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(
         chat_impl=slow_chat, thinking_mode=thinking_mode
     )
@@ -711,15 +717,15 @@ async def test_toggle_while_busy_does_not_affect_the_in_flight_turn():
             UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
         )
     )
-    await asyncio.sleep(0)  # let the first call start and sample thinking_enabled=False
+    await asyncio.sleep(0)  # let the first call start and sample level=off
 
-    await thinking_mode.toggle()  # toggled to True while the first call is in flight
+    await thinking_mode.cycle_level()  # off -> low, while the first call is in flight
 
     still_busy.set()
     await first
 
-    assert backend.thinking_enabled_calls == [
-        False
+    assert backend.reasoning_level_calls == [
+        ReasoningLevel.OFF
     ]  # the in-flight call was unaffected
 
     await orchestrator.on_response_complete(_complete_event())
@@ -728,23 +734,23 @@ async def test_toggle_while_busy_does_not_affect_the_in_flight_turn():
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )
 
-    assert backend.thinking_enabled_calls == [
-        False,
-        True,
+    assert backend.reasoning_level_calls == [
+        ReasoningLevel.OFF,
+        ReasoningLevel.LOW,
     ]  # next accepted turn sees the new value
 
 
-async def test_start_turn_with_no_thinking_mode_defaults_to_false():
+async def test_start_turn_with_no_thinking_mode_defaults_to_off():
     """Orchestrator can be constructed without a thinking_mode (e.g. older
-    tests/callers) - must not crash, and must behave as if thinking is
-    permanently disabled."""
+    tests/callers) - must not crash, and must behave as if reasoning is
+    permanently off."""
     orchestrator, backend, _sound_cues = _orchestrator()
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert backend.thinking_enabled_calls == [False]
+    assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
 
 
 # --- thinking mode cue/log wiring (task-13) ---------------------------------
@@ -764,7 +770,9 @@ async def test_on_thinking_mode_toggled_plays_thinking_on_cue_when_enabled():
         settings=_settings(),
     )
 
-    await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+    await _on_thinking_mode_toggled(
+        app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
+    )
 
     assert sound_cues.played == ["thinking_on"]
 
@@ -783,7 +791,9 @@ async def test_on_thinking_mode_toggled_plays_thinking_off_cue_when_disabled():
         settings=_settings(),
     )
 
-    await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=False))
+    await _on_thinking_mode_toggled(
+        app, ReasoningLevelChanged(level=ReasoningLevel.OFF)
+    )
 
     assert sound_cues.played == ["thinking_off"]
 
@@ -802,13 +812,17 @@ async def test_on_thinking_mode_toggled_logs_an_info_message(caplog):
     )
 
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+        await _on_thinking_mode_toggled(
+            app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
+        )
 
     assert any("enabled" in record.message for record in caplog.records)
 
     caplog.clear()
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=False))
+        await _on_thinking_mode_toggled(
+            app, ReasoningLevelChanged(level=ReasoningLevel.OFF)
+        )
 
     assert any("disabled" in record.message for record in caplog.records)
 
@@ -832,7 +846,9 @@ async def test_on_thinking_mode_toggled_publishes_a_system_event_for_the_ui(capl
     )
 
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_thinking_mode_toggled(app, ThinkingModeToggled(is_enabled=True))
+        await _on_thinking_mode_toggled(
+            app, ReasoningLevelChanged(level=ReasoningLevel.LOW)
+        )
 
     assert len(received) == 1
     assert received[0].source == "HOTKEY"
@@ -989,7 +1005,7 @@ def test_wire_registers_expected_subscriptions():
     # see _on_full_response_complete's docstring for why that mattered.
     assert event_types.count(ResponseComplete) == 1
     assert event_types.count(MicSleepToggled) == 1
-    assert event_types.count(ThinkingModeToggled) == 1
+    assert event_types.count(ReasoningLevelChanged) == 1
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
@@ -1167,7 +1183,7 @@ def test_parse_args_enables_status_console_without_touchstrip():
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     fake_app = types.SimpleNamespace(
         bus=EventBus(),
-        thinking_mode=types.SimpleNamespace(is_enabled=False),
+        thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
     )
     fake_live_console = types.SimpleNamespace(
@@ -1697,7 +1713,8 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
     wire(app)
 
     await backend.chat(
-        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+        messages=[{"role": "user", "content": "hi"}],
+        reasoning_level=ReasoningLevel.HIGH,
     )
 
     assert tts_output.received_texts == ["Hello"]

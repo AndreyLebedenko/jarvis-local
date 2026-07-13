@@ -33,7 +33,11 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
-from jarvis.dialog.thinking_mode import ThinkingModeState, ThinkingModeToggled
+from jarvis.dialog.thinking_mode import (
+    ReasoningLevel,
+    ReasoningLevelChanged,
+    ReasoningLevelState,
+)
 from jarvis.dialog.thinking_mode import (
     run_hotkey_listener as run_thinking_hotkey_listener,
 )
@@ -114,7 +118,7 @@ class Orchestrator:
         sound_cues: SoundCuePlayer,
         system_prompt: str = SYSTEM_PROMPT,
         audio_input: AudioInput | None = None,
-        thinking_mode: ThinkingModeState | None = None,
+        thinking_mode: ReasoningLevelState | None = None,
         bus: EventBus | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
@@ -214,12 +218,13 @@ class Orchestrator:
         self._response_tokens = []
         self._spoke_this_turn = False
         # Sampled here, synchronously, with no `await` before it reaches
-        # backend.chat()'s argument list: a hotkey toggle that lands while
-        # this turn's request is already in flight cannot retroactively
-        # change what was already passed - see thinking_mode.py and the
-        # story's "sampled at turn start, not the live stream" decision.
-        thinking_enabled = (
-            self._thinking_mode.is_enabled if self._thinking_mode else False
+        # backend.chat()'s argument list: a hotkey/UI change that lands
+        # while this turn's request is already in flight cannot
+        # retroactively change what was already passed - see
+        # thinking_mode.py and the story's "sampled at turn start, not the
+        # live stream" decision.
+        reasoning_level = (
+            self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
         )
         try:
             if self._bus is not None:
@@ -232,7 +237,7 @@ class Orchestrator:
                     ),
                 )
             await self._backend.chat(
-                messages, images_b64=media_b64, thinking_enabled=thinking_enabled
+                messages, images_b64=media_b64, reasoning_level=reasoning_level
             )
         except Exception:
             logger.exception("Request failed")
@@ -289,7 +294,7 @@ class App:
     capture_input: CaptureInput
     orchestrator: Orchestrator
     sound_cues: SoundCuePlayer
-    thinking_mode: ThinkingModeState
+    thinking_mode: ReasoningLevelState
     settings: Settings
     visibility_mode: VisibilityModeState | None = None
     history: ConversationHistory | None = None
@@ -326,7 +331,7 @@ def build_app(
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
-    thinking_mode = ThinkingModeState(bus)
+    thinking_mode = ReasoningLevelState(bus)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
     orchestrator = Orchestrator(
@@ -436,7 +441,9 @@ def wire_status_console(
         raise RuntimeError("live Status Console requires an App created by build_app()")
     live_console.transport.set_model_label(app.settings.backend.model)
     live_console.transport.set_data_locality(DataLocality.LOCAL)
-    live_console.transport.set_thinking_mode(app.thinking_mode.is_enabled)
+    live_console.transport.set_thinking_mode(
+        app.thinking_mode.level is not ReasoningLevel.OFF
+    )
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
     live_console.transport.set_module_health(
         _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
@@ -495,9 +502,9 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
     await app.sound_cues.play("mic_wake" if awake else "mic_sleep")
 
 
-async def _on_thinking_mode_toggled(app: App, event: ThinkingModeToggled) -> None:
+async def _on_thinking_mode_toggled(app: App, event: ReasoningLevelChanged) -> None:
     """Publishes UI/log feedback and plays the thinking-mode cue."""
-    enabled = event.is_enabled
+    enabled = event.level is not ReasoningLevel.OFF
     await publish_system_event(
         app.bus,
         logger,
@@ -529,7 +536,7 @@ def wire(app: App) -> list[Subscription]:
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
 
-    async def on_thinking_mode_toggled(event: ThinkingModeToggled) -> None:
+    async def on_thinking_mode_toggled(event: ReasoningLevelChanged) -> None:
         await _on_thinking_mode_toggled(app, event)
 
     subscriptions: list[Subscription] = [
@@ -540,7 +547,7 @@ def wire(app: App) -> list[Subscription]:
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
         (MicSleepToggled, on_mic_sleep_toggled),
-        (ThinkingModeToggled, on_thinking_mode_toggled),
+        (ReasoningLevelChanged, on_thinking_mode_toggled),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -716,7 +723,7 @@ def run_with_status_console(
             # Initial snapshot value only; every later transition comes
             # from RuntimeStateTracker via RuntimeStateChanged.
             runtime_state=RuntimeState.WARMING,
-            thinking_enabled=app.thinking_mode.is_enabled,
+            thinking_enabled=app.thinking_mode.level is not ReasoningLevel.OFF,
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,
             config_values=config_values_payload(settings),

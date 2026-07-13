@@ -11,6 +11,7 @@ from jarvis.dialog.backend import (
     ResponseComplete,
     ResponseToken,
 )
+from jarvis.dialog.thinking_mode import ReasoningLevel
 
 
 def _fake_audio_b64() -> str:
@@ -48,14 +49,20 @@ def test_payload_defaults_to_thinking_disabled():
     assert payload["think"] is False
 
 
-def test_payload_thinking_enabled_sets_think_true():
+def test_payload_maps_each_graded_level_to_its_exact_think_value():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(
-        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
-    )
+    for level, expected_think in (
+        (ReasoningLevel.OFF, False),
+        (ReasoningLevel.LOW, "low"),
+        (ReasoningLevel.MEDIUM, "medium"),
+        (ReasoningLevel.HIGH, "high"),
+    ):
+        payload = backend.build_payload(
+            messages=[{"role": "user", "content": "hi"}], reasoning_level=level
+        )
 
-    assert payload["think"] is True
+        assert payload["think"] == expected_think
 
 
 def test_payload_uses_model_and_num_ctx_from_settings():
@@ -256,7 +263,8 @@ async def test_thinking_chunks_never_published_as_response_token():
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
     await backend.chat(
-        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+        messages=[{"role": "user", "content": "hi"}],
+        reasoning_level=ReasoningLevel.HIGH,
     )
 
     assert received == ["Hello"]
@@ -279,7 +287,8 @@ async def test_thinking_only_stream_publishes_no_response_token():
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
     await backend.chat(
-        messages=[{"role": "user", "content": "hi"}], thinking_enabled=True
+        messages=[{"role": "user", "content": "hi"}],
+        reasoning_level=ReasoningLevel.HIGH,
     )
 
     assert received == []

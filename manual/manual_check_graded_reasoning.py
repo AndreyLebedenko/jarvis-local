@@ -26,20 +26,13 @@ import httpx
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
 from jarvis.dialog.backend import OllamaBackend
+from jarvis.dialog.thinking_mode import ReasoningLevel
 
-Level = Literal["off", "low", "medium", "high"]
 Category = Literal["calculation", "multi_step", "image"]
 
-LEVELS: tuple[Level, ...] = ("off", "low", "medium", "high")
+LEVELS: tuple[ReasoningLevel, ...] = tuple(ReasoningLevel)
 TEXT_CATEGORIES: tuple[Category, ...] = ("calculation", "multi_step")
 TEXT_RUNS_PER_LEVEL = 3
-
-THINK_VALUES: dict[Level, bool | str] = {
-    "off": False,
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-}
 
 PROMPTS: dict[Category, str] = {
     "calculation": (
@@ -63,7 +56,7 @@ PROMPTS: dict[Category, str] = {
 @dataclass(frozen=True)
 class ProbeRequest:
     category: Category
-    level: Level
+    level: ReasoningLevel
     run_index: int
     payload: dict[str, object]
 
@@ -71,7 +64,7 @@ class ProbeRequest:
 @dataclass
 class ProbeResult:
     category: Category
-    level: Level
+    level: ReasoningLevel
     run_index: int
     wall_seconds: float = 0.0
     success: bool = False
@@ -120,18 +113,15 @@ def create_probe_png_b64() -> str:
 def build_probe_request(
     backend: OllamaBackend,
     category: Category,
-    level: Level,
+    level: ReasoningLevel,
     run_index: int,
 ) -> ProbeRequest:
-    """Reuses OllamaBackend.build_payload() for model/messages/options so
-    the spike sends the exact same shape production turns send, then
-    overrides "think" with the graded value under test - build_payload()
-    itself only accepts a bool, since typing it to the graded value is
-    task 2's job, not this spike's."""
+    """Reuses OllamaBackend.build_payload() for model/messages/options and
+    the off/low/medium/high -> think mapping, so the spike sends the exact
+    same payload shape production turns send."""
     message: dict[str, object] = {"role": "user", "content": PROMPTS[category]}
     images = [create_probe_png_b64()] if category == "image" else None
-    payload = backend.build_payload([message], images, thinking_enabled=False)
-    payload["think"] = THINK_VALUES[level]
+    payload = backend.build_payload([message], images, reasoning_level=level)
     return ProbeRequest(
         category=category, level=level, run_index=run_index, payload=payload
     )
@@ -144,7 +134,7 @@ def content_has_inline_reasoning(content: str) -> bool:
 
 def classify_chunks(
     category: Category,
-    level: Level,
+    level: ReasoningLevel,
     run_index: int,
     chunks: list[dict[str, object]],
     wall_seconds: float,
@@ -224,7 +214,9 @@ def print_request(request: ProbeRequest) -> None:
 
 
 def print_result(result: ProbeResult) -> None:
-    header = f"{result.category} / think={result.level!r} / run {result.run_index}"
+    header = (
+        f"{result.category} / think={result.level.value!r} / run {result.run_index}"
+    )
     print(f"\n=== {header} ===")
     print(f"wall_seconds: {result.wall_seconds:.2f}")
     print(f"success: {result.success}")
@@ -254,13 +246,13 @@ async def run() -> None:
                     request = build_probe_request(backend, category, level, run_index)
                     print(
                         f"\n--- request: {request.category} / "
-                        f"think={request.level!r} / run {run_index} ---"
+                        f"think={request.level.value!r} / run {run_index} ---"
                     )
                     print_request(request)
                     print_result(await run_probe(client, request))
 
             image_request = build_probe_request(backend, "image", level, 1)
-            print(f"\n--- request: image / think={level!r} / run 1 ---")
+            print(f"\n--- request: image / think={level.value!r} / run 1 ---")
             print_request(image_request)
             print_result(await run_probe(client, image_request))
 

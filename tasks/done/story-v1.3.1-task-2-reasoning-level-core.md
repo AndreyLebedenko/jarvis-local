@@ -1,7 +1,7 @@
 # Task: Reasoning-level core contract
 
 **Story:** `tasks/story-v1.3.1-graded-reasoning-mode.md`
-**Status:** Not started.
+**Status:** Completed.
 **Release:** v1.3.1
 **Depends on:** Task 1 completed with a passing human report.
 
