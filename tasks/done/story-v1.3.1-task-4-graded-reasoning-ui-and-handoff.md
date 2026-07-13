@@ -1,7 +1,7 @@
 # Task: Graded reasoning UI and manual handoff
 
 **Story:** `tasks/story-v1.3.1-graded-reasoning-mode.md`
-**Status:** Not started.
+**Status:** Completed.
 **Release:** v1.3.1
 **Depends on:** Task 3 completed and verified.
 
@@ -56,18 +56,18 @@ Out of scope:
 
 ## Acceptance criteria
 
-- [ ] Desktop offers exactly four directly selectable states.
-- [ ] Desktop selection changes only after authoritative state arrives.
-- [ ] Touchstrip displays the exact current state and cycles in the specified
+- [x] Desktop offers exactly four directly selectable states.
+- [x] Desktop selection changes only after authoritative state arrives.
+- [x] Touchstrip displays the exact current state and cycles in the specified
       order.
-- [ ] English and Russian catalogs have identical keys.
-- [ ] Demo mode can render all four states.
-- [ ] Static/behavior tests cover command arguments and state rendering.
-- [ ] Desktop and touchstrip visual checks show no clipping, overlap, or
+- [x] English and Russian catalogs have identical keys.
+- [x] Demo mode can render all four states.
+- [x] Static/behavior tests cover command arguments and state rendering.
+- [x] Desktop and touchstrip visual checks show no clipping, overlap, or
       unreadable selected state.
-- [ ] Project formatter, linter, and pure tests pass.
-- [ ] The human completes the live checklist and reports success.
-- [ ] `PROJECT.md` records the implemented architecture and verified manual
+- [x] Project formatter, linter, and pure tests pass.
+- [x] The human completes the live checklist and reports success.
+- [x] `PROJECT.md` records the implemented architecture and verified manual
       result.
 
 ## Required project commands

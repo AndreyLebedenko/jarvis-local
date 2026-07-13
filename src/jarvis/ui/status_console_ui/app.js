@@ -5,17 +5,18 @@
 // status_console.py's *_payload() helpers) and updates the DOM. Engine state
 // arrives through the local protocol-v1 WebSocket snapshot/delta stream.
 //
-// toggleThinking()/requestModuleReset()/requestContextReset()/
+// setReasoningLevel()/requestModuleReset()/requestContextReset()/
 // setVisibilityMode() send protocol-v1 control messages. They deliberately do
-// not optimistically update the DOM themselves: the switch/chips/visibility
-// toggle only ever change via applyThinkingMode()/appendSystemEvent()/
-// applyVisibilityMode(), driven by the real engine event coming back through
-// the WebSocket, so the UI can never show a state the engine has not actually
+// not optimistically update the DOM themselves: the reasoning-level toggle/
+// chips/visibility toggle only ever change via applyThinkingMode()/
+// appendSystemEvent()/applyVisibilityMode(), driven by the real engine event
+// coming back through the WebSocket (story-v1.3.1: a ReasoningLevelChanged
+// projection), so the UI can never show a state the engine has not actually
 // confirmed.
 //
-// RUNTIME_STATES/MODULE_IDS/HEALTH_STATUSES/EVENT_LEVELS/VISIBILITY_MODES
-// live in contract.js (loaded before this file) - shared with
-// touchstrip.js, see that file's header comment (task-ui-06).
+// RUNTIME_STATES/MODULE_IDS/HEALTH_STATUSES/EVENT_LEVELS/VISIBILITY_MODES/
+// REASONING_LEVELS live in contract.js (loaded before this file) - shared
+// with touchstrip.js, see that file's header comment (task-ui-06).
 
 // task-ui-05 (human decision): Hidden only changes what this UI shows - it
 // never touches audio_in.py/tts.py/Orchestrator. The one concrete UI-level
@@ -219,16 +220,18 @@ function appendSystemEvent(payload) {
 }
 
 function applyThinkingMode(payload) {
-  const enabled = payload.is_enabled;
-  document.getElementById("thinkSwitch").classList.toggle("on", enabled);
-  document.getElementById("thinkTag").textContent = "think: " + (enabled ? "on" : "off");
-  document.getElementById("thinkStatus").textContent = uiString(
-    enabled ? "think_status_on" : "think_status_off"
-  );
+  if (!REASONING_LEVELS.includes(payload.level)) {
+    throw new Error("Unknown reasoning level: " + payload.level);
+  }
+  document
+    .querySelectorAll("#reasoningLevelToggle button")
+    .forEach((button) => button.classList.toggle("sel", button.dataset.level === payload.level));
+  document.getElementById("thinkTag").textContent = "level: " + payload.level;
+  document.getElementById("thinkStatus").textContent = uiString("think_status_" + payload.level);
 }
 
-function toggleThinking() {
-  _sendControl("toggle_thinking");
+function setReasoningLevel(levelValue) {
+  _sendControl("set_reasoning_level", { level: levelValue });
 }
 
 function requestModuleReset(moduleId) {

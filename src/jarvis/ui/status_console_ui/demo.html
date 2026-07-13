@@ -97,10 +97,15 @@
   </div>
 
   <div class="think-card">
-    <div class="switch" id="thinkSwitch" onclick="toggleThinking()"></div>
     <div class="think-body">
-      <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">think: off</span></div>
+      <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">level: off</span></div>
       <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
+    </div>
+    <div class="reasoning-level-toggle" id="reasoningLevelToggle">
+      <button data-level="off" onclick="setReasoningLevel('off')">Off</button>
+      <button data-level="low" onclick="setReasoningLevel('low')">Low</button>
+      <button data-level="medium" onclick="setReasoningLevel('medium')">Medium</button>
+      <button data-level="high" onclick="setReasoningLevel('high')">High</button>
     </div>
   </div>
 

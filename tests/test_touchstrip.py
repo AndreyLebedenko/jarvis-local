@@ -147,6 +147,7 @@ def test_app_js_no_longer_defines_its_own_copy_of_the_contract_consts():
 
     assert "const RUNTIME_STATES" not in app_js
     assert "const MODULE_IDS" not in app_js
+    assert "const REASONING_LEVELS" not in app_js
 
 
 def test_surfaces_delegate_unknown_delta_handling_to_shared_transport_glue():
@@ -155,3 +156,54 @@ def test_surfaces_delegate_unknown_delta_handling_to_shared_transport_glue():
 
     assert "dispatchStateDelta(payload" in app_js
     assert "dispatchStateDelta(payload" in touchstrip_js
+
+
+# --- story-v1.3.1 task 4: graded reasoning-level UI -------------------------
+
+
+def test_apply_thinking_mode_never_infers_the_level_from_is_enabled():
+    """Stop condition: 'the UI has to infer a level from is_enabled' -
+    both surfaces must read payload.level directly."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    touchstrip_js = (UI_DIR / "touchstrip.js").read_text(encoding="utf-8")
+
+    for js in (app_js, touchstrip_js):
+        start = js.index("function applyThinkingMode(")
+        end = js.index("\n}\n", start)
+        body = js[start:end]
+        assert "payload.level" in body
+        assert "is_enabled" not in body
+
+
+def test_touchstrip_thinking_button_still_sends_the_compatibility_cycle_command():
+    """task 4 item 4: touchstrip stays one compact Thinking action that
+    cycles, unlike the desktop's direct four-way selection."""
+    html = TOUCHSTRIP_HTML.read_text(encoding="utf-8")
+    js = (UI_DIR / "touchstrip.js").read_text(encoding="utf-8")
+
+    assert 'onclick="toggleThinking()"' in html
+    assert "function toggleThinking()" in js
+    assert 'sendUiControl("toggle_thinking")' in js
+
+
+def test_touchstrip_displays_the_exact_reasoning_level_value():
+    js = (UI_DIR / "touchstrip.js").read_text(encoding="utf-8")
+
+    assert "REASONING_LEVELS.includes(payload.level)" in js
+    assert '"level: " + payload.level' in js
+
+
+def test_demo_can_render_all_four_reasoning_levels_without_a_live_backend():
+    demo_html = (UI_DIR / "demo.html").read_text(encoding="utf-8")
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+
+    assert 'id="reasoningLevelToggle"' in demo_html
+    for level in ("off", "low", "medium", "high"):
+        assert f'data-level="{level}"' in demo_html
+    assert "for (const level of REASONING_LEVELS)" in demo_js
+    assert "applyThinkingMode({ level })" in demo_js
+
+    # Same stop condition as index.html: no button preselected in markup.
+    toggle_start = demo_html.index('id="reasoningLevelToggle"')
+    toggle_end = demo_html.index("</div>", toggle_start)
+    assert "sel" not in demo_html[toggle_start:toggle_end]

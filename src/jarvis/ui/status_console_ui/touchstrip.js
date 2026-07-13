@@ -3,8 +3,9 @@
 // Same state contract as the desktop shell (task-ui-06's AC): every apply*
 // function here takes the exact same JSON payload shape status_console.py's
 // *_payload() helpers produce for app.js - RUNTIME_STATES/MODULE_IDS/
-// HEALTH_STATUSES/VISIBILITY_MODES come from contract.js, loaded before
-// this file, not a second hand-maintained copy. The rendering itself is
+// HEALTH_STATUSES/VISIBILITY_MODES/REASONING_LEVELS come from contract.js,
+// loaded before this file, not a second hand-maintained copy. The rendering
+// itself is
 // deliberately different (two paginated glance/actions screens, no event
 // log, dots instead of chip cards) - "its own UI, not a compressed desktop
 // dashboard" (Scope).
@@ -90,9 +91,11 @@ function _renderModelLine() {
 }
 
 function applyThinkingMode(payload) {
-  const enabled = payload.is_enabled;
-  document.getElementById("thinkBtn").classList.toggle("on", enabled);
-  document.getElementById("thinkSub").textContent = "think: " + (enabled ? "on" : "off");
+  if (!REASONING_LEVELS.includes(payload.level)) {
+    throw new Error("Unknown reasoning level: " + payload.level);
+  }
+  document.getElementById("thinkBtn").classList.toggle("on", payload.level !== "off");
+  document.getElementById("thinkSub").textContent = "level: " + payload.level;
 }
 
 function applyVisibilityMode(payload) {

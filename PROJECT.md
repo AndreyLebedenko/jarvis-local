@@ -594,6 +594,11 @@ Human manual-testing review of task-10 found two more issues, both fixed:
 
 ## Architecture v1.2 (thinking mode)
 
+**Superseded by Architecture v1.3.1 (graded reasoning mode) below.** Kept
+as history of the original boolean design; `ThinkingModeState`,
+`ThinkingModeToggled`, and `thinking_enabled` no longer exist in the
+codebase - do not use this section as a current API reference.
+
 See [tasks/done/story-thinking-mode.md](tasks/done/story-thinking-mode.md). Built on
 the day-0 spike recorded in this file's Verified facts (top-level `think`
 param; `message.thinking` isolated from `message.content`). Task-11 landed
@@ -1471,6 +1476,86 @@ Task 2 (module health events) landed second:
 - This narrow latest-state projection is deliberately not an interaction log.
   A later metadata-only model-interaction log may reuse this event stream but
   requires its own retention, privacy, and UI decisions.
+
+## Architecture v1.3.1 (graded reasoning mode)
+
+See [tasks/done/story-v1.3.1-graded-reasoning-mode.md](tasks/done/story-v1.3.1-graded-reasoning-mode.md).
+Replaces Architecture v1.2's boolean thinking mode (`ThinkingModeState`/
+`ThinkingModeToggled`/`thinking_enabled`) end to end. Task 1 verified the
+graded Ollama contract, task 2 built the typed core, task 3 wired hotkey/
+logs/cues/transport, task 4 replaced the UI and completed live handoff.
+
+- **State owner:** `thinking_mode.py`'s `ReasoningLevelState`, one instance
+  constructed in `build_app()`'s composition root and shared by every
+  trigger. `ReasoningLevel` is a four-value enum (`off`/`low`/`medium`/
+  `high`); the state always starts at `off` and is never persisted across
+  restart. `set_level(level, source=...)` (direct selection) and
+  `cycle_level(source=...)` (cycling) both read-decide-write synchronously
+  with no `await` in between, so a hotkey cycle issued immediately after a
+  direct UI selection continues the `off -> low -> medium -> high -> off`
+  order from the selected level, not from wherever cycling last left off -
+  verified live and by `tests/test_status_console.py::
+  test_hotkey_cycle_after_a_direct_control_center_selection_continues_from_it`.
+- **Backend mapping:** `OllamaBackend.build_payload()`/`chat()` take a typed
+  `reasoning_level: ReasoningLevel`. `off` sends top-level `think: false`;
+  `low`/`medium`/`high` send the same-name string (`think: "low"` etc.) -
+  the exact contract verified live in task 1 (Ollama 0.31.2,
+  `gemma4:12b-it-qat`; see this file's Verified facts). `Orchestrator.
+  _start_turn()` samples `ReasoningLevelState.level` once, synchronously,
+  before the backend call - a level change during an in-flight response
+  affects only the next accepted turn, never the current stream.
+- **Controls, all sharing the one state owner:**
+  - the existing global hotkey (`config.hotkeys.thinking_toggle`, default
+    `ctrl+alt+t`) calls `cycle_level()`;
+  - the desktop Control Center offers a four-option segmented control
+    (Off/Low/Medium/High) that calls the `set_reasoning_level` control
+    command with the clicked exact level - the selected button changes
+    only from the authoritative snapshot/delta (`applyThinkingMode()`),
+    never optimistically on click, and the static markup preselects
+    nothing (a real bug caught live: preselecting "Off" in the HTML made
+    reopening the console while running at a non-off level flash a false
+    selection until the real snapshot corrected it);
+  - the touchstrip keeps one compact Thinking action that calls the
+    `toggle_thinking` protocol-v1 compatibility command (also
+    `cycle_level()`), displaying the exact current level text.
+- **Event source tagging:** `ReasoningLevelChanged(level, source)` - `source`
+  is a required field (no default), set to `"HOTKEY"` by the hotkey
+  callback and `"UI"` by both `StatusConsoleApi` entry points
+  (`toggle_thinking()`/`set_reasoning_level()`). A live human check on
+  2026-07-13 caught every caller hardcoding `"HOTKEY"` even for a Control
+  Center click; the System Events panel now attributes each change to the
+  channel that actually triggered it.
+- **Sound feedback**, `main.py`'s single `_on_reasoning_level_changed`
+  handler on every `ReasoningLevelChanged` regardless of source: `off`
+  plays `thinking_off` once; `low`/`medium`/`high` play `thinking_on`
+  1/2/3 times in sequential order (no new sound-cue config fields - same
+  `thinking_on`/`thinking_off` files as v1.2's boolean mode). The same
+  handler logs `"Reasoning level: <off|low|medium|high>"` at INFO and
+  publishes a matching localized `SystemEvent` (catalog keys
+  `reasoning_level_off/low/medium/high`).
+- **UI transport payload:** the `thinking` state key is
+  `{"level": "<value>", "is_enabled": <bool>}` - `is_enabled` is `false`
+  only for `off`, kept as a derived protocol-v1 compatibility field. No UI
+  surface infers the level from `is_enabled`; both surfaces read `level`
+  directly.
+- **Isolation rule unchanged and reverified for all four levels:**
+  `message.thinking` is never read by `backend.py`'s stream loop - only
+  `message.content` becomes a `ResponseToken`. Task 1's live spike (28/28
+  requests) and the existing real-bus regression test
+  (`tests/test_main.py::test_thinking_chunks_never_reach_tts_through_real_bus_wiring`)
+  both confirm no reasoning data reaches `ResponseToken`, history, TTS, or
+  any UI/log surface at any level.
+- **Manual end-to-end verification (2026-07-13, human-run against a live
+  Ollama endpoint): passed.** Direct selection of all four levels in
+  Control Center, cycling by hotkey and touchstrip, a hotkey/touchstrip
+  cycle right after a direct Control Center selection continuing from the
+  selected level, audible 1/2/3 `thinking_on` sequences and the single
+  `thinking_off` cue, one accepted request at each level, a level change
+  mid-response applying only to the next turn, no spoken or displayed
+  reasoning across text/voice/screenshot turns, and restart returning the
+  level to `off` - all confirmed. The same session's review also caught
+  and fixed the two bugs recorded above (source tagging, optimistic
+  initial selection).
 
 ## Project verification contract (v1.2.2)
 

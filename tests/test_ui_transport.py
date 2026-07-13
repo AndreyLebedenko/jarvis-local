@@ -291,7 +291,8 @@ async def test_reasoning_level_changed_projects_level_and_derived_is_enabled():
     server._subscribe_to_bus()
 
     await bus.publish(
-        ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.OFF)
+        ReasoningLevelChanged,
+        ReasoningLevelChanged(level=ReasoningLevel.OFF, source="HOTKEY"),
     )
     assert server.state.snapshot()["thinking"] == {
         "level": "off",
@@ -299,7 +300,8 @@ async def test_reasoning_level_changed_projects_level_and_derived_is_enabled():
     }
 
     await bus.publish(
-        ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)
+        ReasoningLevelChanged,
+        ReasoningLevelChanged(level=ReasoningLevel.MEDIUM, source="UI"),
     )
     assert server.state.snapshot()["thinking"] == {
         "level": "medium",

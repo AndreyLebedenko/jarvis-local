@@ -524,7 +524,7 @@ async def _on_reasoning_level_changed(app: App, event: ReasoningLevelChanged) ->
     await publish_system_event(
         app.bus,
         logger,
-        source="HOTKEY",
+        source=event.source,
         level=EventLevel.INFO,
         log_message=f"Reasoning level: {level.value}",
         ui_message=ui_text(

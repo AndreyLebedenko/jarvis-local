@@ -1,6 +1,7 @@
 # Story v1.3.1: Graded reasoning mode
 
-**Status:** Proposed.
+**Status:** Completed. Verified live 2026-07-13 (human-run checklist); see
+PROJECT.md's Architecture v1.3.1 section.
 **Release:** v1.3.1
 
 ## User-facing goal
@@ -60,18 +61,18 @@ Out of scope:
 
 ## Acceptance criteria
 
-- [ ] The task-card sequence is completed in order.
-- [ ] The human-run spike confirms the exact request and response contract for
+- [x] The task-card sequence is completed in order.
+- [x] The human-run spike confirms the exact request and response contract for
       `false`, `low`, `medium`, and `high` before implementation begins.
-- [ ] Every accepted request sends the value matching the sampled runtime
+- [x] Every accepted request sends the value matching the sampled runtime
       level.
-- [ ] Control Center, touchstrip, hotkey, logs, and sound feedback all reflect
+- [x] Control Center, touchstrip, hotkey, logs, and sound feedback all reflect
       the same authoritative level.
-- [ ] Tests prove that reasoning data cannot reach any normal-output consumer.
-- [ ] Existing media and text-history behavior remains unchanged.
-- [ ] Runtime remains local and adds no dependency.
-- [ ] Project formatting, lint, and pure tests pass.
-- [ ] Hardware-dependent verification is handed to and completed by the human.
+- [x] Tests prove that reasoning data cannot reach any normal-output consumer.
+- [x] Existing media and text-history behavior remains unchanged.
+- [x] Runtime remains local and adds no dependency.
+- [x] Project formatting, lint, and pure tests pass.
+- [x] Hardware-dependent verification is handed to and completed by the human.
 
 ## Task-card sequence
 

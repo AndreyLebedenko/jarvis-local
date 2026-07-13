@@ -9,3 +9,7 @@ const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision"];
 const HEALTH_STATUSES = ["ok", "degraded", "error", "unavailable"];
 const EVENT_LEVELS = ["info", "active", "warn", "error"];
 const VISIBILITY_MODES = ["open", "hidden"];
+// story-v1.3.1: graded reasoning level, off -> low -> medium -> high -> off.
+// Not to be confused with RUNTIME_STATES' "thinking" (the orb's live
+// activity state) - this is the persistent request-time setting.
+const REASONING_LEVELS = ["off", "low", "medium", "high"];
