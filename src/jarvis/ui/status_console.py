@@ -406,7 +406,7 @@ class StatusConsoleApi:
             )
 
     def toggle_thinking(self) -> None:
-        self._schedule(self._thinking_mode.cycle_level())
+        self._schedule(self._thinking_mode.cycle_level(source="UI"))
 
     def set_reasoning_level(self, level_value: str) -> None:
         try:
@@ -414,7 +414,7 @@ class StatusConsoleApi:
         except ValueError:
             self._logger.warning("Ignoring unknown reasoning level %r", level_value)
             return
-        self._schedule(self._thinking_mode.set_level(level))
+        self._schedule(self._thinking_mode.set_level(level, source="UI"))
 
     def reset_context(self) -> None:
         self._schedule(self._reset_context_async())

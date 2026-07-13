@@ -191,30 +191,34 @@ body {
 }
 .chip-reset:hover { color: var(--cyan); border-color: var(--cyan-dim); background: var(--cyan-tint); }
 
-/* task-ui-04: Think toggle. Clicking calls toggleThinking() (app.js), which
-   only requests a toggle via the local control channel - the switch's visual state
-   changes only when applyThinkingMode() is called back from the real
-   ThinkingModeToggled event, never optimistically on click. */
+/* story-v1.3.1 task 4: graded reasoning-level segmented control. Clicking a
+   button calls setReasoningLevel() (app.js), which only requests that level
+   via the local control channel - the selected button changes only when
+   applyThinkingMode() is called back from the real ReasoningLevelChanged
+   projection, never optimistically on click. */
 .think-card {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 16px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 18px; width: 100%; max-width: 420px;
 }
-.switch {
-  width: 38px; height: 21px; border-radius: 12px; background: var(--border);
-  position: relative; cursor: pointer; flex-shrink: 0; transition: background 0.2s;
-}
-.switch::after {
-  content: ""; position: absolute; top: 2px; left: 2px;
-  width: 17px; height: 17px; border-radius: 50%; background: var(--text-faint);
-  transition: transform 0.2s, background 0.2s;
-}
-.switch.on { background: var(--violet-tint); border: 1px solid var(--violet-dim); }
-.switch.on::after { transform: translateX(17px); background: var(--violet); }
-.think-body { flex: 1; min-width: 0; }
+/* min-width keeps the title/status text readable instead of being
+   squeezed arbitrarily narrow - forces the segmented control below it
+   (flex-wrap on .think-card) once the card is too narrow for both. */
+.think-body { flex: 1; min-width: 160px; }
 .think-title { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .think-tag { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9px; color: var(--text-faint); }
 .think-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.reasoning-level-toggle {
+  display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 20px; padding: 3px;
+  background: var(--panel);
+}
+.reasoning-level-toggle button {
+  border: none; background: none; color: var(--text-dim);
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
+  padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.3px;
+}
+.reasoning-level-toggle button.sel { background: var(--violet); color: var(--bg); }
 
 /* story-v1.2.10-task-5: keep the three primary actions in one stable row.
    The confirmation panels live below it so opening one never moves another

@@ -29,10 +29,10 @@ async def test_set_level_changes_level_and_publishes_new_value():
     bus.subscribe(ReasoningLevelChanged, on_event)
     state = ReasoningLevelState(bus=bus)
 
-    await state.set_level(ReasoningLevel.MEDIUM)
+    await state.set_level(ReasoningLevel.MEDIUM, source="UI")
 
     assert state.level is ReasoningLevel.MEDIUM
-    assert received == [ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)]
+    assert received == [ReasoningLevelChanged(level=ReasoningLevel.MEDIUM, source="UI")]
 
 
 async def test_set_level_to_the_current_value_publishes_nothing():
@@ -45,7 +45,7 @@ async def test_set_level_to_the_current_value_publishes_nothing():
     bus.subscribe(ReasoningLevelChanged, on_event)
     state = ReasoningLevelState(bus=bus)
 
-    await state.set_level(ReasoningLevel.OFF)  # already off
+    await state.set_level(ReasoningLevel.OFF, source="UI")  # already off
 
     assert received == []
 
@@ -54,7 +54,7 @@ async def test_four_cycles_return_to_the_initial_state():
     state = ReasoningLevelState(bus=EventBus())
 
     for _ in range(4):
-        await state.cycle_level()
+        await state.cycle_level(source="HOTKEY")
 
     assert state.level is ReasoningLevel.OFF
 
@@ -70,7 +70,7 @@ async def test_cycle_level_visits_off_low_medium_high_in_order():
     state = ReasoningLevelState(bus=bus)
 
     for _ in range(4):
-        await state.cycle_level()
+        await state.cycle_level(source="HOTKEY")
 
     assert received == [
         ReasoningLevel.LOW,
@@ -88,8 +88,8 @@ async def test_cycle_level_continues_from_a_directly_set_level():
     against duplicated transition logic."""
     state = ReasoningLevelState(bus=EventBus())
 
-    await state.set_level(ReasoningLevel.MEDIUM)
-    await state.cycle_level()
+    await state.set_level(ReasoningLevel.MEDIUM, source="UI")
+    await state.cycle_level(source="HOTKEY")
 
     assert state.level is ReasoningLevel.HIGH
 

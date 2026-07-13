@@ -12,7 +12,11 @@ from jarvis.core.config import (
     load_settings,
 )
 from jarvis.core.lifecycle import ModelRequestInput
-from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.dialog.thinking_mode import (
+    ReasoningLevel,
+    ReasoningLevelChanged,
+    ReasoningLevelState,
+)
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -223,6 +227,43 @@ async def test_toggle_thinking_schedules_a_real_toggle_after_set_loop():
     assert thinking_mode.level is ReasoningLevel.LOW
 
 
+@pytest.mark.parametrize(
+    "trigger",
+    ["toggle_thinking", "set_reasoning_level"],
+)
+async def test_status_console_api_reasoning_level_changes_are_tagged_ui_not_hotkey(
+    trigger,
+):
+    """Regression (live human check, 2026-07-13): both StatusConsoleApi
+    entry points - the touchstrip/compat cycle and Control Center's direct
+    selection - go through this API, never through the global hotkey, so
+    the resulting event must carry source="UI", not the hotkey's tag."""
+    bus = EventBus()
+    thinking_mode = ReasoningLevelState(bus=bus)
+    received: list[ReasoningLevelChanged] = []
+
+    async def on_event(event: ReasoningLevelChanged) -> None:
+        received.append(event)
+
+    bus.subscribe(ReasoningLevelChanged, on_event)
+    api = StatusConsoleApi(
+        thinking_mode=thinking_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+    api.set_loop(asyncio.get_running_loop())
+
+    if trigger == "toggle_thinking":
+        api.toggle_thinking()
+    else:
+        api.set_reasoning_level("medium")
+    await asyncio.sleep(0.05)
+
+    assert len(received) == 1
+    assert received[0].source == "UI"
+
+
 async def test_reset_context_clears_history_and_publishes_an_info_event():
     bus = EventBus()
     received: list[SystemEvent] = []
@@ -396,7 +437,9 @@ async def test_hotkey_cycle_after_a_direct_control_center_selection_continues_fr
     await asyncio.sleep(0.05)
     assert thinking_mode.level is ReasoningLevel.MEDIUM
 
-    await thinking_mode.cycle_level()  # what the hotkey callback triggers
+    await thinking_mode.cycle_level(
+        source="HOTKEY"
+    )  # what the hotkey callback triggers
 
     assert thinking_mode.level is ReasoningLevel.HIGH
 
@@ -556,10 +599,13 @@ def test_style_css_gives_error_and_warn_log_levels_distinct_colors():
     assert color_for_level("warn") != color_for_level("error")
 
 
-def test_index_html_has_a_real_think_toggle_not_a_disabled_placeholder():
+def test_index_html_has_a_real_reasoning_level_toggle_not_a_disabled_placeholder():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
-    assert 'id="thinkSwitch"' in html
+    assert 'id="reasoningLevelToggle"' in html
+    for level in ("off", "low", "medium", "high"):
+        assert f'data-level="{level}"' in html
+        assert f"setReasoningLevel('{level}')" in html
     assert "task-ui-04" not in html
     assert "placeholder-switch" not in html
     # Scoped to the think-card block, not the whole page: story-v1.2.4-
@@ -567,9 +613,45 @@ def test_index_html_has_a_real_think_toggle_not_a_disabled_placeholder():
     # dropdowns actually load (a real fix, not a placeholder leftover) -
     # a blanket "disabled" not in html check would misfire on that.
     think_card_start = html.index('<div class="think-card">')
-    think_card_end = html.index("</div>", html.index("</div>", think_card_start) + 1)
-    think_card_html = html[think_card_start:think_card_end]
+    action_row_start = html.index('<div class="action-row">', think_card_start)
+    think_card_html = html[think_card_start:action_row_start]
     assert "disabled" not in think_card_html
+
+
+def test_reasoning_level_toggle_has_no_optimistic_initial_selection():
+    """Stop condition: 'UI controls can become selected before authoritative
+    state arrives'. Reopening the Status Console while Jarvis keeps running
+    at a non-off level must not flash "Off" as selected before the real
+    snapshot corrects it - so the static markup must not preselect any
+    button; applyThinkingMode() is the only thing that ever adds "sel"."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    toggle_start = html.index('id="reasoningLevelToggle"')
+    toggle_end = html.index("</div>", toggle_start)
+    toggle_html = html[toggle_start:toggle_end]
+    assert "sel" not in toggle_html
+
+
+def test_set_reasoning_level_sends_the_control_command_with_the_clicked_level():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "function setReasoningLevel(levelValue)" in app_js
+    assert '_sendControl("set_reasoning_level", { level: levelValue })' in app_js
+
+
+def test_desktop_reasoning_level_selection_updates_only_from_the_payload():
+    """task 4 item 3 / stop condition: never optimistic on click - the
+    selected button changes only inside applyThinkingMode(), driven by the
+    authoritative snapshot/delta, not inside setReasoningLevel()'s click
+    handler itself."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    set_level_start = app_js.index("function setReasoningLevel(")
+    set_level_end = app_js.index("\n}\n", set_level_start)
+    assert "classList" not in app_js[set_level_start:set_level_end]
+
+    assert "REASONING_LEVELS.includes(payload.level)" in app_js
+    assert "button.dataset.level === payload.level" in app_js
 
 
 def test_modules_panel_is_rendered_from_the_shared_module_contract():

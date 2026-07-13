@@ -689,7 +689,7 @@ async def test_start_turn_passes_the_sampled_level_after_a_cycle():
     thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(thinking_mode=thinking_mode)
 
-    await thinking_mode.cycle_level()  # off -> low
+    await thinking_mode.cycle_level(source="HOTKEY")  # off -> low
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
@@ -720,7 +720,9 @@ async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
     )
     await asyncio.sleep(0)  # let the first call start and sample level=off
 
-    await thinking_mode.cycle_level()  # off -> low, while the first call is in flight
+    await thinking_mode.cycle_level(
+        source="HOTKEY"
+    )  # off -> low, while the first call is in flight
 
     still_busy.set()
     await first
@@ -786,7 +788,9 @@ async def test_reasoning_level_changed_plays_the_graded_cue_sequence(
     sound_cues = _FakeSoundCues()
     app = _app_with_sound_cues(sound_cues)
 
-    await _on_reasoning_level_changed(app, ReasoningLevelChanged(level=level))
+    await _on_reasoning_level_changed(
+        app, ReasoningLevelChanged(level=level, source="HOTKEY")
+    )
 
     assert sound_cues.played == expected_plays
 
@@ -804,14 +808,22 @@ async def test_reasoning_level_changed_logs_the_exact_level_name(level, caplog):
     app = _app_with_sound_cues(_FakeSoundCues())
 
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
-        await _on_reasoning_level_changed(app, ReasoningLevelChanged(level=level))
+        await _on_reasoning_level_changed(
+            app, ReasoningLevelChanged(level=level, source="HOTKEY")
+        )
 
     assert any(level.value in record.message for record in caplog.records)
 
 
-async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui():
+@pytest.mark.parametrize("source", ["HOTKEY", "UI"])
+async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui(source):
     """task-ui-03: the Status Console's events panel gets this through the
-    bus, not by scraping the log line above."""
+    bus, not by scraping the log line above.
+
+    Regression (live human check, 2026-07-13): a Control Center click and a
+    hotkey press both used to be logged as "HOTKEY", because the source was
+    hardcoded here instead of read from the event - the SystemEvent's
+    source must match whichever channel actually changed the level."""
     bus = EventBus()
     received: list[SystemEvent] = []
     bus.subscribe(SystemEvent, _collecting_subscriber(received))
@@ -828,11 +840,11 @@ async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui():
     )
 
     await _on_reasoning_level_changed(
-        app, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)
+        app, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM, source=source)
     )
 
     assert len(received) == 1
-    assert received[0].source == "HOTKEY"
+    assert received[0].source == source
     assert received[0].level is EventLevel.INFO
     assert "medium" in received[0].message.lower()
 

@@ -51,6 +51,13 @@ CYCLE_ORDER: tuple[ReasoningLevel, ...] = (
 @dataclass(frozen=True)
 class ReasoningLevelChanged:
     level: ReasoningLevel
+    # Which channel actually changed the level - the global hotkey, or a
+    # StatusConsoleApi call (Control Center's direct selection, or the
+    # touchstrip/compat cycle command). Required, not defaulted: this event
+    # has two real trigger paths, and a silent default here is exactly the
+    # kind of stale-tag bug a human-run check on 2026-07-13 caught (every
+    # caller used to hardcode "HOTKEY", even for a Control Center click).
+    source: str
 
 
 class ReasoningLevelState:
@@ -62,17 +69,17 @@ class ReasoningLevelState:
     def level(self) -> ReasoningLevel:
         return self._level
 
-    async def set_level(self, level: ReasoningLevel) -> None:
+    async def set_level(self, level: ReasoningLevel, *, source: str) -> None:
         if level == self._level:
             return
         self._level = level
         await self._bus.publish(
-            ReasoningLevelChanged, ReasoningLevelChanged(level=level)
+            ReasoningLevelChanged, ReasoningLevelChanged(level=level, source=source)
         )
 
-    async def cycle_level(self) -> None:
+    async def cycle_level(self, *, source: str) -> None:
         next_index = (CYCLE_ORDER.index(self._level) + 1) % len(CYCLE_ORDER)
-        await self.set_level(CYCLE_ORDER[next_index])
+        await self.set_level(CYCLE_ORDER[next_index], source=source)
 
 
 async def run_hotkey_listener(
@@ -94,6 +101,6 @@ async def run_hotkey_listener(
     loop = asyncio.get_running_loop()
 
     def on_cycle() -> None:
-        asyncio.run_coroutine_threadsafe(state.cycle_level(), loop)
+        asyncio.run_coroutine_threadsafe(state.cycle_level(source="HOTKEY"), loop)
 
     await run_hotkey_provider([(hotkeys.thinking_toggle, on_cycle)], provider)

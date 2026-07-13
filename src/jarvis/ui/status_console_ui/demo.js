@@ -111,17 +111,17 @@ function buildControls() {
   };
   root.appendChild(stressButton);
 
-  // The demo has no live UI transport, so toggleThinking()'s real click
+  // The demo has no live UI transport, so setReasoningLevel()'s real click
   // handler is a no-op here - these
-  // buttons call applyThinkingMode() directly to exercise the switch's
-  // visual/animation without a live backend.
+  // buttons call applyThinkingMode() directly to exercise the segmented
+  // control's selection visuals for all four levels without a live backend.
   const thinkGroup = document.createElement("span");
-  thinkGroup.textContent = "think switch:";
+  thinkGroup.textContent = "reasoning level:";
   root.appendChild(thinkGroup);
-  for (const isEnabled of [true, false]) {
+  for (const level of REASONING_LEVELS) {
     const button = document.createElement("button");
-    button.textContent = isEnabled ? "on" : "off";
-    button.onclick = () => applyThinkingMode({ is_enabled: isEnabled });
+    button.textContent = level;
+    button.onclick = () => applyThinkingMode({ level });
     root.appendChild(button);
   }
 
