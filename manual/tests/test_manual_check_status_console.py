@@ -9,7 +9,7 @@ import manual.manual_check_status_console as manual_check
 from jarvis.app import ConversationHistory
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings
-from jarvis.dialog.thinking_mode import ThinkingModeState
+from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.ui.contract import (
     EventLevel,
     ModelRequestSummary,
@@ -58,7 +58,7 @@ async def test_demo_cycle_uses_transport_and_publishes_real_system_events():
     bus.subscribe(SystemEvent, on_system_event)
     shutdown_event = asyncio.Event()
     api = StatusConsoleApi(
-        thinking_mode=ThinkingModeState(bus),
+        thinking_mode=ReasoningLevelState(bus),
         history=ConversationHistory(),
         bus=bus,
         logger=logging.getLogger(__name__),

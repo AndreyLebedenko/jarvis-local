@@ -3,9 +3,9 @@ import base64
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
 from jarvis.dialog.backend import OllamaBackend
+from jarvis.dialog.thinking_mode import ReasoningLevel
 from manual.manual_check_graded_reasoning import (
     LEVELS,
-    THINK_VALUES,
     build_probe_request,
     classify_chunks,
     content_has_inline_reasoning,
@@ -19,28 +19,32 @@ def _backend() -> OllamaBackend:
 
 
 def test_all_four_product_levels_are_covered_in_order():
-    assert LEVELS == ("off", "low", "medium", "high")
+    assert LEVELS == (
+        ReasoningLevel.OFF,
+        ReasoningLevel.LOW,
+        ReasoningLevel.MEDIUM,
+        ReasoningLevel.HIGH,
+    )
 
 
 def test_build_request_off_sets_think_false():
-    request = build_probe_request(_backend(), "calculation", "off", 1)
+    request = build_probe_request(_backend(), "calculation", ReasoningLevel.OFF, 1)
 
     assert request.payload["think"] is False
 
 
 def test_build_request_sets_exact_graded_string_think_values():
-    for level in ("low", "medium", "high"):
+    for level in (ReasoningLevel.LOW, ReasoningLevel.MEDIUM, ReasoningLevel.HIGH):
         request = build_probe_request(_backend(), "multi_step", level, 1)
 
-        assert request.payload["think"] == THINK_VALUES[level]
-        assert request.payload["think"] == level
+        assert request.payload["think"] == level.value
 
 
 def test_build_request_reuses_backend_model_and_options():
     settings = BackendSettings(model="test-model", num_ctx=123)
     backend = OllamaBackend(EventBus(), settings)
 
-    request = build_probe_request(backend, "calculation", "off", 1)
+    request = build_probe_request(backend, "calculation", ReasoningLevel.OFF, 1)
 
     assert request.payload["model"] == "test-model"
     assert request.payload["stream"] is True
@@ -48,15 +52,14 @@ def test_build_request_reuses_backend_model_and_options():
 
 
 def test_build_text_probe_request_has_no_images_field():
-    [message] = build_probe_request(_backend(), "calculation", "off", 1).payload[
-        "messages"
-    ]
+    request = build_probe_request(_backend(), "calculation", ReasoningLevel.OFF, 1)
+    [message] = request.payload["messages"]
 
     assert "images" not in message
 
 
 def test_build_image_probe_request_uses_images_field():
-    request = build_probe_request(_backend(), "image", "high", 1)
+    request = build_probe_request(_backend(), "image", ReasoningLevel.HIGH, 1)
 
     [message] = request.payload["messages"]
     assert "images" in message
@@ -83,7 +86,9 @@ def test_classify_chunks_separates_thinking_from_content_and_reports_eval_count(
         {"done": True, "eval_count": 17},
     ]
 
-    result = classify_chunks("calculation", "medium", 1, chunks, wall_seconds=0.5)
+    result = classify_chunks(
+        "calculation", ReasoningLevel.MEDIUM, 1, chunks, wall_seconds=0.5
+    )
 
     assert result.success is True
     assert result.eval_count == 17
@@ -96,14 +101,16 @@ def test_classify_chunks_separates_thinking_from_content_and_reports_eval_count(
 def test_classify_chunks_without_done_chunk_is_not_success():
     chunks = [{"message": {"content": "42"}}]
 
-    result = classify_chunks("calculation", "off", 1, chunks, wall_seconds=0.1)
+    result = classify_chunks(
+        "calculation", ReasoningLevel.OFF, 1, chunks, wall_seconds=0.1
+    )
 
     assert result.success is False
 
 
 def test_classify_chunks_reports_transport_error_as_not_success():
     result = classify_chunks(
-        "calculation", "low", 1, [], wall_seconds=0.1, error="boom"
+        "calculation", ReasoningLevel.LOW, 1, [], wall_seconds=0.1, error="boom"
     )
 
     assert result.success is False
@@ -116,6 +123,8 @@ def test_classify_chunks_flags_reasoning_leaked_into_content():
         {"done": True, "eval_count": 5},
     ]
 
-    result = classify_chunks("calculation", "high", 1, chunks, wall_seconds=0.1)
+    result = classify_chunks(
+        "calculation", ReasoningLevel.HIGH, 1, chunks, wall_seconds=0.1
+    )
 
     assert result.reasoning_leaked_into_content is True

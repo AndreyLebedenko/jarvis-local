@@ -6,6 +6,7 @@ import pytest
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, VadSettings
 from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.ui.contract import (
     EventLevel,
     HealthStatus,
@@ -249,6 +250,28 @@ def test_server_dispatches_all_existing_status_console_control_paths():
         ("request_microphone_options", None),
         ("save_config_selection", "demo|mic-1"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_reasoning_level_changed_projects_to_the_binary_thinking_delta():
+    """story-v1.3.1 task 2: ReasoningLevelChanged carries the graded level,
+    but the transport payload is deliberately still the pre-task-3 binary
+    {is_enabled} shape - task 3 is what expands this to {level, is_enabled}.
+    Pins that temporary projection so it fails loudly, not silently, once
+    task 3 changes it."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+
+    await bus.publish(
+        ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.OFF)
+    )
+    assert server.state.snapshot()["thinking"] == {"is_enabled": False}
+
+    await bus.publish(
+        ReasoningLevelChanged, ReasoningLevelChanged(level=ReasoningLevel.MEDIUM)
+    )
+    assert server.state.snapshot()["thinking"] == {"is_enabled": True}
 
 
 @pytest.mark.asyncio
