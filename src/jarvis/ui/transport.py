@@ -211,6 +211,8 @@ def hello_message(client_id: str, capabilities: Sequence[str]) -> JsonObject:
 class ControlApi(Protocol):
     def toggle_thinking(self) -> None: ...
 
+    def set_reasoning_level(self, level_value: str) -> None: ...
+
     def reset_context(self) -> None: ...
 
     def reset_module(self, module_id: str) -> None: ...
@@ -243,7 +245,7 @@ class UiStateStore:
         model_label: str = "",
         runtime_state: RuntimeState = RuntimeState.IDLE,
         data_locality: DataLocality = DataLocality.LOCAL,
-        thinking_enabled: bool = False,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         language: str = DEFAULT_UI_LANGUAGE,
         config_values: JsonObject | None = None,
@@ -258,7 +260,7 @@ class UiStateStore:
             "data_locality": cast(JsonObject, data_locality_payload(data_locality)),
             "model": {"label": model_label},
             "system_events": [],
-            "thinking": cast(JsonObject, thinking_mode_payload(thinking_enabled)),
+            "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
             "visibility": cast(JsonObject, visibility_mode_payload(visibility_mode)),
             "model_options": {"options": [], "current": model_label},
             "microphone_options": {"options": [], "current": ""},
@@ -327,10 +329,8 @@ class UiStateStore:
             {"key": "system_event", "value": payload},
         )
 
-    def set_thinking_mode(self, is_enabled: bool) -> JsonObject | None:
-        return self._replace(
-            "thinking", cast(JsonObject, thinking_mode_payload(is_enabled))
-        )
+    def set_thinking_mode(self, level: ReasoningLevel) -> JsonObject | None:
+        return self._replace("thinking", cast(JsonObject, thinking_mode_payload(level)))
 
     def set_visibility_mode(self, mode: VisibilityMode) -> JsonObject | None:
         return self._replace(
@@ -476,8 +476,8 @@ class UiTransportServer:
     def set_model_label(self, label: str) -> None:
         self._publish_delta(self._state.set_model_label(label))
 
-    def set_thinking_mode(self, is_enabled: bool) -> None:
-        self._publish_delta(self._state.set_thinking_mode(is_enabled))
+    def set_thinking_mode(self, level: ReasoningLevel) -> None:
+        self._publish_delta(self._state.set_thinking_mode(level))
 
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
         self._publish_delta(self._state.set_visibility_mode(mode))
@@ -485,7 +485,7 @@ class UiTransportServer:
     def _subscribe_to_bus(self) -> None:
         subscriptions: list[tuple[type[object], Callable[..., object]]] = [
             (SystemEvent, self._on_system_event),
-            (ReasoningLevelChanged, self._on_thinking_mode_toggled),
+            (ReasoningLevelChanged, self._on_reasoning_level_changed),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
@@ -502,10 +502,8 @@ class UiTransportServer:
         # this server only projects state it is told about.
         self._publish_delta(self._state.add_system_event(event))
 
-    async def _on_thinking_mode_toggled(self, event: ReasoningLevelChanged) -> None:
-        self._publish_delta(
-            self._state.set_thinking_mode(event.level is not ReasoningLevel.OFF)
-        )
+    async def _on_reasoning_level_changed(self, event: ReasoningLevelChanged) -> None:
+        self._publish_delta(self._state.set_thinking_mode(event.level))
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self._publish_delta(self._state.set_visibility_mode(event.mode))
@@ -729,6 +727,7 @@ class UiTransportServer:
     def _dispatch_control(self, command: str, arguments: JsonObject) -> None:
         handlers: dict[str, Callable[[JsonObject], None]] = {
             "toggle_thinking": self._toggle_thinking,
+            "set_reasoning_level": self._set_reasoning_level,
             "reset_context": self._reset_context,
             "reset_module": self._reset_module,
             "set_visibility_mode": self._set_visibility_mode,
@@ -745,6 +744,16 @@ class UiTransportServer:
     def _toggle_thinking(self, arguments: JsonObject) -> None:
         del arguments
         self._control_api.toggle_thinking()
+
+    def _set_reasoning_level(self, arguments: JsonObject) -> None:
+        level_value = arguments.get("level")
+        if not isinstance(level_value, str):
+            raise ProtocolError("set_reasoning_level requires arguments.level")
+        try:
+            ReasoningLevel(level_value)
+        except ValueError:
+            raise ProtocolError(f"unknown reasoning level: {level_value!r}") from None
+        self._control_api.set_reasoning_level(level_value)
 
     def _reset_context(self, arguments: JsonObject) -> None:
         del arguments

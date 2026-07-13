@@ -109,8 +109,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "warmup_succeeded": "Model warm-up complete",
         "mic_awake": "Microphone woken up",
         "mic_asleep": "Microphone put to sleep",
-        "thinking_enabled": "Thinking mode enabled",
-        "thinking_disabled": "Thinking mode disabled",
+        "reasoning_level_off": "Reasoning level: off",
+        "reasoning_level_low": "Reasoning level: low",
+        "reasoning_level_medium": "Reasoning level: medium",
+        "reasoning_level_high": "Reasoning level: high",
     },
     "ru": {
         "warming_model": "Прогреваю модель...",
@@ -152,8 +154,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "warmup_succeeded": "Прогрев модели завершён",
         "mic_awake": "Микрофон разбужен",
         "mic_asleep": "Микрофон усыплён",
-        "thinking_enabled": "Режим мышления включён",
-        "thinking_disabled": "Режим мышления выключен",
+        "reasoning_level_off": "Уровень мышления: выключен",
+        "reasoning_level_low": "Уровень мышления: низкий",
+        "reasoning_level_medium": "Уровень мышления: средний",
+        "reasoning_level_high": "Уровень мышления: высокий",
     },
 }
 

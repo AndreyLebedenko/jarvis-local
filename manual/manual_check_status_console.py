@@ -40,7 +40,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
 from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.core.system_log import publish_system_event
-from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.ui.contract import (
     EventLevel,
     ModelRequestItem,
@@ -131,7 +131,7 @@ def _build_demo_context(settings) -> DemoContext:
         api,
         state=UiStateStore(
             model_label=settings.backend.model,
-            thinking_enabled=thinking_mode.level is not ReasoningLevel.OFF,
+            reasoning_level=thinking_mode.level,
             visibility_mode=visibility_mode.mode,
         ),
         logger=logger,

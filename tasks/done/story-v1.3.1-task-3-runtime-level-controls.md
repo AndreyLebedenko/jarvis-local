@@ -1,7 +1,7 @@
 # Task: Runtime reasoning-level controls
 
 **Story:** `tasks/story-v1.3.1-graded-reasoning-mode.md`
-**Status:** Not started.
+**Status:** Completed.
 **Release:** v1.3.1
 **Depends on:** Task 2 completed and verified.
 

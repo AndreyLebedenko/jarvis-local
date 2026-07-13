@@ -441,9 +441,7 @@ def wire_status_console(
         raise RuntimeError("live Status Console requires an App created by build_app()")
     live_console.transport.set_model_label(app.settings.backend.model)
     live_console.transport.set_data_locality(DataLocality.LOCAL)
-    live_console.transport.set_thinking_mode(
-        app.thinking_mode.level is not ReasoningLevel.OFF
-    )
+    live_console.transport.set_thinking_mode(app.thinking_mode.level)
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
     live_console.transport.set_module_health(
         _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
@@ -502,21 +500,40 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
     await app.sound_cues.play("mic_wake" if awake else "mic_sleep")
 
 
-async def _on_thinking_mode_toggled(app: App, event: ReasoningLevelChanged) -> None:
-    """Publishes UI/log feedback and plays the thinking-mode cue."""
-    enabled = event.level is not ReasoningLevel.OFF
+# cue: which sound_cues.py cue to play; plays: how many times, in order
+# (sequential awaits - SoundCuePlayer's playback_lock already serializes
+# concurrent play() calls, so N calls to the same cue play back-to-back).
+_REASONING_LEVEL_CUE: dict[ReasoningLevel, tuple[str, int]] = {
+    ReasoningLevel.OFF: ("thinking_off", 1),
+    ReasoningLevel.LOW: ("thinking_on", 1),
+    ReasoningLevel.MEDIUM: ("thinking_on", 2),
+    ReasoningLevel.HIGH: ("thinking_on", 3),
+}
+
+_REASONING_LEVEL_UI_TEXT_KEY: dict[ReasoningLevel, str] = {
+    ReasoningLevel.OFF: "reasoning_level_off",
+    ReasoningLevel.LOW: "reasoning_level_low",
+    ReasoningLevel.MEDIUM: "reasoning_level_medium",
+    ReasoningLevel.HIGH: "reasoning_level_high",
+}
+
+
+async def _on_reasoning_level_changed(app: App, event: ReasoningLevelChanged) -> None:
+    """Publishes UI/log feedback and plays the graded reasoning-level cue."""
+    level = event.level
     await publish_system_event(
         app.bus,
         logger,
         source="HOTKEY",
         level=EventLevel.INFO,
-        log_message=f"Thinking mode {'enabled' if enabled else 'disabled'}",
+        log_message=f"Reasoning level: {level.value}",
         ui_message=ui_text(
-            "thinking_enabled" if enabled else "thinking_disabled",
-            app.settings.ui.language,
+            _REASONING_LEVEL_UI_TEXT_KEY[level], app.settings.ui.language
         ),
     )
-    await app.sound_cues.play("thinking_on" if enabled else "thinking_off")
+    cue, play_count = _REASONING_LEVEL_CUE[level]
+    for _ in range(play_count):
+        await app.sound_cues.play(cue)
 
 
 def wire(app: App) -> list[Subscription]:
@@ -536,8 +553,8 @@ def wire(app: App) -> list[Subscription]:
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
 
-    async def on_thinking_mode_toggled(event: ReasoningLevelChanged) -> None:
-        await _on_thinking_mode_toggled(app, event)
+    async def on_reasoning_level_changed(event: ReasoningLevelChanged) -> None:
+        await _on_reasoning_level_changed(app, event)
 
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
@@ -547,7 +564,7 @@ def wire(app: App) -> list[Subscription]:
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
         (MicSleepToggled, on_mic_sleep_toggled),
-        (ReasoningLevelChanged, on_thinking_mode_toggled),
+        (ReasoningLevelChanged, on_reasoning_level_changed),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -723,7 +740,7 @@ def run_with_status_console(
             # Initial snapshot value only; every later transition comes
             # from RuntimeStateTracker via RuntimeStateChanged.
             runtime_state=RuntimeState.WARMING,
-            thinking_enabled=app.thinking_mode.level is not ReasoningLevel.OFF,
+            reasoning_level=app.thinking_mode.level,
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,
             config_values=config_values_payload(settings),
