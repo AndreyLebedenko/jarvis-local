@@ -5,6 +5,7 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    McpSettings,
     PiperTtsSettings,
     Settings,
     SileroTtsSettings,
@@ -17,8 +18,11 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevelChanged,
     ReasoningLevelState,
 )
+from jarvis.tools.host import McpModuleStatus
+from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import (
     DataLocality,
+    DataSource,
     EventLevel,
     HealthStatus,
     ModelRequestItem,
@@ -38,6 +42,8 @@ from jarvis.ui.status_console import (
     StatusConsoleWindow,
     UiConfigSaved,
     data_locality_payload,
+    data_source_payload,
+    mcp_state_payload,
     model_request_payload,
     module_health_payload,
     options_payload,
@@ -82,6 +88,32 @@ def test_module_health_payload_shape():
 
 def test_data_locality_payload_shape():
     assert data_locality_payload(DataLocality.EXTERNAL) == {"locality": "external"}
+
+
+def test_data_source_payload_shape():
+    assert data_source_payload(DataSource.INTERNET) == {"source": "internet"}
+
+
+def test_mcp_state_payload_zeros_tools_when_off_and_marks_live_tools_available():
+    tools = (RegisteredTool("web_search", "Search", {}, "search", enabled=True),)
+
+    assert mcp_state_payload(McpModuleStatus.OFF, tools) == {
+        "status": "off",
+        "enabled": False,
+        "tools": [],
+    }
+    assert mcp_state_payload(McpModuleStatus.DEGRADED, tools) == {
+        "status": "degraded",
+        "enabled": True,
+        "tools": [
+            {
+                "name": "web_search",
+                "provider": "search",
+                "enabled": True,
+                "available": True,
+            }
+        ],
+    }
 
 
 def test_model_request_payload_shape_contains_only_metadata():
@@ -150,6 +182,61 @@ class _FakeHistory:
 
     def clear(self) -> None:
         self.cleared = True
+
+
+class _FakeMcpHost:
+    def __init__(self) -> None:
+        self.status = McpModuleStatus.OFF
+        self.registry = ToolRegistry()
+
+    @property
+    def enabled(self) -> bool:
+        return self.status in {McpModuleStatus.ON, McpModuleStatus.DEGRADED}
+
+    async def enable(self) -> None:
+        self.status = McpModuleStatus.DEGRADED
+
+    async def disable(self) -> None:
+        self.status = McpModuleStatus.OFF
+
+
+@pytest.mark.asyncio
+async def test_mcp_control_applies_live_then_persists_authoritative_state(tmp_path):
+    bus = EventBus()
+    host = _FakeMcpHost()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        settings=Settings(mcp=McpSettings(enabled=False)),
+        ui_config_path=ui_config_path,
+        mcp_host=host,
+    )
+
+    api.set_mcp_enabled(True)
+    await asyncio.sleep(0.05)
+
+    assert host.status is McpModuleStatus.DEGRADED
+    assert (
+        load_settings(
+            tmp_path / "does-not-exist.toml", ui_path=ui_config_path
+        ).mcp.enabled
+        is True
+    )
+
+    api.set_mcp_enabled(False)
+    await asyncio.sleep(0.05)
+
+    assert host.status is McpModuleStatus.OFF
+    assert (
+        load_settings(
+            tmp_path / "does-not-exist.toml", ui_path=ui_config_path
+        ).mcp.enabled
+        is False
+    )
 
 
 async def test_api_methods_are_a_no_op_before_set_loop_is_called():
@@ -1227,6 +1314,28 @@ def test_status_console_app_uses_ws_transport_instead_of_the_pywebview_api():
     assert "status-console" in app_js
     assert 'default: throw new Error("Unknown state delta' not in app_js
     assert "window.pywebview" not in app_js
+
+
+def test_mcp_control_waits_for_authoritative_state_instead_of_updating_dom():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    start = app_js.index("function setMcpEnabled")
+    end = app_js.index("\n}", start)
+    body = app_js[start:end]
+
+    assert '_sendControl("set_mcp_enabled"' in body
+    assert "applyMcpState" not in body
+
+
+def test_visibility_rendering_does_not_mutate_the_data_source_axis():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    start = app_js.index("function applyVisibilityMode")
+    end = app_js.index("\n}", start)
+    body = app_js[start:end]
+
+    assert "dataSource" not in body
+    assert "applyDataSource" not in body
 
 
 # --- story-v1.3.0-task-2: configuration iteration 2 save path ---------------

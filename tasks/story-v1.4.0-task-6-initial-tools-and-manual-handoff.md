@@ -1,7 +1,7 @@
 # Task: Initial tools and manual handoff
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. Blocked by tasks 2, 4, 5.
+**Status:** Planned. Prerequisite tasks 2, 4, and 5 are completed.
 **Release:** v1.4.0
 
 ## Summary

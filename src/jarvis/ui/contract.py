@@ -125,3 +125,16 @@ class DataLocality(enum.Enum):
 
     LOCAL = "local"
     EXTERNAL = "external"
+
+
+class DataSource(enum.Enum):
+    """Widest declared MCP data boundary used by the current turn.
+
+    This is independent of DataLocality: Ollama inference remains local
+    for every value here. UNKNOWN is rendered honestly, never guessed.
+    """
+
+    LOCAL_ONLY = "local_only"
+    LAN = "lan"
+    INTERNET = "internet"
+    UNKNOWN = "unknown"

@@ -48,7 +48,7 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
-from jarvis.tools.host import McpHost
+from jarvis.tools.host import McpHost, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -64,6 +64,7 @@ from jarvis.ui.status_console import (
     StatusConsoleWindow,
     TouchstripWindow,
     config_values_payload,
+    mcp_state_payload,
 )
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import UiStateStore, UiTransportInfo, UiTransportServer
@@ -454,6 +455,7 @@ def create_live_status_console(
         logger=logger,
         visibility_mode=app.visibility_mode,
         settings=app.settings,
+        mcp_host=app.mcp_host,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
@@ -475,6 +477,10 @@ def wire_status_console(
         raise RuntimeError("live Status Console requires an App created by build_app()")
     live_console.transport.set_model_label(app.settings.backend.model)
     live_console.transport.set_data_locality(DataLocality.LOCAL)
+    if app.mcp_host is not None:
+        live_console.transport.set_mcp_state(
+            mcp_state_payload(app.mcp_host.status, app.mcp_host.registry.all())
+        )
     live_console.transport.set_thinking_mode(app.thinking_mode.level)
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
     live_console.transport.set_module_health(
@@ -487,6 +493,13 @@ def wire_status_console(
             substatus = ui_text(event.substatus_key, app.settings.ui.language)
         _push_runtime_state(live_console, event.state, substatus)
 
+    async def on_mcp_status_changed(event: McpModuleStatusChanged) -> None:
+        if app.mcp_host is None or live_console.transport is None:
+            return
+        live_console.transport.set_mcp_state(
+            mcp_state_payload(event.status, app.mcp_host.registry.all())
+        )
+
     tracker = RuntimeStateTracker(app.bus)
     health_tracker = ModuleHealthTracker(app.bus)
     subscriptions: list[Subscription] = [
@@ -495,6 +508,9 @@ def wire_status_console(
         (RuntimeStateChanged, on_runtime_state_changed),
     ]
     app.bus.subscribe(RuntimeStateChanged, on_runtime_state_changed)
+    if app.mcp_host is not None:
+        subscriptions.append((McpModuleStatusChanged, on_mcp_status_changed))
+        app.bus.subscribe(McpModuleStatusChanged, on_mcp_status_changed)
     return subscriptions
 
 

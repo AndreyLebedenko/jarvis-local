@@ -65,7 +65,7 @@ from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
-from jarvis.tools.host import McpModuleStatus
+from jarvis.tools.host import McpModuleStatus, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -994,6 +994,9 @@ class _FakeTransport:
     def set_data_locality(self, locality: DataLocality) -> None:
         self.calls.append(("locality", locality))
 
+    def set_mcp_state(self, state: dict) -> None:
+        self.calls.append(("mcp", state))
+
     def set_thinking_mode(self, level: ReasoningLevel) -> None:
         self.calls.append(("thinking", level))
 
@@ -1103,6 +1106,10 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
     assert transport.calls == [
         ("model", app.settings.backend.model),
         ("locality", DataLocality.LOCAL),
+        (
+            "mcp",
+            {"status": "off", "enabled": False, "tools": []},
+        ),
         ("thinking", ReasoningLevel.OFF),
         ("visibility", VisibilityMode.OPEN),
         (
@@ -1113,6 +1120,26 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
         ),
     ]
 
+    unwire(app, subscriptions)
+
+
+@pytest.mark.asyncio
+async def test_wire_status_console_projects_authoritative_mcp_status_changes():
+    app = _fake_app()
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    await app.bus.publish(
+        McpModuleStatusChanged,
+        McpModuleStatusChanged(status=McpModuleStatus.CONNECTING),
+    )
+
+    assert transport.calls[-1] == (
+        "mcp",
+        {"status": "connecting", "enabled": False, "tools": []},
+    )
     unwire(app, subscriptions)
 
 
@@ -1138,9 +1165,9 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    # Only the five snapshot seeds: mic-toggle projection belongs to the
+    # Only the six snapshot seeds: mic-toggle projection belongs to the
     # real transport server's own bus subscription, not to this wiring.
-    assert len(transport.calls) == 5
+    assert len(transport.calls) == 6
     assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)

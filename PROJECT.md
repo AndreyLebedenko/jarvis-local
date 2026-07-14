@@ -1907,6 +1907,33 @@ tool round trip; MCP clients remain reachable only through
   when its stream ends without `done: true`, preserving the v1.2.3 turn-
   termination guarantee.
 
+## Architecture v1.4.0 (Control Center MCP surface)
+
+See `tasks/done/story-v1.4.0-task-5-control-center-mcp-surface.md`. The existing
+local WebSocket `state`/`control` channels now expose MCP without adding a
+second transport or allowing the browser to infer engine state.
+
+- `McpModuleStatusChanged` is the only live toggle-state authority. The UI
+  sends a target boolean but does not update optimistically; snapshots and
+  deltas render `off`, `connecting`, `on`, `degraded`, or `disconnecting`.
+  `off` always carries an empty tool list. `on`/`degraded` may carry the
+  registry's read-only tool snapshot; transition states mark entries
+  unavailable.
+- `StatusConsoleApi` calls `McpHost.enable()`/`disable()` on the engine loop,
+  then persists the host's confirmed `enabled` result to `[mcp].enabled` in
+  `config.ui.toml`. This is a narrow live-lifecycle exception to the general
+  restart-to-apply config rule; there is still no file watcher or generic
+  runtime config reload.
+- The turn data-source projection resets to `local_only` on
+  `ModelRequestStarted` and consumes only typed
+  `ToolCallStarted.data_boundary`. Its precedence is
+  `internet > lan > unknown > local`; rejected calls that never publish
+  `ToolCallStarted` cannot falsely mark a turn as off-machine.
+  `VisibilityMode` and inference `DataLocality` remain independent state
+  fields and are never mutated by this projection.
+- Tool call/outcome `SystemEvent` messages continue through the existing
+  event panel. No separate audit window or untyped parsing path was added.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

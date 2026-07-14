@@ -1303,6 +1303,20 @@ def test_write_ui_config_omits_sections_left_as_none(tmp_path):
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
 
 
+def test_write_ui_config_persists_live_mcp_enabled_state(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="d",
+        mcp_enabled=True,
+    )
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.mcp.enabled is True
+
+
 def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 

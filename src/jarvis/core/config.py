@@ -24,10 +24,13 @@ higher-precedence layer over the same schema, never a second, looser
 source of truth, and precedence is per-key, not per-file: a key set in
 config.toml but omitted from config.ui.toml still applies. Restart-to-
 apply: load_settings() runs once at startup (main.py's run()/
-run_with_status_console()); writing config.ui.toml while Jarvis is
-already running has no live effect until the next start - there is no
-file-watching or hot-reload here, by design (see PROJECT.md's Architecture
-v1.2.4 section - "Do not implement live reconfiguration").
+run_with_status_console()); writing restart-bound settings to config.ui.toml
+while Jarvis is already running has no live effect until the next start.
+The v1.4 MCP module switch is the explicit exception: its Control Center
+action first calls McpHost's live lifecycle API, then persists the confirmed
+state through this same layered file for the next start. There is still no
+file-watching or generic hot-reload (see PROJECT.md's Architecture v1.2.4
+section - "Do not implement live reconfiguration").
 """
 
 import enum
@@ -885,6 +888,7 @@ def write_ui_config(
     ui_language: str | None = None,
     vad: VadSettings | None = None,
     tts_routes: dict[str, TtsLanguageSettings] | None = None,
+    mcp_enabled: bool | None = None,
 ) -> None:
     """Writes config.ui.toml (story-v1.2.4-task-3-config-menu-iteration-1.md:
     "Saving writes only the UI config layer"). Never opens config.toml -
@@ -936,6 +940,8 @@ def write_ui_config(
                 for name, value in tts_route_values(route).items()
                 if value is not None
             )
+    if mcp_enabled is not None:
+        lines += ["", "[mcp]", f"enabled = {str(mcp_enabled).lower()}"]
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
