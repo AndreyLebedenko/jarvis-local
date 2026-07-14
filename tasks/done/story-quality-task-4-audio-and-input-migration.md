@@ -1,6 +1,6 @@
 # Task: Migrate audio and input modules
 
-**Story:** `tasks/story-quality-tooling-and-package-layout.md`
+**Story:** `tasks/done/story-quality-tooling-and-package-layout.md`
 **Status:** Completed.
 
 ## Summary

@@ -1,6 +1,6 @@
 # Task: Make Ruff lint baseline green
 
-**Story:** `tasks/story-quality-tooling-and-package-layout.md`
+**Story:** `tasks/done/story-quality-tooling-and-package-layout.md`
 **Status:** Completed.
 
 ## Summary
