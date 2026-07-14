@@ -1704,6 +1704,144 @@ project memory note); this task is current-turn only.
   honored): it does, no fallback to concatenating onto the single existing
   system message was needed.
 
+## Architecture v1.4.0 (MCP host core)
+
+See `tasks/done/story-v1.4.0-task-3-mcp-host-core.md`. `src/jarvis/tools/`
+is the host side of MCP: client management, tool registry, the single
+interception point every tool call goes through, and the switchable
+module state. No model wiring, no UI - task 4 wires the registry into the
+dialog path, task 5 wires a Control Center switch.
+
+- **Persistent controller, human-approved revision (2026-07-14).** The
+  task card originally intended `McpHost` to be omitted entirely from
+  `App` when `[mcp].enabled` is false. Implementation review found this
+  left nothing for a later live toggle (task 5's Control Center switch)
+  to call - by the time the object doesn't exist, there is no `enable()`
+  to invoke. `jarvis.app.build_app()` now always constructs `McpHost`,
+  regardless of config. `McpHost` genuinely is a client manager - it owns
+  `_client_factory`, `_clients`, and the connect/disconnect loop, not
+  merely a passive state flag. The revised, narrower invariant "off
+  equals the capability does not exist" rests on: at rest (status `OFF`)
+  it holds no client objects and has spawned no subprocess -
+  `client_factory` is invoked only from inside `enable()`. A
+  config/app-construction-level test asserts exactly this: `McpHost`
+  exists immediately after `build_app()` but `status == OFF` and the
+  registry is empty.
+- **Status model: `OFF` / `CONNECTING` / `ON` / `DEGRADED` /
+  `DISCONNECTING`**, not a bare enabled bool. `McpModuleStatusChanged` is
+  published on every transition - the typed, authoritative signal task 5
+  needs; a generic `SystemEvent` alone is not fine-grained or
+  guaranteed-ordered enough for a UI to reconstruct engine state from.
+  `DEGRADED` covers three distinct causes, all deliberately folded into
+  one status rather than given separate states: a configured, enabled
+  server that failed to connect; a tool rejected as a name collision with
+  a different, already-registered provider's tool (see collision policy
+  below); and a previously-healthy provider whose `call_tool()` raised
+  mid-session (a transport/session failure, distinguished from the
+  provider's tool merely reporting `isError: true` in a normal result -
+  only the former pulls that provider's tools from the registry and
+  marks the module degraded).
+- **Admission gate, not a bool read directly by `dispatch()`.**
+  `McpHost` tracks `_admitting`/an in-flight count/an `asyncio.Event`
+  drain signal. `disable()` closes admission synchronously (no `await`
+  between the status check and the flip) before doing anything else, so
+  no concurrently-running `dispatch()` call can observe a stale "open"
+  gate; only after every already-admitted call finishes does teardown
+  touch a client. `enable()`/`disable()` are additionally serialized by
+  one `asyncio.Lock`, so two concurrent toggles (a config-driven startup
+  enable racing a UI click, or two rapid clicks) cannot both run the
+  connect/disconnect loop at once.
+  Status-event ordering was fixed to match the gate exactly, after a
+  human review round caught it publishing out of order: `enable()` opens
+  admission *before* publishing `ON`/`DEGRADED` (otherwise a subscriber
+  reacting to the event the instant it fires could dispatch and see "MCP
+  is disabled" despite the status it just received); `disable()` closes
+  admission and publishes `DISCONNECTING` *before* awaiting the drain
+  (otherwise `.status` would read a stale `ON`/`DEGRADED` for the entire
+  drain window even though admission was already closed).
+- **Tool-name collision policy: reject, not last-write-wins.** If two
+  providers declare the same tool name, the later registration is
+  rejected outright and the earlier provider keeps the name - tool names
+  are the model-facing namespace (task 4's flat presentation), so
+  last-write-wins would make identity depend on connection order and a
+  later disconnect could delete a name a different, still-connected
+  provider still legitimately owns. The rejecting server is marked
+  `DEGRADED`, not disconnected - its other, non-colliding tools still
+  register normally.
+- **Localization.** Every `ui_message` published by `jarvis/tools/`
+  goes through `jarvis.ui.text`'s catalog under the existing
+  `[ui].language` contract (see Architecture v1.2.11) - `ui_language` is
+  threaded from `settings.ui.language` into `McpHost`/`ToolDispatcher` at
+  construction. No hardcoded prose in either module; rejection reasons in
+  particular are dedicated catalog keys per reason (disabled/unknown-tool/
+  tool-disabled/provider-not-connected), not a raw English string
+  interpolated into a localized sentence.
+- **Cancellation is handled explicitly.** `asyncio.CancelledError` does
+  not subclass `Exception`. Once `ToolCallStarted` has been published,
+  cancellation at any later await - including the human-readable start
+  event before `call_tool()` - completes exactly one correlated outcome
+  (`ToolCallFinished` + `SystemEvent`) before re-raising. Outcome
+  publication itself is shielded from caller cancellation, so a partial
+  pair cannot be left behind. Cancellation during server discovery also
+  disconnects the just-connected client before re-raising, rolls back any
+  earlier connections from the same enable attempt, clears the registry,
+  and returns the host to `OFF`; a connected subprocess can never be lost
+  before it reaches `_clients`.
+- Typed, correlated contract for watchdog/audit consumers
+  (`tasks/backlog/mcp-egress-watchdog.md`): `ToolCallStarted`/
+  `ToolCallFinished` carry a shared `correlation_id`, also attached to the
+  paired `SystemEvent` - a consumer must never have to parse the
+  localized `ui_message` string to recover which tool, provider, or
+  duration a call involved.
+- `StdioMcpClient` wraps the official MCP Python SDK (`mcp>=1.28`, added
+  to `requirements.txt`), imported lazily inside the connection-owner
+  task started by `connect()` (matching `tts_piper.py`'s precedent) so the
+  package's own dependency tree
+  (starlette, uvicorn, cryptography, ...) is never pulled in while MCP is
+  disabled. `list_tools()` follows `ListToolsResult.nextCursor`
+  pagination; `CallToolResult.structuredContent` is preserved through to
+  `ToolDispatchResult`, not dropped - both verified against the installed
+  SDK's actual field names (`mcp` 1.28.1), not assumed from documentation.
+- **One connection-owner task per active stdio client.** The official
+  `stdio_client()` transport enters an AnyIO task-group cancel scope, which
+  must exit in the same asyncio task that entered it. Startup `enable()`
+  and Control Center lifecycle actions run in different tasks, so storing
+  an `AsyncExitStack` in the caller and closing it later is invalid.
+  `StdioMcpClient` now starts a dedicated owner task on `connect()`; that
+  task enters and exits both SDK contexts, while public `connect()` and
+  `disconnect()` only start, signal, and await it. This preserves the
+  existing host API and makes cross-task runtime toggles safe.
+- **`McpTransportError` boundary (added after a human review round caught
+  the original code treating every exception from `call_tool()` as fatal
+  transport death).** Read against `mcp.shared.session.BaseSession.
+  send_request()`'s actual source (installed `mcp` 1.28.1): a JSON-RPC
+  error reply and a request that timed out waiting for a reply are both
+  raised by the SDK as `mcp.McpError` - the session is provably still
+  alive in both cases, only that one request failed. A genuinely broken
+  transport instead surfaces as one of anyio's own stream exceptions
+  (`BrokenResourceError`/`ClosedResourceError`/`EndOfStream`) on the
+  memory-object streams `stdio_client()` pumps the subprocess through.
+  `StdioMcpClient.call_tool()` catches exactly that family (plus a bare
+  `OSError` as a safety net) and re-raises as `McpTransportError`; every
+  other exception, including `McpError`, propagates unchanged.
+  `ToolDispatcher` only calls `on_transport_error()` (which degrades the
+  module and pulls the provider's tools in `McpHost`) for
+  `McpTransportError` specifically - a normal per-call failure now fails
+  only that call (`SystemEvent` level `WARN`), while `McpTransportError`
+  still gets `ERROR` and the host-level reaction. This is a best-effort
+  boundary based on reading the SDK's source, not verified against a live
+  broken pipe - task 6's manual handoff is where that gets exercised for
+  real.
+- Verified via 89 tests across `tests/test_tools_registry.py`,
+  `tests/test_tools_interception.py`, `tests/test_tools_host.py`, and
+  `tests/test_tools_mcp_client.py` (plus dedicated `[mcp]` config-parsing
+  coverage in `tests/test_config.py` and app-construction coverage in
+  `tests/test_main.py`), all with fake MCP clients/SDK transport objects -
+  no real subprocess or network. Includes direct reproductions of every
+  race a human review round found live (concurrent `enable()`, dispatch
+  admitted mid-`disable()`, stale status during the drain window).
+  `python -m pytest` passes.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
@@ -1744,6 +1882,10 @@ Runtime locality and CI verification are separate guarantees:
   lives in `pyproject.toml`.
 - Pyright is advisory, not a CI gate. Evaluated 2026-07-14 against the final
   `src/jarvis` layout: 313 errors across 91 files, later reduced to 274.
+  The story-v1.4.0 task-3 branch reports 316 after adding the MCP test
+  suite: 29 findings are in the newly added/modified MCP tests (test-double
+  and optional-narrowing noise of the already classified kinds below),
+  while `python -m pyright src/jarvis/tools` is clean at 0 errors.
   About 61% is structural noise from typing test doubles as concrete
   production classes and from a loosely-typed `JSONValue` union indexed
   positionally in tests; another ~18 findings come from ctypes/Win32 and

@@ -1,7 +1,7 @@
 # Story v1.4.0: MCP Integration
 
-**Status:** Planned. Task 1 (spike) may start now; tasks 5-6 need the
-v1.3.0 Control Center. **Release gate (human decision, 2026-07-14): the
+**Status:** In progress. Tasks 1-3 are completed; tasks 4-6 remain planned.
+**Release gate (human decision, 2026-07-14): the
 human will not approve shipping v1.4.0 without
 `tasks/backlog/mcp-egress-watchdog.md` landing first** - see the Release
 Gate section below.
@@ -74,7 +74,7 @@ mechanism, not the release-gate condition recorded here.
       well: no real MCP server may be configured under the old contract).
       Two-tier contract recorded in `PROJECT.md`, `VISION.md`, roadmap
       rule 3, and `CLAUDE.md`/`AGENTS.md` (2026-07-14).
-- [ ] v1.3.0 Control Center exists (gate for tasks 5-6 only).
+- [x] v1.3.0 Control Center exists (gate for tasks 5-6 only).
 - [x] Search provider choice accepted by the human (2026-07-14): no API
       key, minimal external identification. DuckDuckGo (unofficial,
       keyless client) is the default provider; self-hosted SearXNG is
@@ -106,7 +106,7 @@ mechanism, not the release-gate condition recorded here.
    Hard gate: no implementation before facts land in `PROJECT.md`.
 2. `story-v1.4.0-task-2-locality-contract-revision.md`
    Revise the locality contract explicitly across project docs.
-3. `story-v1.4.0-task-3-mcp-host-core.md`
+3. `done/story-v1.4.0-task-3-mcp-host-core.md`
    MCP client, tool registry, single interception point, switchable
    module state.
 4. `story-v1.4.0-task-4-model-presentation-layer.md`

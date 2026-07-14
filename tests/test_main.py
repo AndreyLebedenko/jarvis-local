@@ -39,6 +39,8 @@ from jarvis.audio.tts import BilingualTtsEngine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    McpServerSettings,
+    McpSettings,
     MicrophoneSettings,
     PiperTtsSettings,
     PromptSettings,
@@ -62,6 +64,7 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.dialog.time_context import format_time_context
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
+from jarvis.tools.host import McpModuleStatus
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -1294,6 +1297,60 @@ async def test_run_until_shutdown_cancels_tasks_and_unsubscribes():
     assert app.backend.calls == []
 
 
+async def test_run_until_shutdown_disables_mcp_host_when_present():
+    """run()'s startup calls app.mcp_host.enable() when MCP is configured
+    on; this is the matching teardown half - a live MCP connection must
+    not outlive clean shutdown."""
+    app = _fake_app()
+    disable_calls = []
+
+    class _FakeMcpHost:
+        async def disable(self) -> None:
+            disable_calls.append(1)
+
+    app.mcp_host = _FakeMcpHost()
+    subscriptions = wire(app)
+    shutdown_event = asyncio.Event()
+
+    shutdown_event.set()
+    await asyncio.wait_for(
+        run_until_shutdown(app, subscriptions, shutdown_event, []), timeout=2
+    )
+
+    assert disable_calls == [1]
+
+
+async def test_run_until_shutdown_disables_mcp_before_unwiring_subscriptions():
+    """Review finding 4: disable() publishes a SystemEvent the Status
+    Console's own subscription relays to the UI - unwiring that
+    subscription first would mean the UI silently never learns MCP went
+    offline. A subscription that is still active when disable() runs must
+    actually receive the event."""
+    app = _fake_app()
+    received: list = []
+
+    async def on_system_event(event) -> None:
+        received.append(event)
+
+    class _FakeMcpHost:
+        async def disable(self) -> None:
+            await app.bus.publish(
+                SystemEvent, SystemEvent(0.0, "MCP", EventLevel.INFO, "off")
+            )
+
+    app.mcp_host = _FakeMcpHost()
+    subscriptions = [*wire(app), (SystemEvent, on_system_event)]
+    app.bus.subscribe(SystemEvent, on_system_event)
+    shutdown_event = asyncio.Event()
+
+    shutdown_event.set()
+    await asyncio.wait_for(
+        run_until_shutdown(app, subscriptions, shutdown_event, []), timeout=2
+    )
+
+    assert len(received) == 1
+
+
 class _FakeKeyboardModuleForShutdownTest:
     def __init__(self) -> None:
         self.removed_handles: list[object] = []
@@ -1597,6 +1654,38 @@ def test_build_app_wires_the_configured_microphone_device_into_the_stream_factor
     app = build_app(settings, backend=_FakeBackend())
 
     assert app.audio_input._stream_factory.keywords == {"device": "USB Headset"}
+
+
+def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
+    """story-v1.4.0 task 3's own acceptance criterion: "off equals the
+    capability does not exist" must be a structural fact, not just
+    McpHost's own runtime behavior. Per the code-review revision, McpHost
+    is now always constructed (so a later live toggle has something to
+    call enable() on) - the structural guarantee lives in McpHost itself
+    being side-effect-free until enable() runs, asserted here as status
+    OFF and an empty registry rather than the object's mere absence."""
+    app = build_app(_settings(), backend=_FakeBackend())
+
+    assert app.mcp_host is not None
+    assert app.mcp_host.status == McpModuleStatus.OFF
+    assert app.mcp_host.enabled is False
+    assert app.mcp_host.registry.all() == ()
+
+
+def test_build_app_constructs_an_mcp_host_when_mcp_is_enabled():
+    settings = Settings(
+        mcp=McpSettings(
+            enabled=True, servers={"search": McpServerSettings(command="search-server")}
+        )
+    )
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    assert app.mcp_host is not None
+    # build_app() itself never connects - run() decides that based on
+    # settings.mcp.enabled, after build_app() returns.
+    assert app.mcp_host.status == McpModuleStatus.OFF
+    assert app.mcp_host.enabled is False  # constructed, not yet connected
 
 
 def test_build_app_wires_configured_bilingual_tts_engine(tmp_path):

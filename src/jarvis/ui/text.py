@@ -113,6 +113,26 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "reasoning_level_low": "Reasoning level: low",
         "reasoning_level_medium": "Reasoning level: medium",
         "reasoning_level_high": "Reasoning level: high",
+        # MCP host/interception system events (story-v1.4.0 task 3).
+        "mcp_enabled": "MCP enabled",
+        "mcp_enabled_degraded": "MCP enabled (not everything connected)",
+        "mcp_disabled": "MCP disabled",
+        "mcp_server_unavailable": "Server {server} is unavailable",
+        "mcp_server_disconnect_failed": "Error disconnecting server {server}",
+        "mcp_tool_name_collision": "Tool name collision: {tool} ({server})",
+        "mcp_server_call_failed": (
+            "Server {server} failed during a tool call and was marked unavailable"
+        ),
+        "mcp_calling_tool": "Calling tool {tool} ({provider}): {summary}",
+        "mcp_tool_call_failed": "Tool {tool} failed ({duration:.1f}s)",
+        "mcp_tool_call_finished": "{tool} ({provider}) finished in {duration:.1f}s",
+        "mcp_tool_call_cancelled": "Tool {tool} ({provider}) call was cancelled",
+        "mcp_call_rejected_disabled": "Tool call to {tool} rejected: MCP is disabled",
+        "mcp_call_rejected_unknown_tool": "Tool call rejected: unknown tool {tool}",
+        "mcp_call_rejected_tool_disabled": "Tool call rejected: {tool} is disabled",
+        "mcp_call_rejected_provider_not_connected": (
+            "Tool call to {tool} rejected: provider {provider} is not connected"
+        ),
     },
     "ru": {
         "warming_model": "Прогреваю модель...",
@@ -158,6 +178,30 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "reasoning_level_low": "Уровень мышления: низкий",
         "reasoning_level_medium": "Уровень мышления: средний",
         "reasoning_level_high": "Уровень мышления: высокий",
+        "mcp_enabled": "MCP включён",
+        "mcp_enabled_degraded": "MCP включён (не всё подключилось)",
+        "mcp_disabled": "MCP выключен",
+        "mcp_server_unavailable": "Сервер «{server}» недоступен",
+        "mcp_server_disconnect_failed": "Ошибка отключения сервера «{server}»",
+        "mcp_tool_name_collision": "Конфликт имён инструментов: «{tool}» ({server})",
+        "mcp_server_call_failed": (
+            "Сервер «{server}» отказал во время вызова инструмента и помечен "
+            "недоступным"
+        ),
+        "mcp_calling_tool": "Вызов инструмента «{tool}» ({provider}): {summary}",
+        "mcp_tool_call_failed": (
+            "Инструмент «{tool}» завершился с ошибкой ({duration:.1f} с)"
+        ),
+        "mcp_tool_call_finished": "«{tool}» ({provider}) завершён за {duration:.1f} с",
+        "mcp_tool_call_cancelled": "Вызов «{tool}» ({provider}) отменён",
+        "mcp_call_rejected_disabled": "Вызов «{tool}» отклонён: MCP выключен",
+        "mcp_call_rejected_unknown_tool": (
+            "Вызов отклонён: неизвестный инструмент «{tool}»"
+        ),
+        "mcp_call_rejected_tool_disabled": "Вызов отклонён: «{tool}» отключён",
+        "mcp_call_rejected_provider_not_connected": (
+            "Вызов «{tool}» отклонён: провайдер «{provider}» не подключён"
+        ),
     },
 }
 
@@ -172,5 +216,9 @@ def module_label(module: ModuleId, language: str = DEFAULT_UI_LANGUAGE) -> str:
     return _MODULE_LABELS[language][module]
 
 
-def ui_text(key: str, language: str = DEFAULT_UI_LANGUAGE, **format_args: str) -> str:
+def ui_text(
+    key: str,
+    language: str = DEFAULT_UI_LANGUAGE,
+    **format_args: str | int | float,
+) -> str:
     return _MESSAGES[language][key].format(**format_args)

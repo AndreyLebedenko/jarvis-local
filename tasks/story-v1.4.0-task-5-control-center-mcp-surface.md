@@ -1,7 +1,8 @@
 # Task: Control Center MCP surface
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. Blocked by task 3 and by v1.3.0 Control Center.
+**Status:** Planned. Prerequisite task 3 and the v1.3.0 Control Center are
+completed.
 **Release:** v1.4.0
 
 ## Summary

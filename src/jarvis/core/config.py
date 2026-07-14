@@ -278,6 +278,30 @@ class ClipboardSettings:
 
 
 @dataclass(frozen=True)
+class McpServerSettings:
+    """One configured MCP tool-provider component (VISION.md's component
+    model sense): a stdio subprocess command plus its own enable flag, so
+    a single server can be turned off without touching [mcp].enabled -
+    the module-wide switch story-v1.4.0 task 3's registry/interception
+    gate on."""
+
+    command: str
+    args: tuple[str, ...] = ()
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class McpSettings:
+    """Off by default per the two-tier locality contract (PROJECT.md):
+    story-v1.4.0 task 3's McpHost is always constructed as the persistent
+    controller, but with enabled=False it stays inert: no client object,
+    server process, connection, or registry entry exists."""
+
+    enabled: bool = False
+    servers: dict[str, McpServerSettings] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class MicrophoneSettings:
     # "" means "use sounddevice's default input device" (audio_in.py's
     # existing behavior before this field existed - see
@@ -343,6 +367,7 @@ class Settings:
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
     ui: UiSettings = field(default_factory=UiSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
+    mcp: McpSettings = field(default_factory=McpSettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -356,6 +381,7 @@ _SECTIONS: dict[str, type] = {
     "microphone": MicrophoneSettings,
     "ui": UiSettings,
     "prompts": PromptSettings,
+    "mcp": McpSettings,
 }
 
 SUPPORTED_UI_LANGUAGES = ("en", "ru")
@@ -399,6 +425,8 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         return _build_ui_section(section_name, raw)
     if cls is PromptSettings:
         return _build_prompts_section(section_name, raw)
+    if cls is McpSettings:
+        return _build_mcp_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -447,6 +475,76 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
                 "prompt is almost certainly a config mistake"
             )
     return settings
+
+
+def _build_mcp_section(section_name: str, raw: dict[str, object]) -> "McpSettings":
+    known_fields = {"enabled", "servers"}
+    unknown_keys = set(raw) - known_fields
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [{section_name}]: {', '.join(sorted(unknown_keys))}"
+        )
+    enabled = raw.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError(
+            f"[{section_name}].enabled must be bool, got {type(enabled).__name__}: "
+            f"{enabled!r}"
+        )
+    servers = _build_mcp_servers(section_name, raw.get("servers", {}))
+    return McpSettings(enabled=enabled, servers=servers)
+
+
+def _build_mcp_servers(section_name: str, raw: object) -> dict[str, McpServerSettings]:
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"[{section_name}].servers must be dict, got {type(raw).__name__}: {raw!r}"
+        )
+    servers: dict[str, McpServerSettings] = {}
+    for name, server_raw in raw.items():
+        if not isinstance(name, str):
+            raise ConfigError(
+                f"MCP server keys must be str, got {type(name).__name__}: {name!r}"
+            )
+        if not isinstance(server_raw, dict):
+            raise ConfigError(
+                f"[{section_name}.servers.{name}] must be dict, got "
+                f"{type(server_raw).__name__}: {server_raw!r}"
+            )
+        servers[name] = _build_mcp_server(section_name, name, server_raw)
+    return servers
+
+
+def _build_mcp_server(
+    section_name: str, name: str, raw: dict[str, object]
+) -> McpServerSettings:
+    known_fields = {"command", "args", "enabled"}
+    unknown_keys = set(raw) - known_fields
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [{section_name}.servers.{name}]: "
+            f"{', '.join(sorted(unknown_keys))}"
+        )
+    if "command" not in raw:
+        raise ConfigError(f"[{section_name}.servers.{name}].command is required")
+    command = raw["command"]
+    if not isinstance(command, str) or not command.strip():
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].command must be a non-empty string"
+        )
+    args_raw = raw.get("args", [])
+    if not isinstance(args_raw, list) or not all(
+        isinstance(item, str) for item in args_raw
+    ):
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].args must be a list of strings"
+        )
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].enabled must be bool, got "
+            f"{type(enabled).__name__}: {enabled!r}"
+        )
+    return McpServerSettings(command=command, args=tuple(args_raw), enabled=enabled)
 
 
 def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:

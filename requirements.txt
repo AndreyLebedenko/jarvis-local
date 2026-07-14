@@ -1,5 +1,6 @@
 httpx>=0.28
 aiohttp>=3.11
+mcp>=1.28
 # torchaudio>=2.9 drops its built-in wav decoder in favor of the separate
 # torchcodec package - silero-vad's read_audio() (test fixture loading only)
 # then fails with "torchcodec is required". Capped below 2.9 to keep the
