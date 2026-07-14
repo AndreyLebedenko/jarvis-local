@@ -19,6 +19,8 @@ tools, and (nice-to-have) a read-only list of registered tools.
   - indication reflects the engine's authoritative module state, not the
     last button press - connecting/degraded states show as such;
   - the toggle is live (task-3 runtime transitions), not restart-to-apply.
+  - persistence updates only `[mcp].enabled` in `config.ui.toml`; it preserves
+    existing UI overrides and never snapshots unrelated effective settings.
 - Data-source axis: a turn whose tool calls left the machine is labeled
   distinctly, per the task-2 contract wording; inference locality display
   is unaffected. This is the first real second value on the axis the
@@ -49,6 +51,8 @@ tools, and (nice-to-have) a read-only list of registered tools.
       degraded cases (no fake success).
 - [x] MCP-off hides or clearly zeroes all MCP presence in the UI; nothing
       suggests the capability exists.
+- [x] Toggling MCP persists only `[mcp].enabled`; unrelated UI overrides stay
+      byte-for-byte unchanged and absent overrides remain absent.
 - [x] Data-source axis tests cover: local-only turn, external-tool turn,
       LAN turn, unknown-boundary turn, multi-call precedence, and
       independence from Open/Hidden visibility mode.

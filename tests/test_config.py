@@ -22,6 +22,7 @@ from jarvis.core.config import (
     VadSettings,
     load_settings,
     tts_route_field_specs,
+    update_ui_config_mcp_enabled,
     write_ui_config,
 )
 
@@ -1315,6 +1316,62 @@ def test_write_ui_config_persists_live_mcp_enabled_state(tmp_path):
 
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
     assert settings.mcp.enabled is True
+
+
+def test_update_ui_config_mcp_enabled_creates_only_the_mcp_override(tmp_path):
+    config_path = tmp_path / "config.toml"
+    ui_config_path = tmp_path / "config.ui.toml"
+    config_path.write_text('[backend]\nmodel = "before-toggle"\n', encoding="utf-8")
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=True)
+
+    config_path.write_text('[backend]\nmodel = "after-toggle"\n', encoding="utf-8")
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert "[mcp]\nenabled = true" in contents
+    assert "[backend]" not in contents
+    assert "[microphone]" not in contents
+    assert "[ui]" not in contents
+    assert "[vad]" not in contents
+    assert "[tts" not in contents
+    settings = load_settings(config_path, ui_path=ui_config_path)
+    assert settings.backend.model == "after-toggle"
+    assert settings.mcp.enabled is True
+
+
+def test_update_ui_config_mcp_enabled_preserves_every_other_byte(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = (
+        "# Existing UI selections stay machine-owned.\n"
+        "[backend]\n"
+        'model = "selected-model"\n'
+        "\n"
+        "[mcp]\n"
+        "enabled = false\n"
+        "\n"
+        "[vad]\n"
+        "threshold = 0.75\n"
+    )
+    ui_config_path.write_text(original, encoding="utf-8")
+    original_bytes = ui_config_path.read_bytes()
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=True)
+
+    assert ui_config_path.read_bytes() == original_bytes.replace(
+        b"enabled = false", b"enabled = true"
+    )
+
+
+def test_update_ui_config_mcp_enabled_appends_to_a_legacy_ui_file(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = '[backend]\nmodel = "selected-model"\n'
+    ui_config_path.write_text(original, encoding="utf-8")
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=False)
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert contents.startswith(original)
+    assert contents.endswith("\n[mcp]\nenabled = false\n")
 
 
 def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):

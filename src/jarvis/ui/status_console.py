@@ -19,6 +19,7 @@ from jarvis.core.config import (
     VadSettings,
     tts_route_field_specs,
     tts_route_values,
+    update_ui_config_mcp_enabled,
     write_ui_config,
 )
 from jarvis.core.system_log import publish_system_event
@@ -470,7 +471,9 @@ class StatusConsoleApi:
             await self._mcp_host.enable()
         else:
             await self._mcp_host.disable()
-        self._write_ui_config(mcp_enabled=self._mcp_host.enabled)
+        update_ui_config_mcp_enabled(
+            self._ui_config_path, enabled=self._mcp_host.enabled
+        )
 
     def reset_context(self) -> None:
         self._schedule(self._reset_context_async())
@@ -707,14 +710,3 @@ class StatusConsoleApi:
             ui_message=ui_text("config_saved_restart_to_apply", self._language),
         )
         await self._bus.publish(UiConfigSaved, UiConfigSaved())
-
-    def _write_ui_config(self, *, mcp_enabled: bool) -> None:
-        write_ui_config(
-            self._ui_config_path,
-            model=self._settings.backend.model,
-            microphone_device=self._settings.microphone.device,
-            ui_language=self._settings.ui.language,
-            vad=self._settings.vad,
-            tts_routes=(self._settings.tts.languages or None),
-            mcp_enabled=mcp_enabled,
-        )

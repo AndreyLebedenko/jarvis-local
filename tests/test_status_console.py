@@ -220,6 +220,13 @@ async def test_mcp_control_applies_live_then_persists_authoritative_state(tmp_pa
     await asyncio.sleep(0.05)
 
     assert host.status is McpModuleStatus.DEGRADED
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert "[mcp]\nenabled = true" in contents
+    assert "[backend]" not in contents
+    assert "[microphone]" not in contents
+    assert "[ui]" not in contents
+    assert "[vad]" not in contents
+    assert "[tts" not in contents
     assert (
         load_settings(
             tmp_path / "does-not-exist.toml", ui_path=ui_config_path

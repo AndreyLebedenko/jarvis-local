@@ -1186,14 +1186,13 @@ restart-to-apply):
 
 - `config.py` gained `MicrophoneSettings` (`device: str = ""`, ""
   meaning sounddevice's default input device) and `write_ui_config()`
-  - the write-side counterpart to `load_settings()`, and the *only*
-  writer of `config.ui.toml` anywhere in the project. It always rewrites
-  the whole file with exactly `[backend].model` and `[microphone].device`
-  (iteration 1 has nothing else to preserve there) and never opens
-  `config.toml` - structurally unable to overwrite the human-edited file
-  regardless of what path it is given. Values are `json.dumps()`-escaped
-  into TOML basic strings (stdlib `tomllib` is read-only, so this avoids
-  adding a TOML-writing dependency for two known-simple string fields).
+  - the full-snapshot write-side counterpart to `load_settings()`. It always
+  rewrites the whole file with the configuration-menu selection and never
+  opens `config.toml` - structurally unable to overwrite the human-edited
+  file regardless of what path it is given. Values are `json.dumps()`-
+  escaped into TOML basic strings (stdlib `tomllib` is read-only). The only
+  other writer is v1.4's narrow `update_ui_config_mcp_enabled()`, which
+  preserves the existing UI layer and changes only `[mcp].enabled`.
 - `audio_in.py` gained `stream_factory_for_device(device)` - binds
   `config.microphone.device` into a `StreamFactory` via
   `functools.partial`, so `_default_stream_factory`'s new `device`
@@ -1921,9 +1920,12 @@ second transport or allowing the browser to infer engine state.
   unavailable.
 - `StatusConsoleApi` calls `McpHost.enable()`/`disable()` on the engine loop,
   then persists the host's confirmed `enabled` result to `[mcp].enabled` in
-  `config.ui.toml`. This is a narrow live-lifecycle exception to the general
-  restart-to-apply config rule; there is still no file watcher or generic
-  runtime config reload.
+  `config.ui.toml`. `update_ui_config_mcp_enabled()` preserves every existing
+  UI override and, when the file is absent, creates only the MCP section; a
+  toggle cannot materialize effective model, microphone, UI, VAD, or TTS
+  values as new overrides. This is a narrow live-lifecycle exception to the
+  general restart-to-apply config rule; there is still no file watcher or
+  generic runtime config reload.
 - The turn data-source projection resets to `local_only` on
   `ModelRequestStarted` and consumes only typed
   `ToolCallStarted.data_boundary`. Its precedence is
