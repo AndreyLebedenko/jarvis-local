@@ -16,6 +16,7 @@ from aiohttp import web
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     TTS_ROUTE_TYPES,
+    DataBoundary,
     Settings,
     TtsLanguageSettings,
     VadSettings,
@@ -24,8 +25,10 @@ from jarvis.core.config import (
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
     DataLocality,
+    DataSource,
     ModelRequestItem,
     ModelRequestSummary,
     ModuleHealth,
@@ -41,6 +44,7 @@ from jarvis.ui.status_console import (
     UiConfigSaved,
     config_values_payload,
     data_locality_payload,
+    data_source_payload,
     model_request_payload,
     module_health_payload,
     runtime_state_payload,
@@ -204,6 +208,8 @@ class ControlApi(Protocol):
 
     def set_reasoning_level(self, level_value: str) -> None: ...
 
+    def set_mcp_enabled(self, enabled: bool) -> None: ...
+
     def reset_context(self) -> None: ...
 
     def reset_module(self, module_id: str) -> None: ...
@@ -236,6 +242,7 @@ class UiStateStore:
         model_label: str = "",
         runtime_state: RuntimeState = RuntimeState.IDLE,
         data_locality: DataLocality = DataLocality.LOCAL,
+        data_source: DataSource = DataSource.LOCAL_ONLY,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         language: str = DEFAULT_UI_LANGUAGE,
@@ -249,6 +256,8 @@ class UiStateStore:
             "modules": {},
             "last_model_request": {"timestamp": None, "items": []},
             "data_locality": cast(JsonObject, data_locality_payload(data_locality)),
+            "data_source": cast(JsonObject, data_source_payload(data_source)),
+            "mcp": {"status": "off", "enabled": False, "tools": []},
             "model": {"label": model_label},
             "system_events": [],
             "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
@@ -300,6 +309,34 @@ class UiStateStore:
         return self._replace(
             "data_locality", cast(JsonObject, data_locality_payload(locality))
         )
+
+    def set_data_source(self, source: DataSource) -> JsonObject | None:
+        return self._replace(
+            "data_source", cast(JsonObject, data_source_payload(source))
+        )
+
+    def record_tool_boundary(self, boundary: DataBoundary) -> JsonObject | None:
+        source_by_boundary = {
+            DataBoundary.LOCAL: DataSource.LOCAL_ONLY,
+            DataBoundary.LAN: DataSource.LAN,
+            DataBoundary.INTERNET: DataSource.INTERNET,
+            DataBoundary.UNKNOWN: DataSource.UNKNOWN,
+        }
+        precedence = {
+            DataSource.LOCAL_ONLY: 0,
+            DataSource.UNKNOWN: 1,
+            DataSource.LAN: 2,
+            DataSource.INTERNET: 3,
+        }
+        current_payload = cast(JsonObject, self._state["data_source"])
+        current = DataSource(cast(str, current_payload["source"]))
+        candidate = source_by_boundary[boundary]
+        if precedence[candidate] <= precedence[current]:
+            return None
+        return self.set_data_source(candidate)
+
+    def set_mcp_state(self, state: JsonObject) -> JsonObject | None:
+        return self._replace("mcp", state)
 
     def set_last_model_request(self, summary: ModelRequestSummary) -> JsonObject | None:
         return self._replace(
@@ -461,6 +498,12 @@ class UiTransportServer:
     def set_data_locality(self, locality: DataLocality) -> None:
         self._publish_delta(self._state.set_data_locality(locality))
 
+    def set_data_source(self, source: DataSource) -> None:
+        self._publish_delta(self._state.set_data_source(source))
+
+    def set_mcp_state(self, state: JsonObject) -> None:
+        self._publish_delta(self._state.set_mcp_state(state))
+
     def set_last_model_request(self, summary: ModelRequestSummary) -> None:
         self._publish_delta(self._state.set_last_model_request(summary))
 
@@ -480,6 +523,7 @@ class UiTransportServer:
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
+            (ToolCallStarted, self._on_tool_call_started),
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
@@ -510,6 +554,7 @@ class UiTransportServer:
         self._publish_delta(self._state.set_module_health(health))
 
     async def _on_model_request_started(self, event: ModelRequestStarted) -> None:
+        self._publish_delta(self._state.set_data_source(DataSource.LOCAL_ONLY))
         summary = ModelRequestSummary(
             timestamp=event.timestamp,
             items=tuple(
@@ -525,6 +570,9 @@ class UiTransportServer:
             ),
         )
         self._publish_delta(self._state.set_last_model_request(summary))
+
+    async def _on_tool_call_started(self, event: ToolCallStarted) -> None:
+        self._publish_delta(self._state.record_tool_boundary(event.data_boundary))
 
     async def _on_model_options_available(self, event: ModelOptionsAvailable) -> None:
         self._publish_delta(self._state.set_model_options(event.options, event.current))
@@ -719,6 +767,7 @@ class UiTransportServer:
         handlers: dict[str, Callable[[JsonObject], None]] = {
             "toggle_thinking": self._toggle_thinking,
             "set_reasoning_level": self._set_reasoning_level,
+            "set_mcp_enabled": self._set_mcp_enabled,
             "reset_context": self._reset_context,
             "reset_module": self._reset_module,
             "set_visibility_mode": self._set_visibility_mode,
@@ -745,6 +794,12 @@ class UiTransportServer:
         except ValueError:
             raise ProtocolError(f"unknown reasoning level: {level_value!r}") from None
         self._control_api.set_reasoning_level(level_value)
+
+    def _set_mcp_enabled(self, arguments: JsonObject) -> None:
+        enabled = arguments.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ProtocolError("set_mcp_enabled requires arguments.enabled boolean")
+        self._control_api.set_mcp_enabled(enabled)
 
     def _reset_context(self, arguments: JsonObject) -> None:
         del arguments

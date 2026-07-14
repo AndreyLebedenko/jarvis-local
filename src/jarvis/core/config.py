@@ -24,13 +24,18 @@ higher-precedence layer over the same schema, never a second, looser
 source of truth, and precedence is per-key, not per-file: a key set in
 config.toml but omitted from config.ui.toml still applies. Restart-to-
 apply: load_settings() runs once at startup (main.py's run()/
-run_with_status_console()); writing config.ui.toml while Jarvis is
-already running has no live effect until the next start - there is no
-file-watching or hot-reload here, by design (see PROJECT.md's Architecture
-v1.2.4 section - "Do not implement live reconfiguration").
+run_with_status_console()); writing restart-bound settings to config.ui.toml
+while Jarvis is already running has no live effect until the next start.
+The v1.4 MCP module switch is the explicit exception: its Control Center
+action first calls McpHost's live lifecycle API, then persists the confirmed
+state by updating only [mcp].enabled in this same layered file for the next
+start. There is still no file-watching or generic hot-reload (see PROJECT.md's
+Architecture v1.2.4 section - "Do not implement live reconfiguration").
 """
 
+import enum
 import json
+import re
 import tomllib
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
@@ -39,9 +44,27 @@ from typing import Any, get_args, get_origin
 DEFAULT_CONFIG_PATH = Path("config.toml")
 DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
 
+_TOML_SECTION_LINE = re.compile(
+    r"^[ \t]*\[[ \t]*(?P<name>[A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?(?:\r?\n)?$"
+)
+_TOML_ENABLED_LINE = re.compile(r"^(?P<indent>[ \t]*)enabled[ \t]*=")
+
 
 class ConfigError(Exception):
     pass
+
+
+class DataBoundary(enum.Enum):
+    """Furthest declared destination an MCP tool may send request data to.
+
+    UNKNOWN is the honest default: absence of configuration must never be
+    interpreted as proof that a provider stays on this machine.
+    """
+
+    LOCAL = "local"
+    LAN = "lan"
+    INTERNET = "internet"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -288,6 +311,11 @@ class McpServerSettings:
     command: str
     args: tuple[str, ...] = ()
     enabled: bool = True
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN
+    tool_boundaries: dict[str, DataBoundary] = field(default_factory=dict)
+
+    def boundary_for(self, tool_name: str) -> DataBoundary:
+        return self.tool_boundaries.get(tool_name, self.data_boundary)
 
 
 @dataclass(frozen=True)
@@ -549,7 +577,13 @@ def _build_mcp_servers(section_name: str, raw: object) -> dict[str, McpServerSet
 def _build_mcp_server(
     section_name: str, name: str, raw: dict[str, object]
 ) -> McpServerSettings:
-    known_fields = {"command", "args", "enabled"}
+    known_fields = {
+        "command",
+        "args",
+        "enabled",
+        "data_boundary",
+        "tool_boundaries",
+    }
     unknown_keys = set(raw) - known_fields
     if unknown_keys:
         raise ConfigError(
@@ -576,7 +610,44 @@ def _build_mcp_server(
             f"[{section_name}.servers.{name}].enabled must be bool, got "
             f"{type(enabled).__name__}: {enabled!r}"
         )
-    return McpServerSettings(command=command, args=tuple(args_raw), enabled=enabled)
+    data_boundary = _parse_data_boundary(
+        raw.get("data_boundary", DataBoundary.UNKNOWN.value),
+        f"[{section_name}.servers.{name}].data_boundary",
+    )
+    tool_boundaries_raw = raw.get("tool_boundaries", {})
+    if not isinstance(tool_boundaries_raw, dict) or not all(
+        isinstance(tool_name, str) for tool_name in tool_boundaries_raw
+    ):
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].tool_boundaries must be a table"
+        )
+    tool_boundaries = {
+        tool_name: _parse_data_boundary(
+            boundary,
+            f"[{section_name}.servers.{name}.tool_boundaries].{tool_name}",
+        )
+        for tool_name, boundary in tool_boundaries_raw.items()
+    }
+    return McpServerSettings(
+        command=command,
+        args=tuple(args_raw),
+        enabled=enabled,
+        data_boundary=data_boundary,
+        tool_boundaries=tool_boundaries,
+    )
+
+
+def _parse_data_boundary(value: object, location: str) -> DataBoundary:
+    if not isinstance(value, str):
+        raise ConfigError(f"{location} data boundary must be a string")
+    try:
+        return DataBoundary(value)
+    except ValueError:
+        allowed = ", ".join(boundary.value for boundary in DataBoundary)
+        raise ConfigError(
+            f"{location} has unknown data boundary {value!r}; "
+            f"expected one of: {allowed}"
+        ) from None
 
 
 def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
@@ -823,24 +894,23 @@ def write_ui_config(
     ui_language: str | None = None,
     vad: VadSettings | None = None,
     tts_routes: dict[str, TtsLanguageSettings] | None = None,
+    mcp_enabled: bool | None = None,
 ) -> None:
     """Writes config.ui.toml (story-v1.2.4-task-3-config-menu-iteration-1.md:
-    "Saving writes only the UI config layer"). Never opens config.toml -
-    this is the only writer this project has for any config file, and it
-    only ever targets the UI layer's own path, so it structurally cannot
-    overwrite the human-edited file regardless of what path argument it is
-    given.
+    "Saving writes only the UI config layer"). This full-snapshot writer is
+    used only by the explicit configuration-menu save. It never opens
+    config.toml, so it structurally cannot overwrite the human-edited file
+    regardless of what path argument it is given.
 
-    Always rewrites the whole file (config.ui.toml has no other writer and
-    is machine-owned, not hand-edited - see this module's docstring).
-    Iteration-2 fields are optional: None omits the section entirely, so
-    the layered loader falls through to config.toml or the built-in
-    defaults. tts_routes is all-or-nothing by contract: a customized
-    [tts.languages] must cover every routed language (see tts.py's
-    build_tts_engine), so callers pass either a complete route dict or
-    None for the Silero-only default. json.dumps() produces quoted,
-    escaped TOML basic strings without a TOML-writing dependency
-    (Python's stdlib tomllib is read-only)."""
+    Always rewrites the whole machine-owned file. Iteration-2 fields are
+    optional: None omits the section entirely, so the layered loader falls
+    through to config.toml or the built-in defaults. tts_routes is all-or-
+    nothing by contract: a customized [tts.languages] must cover every routed
+    language (see tts.py's build_tts_engine), so callers pass either a complete
+    route dict or None for the Silero-only default. json.dumps() produces
+    quoted, escaped TOML basic strings without a TOML-writing dependency
+    (Python's stdlib tomllib is read-only). The live MCP toggle instead uses
+    update_ui_config_mcp_enabled() to preserve all unrelated overrides."""
     lines = [
         "# Auto-generated by the Jarvis Status Console. Do not edit by",
         "# hand - saving from the config menu overwrites this file.",
@@ -874,7 +944,91 @@ def write_ui_config(
                 for name, value in tts_route_values(route).items()
                 if value is not None
             )
+    if mcp_enabled is not None:
+        lines += ["", "[mcp]", f"enabled = {str(mcp_enabled).lower()}"]
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def update_ui_config_mcp_enabled(path: str | Path, *, enabled: bool) -> None:
+    """Updates only ``[mcp].enabled`` in the machine-owned UI layer."""
+    path = Path(path)
+    if not path.exists():
+        path.write_text(
+            "# Auto-generated by the Jarvis Status Console. Do not edit by\n"
+            "# hand - saving from the config menu overwrites this file.\n"
+            "[mcp]\n"
+            f"enabled = {str(enabled).lower()}\n",
+            encoding="utf-8",
+        )
+        return
+
+    raw = _read_toml_file(path)
+    _validate_raw_config(raw, path)
+    contents = path.read_bytes().decode("utf-8")
+    newline = "\r\n" if "\r\n" in contents else "\n"
+    lines = contents.splitlines(keepends=True)
+    section_start, section_end, first_nested_section = _find_mcp_section(lines)
+    value = str(enabled).lower()
+
+    if section_start is None:
+        insertion = (
+            first_nested_section if first_nested_section is not None else len(lines)
+        )
+        _insert_mcp_section(lines, insertion, value, newline)
+    else:
+        _set_mcp_enabled(lines, section_start, section_end, value, newline)
+    path.write_bytes("".join(lines).encode("utf-8"))
+
+
+def _find_mcp_section(lines: list[str]) -> tuple[int | None, int, int | None]:
+    section_start: int | None = None
+    section_end = len(lines)
+    first_nested_section: int | None = None
+    for index, line in enumerate(lines):
+        match = _TOML_SECTION_LINE.match(line)
+        if match is None:
+            continue
+        name = match.group("name")
+        if name == "mcp":
+            section_start = index
+            continue
+        if name.startswith("mcp.") and first_nested_section is None:
+            first_nested_section = index
+        if section_start is not None:
+            section_end = index
+            break
+    return section_start, section_end, first_nested_section
+
+
+def _insert_mcp_section(
+    lines: list[str], insertion: int, value: str, newline: str
+) -> None:
+    if insertion > 0 and not lines[insertion - 1].endswith(("\n", "\r")):
+        lines[insertion - 1] += newline
+    if insertion > 0 and lines[insertion - 1].strip():
+        lines.insert(insertion, newline)
+        insertion += 1
+    lines.insert(insertion, f"[mcp]{newline}enabled = {value}{newline}")
+
+
+def _set_mcp_enabled(
+    lines: list[str],
+    section_start: int,
+    section_end: int,
+    value: str,
+    newline: str,
+) -> None:
+    for index in range(section_start + 1, section_end):
+        match = _TOML_ENABLED_LINE.match(lines[index])
+        if match is None:
+            continue
+        line_ending = newline if lines[index].endswith(("\n", "\r")) else ""
+        lines[index] = f"{match.group('indent')}enabled = {value}{line_ending}"
+        return
+
+    if section_end > 0 and not lines[section_end - 1].endswith(("\n", "\r")):
+        lines[section_end - 1] += newline
+    lines.insert(section_end, f"enabled = {value}{newline}")
 
 
 def _toml_scalar(value: TtsFieldValue) -> str:

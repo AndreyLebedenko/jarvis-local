@@ -1186,14 +1186,13 @@ restart-to-apply):
 
 - `config.py` gained `MicrophoneSettings` (`device: str = ""`, ""
   meaning sounddevice's default input device) and `write_ui_config()`
-  - the write-side counterpart to `load_settings()`, and the *only*
-  writer of `config.ui.toml` anywhere in the project. It always rewrites
-  the whole file with exactly `[backend].model` and `[microphone].device`
-  (iteration 1 has nothing else to preserve there) and never opens
-  `config.toml` - structurally unable to overwrite the human-edited file
-  regardless of what path it is given. Values are `json.dumps()`-escaped
-  into TOML basic strings (stdlib `tomllib` is read-only, so this avoids
-  adding a TOML-writing dependency for two known-simple string fields).
+  - the full-snapshot write-side counterpart to `load_settings()`. It always
+  rewrites the whole file with the configuration-menu selection and never
+  opens `config.toml` - structurally unable to overwrite the human-edited
+  file regardless of what path it is given. Values are `json.dumps()`-
+  escaped into TOML basic strings (stdlib `tomllib` is read-only). The only
+  other writer is v1.4's narrow `update_ui_config_mcp_enabled()`, which
+  preserves the existing UI layer and changes only `[mcp].enabled`.
 - `audio_in.py` gained `stream_factory_for_device(device)` - binds
   `config.microphone.device` into a `StreamFactory` via
   `functools.partial`, so `_default_stream_factory`'s new `device`
@@ -1793,6 +1792,21 @@ dialog path, task 5 wires a Control Center switch.
   paired `SystemEvent` - a consumer must never have to parse the
   localized `ui_message` string to recover which tool, provider, or
   duration a call involved.
+- **Declared MCP data boundaries (human-approved 2026-07-14).** Each
+  `[mcp.servers.<name>]` declares a default `data_boundary` of `local`,
+  `lan`, `internet`, or `unknown`; optional
+  `[mcp.servers.<name>.tool_boundaries]` entries override that default for
+  mixed-boundary servers. Omission resolves to `unknown`, never silently
+  to `local` or `internet`. `McpHost` resolves the effective value while
+  registering each tool, and both `ToolCallStarted` and
+  `ToolCallFinished` carry it as typed `DataBoundary` data. The value is a
+  declared maximum authorized reach, not evidence from packet monitoring;
+  the separate egress-watchdog story may later enforce or observe it.
+  Task 5's data-source projection treats `local` as on-device, `lan` and
+  `internet` as leaving the machine, and `unknown` as explicitly
+  unclassified. If a turn uses several tools, its display precedence is
+  `internet > lan > unknown > local`; inference locality remains the
+  independent `DataLocality` axis.
 - `StdioMcpClient` wraps the official MCP Python SDK (`mcp>=1.28`, added
   to `requirements.txt`), imported lazily inside the connection-owner
   task started by `connect()` (matching `tts_piper.py`'s precedent) so the
@@ -1891,6 +1905,36 @@ tool round trip; MCP clients remain reachable only through
   Exactly the final answer does, including the existing zero-metrics fallback
   when its stream ends without `done: true`, preserving the v1.2.3 turn-
   termination guarantee.
+
+## Architecture v1.4.0 (Control Center MCP surface)
+
+See `tasks/done/story-v1.4.0-task-5-control-center-mcp-surface.md`. The existing
+local WebSocket `state`/`control` channels now expose MCP without adding a
+second transport or allowing the browser to infer engine state.
+
+- `McpModuleStatusChanged` is the only live toggle-state authority. The UI
+  sends a target boolean but does not update optimistically; snapshots and
+  deltas render `off`, `connecting`, `on`, `degraded`, or `disconnecting`.
+  `off` always carries an empty tool list. `on`/`degraded` may carry the
+  registry's read-only tool snapshot; transition states mark entries
+  unavailable.
+- `StatusConsoleApi` calls `McpHost.enable()`/`disable()` on the engine loop,
+  then persists the host's confirmed `enabled` result to `[mcp].enabled` in
+  `config.ui.toml`. `update_ui_config_mcp_enabled()` preserves every existing
+  UI override and, when the file is absent, creates only the MCP section; a
+  toggle cannot materialize effective model, microphone, UI, VAD, or TTS
+  values as new overrides. This is a narrow live-lifecycle exception to the
+  general restart-to-apply config rule; there is still no file watcher or
+  generic runtime config reload.
+- The turn data-source projection resets to `local_only` on
+  `ModelRequestStarted` and consumes only typed
+  `ToolCallStarted.data_boundary`. Its precedence is
+  `internet > lan > unknown > local`; rejected calls that never publish
+  `ToolCallStarted` cannot falsely mark a turn as off-machine.
+  `VisibilityMode` and inference `DataLocality` remain independent state
+  fields and are never mutated by this projection.
+- Tool call/outcome `SystemEvent` messages continue through the existing
+  event panel. No separate audit window or untyped parsing path was added.
 
 ## Project verification contract (v1.2.2)
 

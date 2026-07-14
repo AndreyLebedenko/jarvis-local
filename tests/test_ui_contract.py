@@ -2,6 +2,7 @@ import pytest
 
 from jarvis.ui.contract import (
     DataLocality,
+    DataSource,
     EventLevel,
     HealthStatus,
     ModuleHealth,
@@ -87,3 +88,12 @@ def test_visibility_mode_has_open_and_hidden_only():
 
 def test_data_locality_has_local_and_external_only():
     assert {locality.value for locality in DataLocality} == {"local", "external"}
+
+
+def test_data_source_distinguishes_declared_tool_boundaries():
+    assert {source.value for source in DataSource} == {
+        "local_only",
+        "lan",
+        "internet",
+        "unknown",
+    }

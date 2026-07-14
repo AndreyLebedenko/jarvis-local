@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import DataBoundary
 from jarvis.tools.interception import (
     ToolCallFinished,
     ToolCallStarted,
@@ -63,10 +64,43 @@ def _registry_with(tool: RegisteredTool) -> ToolRegistry:
     return registry
 
 
-def _enabled_tool(name: str = "web_search", enabled: bool = True) -> RegisteredTool:
+def _enabled_tool(
+    name: str = "web_search",
+    enabled: bool = True,
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN,
+) -> RegisteredTool:
     return RegisteredTool(
-        name=name, description="", schema={}, provider="search", enabled=enabled
+        name=name,
+        description="",
+        schema={},
+        provider="search",
+        enabled=enabled,
+        data_boundary=data_boundary,
     )
+
+
+async def test_dispatch_events_carry_the_registered_tool_data_boundary():
+    bus = EventBus()
+    started = await _collect(bus, ToolCallStarted)
+    finished = await _collect(bus, ToolCallFinished)
+    tool = _enabled_tool(data_boundary=DataBoundary.INTERNET)
+    dispatcher = _dispatcher(bus, _registry_with(tool), {"search": FakeClient()})
+
+    await dispatcher.dispatch("web_search", {"query": "weather"})
+
+    assert started[0].data_boundary is DataBoundary.INTERNET
+    assert finished[0].data_boundary is DataBoundary.INTERNET
+
+
+async def test_rejected_registered_tool_keeps_its_data_boundary_in_outcome():
+    bus = EventBus()
+    finished = await _collect(bus, ToolCallFinished)
+    tool = _enabled_tool(enabled=False, data_boundary=DataBoundary.LAN)
+    dispatcher = _dispatcher(bus, _registry_with(tool), {})
+
+    await dispatcher.dispatch("web_search", {})
+
+    assert finished[0].data_boundary is DataBoundary.LAN
 
 
 async def _collect(bus: EventBus, event_type) -> list:

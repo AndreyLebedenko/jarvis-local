@@ -106,6 +106,23 @@ body {
 }
 .locality-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+.data-source-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; letter-spacing: 0.4px; text-transform: uppercase;
+  border: 1px solid var(--border); color: var(--text-dim);
+  border-radius: 20px; padding: 5px 12px;
+}
+.data-source-badge[data-source="lan"] {
+  border-color: var(--amber-dim); background: var(--amber-tint); color: var(--amber);
+}
+.data-source-badge[data-source="internet"] {
+  border-color: var(--red-dim); background: var(--red-tint); color: var(--red);
+}
+.data-source-badge[data-source="unknown"] {
+  border-color: var(--violet-dim); background: var(--violet-tint); color: var(--violet);
+}
+.data-source-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
 /* task-ui-05: system visibility mode. Open reuses cyan (calm/default,
    shared with data locality's "local" color by design - both represent the
    unremarkable case, per the privacy doc's color plan); Hidden uses violet
@@ -219,6 +236,31 @@ body {
   padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.3px;
 }
 .reasoning-level-toggle button.sel { background: var(--violet); color: var(--bg); }
+
+.mcp-card {
+  width: min(760px, 100%); padding: 14px 18px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.mcp-card[data-status="degraded"] { border-color: var(--amber-dim); }
+.mcp-card[data-status="connecting"],
+.mcp-card[data-status="disconnecting"] { border-color: var(--cyan-dim); }
+.mcp-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.mcp-header h2 {
+  margin: 0; font-size: 13.5px; font-weight: 600;
+}
+.mcp-status { margin-top: 2px; color: var(--text-dim); font-size: 11px; }
+.mcp-header button {
+  border: 1px solid var(--cyan-dim); background: var(--cyan-tint); color: var(--cyan);
+  border-radius: 6px; padding: 7px 14px; cursor: pointer;
+}
+.mcp-header button:disabled { cursor: default; opacity: 0.55; }
+.mcp-tools { margin: 12px 0 0; padding: 0; list-style: none; }
+.mcp-tools li {
+  padding: 6px 0; border-top: 1px solid var(--border); color: var(--text-dim);
+  font: 11px "Consolas", "Cascadia Mono", monospace;
+}
+.mcp-tools li[data-available="false"] { color: var(--text-faint); }
+.mcp-tools-empty { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
 
 /* story-v1.2.10-task-5: keep the three primary actions in one stable row.
    The confirmation panels live below it so opening one never moves another

@@ -69,7 +69,14 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
     keys = _strings_js_keys()["en"]
     used = set(re.findall(r'uiString\(\s*"(\w+)"', _read(filename)))
     used.difference_update(
-        {"config_tts_field_", "chip_reset_", "last_request_", "think_status_"}
+        {
+            "config_tts_field_",
+            "chip_reset_",
+            "data_source_",
+            "last_request_",
+            "mcp_",
+            "think_status_",
+        }
     )
     assert used <= keys
 

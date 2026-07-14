@@ -10,6 +10,7 @@ from jarvis.core.config import (
     BackendSettings,
     ClipboardSettings,
     ConfigError,
+    DataBoundary,
     HotkeySettings,
     McpServerSettings,
     McpSettings,
@@ -21,6 +22,7 @@ from jarvis.core.config import (
     VadSettings,
     load_settings,
     tts_route_field_specs,
+    update_ui_config_mcp_enabled,
     write_ui_config,
 )
 
@@ -1302,6 +1304,76 @@ def test_write_ui_config_omits_sections_left_as_none(tmp_path):
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
 
 
+def test_write_ui_config_persists_live_mcp_enabled_state(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="d",
+        mcp_enabled=True,
+    )
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.mcp.enabled is True
+
+
+def test_update_ui_config_mcp_enabled_creates_only_the_mcp_override(tmp_path):
+    config_path = tmp_path / "config.toml"
+    ui_config_path = tmp_path / "config.ui.toml"
+    config_path.write_text('[backend]\nmodel = "before-toggle"\n', encoding="utf-8")
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=True)
+
+    config_path.write_text('[backend]\nmodel = "after-toggle"\n', encoding="utf-8")
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert "[mcp]\nenabled = true" in contents
+    assert "[backend]" not in contents
+    assert "[microphone]" not in contents
+    assert "[ui]" not in contents
+    assert "[vad]" not in contents
+    assert "[tts" not in contents
+    settings = load_settings(config_path, ui_path=ui_config_path)
+    assert settings.backend.model == "after-toggle"
+    assert settings.mcp.enabled is True
+
+
+def test_update_ui_config_mcp_enabled_preserves_every_other_byte(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = (
+        "# Existing UI selections stay machine-owned.\n"
+        "[backend]\n"
+        'model = "selected-model"\n'
+        "\n"
+        "[mcp]\n"
+        "enabled = false\n"
+        "\n"
+        "[vad]\n"
+        "threshold = 0.75\n"
+    )
+    ui_config_path.write_text(original, encoding="utf-8")
+    original_bytes = ui_config_path.read_bytes()
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=True)
+
+    assert ui_config_path.read_bytes() == original_bytes.replace(
+        b"enabled = false", b"enabled = true"
+    )
+
+
+def test_update_ui_config_mcp_enabled_appends_to_a_legacy_ui_file(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = '[backend]\nmodel = "selected-model"\n'
+    ui_config_path.write_text(original, encoding="utf-8")
+
+    update_ui_config_mcp_enabled(ui_config_path, enabled=False)
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert contents.startswith(original)
+    assert contents.endswith("\n[mcp]\nenabled = false\n")
+
+
 def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
@@ -1401,6 +1473,74 @@ def test_mcp_server_enabled_defaults_to_true(tmp_path):
 
     assert settings.mcp.servers["search"].enabled is True
     assert settings.mcp.servers["search"].args == ()
+    assert settings.mcp.servers["search"].data_boundary is DataBoundary.UNKNOWN
+
+
+def test_mcp_server_parses_default_boundary_and_per_tool_overrides(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.mixed]
+        command = "mixed-server"
+        data_boundary = "local"
+
+        [mcp.servers.mixed.tool_boundaries]
+        lan_query = "lan"
+        web_search = "internet"
+        """,
+        encoding="utf-8",
+    )
+
+    server = load_settings(config_path).mcp.servers["mixed"]
+
+    assert server.boundary_for("local_lookup") is DataBoundary.LOCAL
+    assert server.boundary_for("lan_query") is DataBoundary.LAN
+    assert server.boundary_for("web_search") is DataBoundary.INTERNET
+
+
+@pytest.mark.parametrize("field", ["data_boundary", "tool_boundaries.lookup"])
+def test_mcp_server_rejects_unknown_data_boundary(tmp_path, field):
+    config_path = tmp_path / "config.toml"
+    if field == "data_boundary":
+        body = 'data_boundary = "cloud"'
+    else:
+        body = '[mcp.servers.search.tool_boundaries]\nlookup = "cloud"'
+    config_path.write_text(
+        f'[mcp.servers.search]\ncommand = "server"\n{body}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match="data boundary"):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_non_string_data_boundary(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "server"
+        data_boundary = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="data boundary must be a string"):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_non_table_tool_boundary_overrides(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "server"
+        tool_boundaries = "internet"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="tool_boundaries must be a table"):
+        load_settings(config_path)
 
 
 def test_mcp_section_rejects_unknown_key(tmp_path):

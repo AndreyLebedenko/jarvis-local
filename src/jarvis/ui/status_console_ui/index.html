@@ -18,6 +18,10 @@
       <span class="locality-dot"></span>
       <span class="locality-label">Local</span>
     </div>
+    <div class="data-source-badge" id="dataSourceBadge" data-source="local_only">
+      <span class="data-source-dot"></span>
+      <span class="data-source-label">Local sources</span>
+    </div>
     <div class="visibility-toggle" id="visibilityToggle">
       <button data-mode="open" class="sel" onclick="setVisibilityMode('open')">Open</button>
       <button data-mode="hidden" onclick="setVisibilityMode('hidden')">Hidden</button>
@@ -58,6 +62,18 @@
       <button data-level="high" data-i18n="reasoning_high" onclick="setReasoningLevel('high')">High</button>
     </div>
   </div>
+
+  <section class="mcp-card" id="mcpCard" data-status="off" aria-labelledby="mcpHeading">
+    <div class="mcp-header">
+      <div>
+        <h2 id="mcpHeading" data-i18n="mcp_title">External tools (MCP)</h2>
+        <div class="mcp-status" id="mcpStatus">Off</div>
+      </div>
+      <button id="btnMcpToggle" data-i18n="mcp_enable" onclick="setMcpEnabled()">Enable</button>
+    </div>
+    <ul class="mcp-tools" id="mcpTools"></ul>
+    <div class="mcp-tools-empty" id="mcpToolsEmpty" data-i18n="mcp_no_tools">No tools available</div>
+  </section>
 
   <div class="action-row">
     <div class="config-zone">

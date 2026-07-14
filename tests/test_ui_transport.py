@@ -4,9 +4,15 @@ import aiohttp
 import pytest
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, VadSettings
-from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.core.config import (
+    DataBoundary,
+    PiperTtsSettings,
+    SileroTtsSettings,
+    VadSettings,
+)
+from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
     EventLevel,
     HealthStatus,
@@ -16,6 +22,7 @@ from jarvis.ui.contract import (
     ModuleId,
     RuntimeState,
     SystemEvent,
+    VisibilityMode,
 )
 from jarvis.ui.transport import (
     PROTOCOL_VERSION,
@@ -40,6 +47,9 @@ class _FakeControlApi:
 
     def set_reasoning_level(self, level_value: str) -> None:
         self.calls.append(("set_reasoning_level", level_value))
+
+    def set_mcp_enabled(self, enabled: bool) -> None:
+        self.calls.append(("set_mcp_enabled", str(enabled)))
 
     def reset_context(self) -> None:
         self.calls.append(("reset_context", None))
@@ -151,6 +161,44 @@ def test_state_store_replaces_values_and_keeps_system_event_snapshot_history():
             "correlation_id": None,
         }
     ]
+
+
+def test_data_source_axis_is_independent_from_visibility_and_inference_locality():
+    state = UiStateStore()
+
+    state.record_tool_boundary(DataBoundary.INTERNET)
+    state.set_visibility_mode(VisibilityMode.HIDDEN)
+
+    snapshot = state.snapshot()
+    assert snapshot["data_source"] == {"source": "internet"}
+    assert snapshot["data_locality"] == {"locality": "local"}
+    assert snapshot["visibility"] == {"mode": "hidden"}
+
+
+def test_mcp_off_state_clears_tools_and_reports_authoritative_status():
+    state = UiStateStore()
+    state.set_mcp_state(
+        {
+            "status": "on",
+            "enabled": True,
+            "tools": [
+                {
+                    "name": "web_search",
+                    "provider": "search",
+                    "enabled": True,
+                    "available": True,
+                }
+            ],
+        }
+    )
+
+    state.set_mcp_state({"status": "off", "enabled": False, "tools": []})
+
+    assert state.snapshot()["mcp"] == {
+        "status": "off",
+        "enabled": False,
+        "tools": [],
+    }
 
 
 def test_module_delta_keeps_the_value_present_when_it_was_enqueued():
@@ -401,6 +449,68 @@ async def test_server_runs_handshake_snapshot_delta_and_control_cycle():
                 assert control_api.calls == [("set_visibility_mode", "hidden")]
     finally:
         await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_server_projects_turn_data_source_from_real_tool_start_only():
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=1.0,
+                inputs=(ModelRequestInput.CLIPBOARD,),
+                audio_duration_seconds=None,
+            ),
+        )
+        assert server.state.snapshot()["data_source"] == {"source": "local_only"}
+
+        await bus.publish(
+            ToolCallStarted,
+            ToolCallStarted(
+                correlation_id="call-1",
+                tool_name="web_search",
+                provider="search",
+                arguments={"query": "weather"},
+                outbound_summary="search.web_search(query='weather')",
+                timestamp=2.0,
+                data_boundary=DataBoundary.INTERNET,
+            ),
+        )
+        assert server.state.snapshot()["data_source"] == {"source": "internet"}
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+def test_turn_data_source_keeps_the_widest_declared_boundary():
+    state = UiStateStore()
+
+    state.record_tool_boundary(DataBoundary.LOCAL)
+    assert state.snapshot()["data_source"] == {"source": "local_only"}
+    state.record_tool_boundary(DataBoundary.UNKNOWN)
+    assert state.snapshot()["data_source"] == {"source": "unknown"}
+    state.record_tool_boundary(DataBoundary.LAN)
+    assert state.snapshot()["data_source"] == {"source": "lan"}
+    state.record_tool_boundary(DataBoundary.UNKNOWN)
+    assert state.snapshot()["data_source"] == {"source": "lan"}
+    state.record_tool_boundary(DataBoundary.INTERNET)
+    state.record_tool_boundary(DataBoundary.LAN)
+
+    assert state.snapshot()["data_source"] == {"source": "internet"}
+
+
+def test_set_mcp_enabled_control_requires_boolean_target():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control("set_mcp_enabled", {"enabled": True})
+
+    assert control_api.calls == [("set_mcp_enabled", "True")]
+    with pytest.raises(ProtocolError, match="arguments.enabled"):
+        server._dispatch_control("set_mcp_enabled", {"enabled": "true"})
 
 
 @pytest.mark.asyncio

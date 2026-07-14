@@ -19,10 +19,13 @@ from jarvis.core.config import (
     VadSettings,
     tts_route_field_specs,
     tts_route_values,
+    update_ui_config_mcp_enabled,
     write_ui_config,
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.tools.host import McpModuleStatus
+from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.config_selection import (
     VAD_MAX_CHUNK_RANGE,
     VAD_REQUEST_END_PAUSE_RANGE,
@@ -33,6 +36,7 @@ from jarvis.ui.config_selection import (
 )
 from jarvis.ui.contract import (
     DataLocality,
+    DataSource,
     EventLevel,
     ModelRequestSummary,
     ModuleHealth,
@@ -77,6 +81,31 @@ def module_health_payload(health: ModuleHealth) -> dict:
 
 def data_locality_payload(locality: DataLocality) -> dict:
     return {"locality": locality.value}
+
+
+def data_source_payload(source: DataSource) -> dict:
+    return {"source": source.value}
+
+
+def mcp_state_payload(
+    status: McpModuleStatus, tools: tuple[RegisteredTool, ...]
+) -> dict:
+    if status is McpModuleStatus.OFF:
+        return {"status": status.value, "enabled": False, "tools": []}
+    available = status in {McpModuleStatus.ON, McpModuleStatus.DEGRADED}
+    return {
+        "status": status.value,
+        "enabled": available,
+        "tools": [
+            {
+                "name": tool.name,
+                "provider": tool.provider,
+                "enabled": tool.enabled,
+                "available": available,
+            }
+            for tool in sorted(tools, key=lambda item: item.name)
+        ],
+    }
 
 
 def model_request_payload(summary: ModelRequestSummary) -> dict:
@@ -285,6 +314,18 @@ class ClearableHistory(Protocol):
     def clear(self) -> None: ...
 
 
+class McpControl(Protocol):
+    status: McpModuleStatus
+    registry: ToolRegistry
+
+    @property
+    def enabled(self) -> bool: ...
+
+    async def enable(self) -> None: ...
+
+    async def disable(self) -> None: ...
+
+
 _MODULE_RESET_SOURCE: dict[ModuleId, str] = {
     ModuleId.BACKEND: "LLM",
     ModuleId.MICROPHONE: "STT",
@@ -345,6 +386,7 @@ class StatusConsoleApi:
         ui_config_path: str | Path = DEFAULT_UI_CONFIG_PATH,
         model_options_source: ModelOptionsSource | None = None,
         microphone_options_source: MicrophoneOptionsSource | None = None,
+        mcp_host: McpControl | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -363,6 +405,7 @@ class StatusConsoleApi:
         self._microphone_options_source = (
             microphone_options_source or _default_microphone_options_source
         )
+        self._mcp_host = mcp_host
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -415,6 +458,22 @@ class StatusConsoleApi:
             self._logger.warning("Ignoring unknown reasoning level %r", level_value)
             return
         self._schedule(self._thinking_mode.set_level(level, source="UI"))
+
+    def set_mcp_enabled(self, enabled: bool) -> None:
+        if self._mcp_host is None:
+            return
+        self._schedule(self._set_mcp_enabled_async(enabled))
+
+    async def _set_mcp_enabled_async(self, enabled: bool) -> None:
+        if self._mcp_host is None:
+            return
+        if enabled:
+            await self._mcp_host.enable()
+        else:
+            await self._mcp_host.disable()
+        update_ui_config_mcp_enabled(
+            self._ui_config_path, enabled=self._mcp_host.enabled
+        )
 
     def reset_context(self) -> None:
         self._schedule(self._reset_context_async())
@@ -628,6 +687,11 @@ class StatusConsoleApi:
             ui_language=selection.ui_language,
             vad=selection.vad,
             tts_routes=selection.tts_routes,
+            mcp_enabled=(
+                self._mcp_host.enabled
+                if self._mcp_host is not None
+                else self._settings.mcp.enabled
+            ),
         )
         await publish_system_event(
             self._bus,

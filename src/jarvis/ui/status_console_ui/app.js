@@ -29,6 +29,7 @@
 // back to Open restores it without needing another push from Python.
 const _moduleHealth = new Map();
 let _modelLabel = "";
+let _mcpEnabled = false;
 
 // Caps DOM growth for a long-running process feeding a live-appending log
 // (task-ui-03's Scope: "recent events", not an unbounded transcript).
@@ -57,6 +58,8 @@ function _applyStateSnapshot(state) {
   renderModules();
   applyLastModelRequest(state.last_model_request || { timestamp: null, items: [] });
   applyDataLocality(state.data_locality);
+  applyDataSource(state.data_source || { source: "local_only" });
+  applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
   applyModelLabel(state.model);
   _clearSystemEvents();
   (state.system_events || []).forEach(appendSystemEvent);
@@ -74,6 +77,8 @@ function _applyStateDelta(payload) {
     modules: (value) => Object.values(value).forEach(applyModuleHealth),
     last_model_request: applyLastModelRequest,
     data_locality: applyDataLocality,
+    data_source: applyDataSource,
+    mcp: applyMcpState,
     model: applyModelLabel,
     system_event: appendSystemEvent,
     thinking: applyThinkingMode,
@@ -174,6 +179,48 @@ function applyDataLocality(payload) {
   badge.setAttribute("data-locality", payload.locality);
   badge.querySelector(".locality-label").textContent =
     uiString(payload.locality === "local" ? "locality_local" : "locality_external");
+}
+
+function applyDataSource(payload) {
+  if (!DATA_SOURCES.includes(payload.source)) {
+    throw new Error("Unknown data source: " + payload.source);
+  }
+  const badge = document.getElementById("dataSourceBadge");
+  if (!badge) return;
+  badge.setAttribute("data-source", payload.source);
+  badge.querySelector(".data-source-label").textContent =
+    uiString("data_source_" + payload.source);
+}
+
+function applyMcpState(payload) {
+  if (!MCP_STATUSES.includes(payload.status)) {
+    throw new Error("Unknown MCP status: " + payload.status);
+  }
+  _mcpEnabled = payload.enabled === true;
+  const card = document.getElementById("mcpCard");
+  if (!card) return;
+  card.setAttribute("data-status", payload.status);
+  document.getElementById("mcpStatus").textContent = uiString("mcp_" + payload.status);
+  const button = document.getElementById("btnMcpToggle");
+  button.textContent = uiString(_mcpEnabled ? "mcp_disable" : "mcp_enable");
+  button.disabled = payload.status === "connecting" || payload.status === "disconnecting";
+
+  const list = document.getElementById("mcpTools");
+  list.replaceChildren();
+  for (const tool of payload.tools || []) {
+    const row = document.createElement("li");
+    row.setAttribute("data-available", String(tool.available));
+    const stateKey = tool.available && tool.enabled
+      ? "mcp_tool_available"
+      : "mcp_tool_unavailable";
+    row.textContent = `${tool.name} - ${tool.provider} - ${uiString(stateKey)}`;
+    list.appendChild(row);
+  }
+  document.getElementById("mcpToolsEmpty").hidden = list.children.length !== 0;
+}
+
+function setMcpEnabled() {
+  _sendControl("set_mcp_enabled", { enabled: !_mcpEnabled });
 }
 
 function applyModelLabel(payload) {

@@ -360,6 +360,7 @@ class McpHost:
                 description=declaration.description,
                 schema=declaration.schema,
                 provider=name,
+                data_boundary=server.boundary_for(declaration.name),
             )
             for declaration in declarations
         ]

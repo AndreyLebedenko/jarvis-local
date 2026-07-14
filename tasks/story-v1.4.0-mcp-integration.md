@@ -1,6 +1,6 @@
 # Story v1.4.0: MCP Integration
 
-**Status:** In progress. Tasks 1-4 are completed; tasks 5-6 remain planned.
+**Status:** In progress. Tasks 1-5 are completed; task 6 remains planned.
 **Release gate (human decision, 2026-07-14): the
 human will not approve shipping v1.4.0 without
 `tasks/backlog/mcp-egress-watchdog.md` landing first** - see the Release
@@ -40,6 +40,11 @@ external call is visible to the user.
 - Core and inference remain local unconditionally. External network access
   is a per-component capability, enabled explicitly by the user, and
   reflected honestly in the data-source axis.
+- Every configured MCP server declares its default data boundary as
+  `local`, `lan`, `internet`, or `unknown`. A mixed-boundary server may
+  override the default per tool. Missing declarations resolve to
+  `unknown`; Jarvis must never infer locality from a server command, name,
+  tool name, or arguments.
 - Tool results are current-turn context. No background or autonomous tool
   loops; a bounded number of tool round-trips per turn.
 - No silent high-impact actions; the first tool set is read-only
@@ -93,6 +98,8 @@ mechanism, not the release-gate condition recorded here.
       end-to-end through the interception point.
 - [ ] Control Center shows an MCP toggle with truthful current state; the
       data-source axis reflects turns whose tool calls left the machine.
+- [ ] Tool-call events carry the configured effective data boundary so the
+      UI and future watchdog never infer it from display text.
 - [ ] Every tool call and its outcome appear in system events.
 - [ ] Locality contract revision is recorded in `PROJECT.md`, `VISION.md`,
       and roadmap rule 3 before the first external call is possible.
@@ -112,7 +119,7 @@ mechanism, not the release-gate condition recorded here.
 4. `done/story-v1.4.0-task-4-model-presentation-layer.md`
    Present tools to the model per the spike decision; parse tool requests;
    bounded tool round-trip loop.
-5. `story-v1.4.0-task-5-control-center-mcp-surface.md`
+5. `done/story-v1.4.0-task-5-control-center-mcp-surface.md`
    MCP toggle with state indication; data-source axis wiring; optional
    read-only tool list.
 6. `story-v1.4.0-task-6-initial-tools-and-manual-handoff.md`
