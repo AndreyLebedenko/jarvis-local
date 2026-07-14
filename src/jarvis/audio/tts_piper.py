@@ -4,10 +4,21 @@ import asyncio
 import io
 import wave
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from jarvis.audio.tts import TtsEngineLoadError
+from jarvis.audio.tts import LazyAsyncLoad
 from jarvis.core.config import PiperTtsSettings
+
+if TYPE_CHECKING:
+    # Type-only: piper stays a lazily-imported runtime dependency (see
+    # load_piper_voice()/_load_voice() below). This import never executes.
+    from piper.config import SynthesisConfig
+
+
+class LoadedPiperVoice(Protocol):
+    def synthesize(
+        self, text: str, synthesis_config: "SynthesisConfig", /
+    ) -> object: ...
 
 
 class VoiceLoader(Protocol):
@@ -19,7 +30,7 @@ class VoiceLoader(Protocol):
         use_cuda: bool,
         espeak_data_dir: str | None,
         download_dir: str | None,
-    ) -> object: ...
+    ) -> LoadedPiperVoice: ...
 
 
 def resolve_existing_path(path: str | Path, description: str) -> Path:
@@ -98,41 +109,22 @@ class PiperEngine:
     ) -> None:
         self._route = route
         self._voice_loader = voice_loader
-        self._voice = None
-        self._synthesis_config = None
-        self._load_error: TtsEngineLoadError | None = None
-        self._load_lock = asyncio.Lock()
+        self._load: LazyAsyncLoad[tuple[LoadedPiperVoice, SynthesisConfig]] = (
+            LazyAsyncLoad(route.engine, route.model)
+        )
 
     async def synthesize(self, text: str, language: str = "ru") -> bytes:
         del language
-        voice = await self._ensure_voice()
+        voice, synthesis_config = await self._ensure_voice()
         return await asyncio.to_thread(
             piper_chunks_to_wav_bytes,
-            voice.synthesize(text, self._synthesis_config),
+            voice.synthesize(text, synthesis_config),
         )
 
-    async def _ensure_voice(self):
-        if self._load_error is not None:
-            raise self._load_error
-        if self._voice is not None:
-            return self._voice
-        async with self._load_lock:
-            if self._load_error is not None:
-                raise self._load_error
-            if self._voice is not None:
-                return self._voice
-            try:
-                self._voice, self._synthesis_config = await asyncio.to_thread(
-                    self._load_voice
-                )
-            except Exception as exc:
-                self._load_error = TtsEngineLoadError(
-                    self._route.engine, self._route.model, str(exc)
-                )
-                raise self._load_error from exc
-        return self._voice
+    async def _ensure_voice(self) -> tuple[LoadedPiperVoice, "SynthesisConfig"]:
+        return await self._load.get(lambda: asyncio.to_thread(self._load_voice))
 
-    def _load_voice(self):
+    def _load_voice(self) -> tuple[LoadedPiperVoice, "SynthesisConfig"]:
         from piper.config import SynthesisConfig
 
         model_path = resolve_existing_path(self._route.model, "Piper model file")
