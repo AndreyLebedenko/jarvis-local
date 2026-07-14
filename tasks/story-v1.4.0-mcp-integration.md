@@ -1,6 +1,6 @@
 # Story v1.4.0: MCP Integration
 
-**Status:** In progress. Tasks 1-3 are completed; tasks 4-6 remain planned.
+**Status:** In progress. Tasks 1-4 are completed; tasks 5-6 remain planned.
 **Release gate (human decision, 2026-07-14): the
 human will not approve shipping v1.4.0 without
 `tasks/backlog/mcp-egress-watchdog.md` landing first** - see the Release
@@ -109,7 +109,7 @@ mechanism, not the release-gate condition recorded here.
 3. `done/story-v1.4.0-task-3-mcp-host-core.md`
    MCP client, tool registry, single interception point, switchable
    module state.
-4. `story-v1.4.0-task-4-model-presentation-layer.md`
+4. `done/story-v1.4.0-task-4-model-presentation-layer.md`
    Present tools to the model per the spike decision; parse tool requests;
    bounded tool round-trip loop.
 5. `story-v1.4.0-task-5-control-center-mcp-surface.md`

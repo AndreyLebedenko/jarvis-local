@@ -1307,7 +1307,55 @@ def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):
 
     assert settings.mcp == McpSettings()
     assert settings.mcp.enabled is False
+    assert settings.mcp.presentation_strategy == "native"
+    assert settings.mcp.max_tool_calls_per_turn == 3
     assert settings.mcp.servers == {}
+
+
+def test_mcp_presentation_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp]
+        presentation_strategy = "prompt"
+        max_tool_calls_per_turn = 5
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.mcp.presentation_strategy == "prompt"
+    assert settings.mcp.max_tool_calls_per_turn == 5
+
+
+def test_mcp_rejects_unknown_presentation_strategy(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[mcp]\npresentation_strategy = "xml"\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"\[mcp\]\.presentation_strategy"):
+        load_settings(config_path)
+
+
+def test_mcp_rejects_non_string_presentation_strategy(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[mcp]\npresentation_strategy = ["native"]\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match=r"\[mcp\]\.presentation_strategy"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize("raw_value", ["0", "-1", "true", '"3"'])
+def test_mcp_rejects_invalid_tool_call_budget(tmp_path, raw_value):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"[mcp]\nmax_tool_calls_per_turn = {raw_value}\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match=r"\[mcp\]\.max_tool_calls_per_turn"):
+        load_settings(config_path)
 
 
 def test_mcp_section_parses_enabled_and_servers(tmp_path):

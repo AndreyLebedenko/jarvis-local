@@ -29,7 +29,7 @@ pool stay short since this is all localhost traffic.
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -95,6 +95,7 @@ class OllamaBackend:
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        tools: Sequence[dict[str, object]] | None = None,
     ) -> dict[str, Any]:
         messages = [dict(message) for message in messages]
         if images_b64:
@@ -107,13 +108,30 @@ class OllamaBackend:
         think: bool | str = (
             False if reasoning_level is ReasoningLevel.OFF else reasoning_level.value
         )
-        return {
+        payload: dict[str, Any] = {
             "model": self._settings.model,
             "messages": messages,
             "stream": True,
             "think": think,
             "options": options,
         }
+        if tools:
+            payload["tools"] = list(tools)
+        return payload
+
+    async def iter_chat(
+        self,
+        messages: Sequence[dict[str, Any]],
+        images_b64: Sequence[str] | None = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        tools: Sequence[dict[str, object]] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yields raw chunks while carrying only prepared declarations."""
+        payload = self.build_payload(messages, images_b64, reasoning_level, tools)
+        async with self._client.stream("POST", "/api/chat", json=payload) as response:
+            async for line in response.aiter_lines():
+                if line.strip():
+                    yield json.loads(line)
 
     async def chat(
         self,
@@ -121,26 +139,21 @@ class OllamaBackend:
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
     ) -> None:
-        payload = self.build_payload(messages, images_b64, reasoning_level)
         saw_done = False
-        async with self._client.stream("POST", "/api/chat", json=payload) as response:
-            async for line in response.aiter_lines():
-                if not line.strip():
-                    continue
-                chunk = json.loads(line)
-                # message.thinking (reasoning trace, present when think=true) is
-                # deliberately never read here - PROJECT.md's isolation rule
-                # requires it stay out of ResponseToken/TTS. Only message.content
-                # is republished.
-                content = chunk.get("message", {}).get("content", "")
-                if content:
-                    await self._bus.publish(ResponseToken, ResponseToken(text=content))
-                if chunk.get("done"):
-                    saw_done = True
-                    await self._bus.publish(
-                        ResponseComplete,
-                        ResponseComplete(metrics=_parse_metrics(chunk)),
-                    )
+        async for chunk in self.iter_chat(messages, images_b64, reasoning_level):
+            # message.thinking (reasoning trace, present when think=true) is
+            # deliberately never read here - PROJECT.md's isolation rule
+            # requires it stay out of ResponseToken/TTS. Only message.content
+            # is republished.
+            content = chunk.get("message", {}).get("content", "")
+            if content:
+                await self._bus.publish(ResponseToken, ResponseToken(text=content))
+            if chunk.get("done"):
+                saw_done = True
+                await self._bus.publish(
+                    ResponseComplete,
+                    ResponseComplete(metrics=parse_metrics(chunk)),
+                )
         if not saw_done:
             # The stream ended (connection closed / body exhausted) without
             # ever sending a done:true chunk. Orchestrator.finish_turn() only
@@ -156,7 +169,7 @@ class OllamaBackend:
             )
 
 
-def _parse_metrics(chunk: dict[str, Any]) -> LatencyMetrics:
+def parse_metrics(chunk: dict[str, Any]) -> LatencyMetrics:
     return LatencyMetrics(
         load_seconds=chunk.get("load_duration", 0) / 1e9,
         prompt_eval_seconds=chunk.get("prompt_eval_duration", 0) / 1e9,

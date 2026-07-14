@@ -42,6 +42,7 @@ from jarvis.dialog.thinking_mode import (
     run_hotkey_listener as run_thinking_hotkey_listener,
 )
 from jarvis.dialog.time_context import format_time_context
+from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -115,7 +116,7 @@ class Orchestrator:
 
     def __init__(
         self,
-        backend: OllamaBackend,
+        backend: OllamaBackend | ToolAwareDialog,
         history: ConversationHistory,
         sound_cues: SoundCuePlayer,
         system_prompt: str = SYSTEM_PROMPT,
@@ -212,7 +213,9 @@ class Orchestrator:
             await self._bus.publish(TurnAccepted, TurnAccepted(source=source))
         await self._sound_cues.play("thinking")
 
-        messages = [{"role": "system", "content": self._system_prompt}]
+        messages: list[dict[str, object]] = [
+            {"role": "system", "content": self._system_prompt}
+        ]
         messages.extend(self._history.as_messages())
         # Current-turn only, mirroring the media_b64 pattern: this never
         # reaches ConversationHistory.add(), so no two turns' timestamps
@@ -356,8 +359,16 @@ def build_app(
     # dataclass's mcp_host field comment for why this is still safe under
     # the "off equals the capability does not exist" invariant.
     mcp_host = McpHost(bus, settings.mcp, ui_language=settings.ui.language)
-    orchestrator = Orchestrator(
+    dialog_backend = ToolAwareDialog(
         backend,
+        bus,
+        mcp_host.registry,
+        mcp_host.dispatcher,
+        build_tool_presentation(settings.mcp.presentation_strategy),
+        settings.mcp.max_tool_calls_per_turn,
+    )
+    orchestrator = Orchestrator(
+        dialog_backend,
         history,
         sound_cues,
         system_prompt=settings.prompts.system,

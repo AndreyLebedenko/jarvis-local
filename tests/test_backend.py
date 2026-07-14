@@ -41,6 +41,37 @@ def test_payload_without_media_has_no_images_key():
     assert "images" not in payload["messages"][-1]
 
 
+def test_payload_without_tool_declarations_is_byte_identical_to_legacy_shape():
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+    messages = [{"role": "user", "content": "hi"}]
+
+    legacy_payload = backend.build_payload(messages)
+    tool_aware_payload = backend.build_payload(messages, tools=None)
+
+    assert tool_aware_payload == legacy_payload
+    assert "tools" not in tool_aware_payload
+
+
+def test_payload_carries_prepared_tool_declarations_without_interpreting_them():
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the web",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+
+    payload = backend.build_payload(
+        [{"role": "user", "content": "latest news"}], tools=tools
+    )
+
+    assert payload["tools"] == tools
+
+
 def test_payload_defaults_to_thinking_disabled():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 

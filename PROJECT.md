@@ -1842,6 +1842,56 @@ dialog path, task 5 wires a Control Center switch.
   admitted mid-`disable()`, stale status during the drain window).
   `python -m pytest` passes.
 
+## Architecture v1.4.0 (model presentation layer)
+
+See `tasks/story-v1.4.0-task-4-model-presentation-layer.md`. The dialog path
+now presents task 3's registry to Ollama and owns the bounded, current-turn
+tool round trip; MCP clients remain reachable only through
+`ToolDispatcher.dispatch()`.
+
+- `[mcp].presentation_strategy` selects `native` (the measured default) or
+  `prompt`; `[mcp].max_tool_calls_per_turn` is a positive integer with default
+  `3`. Multiple native calls returned together execute sequentially and
+  consume the same per-turn budget.
+- `dialog/tool_presentation.py` owns both model-facing strategies. Native
+  presentation maps each enabled `RegisteredTool` to Ollama's flat `tools`
+  namespace and preserves its JSON schema verbatim. Prompt presentation adds
+  a system-role declaration plus an exact one-call-or-final-answer JSON
+  contract; its result follow-up uses the user role, matching the task-1
+  measured fallback contract. Disabled tools are not offered.
+- `OllamaBackend.iter_chat()` is the transport-only raw-chunk seam. It may
+  carry a tools payload prepared by the presentation layer but never chooses
+  declarations, parses calls, or dispatches. The legacy `chat()` path now
+  consumes the same seam and preserves its prior payload and event behavior.
+- Off/empty identity is structural: when the registry has no enabled tools,
+  `ToolAwareDialog.chat()` delegates directly to the legacy `backend.chat()`
+  with the original messages, media, and reasoning level. No `tools` key and
+  no prompt addition exists on that path.
+- Native final-answer text remains streamed to `ResponseToken` consumers as
+  chunks arrive. A native response whose first semantic data is a tool call is
+  buffered and never published; tool metadata and any accompanying content
+  therefore cannot reach history, visible response text, or TTS. If answer
+  text starts first, that response is committed as the final-answer stream and
+  any later malformed tool-call metadata is ignored rather than retroactively
+  turning already-spoken text into a tool round trip. Prompt-strategy JSON is
+  necessarily buffered until its envelope can be parsed; only the extracted
+  `final_answer` is published.
+- Tool results and errors are appended only to the in-memory message list for
+  the current turn. Current media is sent only on that turn's first model
+  request, never reattached to a tool-result or forced-final message.
+- Budget exhaustion, malformed calls, and dispatch failure append honest
+  context and trigger exactly one request with native tools removed and an
+  explicit no-more-tools instruction. A failed real dispatch stops that
+  response's batch immediately: every later requested call is represented in
+  model context as not executed, but never reaches `ToolDispatcher`. If the
+  model still returns a call or a malformed response, the layer emits a short
+  deterministic failure answer and completes the turn; arbitrary model output
+  cannot extend the loop.
+- Intermediate tool-request responses never publish `ResponseComplete`.
+  Exactly the final answer does, including the existing zero-metrics fallback
+  when its stream ends without `done: true`, preserving the v1.2.3 turn-
+  termination guarantee.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

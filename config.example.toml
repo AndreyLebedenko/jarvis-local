@@ -172,6 +172,12 @@ warmup = "Привет"
 # existing. Enable only if you understand a connected server can reach
 # the network; every call is logged to the system events panel.
 enabled = false
+# Native Ollama tools are the measured default. "prompt" keeps the
+# fallback JSON contract selectable for templates without native support.
+presentation_strategy = "native"
+# Total dispatches allowed during one user turn. Calls returned together
+# are executed sequentially and consume this shared budget.
+max_tool_calls_per_turn = 3
 # Each configured server is its own stdio subprocess, with its own
 # enable flag independent of the module-wide switch above:
 # [mcp.servers.search]

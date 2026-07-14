@@ -1,7 +1,9 @@
 # Task: Model presentation layer
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. Prerequisite tasks 1 and 3 are completed.
+**Status:** Completed. Human-reviewed 2026-07-14. Pure automated coverage
+passes; no live Ollama, MCP server, network, or hardware verification is part
+of this task boundary.
 **Release:** v1.4.0
 
 ## Summary
@@ -40,14 +42,14 @@ path.
 
 ## Acceptance Criteria
 
-- [ ] Disabled path produces byte-identical requests to pre-v1.4.0
+- [x] Disabled path produces byte-identical requests to pre-v1.4.0
       behavior.
-- [ ] Loop always terminates within the configured call budget.
-- [ ] Tool requests and malformed tool outputs are handled without an
+- [x] Loop always terminates within the configured call budget.
+- [x] Tool requests and malformed tool outputs are handled without an
       unterminated turn (regression risk: the v1.2.3 stream-completion
       class of bugs).
-- [ ] No tool-call artifacts reach TTS or the visible response text.
-- [ ] `python -m pytest` passes with a fake backend and fake registry.
+- [x] No tool-call artifacts reach TTS or the visible response text.
+- [x] `python -m pytest` passes with a fake backend and fake registry.
 
 ## Stop Conditions
 

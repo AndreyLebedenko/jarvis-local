@@ -298,6 +298,8 @@ class McpSettings:
     server process, connection, or registry entry exists."""
 
     enabled: bool = False
+    presentation_strategy: str = "native"
+    max_tool_calls_per_turn: int = 3
     servers: dict[str, McpServerSettings] = field(default_factory=dict)
 
 
@@ -478,7 +480,12 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
 
 
 def _build_mcp_section(section_name: str, raw: dict[str, object]) -> "McpSettings":
-    known_fields = {"enabled", "servers"}
+    known_fields = {
+        "enabled",
+        "presentation_strategy",
+        "max_tool_calls_per_turn",
+        "servers",
+    }
     unknown_keys = set(raw) - known_fields
     if unknown_keys:
         raise ConfigError(
@@ -490,8 +497,33 @@ def _build_mcp_section(section_name: str, raw: dict[str, object]) -> "McpSetting
             f"[{section_name}].enabled must be bool, got {type(enabled).__name__}: "
             f"{enabled!r}"
         )
+    presentation_strategy = raw.get("presentation_strategy", "native")
+    if not isinstance(presentation_strategy, str) or presentation_strategy not in {
+        "native",
+        "prompt",
+    }:
+        raise ConfigError(
+            f"[{section_name}].presentation_strategy must be 'native' or "
+            f"'prompt', got {presentation_strategy!r}"
+        )
+    max_tool_calls_per_turn = raw.get("max_tool_calls_per_turn", 3)
+    if (
+        not isinstance(max_tool_calls_per_turn, int)
+        or isinstance(max_tool_calls_per_turn, bool)
+        or max_tool_calls_per_turn <= 0
+    ):
+        raise ConfigError(
+            f"[{section_name}].max_tool_calls_per_turn must be a positive int, "
+            f"got {type(max_tool_calls_per_turn).__name__}: "
+            f"{max_tool_calls_per_turn!r}"
+        )
     servers = _build_mcp_servers(section_name, raw.get("servers", {}))
-    return McpSettings(enabled=enabled, servers=servers)
+    return McpSettings(
+        enabled=enabled,
+        presentation_strategy=presentation_strategy,
+        max_tool_calls_per_turn=max_tool_calls_per_turn,
+        servers=servers,
+    )
 
 
 def _build_mcp_servers(section_name: str, raw: object) -> dict[str, McpServerSettings]:

@@ -62,6 +62,7 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevelState,
 )
 from jarvis.dialog.time_context import format_time_context
+from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.tools.host import McpModuleStatus
@@ -1686,6 +1687,19 @@ def test_build_app_constructs_an_mcp_host_when_mcp_is_enabled():
     # settings.mcp.enabled, after build_app() returns.
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False  # constructed, not yet connected
+
+
+def test_build_app_wires_configured_tool_presentation_and_budget():
+    settings = Settings(
+        mcp=McpSettings(presentation_strategy="prompt", max_tool_calls_per_turn=5)
+    )
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    dialog = app.orchestrator._backend
+    assert isinstance(dialog, ToolAwareDialog)
+    assert isinstance(dialog._presentation, PromptToolPresentation)
+    assert dialog._max_tool_calls == 5
 
 
 def test_build_app_wires_configured_bilingual_tts_engine(tmp_path):
