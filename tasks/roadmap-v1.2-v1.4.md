@@ -527,6 +527,13 @@ Story/task readiness: story and task cards exist
 (`tasks/story-v1.4.0-mcp-integration.md`, tasks 1-6). The task-1 spike may
 start before v1.3.0 completes; tasks 5-6 need the Control Center.
 
+**Release gate (human decision, 2026-07-14):** the human will not approve
+shipping v1.4.0 without an egress watchdog/policy component landing first
+- `tasks/backlog/mcp-egress-watchdog.md`. It is not one of the six task
+cards above; it attaches at task 3's single interception point. Concrete
+cutoff rules are written separately, closer to that story's
+implementation.
+
 ## v1.5.0 - File attachments
 
 Purpose: add deliberate file input as a new turn source, including audio files,

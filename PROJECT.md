@@ -253,6 +253,60 @@ system is intended to grow.
   `"low"`, `"medium"`, and `"high"`, both text prompts were answered
   correctly in all 9 runs each. The image prompt (four colored quadrants)
   was answered correctly at every level, including `off`.
+- **Tool-calling reliability spike (story-v1.4.0 task 1) chose native
+  `tools` as the default presentation strategy.** Human-run
+  `python -m manual.manual_check_tool_calling` on 2026-07-14 against Ollama
+  **0.32.0**, `gemma4:12b-it-qat`, over a fixed 6-scenario task set (a
+  single typed-argument tool call in Russian and English, a no-tool-call
+  false-positive check, a choice between two available tools, an
+  adversarial ambiguous-arguments stress case designed to provoke
+  malformed/extra arguments, and a two-step tool-result round trip), 3
+  runs per scenario per strategy (18 first-hop requests per strategy, plus
+  up to 3 second-hop requests per strategy for the two-step scenario):
+  - **Native `tools` field: 1.00 correct-call rate, 0.00 false-positive
+    rate, 1.00 argument schema validity rate (including under the
+    adversarial ambiguous-arguments scenario), 0.00 format-error rate,
+    1.00 two-step no-spurious-call rate. Zero transport errors** - Ollama
+    0.32.0 accepted the `tools` field for this model/template exactly per
+    documented behavior; no stop condition triggered.
+  - **Prompt-based JSON contract: 0.87 correct-call rate, 0.00
+    false-positive rate, 0.85 argument schema validity rate, 0.11
+    format-error rate, 1.00 two-step no-spurious-call rate** (the last
+    computed only over runs whose first hop actually produced a tool
+    call). All schema-validity failures were concentrated in the
+    adversarial ambiguous-arguments scenario: 2 of 3 runs omitted the
+    required `units` argument, where native got city+units right in all 3
+    runs of the same scenario. One run each of `tool_choice` and the
+    two-step scenario's first hop returned an empty, unparseable response
+    body under the prompt contract (`invalid JSON: Expecting value: line 1
+    column 1 (char 0)`), with no equivalent native-strategy failure
+    anywhere in this run. One anecdotal answer-quality artifact outside
+    these metrics: prompt/`no_tool_needed`/run 3 substituted a stray
+    non-Latin token mid-sentence into an otherwise-English answer ("a
+    programming செயல் that calls itself...").
+  - **Decision: native `tools` is the default tool-presentation strategy
+    for story-v1.4.0** (task 3/4 wire it) - it strictly dominated the
+    prompt-based contract on every measured axis in this run, with zero
+    errors of any kind. Prompt-based declaration remains the documented
+    fallback per the story's own architecture for templates/models that
+    do not support native tools; it is not exercised as a production path
+    until such a model is actually in use.
+  - Caveats: 3 runs per scenario is a small sample (matches this task's
+    own scope, following the graded-reasoning spike's precedent), so
+    treat the exact rates as directional, not a tight confidence interval
+    - the qualitative gap (native: zero errors across 21 requests; prompt:
+    errors concentrated specifically under adversarial input) is the
+    load-bearing finding, not the third decimal place. The very first
+    request of the whole run paid a cold-start Ollama load cost (8.13 s
+    vs ~0.6-0.8 s warm), consistent with the existing cold-start facts
+    above, not a per-strategy latency difference - both strategies
+    otherwise measured near-identical wall time (~0.6-0.8 s) per request,
+    so latency was not a factor in the decision. This run's script
+    tolerates the native `tool_calls[].function.arguments` field being
+    either a dict or a JSON-encoded string, but the run's own output did
+    not distinguish which shape Ollama 0.32.0 actually returned - task 3's
+    real parser should confirm this directly against a live call rather
+    than assume either shape.
 
 ## Open questions (unverified - do not assume an answer)
 

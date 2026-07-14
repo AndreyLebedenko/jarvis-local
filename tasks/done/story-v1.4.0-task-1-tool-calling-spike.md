@@ -1,7 +1,9 @@
 # Task: Tool-calling reliability spike
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. May start before v1.3.0 completes.
+**Status:** Completed. Human measurements recorded in `PROJECT.md`
+(2026-07-14): native `tools` chosen as the default presentation strategy
+for story-v1.4.0.
 **Release:** v1.4.0
 
 ## Summary
@@ -40,11 +42,11 @@ precedent that makes it mandatory.
 
 ## Acceptance Criteria
 
-- [ ] Spike script covers the full task set for both strategies with exact
+- [x] Spike script covers the full task set for both strategies with exact
       human-run commands.
-- [ ] Pure tests cover the spike's parsing/validation logic.
-- [ ] `python -m pytest` passes.
-- [ ] Human measurements recorded in `PROJECT.md`, including the chosen
+- [x] Pure tests cover the spike's parsing/validation logic.
+- [x] `python -m pytest` passes.
+- [x] Human measurements recorded in `PROJECT.md`, including the chosen
       default presentation strategy.
 
 ## Stop Conditions

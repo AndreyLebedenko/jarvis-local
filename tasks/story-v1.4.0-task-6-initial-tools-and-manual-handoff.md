@@ -16,9 +16,26 @@ runs everything that needs network, a live model, or visual judgment.
 - Web search: an existing MCP search server, run as a configured stdio
   subprocess. This is the first component with the external-network
   capability under the task-2 contract: disabled by default, enabled
-  explicitly, visible in the data-source axis. Provider choice (which
-  search backend, whether it needs an API key) is a blocking question for
-  the human before implementation - keys, if any, live outside the repo.
+  explicitly, visible in the data-source axis.
+  **Provider choice, resolved (human decision, 2026-07-14): no API key,
+  minimal external identification.** Default: DuckDuckGo via an
+  unofficial keyless client (the `duckduckgo-search`/`ddgs` pattern),
+  run as a local subprocess - no billing account, no key outside the
+  repo, and it satisfies this task's own subprocess requirement
+  natively. Documented fallback if DuckDuckGo's unofficial contract
+  breaks: a self-hosted SearXNG instance (also keyless from Jarvis's
+  side, aggregates multiple engines) - closer to the database tool's
+  LAN-perimeter shape than to a zero-setup subprocess, since it needs
+  its own local/LAN service running.
+  Provider swap must stay cheap: the MCP layer already gives
+  config-level swappability (which stdio command to launch is
+  component config, not hardcoded, per this task's own acceptance
+  criterion), but different search MCP servers will not necessarily
+  agree on tool/argument names. This task must expose one canonical
+  `web_search` tool name/schema to the model and adapt the underlying
+  provider's actual tool call under it, so replacing or patching the
+  provider later never touches the model-presentation layer (task 4)
+  or the interception point (task 3).
 - Database: an MCP server over a local or LAN database (read-only
   queries). Stays inside the LAN perimeter; exercises the multi-tool
   registry and tool-choice behavior without external network.

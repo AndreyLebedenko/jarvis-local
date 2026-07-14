@@ -1,7 +1,10 @@
 # Story v1.4.0: MCP Integration
 
 **Status:** Planned. Task 1 (spike) may start now; tasks 5-6 need the
-v1.3.0 Control Center.
+v1.3.0 Control Center. **Release gate (human decision, 2026-07-14): the
+human will not approve shipping v1.4.0 without
+`tasks/backlog/mcp-egress-watchdog.md` landing first** - see the Release
+Gate section below.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.4.0
 **Vision:** `VISION.md` - component model, capability-bounded adapters,
@@ -46,15 +49,38 @@ external call is visible to the user.
 - Watchdog logic beyond the interception seam itself is out of scope; the
   seam is in scope.
 
+## Release Gate
+
+**Human decision, 2026-07-14: v1.4.0 introduces Jarvis's first outbound-
+network capability, and the human will not approve the release without an
+egress watchdog/policy component in place** - a process that can inspect
+and cut off a suspicious outbound MCP tool call before it leaves the
+machine. This is deliberately **not** one of this story's task cards
+(tasks 1-6 build the interception point and the data it needs, not the
+policy layer on top) - it is tracked as its own backlog story,
+`tasks/backlog/mcp-egress-watchdog.md`, which attaches at task 3's single
+interception point without rewiring it. Concrete cutoff rules are not yet
+written; that happens in a separate planning pass closer to
+implementation. Do not treat this story's own Acceptance Criteria as
+sufficient for a release decision - they cover the MCP host/tooling
+mechanism, not the release-gate condition recorded here.
+
 ## Prerequisites
 
-- [ ] Task-1 spike facts recorded in `PROJECT.md` (hard gate for tasks 3+).
+- [x] Task-1 spike facts recorded in `PROJECT.md` (hard gate for tasks 3+):
+      native `tools` chosen as the default presentation strategy
+      (2026-07-14).
 - [ ] Task-2 locality contract revision accepted (gate for tasks 3+ as
       well: no real MCP server may be configured under the old contract).
 - [ ] v1.3.0 Control Center exists (gate for tasks 5-6 only).
-- [ ] Search provider choice (which backend, API key or not, local
-      subprocess vs any relay) accepted by the human before task-6
-      implementation - the choice can change the privacy contract.
+- [x] Search provider choice accepted by the human (2026-07-14): no API
+      key, minimal external identification. DuckDuckGo (unofficial,
+      keyless client) is the default provider; self-hosted SearXNG is
+      the documented fallback if DuckDuckGo's unofficial contract
+      breaks. Task-6 must add a provider-abstraction seam (canonical
+      `web_search` tool name/schema, adapter underneath) so swapping or
+      patching the provider does not touch tasks 3/4. See task-6's
+      Current Boundary for the resolved detail.
 
 ## Acceptance Criteria
 
