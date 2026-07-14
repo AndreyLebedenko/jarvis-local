@@ -47,6 +47,7 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
+from jarvis.tools.host import McpHost
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -306,6 +307,15 @@ class App:
     settings: Settings
     visibility_mode: VisibilityModeState | None = None
     history: ConversationHistory | None = None
+    # build_app() always constructs a real McpHost, regardless of
+    # [mcp].enabled - McpHost is itself side-effect-free at construction
+    # and structurally inert (status OFF, no clients) until enable() is
+    # explicitly called, which is what lets a later live toggle (task 5's
+    # Control Center switch) turn MCP on from a genuinely-off start.
+    # None only remains a valid type here for test fixtures that
+    # construct App(...) directly without build_app() and do not care
+    # about MCP, matching visibility_mode/history's own pattern above.
+    mcp_host: McpHost | None = None
 
 
 def build_app(
@@ -342,6 +352,10 @@ def build_app(
     thinking_mode = ReasoningLevelState(bus)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
+    # Always constructed, never conditionally omitted - see the App
+    # dataclass's mcp_host field comment for why this is still safe under
+    # the "off equals the capability does not exist" invariant.
+    mcp_host = McpHost(bus, settings.mcp, ui_language=settings.ui.language)
     orchestrator = Orchestrator(
         backend,
         history,
@@ -363,6 +377,7 @@ def build_app(
         visibility_mode=visibility_mode,
         history=history,
         settings=settings,
+        mcp_host=mcp_host,
     )
 
 
@@ -651,6 +666,14 @@ async def run_until_shutdown(
         await app.tts_output.wait_for_pending()
         logger.info("Shutdown: flushing pending sound cues")
         await app.sound_cues.wait_for_pending()
+        if app.mcp_host is not None:
+            # Disabling before unwiring matters: disable() publishes a
+            # SystemEvent, and the Status Console's subscription to it is
+            # one of these subscriptions - unwiring first would mean the
+            # UI silently never learns MCP went offline (review finding
+            # 4).
+            logger.info("Shutdown: disabling MCP")
+            await app.mcp_host.disable()
         logger.info("Shutdown: unwiring bus subscriptions")
         unwire(app, subscriptions)
         logger.info("Shutdown: teardown complete")
@@ -690,39 +713,58 @@ async def run(
     else:
         status_console_subscriptions = []
     await warm_up(app.backend, app.bus, settings.ui.language, settings.prompts.warmup)
-    subscriptions = [*status_console_subscriptions, *wire(app)]
 
     loop = asyncio.get_running_loop()
 
     def on_shutdown_hotkey() -> None:
         loop.call_soon_threadsafe(shutdown_event.set)
 
+    # Constructed (no I/O) before the try below so the finally's
+    # shutdown_provider.stop() always has a real object to call, even if
+    # something inside the try raises before register()/start() run.
     shutdown_provider = shutdown_provider or WindowsHotkeyProvider()
-    shutdown_provider.register(settings.hotkeys.shutdown, on_shutdown_hotkey)
-    shutdown_provider.start()
 
-    background_tasks = [
-        asyncio.create_task(app.audio_input.run_microphone_loop()),
-        asyncio.create_task(
-            run_capture_hotkey_listener(app.capture_input, settings.hotkeys)
-        ),
-        asyncio.create_task(
-            run_clipboard_hotkey_listener(app.bus, settings.hotkeys, settings.clipboard)
-        ),
-        asyncio.create_task(
-            run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)
-        ),
-        asyncio.create_task(
-            run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
-        ),
-    ]
-
-    await app.sound_cues.play("listening")
-    print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
-
+    # Everything from here through run_until_shutdown() is covered by the
+    # finally below: a failure anywhere in this block (hotkey
+    # registration, background task creation, ...) must not leave MCP
+    # connected with nothing left to disable it - review finding 4.
     try:
+        if app.mcp_host is not None and settings.mcp.enabled:
+            await app.mcp_host.enable()
+        subscriptions = [*status_console_subscriptions, *wire(app)]
+
+        shutdown_provider.register(settings.hotkeys.shutdown, on_shutdown_hotkey)
+        shutdown_provider.start()
+
+        background_tasks = [
+            asyncio.create_task(app.audio_input.run_microphone_loop()),
+            asyncio.create_task(
+                run_capture_hotkey_listener(app.capture_input, settings.hotkeys)
+            ),
+            asyncio.create_task(
+                run_clipboard_hotkey_listener(
+                    app.bus, settings.hotkeys, settings.clipboard
+                )
+            ),
+            asyncio.create_task(
+                run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)
+            ),
+            asyncio.create_task(
+                run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
+            ),
+        ]
+
+        await app.sound_cues.play("listening")
+        print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
+
         await run_until_shutdown(app, subscriptions, shutdown_event, background_tasks)
     finally:
+        if app.mcp_host is not None:
+            # Safety net: run_until_shutdown()'s own disable() call
+            # already covers the clean-shutdown path and this is a no-op
+            # there (McpHost.disable() is idempotent) - this catches the
+            # case where run_until_shutdown() was never reached at all.
+            await app.mcp_host.disable()
         try:
             shutdown_provider.stop()
         finally:

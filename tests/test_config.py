@@ -11,6 +11,8 @@ from jarvis.core.config import (
     ClipboardSettings,
     ConfigError,
     HotkeySettings,
+    McpServerSettings,
+    McpSettings,
     MicrophoneSettings,
     PiperTtsSettings,
     Settings,
@@ -1298,3 +1300,173 @@ def test_write_ui_config_omits_sections_left_as_none(tmp_path):
     assert settings.ui.language == "en"
     assert settings.vad == VadSettings()
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
+
+
+def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.mcp == McpSettings()
+    assert settings.mcp.enabled is False
+    assert settings.mcp.servers == {}
+
+
+def test_mcp_section_parses_enabled_and_servers(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp]
+        enabled = true
+
+        [mcp.servers.search]
+        command = "npx"
+        args = ["-y", "some-search-server"]
+
+        [mcp.servers.db]
+        command = "db-server"
+        enabled = false
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.mcp.enabled is True
+    assert settings.mcp.servers == {
+        "search": McpServerSettings(
+            command="npx", args=("-y", "some-search-server"), enabled=True
+        ),
+        "db": McpServerSettings(command="db-server", enabled=False),
+    }
+
+
+def test_mcp_server_enabled_defaults_to_true(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "search-server"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.mcp.servers["search"].enabled is True
+    assert settings.mcp.servers["search"].args == ()
+
+
+def test_mcp_section_rejects_unknown_key(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp]
+        enabled = true
+        bogus = true
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"Unknown key\(s\) in \[mcp\].*bogus"):
+        load_settings(config_path)
+
+
+def test_mcp_section_rejects_wrong_type_for_enabled(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp]
+        enabled = "yes"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[mcp\].enabled must be bool"):
+        load_settings(config_path)
+
+
+def test_mcp_server_requires_command(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        args = ["-y"]
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ConfigError, match=r"\[mcp.servers.search\].command is required"
+    ):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_empty_command(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "   "
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[mcp.servers.search\].command"):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_unknown_key(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "search-server"
+        bogus = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ConfigError, match=r"Unknown key\(s\) in \[mcp.servers.search\].*bogus"
+    ):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_non_string_args(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "search-server"
+        args = [1, 2]
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[mcp.servers.search\].args"):
+        load_settings(config_path)
+
+
+def test_mcp_ui_layer_can_override_enabled_without_resetting_servers(tmp_path):
+    config_path = tmp_path / "config.toml"
+    ui_path = tmp_path / "config.ui.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "search-server"
+        """,
+        encoding="utf-8",
+    )
+    ui_path.write_text(
+        """
+        [mcp]
+        enabled = true
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=ui_path)
+
+    assert settings.mcp.enabled is True
+    assert settings.mcp.servers == {
+        "search": McpServerSettings(command="search-server")
+    }

@@ -164,3 +164,17 @@ language = "en"
 # warmup = "Hello"
 system = """Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай по-русски, если пользователь явно не попросил другой язык. Отвечай коротко и по существу: одно-два предложения, если не попросили подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока он прозвучит. Не используй Markdown, если пользователь явно не просит форматирование. Английские термины, API names, identifiers, короткие английские фразы и цитаты можно писать обычным текстом там, где они уместны; языковую разметку добавлять не нужно. Если вместе с голосовым сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, что на нём видно."""
 warmup = "Привет"
+
+[mcp]
+# Off by default (two-tier locality contract, PROJECT.md): with enabled =
+# false, no MCP server process is spawned, no connection is opened, and
+# the tool registry stays empty - equivalent to the capability not
+# existing. Enable only if you understand a connected server can reach
+# the network; every call is logged to the system events panel.
+enabled = false
+# Each configured server is its own stdio subprocess, with its own
+# enable flag independent of the module-wide switch above:
+# [mcp.servers.search]
+# command = "npx"
+# args = ["-y", "some-mcp-search-server"]
+# enabled = true

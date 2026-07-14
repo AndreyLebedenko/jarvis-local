@@ -1,7 +1,7 @@
 # Task: Model presentation layer
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. Blocked by tasks 1 and 3.
+**Status:** Planned. Prerequisite tasks 1 and 3 are completed.
 **Release:** v1.4.0
 
 ## Summary

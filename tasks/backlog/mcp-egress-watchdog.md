@@ -20,7 +20,7 @@ implementation, once real tool-call shapes exist to write rules against.
 ## Architecture position
 
 - Attaches at the single interception point already required by
-  `story-v1.4.0-task-3-mcp-host-core.md` ("All tool calls flow through a
+  `tasks/done/story-v1.4.0-task-3-mcp-host-core.md` ("All tool calls flow through a
   single interception point between 'model requested' and 'executed'...
   a later watchdog/policy component attaches there without rewiring").
   This card is that later component - no new interception seam needed,
