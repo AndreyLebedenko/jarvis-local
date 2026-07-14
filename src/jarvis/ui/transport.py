@@ -19,6 +19,7 @@ from jarvis.core.config import (
     Settings,
     TtsLanguageSettings,
     VadSettings,
+    tts_field_matches_spec,
     tts_route_field_specs,
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
@@ -169,17 +170,7 @@ def _parse_tts_routes(raw: JSONValue) -> dict[str, TtsLanguageSettings] | None:
         values: dict[str, object] = {}
         for spec in specs:
             value = route_raw[spec.name]
-            if value is None and spec.nullable:
-                values[spec.name] = None
-                continue
-            valid = {
-                "string": isinstance(value, str),
-                "integer": isinstance(value, int) and not isinstance(value, bool),
-                "number": isinstance(value, int | float)
-                and not isinstance(value, bool),
-                "boolean": isinstance(value, bool),
-            }[spec.kind]
-            if not valid:
+            if not tts_field_matches_spec(value, spec):
                 raise ProtocolError(
                     f"tts_routes[{language}].{spec.name} must be {spec.kind}"
                 )

@@ -8,6 +8,7 @@ import pytest
 
 from jarvis.audio.tts import (
     BilingualTtsEngine,
+    LazyAsyncLoad,
     OrderedPlayback,
     SentenceBuffer,
     TtsEngine,
@@ -177,6 +178,65 @@ async def test_silero_engine_caches_a_terminal_load_failure():
             await engine.synthesize("Текст")
 
     assert load_count == 1
+
+
+# --- LazyAsyncLoad (shared SileroEngine/PiperEngine lazy-load helper) ------
+
+
+async def test_lazy_async_load_runs_loader_once_for_concurrent_callers():
+    load_count = 0
+    loader_started = asyncio.Event()
+    release_loader = asyncio.Event()
+
+    async def loader():
+        nonlocal load_count
+        load_count += 1
+        loader_started.set()
+        await release_loader.wait()
+        return "loaded-value"
+
+    load = LazyAsyncLoad("engine", "model")
+
+    first = asyncio.create_task(load.get(loader))
+    await loader_started.wait()
+    second = asyncio.create_task(load.get(loader))
+    await asyncio.sleep(0)  # let `second` reach and block on the lock
+    release_loader.set()
+
+    first_result, second_result = await asyncio.gather(first, second)
+
+    assert load_count == 1
+    assert first_result == "loaded-value"
+    assert second_result is first_result
+
+
+async def test_lazy_async_load_caches_and_reraises_same_error_for_concurrent_callers():
+    load_count = 0
+    loader_started = asyncio.Event()
+    release_loader = asyncio.Event()
+
+    async def loader():
+        nonlocal load_count
+        load_count += 1
+        loader_started.set()
+        await release_loader.wait()
+        raise FileNotFoundError("weights missing")
+
+    load = LazyAsyncLoad("engine", "model")
+
+    first = asyncio.create_task(load.get(loader))
+    await loader_started.wait()
+    second = asyncio.create_task(load.get(loader))
+    await asyncio.sleep(0)  # let `second` reach and block on the lock
+    release_loader.set()
+
+    first_result, second_result = await asyncio.gather(
+        first, second, return_exceptions=True
+    )
+
+    assert load_count == 1
+    assert isinstance(first_result, TtsEngineLoadError)
+    assert second_result is first_result
 
 
 def test_piper_engine_satisfies_tts_engine_protocol(tmp_path):

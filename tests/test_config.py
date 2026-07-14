@@ -1,3 +1,4 @@
+import re
 from dataclasses import fields
 from pathlib import Path
 
@@ -640,6 +641,66 @@ def test_engine_specific_tts_settings_reject_invalid_values(tmp_path, route, mes
     )
 
     with pytest.raises(ConfigError, match=message):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    ("route", "field", "python_type_description"),
+    [
+        (
+            """
+            engine = "silero"
+            model = "v3_1_ru"
+            sample_rate = "fast"
+            """,
+            "sample_rate",
+            "int",
+        ),
+        (
+            """
+            engine = "silero"
+            model = "v3_1_ru"
+            put_accent = "yes"
+            """,
+            "put_accent",
+            "bool | None",
+        ),
+        (
+            """
+            engine = "piper"
+            model = "voice.onnx"
+            length_scale = "fast"
+            """,
+            "length_scale",
+            "float | None",
+        ),
+        (
+            """
+            engine = "piper"
+            model = "voice.onnx"
+            use_cuda = "yes"
+            """,
+            "use_cuda",
+            "bool",
+        ),
+    ],
+)
+def test_tts_route_type_mismatch_reports_python_type_name(
+    tmp_path, route, field, python_type_description
+):
+    """Locks the exact wording `_describe_spec_kind()` must reproduce for
+    core/config.py's ConfigError - the shared TTS field-validation
+    predicate (story-code-entropy-reduction.md, Task 2) must keep
+    reporting Python type names (str/int/float/bool) here, not the
+    `TtsFieldSpec.kind` strings (string/integer/number/boolean) that
+    ui/transport.py's ProtocolError uses instead."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[tts.languages.ru]\n{route}", encoding="utf-8")
+
+    expected = re.escape(python_type_description)
+    with pytest.raises(
+        ConfigError, match=rf"\[tts\.languages\.ru\]\.{field} must be {expected}, "
+    ):
         load_settings(config_path)
 
 

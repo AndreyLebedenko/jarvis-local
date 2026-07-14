@@ -191,6 +191,39 @@ def tts_route_field_specs(engine: str) -> tuple[TtsFieldSpec, ...]:
     return tuple(specs)
 
 
+def tts_field_matches_spec(value: object, spec: TtsFieldSpec) -> bool:
+    """The one implementation of "does this raw value match this TTS
+    field's type" - shared by config.py's own TOML route parsing and
+    transport.py's transport-payload route parsing, so a future field
+    kind cannot be handled correctly on one side and silently mishandled
+    on the other."""
+    if value is None:
+        return spec.nullable
+    return {
+        "string": isinstance(value, str),
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+        "number": isinstance(value, int | float) and not isinstance(value, bool),
+        "boolean": isinstance(value, bool),
+    }[spec.kind]
+
+
+_SPEC_KIND_TYPE_NAMES = {
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+}
+
+
+def _describe_spec_kind(spec: TtsFieldSpec) -> str:
+    """Renders a TtsFieldSpec.kind using the same Python type names
+    _describe_type() would have produced for the underlying dataclass
+    field - config.py's ConfigError wording must not change even though
+    validation now goes through the shared, spec-based predicate."""
+    name = _SPEC_KIND_TYPE_NAMES[spec.kind]
+    return f"{name} | None" if spec.nullable else name
+
+
 def tts_route_values(route: TtsLanguageSettings) -> dict[str, TtsFieldValue]:
     return {
         route_field.name: getattr(route, route_field.name)
@@ -502,8 +535,9 @@ def _build_tts_language_route(
         )
 
     route_type = SileroTtsSettings if engine == "silero" else PiperTtsSettings
-    known_fields = {f.name: f.type for f in fields(route_type)}
-    unknown_keys = set(raw) - set(known_fields) - {"engine"}
+    specs = tts_route_field_specs(engine)
+    known_field_names = {spec.name for spec in specs}
+    unknown_keys = set(raw) - known_field_names - {"engine"}
     if unknown_keys:
         raise ConfigError(
             f"Unknown key(s) in [tts.languages.{language}]: "
@@ -519,16 +553,15 @@ def _build_tts_language_route(
     else:
         defaults = fallback or PiperTtsSettings(model="")
     kwargs: dict[str, object] = {}
-    for name, expected_type in known_fields.items():
-        value = raw.get(name, getattr(defaults, name))
-        if not _matches_type(value, expected_type):  # type: ignore[arg-type]
-            description = _describe_type(expected_type)  # type: ignore[arg-type]
+    for spec in specs:
+        value = raw.get(spec.name, getattr(defaults, spec.name))
+        if not tts_field_matches_spec(value, spec):
             raise ConfigError(
-                f"[tts.languages.{language}].{name} must be "
-                f"{description}, got {type(value).__name__}: "
+                f"[tts.languages.{language}].{spec.name} must be "
+                f"{_describe_spec_kind(spec)}, got {type(value).__name__}: "
                 f"{value!r}"
             )
-        kwargs[name] = value
+        kwargs[spec.name] = value
 
     route = route_type(**kwargs)  # type: ignore[arg-type]
     validate_tts_route(language, route)

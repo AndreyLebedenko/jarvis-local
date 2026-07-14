@@ -11,5 +11,6 @@ manual_check_capture_out/
 sounds/
 .planning/
 .claude/settings.local.json
+.claude/settings.json
 graphify-out/
 *.egg-info/

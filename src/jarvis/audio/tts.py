@@ -6,7 +6,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Generic, Protocol, TypeVar
 
 import sounddevice as sd
 import soundfile as sf
@@ -53,6 +53,44 @@ class TtsEngineLoadError(RuntimeError):
         self.detail = detail
 
 
+_T = TypeVar("_T")
+
+
+class LazyAsyncLoad(Generic[_T]):
+    """Loads a value at most once, the first time it is needed.
+
+    A successful load is cached and returned on every later call without
+    re-running the loader. A failed load is wrapped in TtsEngineLoadError
+    and that same error is cached and re-raised on every later call too -
+    a broken model/voice does not get retried per synthesis request. Used
+    by SileroEngine and PiperEngine, whose lazy-load-and-cache-error
+    pattern was otherwise identical except for what gets loaded."""
+
+    def __init__(self, engine: str, model: str) -> None:
+        self._engine = engine
+        self._model = model
+        self._value: _T | None = None
+        self._error: TtsEngineLoadError | None = None
+        self._lock = asyncio.Lock()
+
+    async def get(self, loader: Callable[[], Awaitable[_T]]) -> _T:
+        if self._error is not None:
+            raise self._error
+        if self._value is not None:
+            return self._value
+        async with self._lock:
+            if self._error is not None:
+                raise self._error
+            if self._value is not None:
+                return self._value
+            try:
+                self._value = await loader()
+            except Exception as exc:
+                self._error = TtsEngineLoadError(self._engine, self._model, str(exc))
+                raise self._error from exc
+        return self._value
+
+
 class TtsEngine(Protocol):
     """Synthesis boundary: text in, wav-encoded audio bytes out. The wav
     container header is the sample-rate contract - playback reads it from
@@ -65,8 +103,9 @@ class TtsEngine(Protocol):
     selects the concrete model language; Russian-only normalization remains a
     Silero route concern."""
 
-    async def synthesize(self, text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
-        pass
+    async def synthesize(
+        self, text: str, language: str = DEFAULT_LANGUAGE
+    ) -> bytes: ...
 
 
 def _append_wav_tail_silence(wav_bytes: bytes, seconds: float) -> bytes:

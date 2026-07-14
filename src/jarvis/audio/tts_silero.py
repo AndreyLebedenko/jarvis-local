@@ -6,9 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+import torch
 from num2words import num2words
 
-from jarvis.audio.tts import TtsEngineLoadError
+from jarvis.audio.tts import LazyAsyncLoad
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.config import SileroTtsSettings
 
@@ -51,7 +52,7 @@ class TtsModelNotCachedError(RuntimeError):
 
 
 class LoadedSileroModel(Protocol):
-    def synthesize(self, text: str): ...
+    def synthesize(self, text: str) -> torch.Tensor: ...
 
 
 class SileroModelLoader(Protocol):
@@ -216,9 +217,9 @@ class SileroEngine:
     ) -> None:
         self._route = route
         self._model_loader = model_loader
-        self._model: LoadedSileroModel | None = None
-        self._load_error: TtsEngineLoadError | None = None
-        self._load_lock = asyncio.Lock()
+        self._load: LazyAsyncLoad[LoadedSileroModel] = LazyAsyncLoad(
+            route.engine, route.model
+        )
 
     async def synthesize(self, text: str, language: str = "ru") -> bytes:
         del language
@@ -230,20 +231,6 @@ class SileroEngine:
         return samples_to_wav_bytes(audio_tensor, self._route.sample_rate)
 
     async def _ensure_model(self) -> LoadedSileroModel:
-        if self._load_error is not None:
-            raise self._load_error
-        if self._model is not None:
-            return self._model
-        async with self._load_lock:
-            if self._load_error is not None:
-                raise self._load_error
-            if self._model is not None:
-                return self._model
-            try:
-                self._model = await asyncio.to_thread(self._model_loader, self._route)
-            except Exception as exc:
-                self._load_error = TtsEngineLoadError(
-                    self._route.engine, self._route.model, str(exc)
-                )
-                raise self._load_error from exc
-        return self._model
+        return await self._load.get(
+            lambda: asyncio.to_thread(self._model_loader, self._route)
+        )

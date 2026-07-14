@@ -1690,6 +1690,47 @@ Runtime locality and CI verification are separate guarantees:
   installation; revisit duplicate-logic tooling only under a new task card
   proposing a different, resolvable tool.
 
+## Code entropy review practice (maintenance)
+
+Since Semdup (semantic-duplication tooling) was rejected above, duplicated
+logic that drifts silently apart is caught by manual review, not a tool
+gate. Established and first applied in
+`tasks/done/story-code-entropy-reduction.md`.
+
+- **What counts as entropy:** two independent implementations of the same
+  contract or invariant (a validation rule, a load-once/cache-error
+  pattern) with no single source of truth enforcing them, or sibling
+  classes/functions solving the same problem with diverging rigor. Risk is
+  proportional to how likely the contract is to change without both sides
+  being touched together.
+- **What does not:** incidental structural similarity with no shared
+  invariant behind it. Per this repo's core engineering principles, do not
+  force an abstraction over three similar-looking but independently-varying
+  lines.
+- **How to look for it:** after closing a quality-tooling or architecture
+  initiative, read sibling implementations side by side - parallel
+  adapter/engine classes, parallel construction sites for the same data
+  across layers, and functions Ruff's complexity check flags (not for the
+  number, but because a nontrivial function is exactly where a second,
+  independently-written copy is expensive to keep in sync). Prefer this
+  over waiting for a bug report: divergence found by reading code is cheap
+  to fix immediately; divergence discovered because a fix landed in only
+  one sibling is a live bug.
+- **First instances found and fixed:** `SileroEngine`/`PiperEngine`
+  (`src/jarvis/audio/tts_silero.py`, `tts_piper.py`) independently
+  reimplemented the same double-checked-locking lazy-load-and-cache-error
+  pattern - extracted into `LazyAsyncLoad` in `src/jarvis/audio/tts.py`.
+  `core/config.py`'s and `ui/transport.py`'s independent TTS field-type
+  validation predicates were consolidated into
+  `core/config.py`'s `tts_field_matches_spec()`.
+- When extracting a shared implementation, preserve every call site's
+  existing behavior and error messages exactly - this is refactoring, not
+  a design change. A prior pass on this exact story initially changed
+  `ConfigError` wording during consolidation without a test catching it;
+  the fix added `tests/test_config.py::test_tts_route_type_mismatch_reports_python_type_name`,
+  which locks the wording and was confirmed to fail if the bug is
+  reintroduced.
+
 ## Agent/dev graph index
 
 - Graphify is a development aid, not a Jarvis runtime dependency.
