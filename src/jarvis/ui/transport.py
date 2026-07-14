@@ -184,7 +184,7 @@ def _parse_tts_routes(raw: JSONValue) -> dict[str, TtsLanguageSettings] | None:
                     f"tts_routes[{language}].{spec.name} must be {spec.kind}"
                 )
             values[spec.name] = value
-        routes[language] = TTS_ROUTE_TYPES[engine](**values)
+        routes[language] = TTS_ROUTE_TYPES[engine](**values)  # type: ignore[arg-type]
     return routes
 
 
