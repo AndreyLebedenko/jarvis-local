@@ -1664,17 +1664,23 @@ Runtime locality and CI verification are separate guarantees:
   `python -m pytest` (see the verification contract above). Configuration
   lives in `pyproject.toml`.
 - Pyright is advisory, not a CI gate. Evaluated 2026-07-14 against the final
-  `src/jarvis` layout: 313 errors across 91 files. About 61% is structural
-  noise from typing test doubles as concrete production classes and from a
-  loosely-typed `JSONValue` union indexed positionally in tests; another
-  ~18 findings come from ctypes/Win32 and asyncio typeshed limitations that
-  have no practical fix. The remainder is a real, bounded signal around
-  constructing typed settings (`core/config.py`, `ui/transport.py`) from
-  loosely-typed parsed config values. Run `python -m pyright` manually when
-  touching config/transport parsing; it stays out of CI because making it
-  green requires a DI/typing redesign (protocol-based interfaces for the
-  composition root) outside quality-tooling scope. Full classification:
-  `tasks/story-quality-task-8-advisory-tool-evaluation.md`.
+  `src/jarvis` layout: 313 errors across 91 files, later reduced to 274.
+  About 61% is structural noise from typing test doubles as concrete
+  production classes and from a loosely-typed `JSONValue` union indexed
+  positionally in tests; another ~18 findings come from ctypes/Win32 and
+  asyncio typeshed limitations that have no practical fix. A further 39
+  findings in `core/config.py`/`ui/transport.py` initially looked like a
+  real gap in TTS-settings construction, but both files already validate
+  every field (`ConfigError`/`ProtocolError`, with test coverage) before
+  constructing the dataclass - Pyright just can't trace that generic,
+  loop-driven validation statically. These are suppressed with
+  `# type: ignore[arg-type]` at the 9 affected sites, matching the
+  pre-existing precedent at `ui/transport.py`'s `_parse_vad()`. Run
+  `python -m pyright` manually when touching config/transport parsing; it
+  stays out of CI because making the remaining findings green requires a
+  DI/typing redesign (protocol-based interfaces for the composition root)
+  outside quality-tooling scope. Full classification:
+  `tasks/done/story-quality-task-8-advisory-tool-evaluation.md`.
 - Semdup is rejected. No installable package or locatable source under that
   name exists (checked PyPI and web search, 2026-07-14); this is an
   environmental blocker, not worked around. Independently, Semdup's

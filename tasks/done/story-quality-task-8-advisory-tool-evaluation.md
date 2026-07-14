@@ -56,24 +56,39 @@ Classification:
    `AbstractServer.sockets` (the real runtime object is `asyncio.Server`,
    which has `.sockets`), and `Callable` variance in `subscribe`/`unsubscribe`
    are all runtime-safe patterns the current stubs can't express.
-4. **Config/settings construction - real signal, bounded remediation cost
-   (~28 findings, `core/config.py`, `ui/transport.py`).** Building
-   `TtsLanguageSettings` and related dataclasses directly from a raw,
-   loosely-typed (`object`/`Any`) parsed-config dict. A malformed config
-   value would only surface as a `TypeError` deep inside TTS code, not at
-   load time. Split out as its own bounded follow-up:
-   `tasks/task-config-settings-type-validation.md`.
+4. **Config/settings construction - no signal, already validated at
+   runtime (39 findings: 23 in `core/config.py`, 16 in
+   `ui/transport.py`).** Corrected after the follow-up task
+   (`tasks/task-config-settings-type-validation.md`, completed
+   2026-07-14): building `TtsLanguageSettings`/`TtsSettings` from a raw
+   config dict, and the equivalent transport JSON payload, both already
+   validate every field with `_matches_type()`/manual `isinstance` checks
+   and raise `ConfigError`/`ProtocolError` *before* construction (see
+   `test_engine_specific_tts_settings_reject_invalid_values` in
+   `tests/test_config.py`). Pyright cannot trace that generic,
+   loop-driven validation back to the precise constructor parameter
+   types, and separately cannot resolve `dataclasses.fields()`'s
+   `Field.type` (typed `type[Any] | str`) against the plain `type`
+   parameter of this module's own `_matches_type`/`_describe_type`
+   helpers. Both are the same class of typeshed/inference limitation as
+   items 1-3, not a missing validation. Suppressed with
+   `# type: ignore[arg-type]` at the 9 affected call/construction sites,
+   matching the existing precedent at `ui/transport.py`'s
+   `_parse_vad()` (`VadSettings(**kwargs)  # type: ignore[arg-type]`,
+   already in the codebase before this evaluation). No behavior change;
+   `python -m pytest` and `python -m ruff check .`/`format --check .`
+   stay green.
 5. **Suspected optional-handling gaps - uncertain signal, needs a manual
    look (8 findings: `app.py:752`, `status_console.py:526`,
    `hotkeys.py:230,244,248,254,255`).** Pyright can't see a runtime
    invariant (e.g. "set before use") that may be guaranteed elsewhere. Not
    confirmed bugs; worth a quick manual pass, not urgent.
 
-**Recommendation: Advisory.** Roughly three-quarters of the volume is either
-a DI/typing redesign or inherent stub noise, neither of which this
-quality-tooling story should force (see story stop conditions). The real
-signal is real but narrow. Keep `python -m pyright` as a manual, local check
-for anyone touching config/transport parsing; do not wire it into CI.
+**Recommendation: Advisory.** All remaining volume (274 of the original 313
+findings) is either a DI/typing redesign, inherent typeshed/stub noise, or
+uncertain-signal optional-access spots - none of which this quality-tooling
+story should force into a CI gate (see story stop conditions). Keep
+`python -m pyright` as a manual, local check; do not wire it into CI.
 
 ### Semdup
 

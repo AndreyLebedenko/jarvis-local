@@ -384,9 +384,10 @@ def _build_plain_section(section_name: str, cls: type, raw: dict[str, Any]) -> A
             kwargs[name] = getattr(defaults, name)
             continue
         value = raw[name]
-        if not _matches_type(value, expected_type):
+        if not _matches_type(value, expected_type):  # type: ignore[arg-type]
+            description = _describe_type(expected_type)  # type: ignore[arg-type]
             raise ConfigError(
-                f"[{section_name}].{name} must be {_describe_type(expected_type)}, "
+                f"[{section_name}].{name} must be {description}, "
                 f"got {type(value).__name__}: {value!r}"
             )
         kwargs[name] = value
@@ -441,13 +442,14 @@ def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
             kwargs[name] = getattr(defaults, name)
             continue
         value = raw[name]
-        if not _matches_type(value, expected_type):
+        if not _matches_type(value, expected_type):  # type: ignore[arg-type]
+            description = _describe_type(expected_type)  # type: ignore[arg-type]
             raise ConfigError(
-                f"[{section_name}].{name} must be {_describe_type(expected_type)}, "
+                f"[{section_name}].{name} must be {description}, "
                 f"got {type(value).__name__}: {value!r}"
             )
         kwargs[name] = value
-    return TtsSettings(**kwargs)
+    return TtsSettings(**kwargs)  # type: ignore[arg-type]
 
 
 def _build_tts_languages(
@@ -519,15 +521,16 @@ def _build_tts_language_route(
     kwargs: dict[str, object] = {}
     for name, expected_type in known_fields.items():
         value = raw.get(name, getattr(defaults, name))
-        if not _matches_type(value, expected_type):
+        if not _matches_type(value, expected_type):  # type: ignore[arg-type]
+            description = _describe_type(expected_type)  # type: ignore[arg-type]
             raise ConfigError(
                 f"[tts.languages.{language}].{name} must be "
-                f"{_describe_type(expected_type)}, got {type(value).__name__}: "
+                f"{description}, got {type(value).__name__}: "
                 f"{value!r}"
             )
         kwargs[name] = value
 
-    route = route_type(**kwargs)
+    route = route_type(**kwargs)  # type: ignore[arg-type]
     validate_tts_route(language, route)
     return route
 
