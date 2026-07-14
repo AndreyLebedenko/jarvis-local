@@ -1652,6 +1652,38 @@ Runtime locality and CI verification are separate guarantees:
   calls at run time - that remains a code-review/architecture guarantee,
   not something CI measures.
 
+## Quality tooling contract (maintenance)
+
+- Production Python code lives under `src/jarvis`, grouped by responsibility
+  (`core`, `audio`, `inputs`, `ui`, plus `app.py`/`__main__.py`).
+  `python -m jarvis` is the canonical launch command; tests and manual
+  checks import the installed package, with no root-level production
+  modules or `sys.path` manipulation remaining.
+- Ruff (lint and format) is the enforced deterministic gate: `python -m ruff
+  check .` and `python -m ruff format --check .` run in CI alongside
+  `python -m pytest` (see the verification contract above). Configuration
+  lives in `pyproject.toml`.
+- Pyright is advisory, not a CI gate. Evaluated 2026-07-14 against the final
+  `src/jarvis` layout: 313 errors across 91 files. About 61% is structural
+  noise from typing test doubles as concrete production classes and from a
+  loosely-typed `JSONValue` union indexed positionally in tests; another
+  ~18 findings come from ctypes/Win32 and asyncio typeshed limitations that
+  have no practical fix. The remainder is a real, bounded signal around
+  constructing typed settings (`core/config.py`, `ui/transport.py`) from
+  loosely-typed parsed config values. Run `python -m pyright` manually when
+  touching config/transport parsing; it stays out of CI because making it
+  green requires a DI/typing redesign (protocol-based interfaces for the
+  composition root) outside quality-tooling scope. Full classification:
+  `tasks/story-quality-task-8-advisory-tool-evaluation.md`.
+- Semdup is rejected. No installable package or locatable source under that
+  name exists (checked PyPI and web search, 2026-07-14); this is an
+  environmental blocker, not worked around. Independently, Semdup's
+  documented purpose - catching semantic logic duplication introduced by
+  multiple agents editing the same codebase in parallel - does not match
+  Jarvis's sequential, human-supervised development model. Do not reattempt
+  installation; revisit duplicate-logic tooling only under a new task card
+  proposing a different, resolvable tool.
+
 ## Agent/dev graph index
 
 - Graphify is a development aid, not a Jarvis runtime dependency.

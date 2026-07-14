@@ -1,6 +1,6 @@
 # Story: Quality tooling and package layout
 
-**Status:** In progress.
+**Status:** Completed.
 **Release:** Maintenance.
 
 ## User-facing goal
@@ -33,15 +33,15 @@ unrelated modules in the repository root.
 
 ## Acceptance Criteria
 
-- [ ] The repository has documented, reproducible lint, format, complexity,
+- [x] The repository has documented, reproducible lint, format, complexity,
       type-checking, and semantic-duplication decisions.
-- [ ] Ruff lint and format checks are green and enforced in CI.
-- [ ] Production Python code is under `src/jarvis`, grouped by responsibility.
-- [ ] `python -m jarvis` is the documented canonical launch command.
-- [ ] Tests and manual check scripts import the installed package rather than
+- [x] Ruff lint and format checks are green and enforced in CI.
+- [x] Production Python code is under `src/jarvis`, grouped by responsibility.
+- [x] `python -m jarvis` is the documented canonical launch command.
+- [x] Tests and manual check scripts import the installed package rather than
       relying on root-level production modules.
-- [ ] Pure automated tests remain green throughout the migration.
-- [ ] `PROJECT.md` records the package boundary and quality-tooling contract.
+- [x] Pure automated tests remain green throughout the migration.
+- [x] `PROJECT.md` records the package boundary and quality-tooling contract.
 
 ## Task Card Sequence
 
@@ -63,7 +63,7 @@ unrelated modules in the repository root.
 7. `tasks/done/story-quality-task-7-repository-formatting.md`
    Apply Ruff formatting as one isolated mechanical change after moves are
    complete, preserving readable file history during the migration.
-8. `tasks/story-quality-task-8-advisory-tool-evaluation.md`
+8. `tasks/done/story-quality-task-8-advisory-tool-evaluation.md`
    Evaluate Pyright and Semdup on the final layout and decide their future
    enforcement status from recorded evidence.
 9. `tasks/done/story-quality-task-9-ruff-lint-green-baseline.md`

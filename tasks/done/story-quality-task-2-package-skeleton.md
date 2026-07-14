@@ -1,6 +1,6 @@
 # Task: Add package skeleton and entry point
 
-**Story:** `tasks/story-quality-tooling-and-package-layout.md`
+**Story:** `tasks/done/story-quality-tooling-and-package-layout.md`
 **Status:** Completed.
 
 ## Summary
