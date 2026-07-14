@@ -1,7 +1,11 @@
 # Task: Locality contract revision
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** Planned. Documentation-only; blocks the first external call.
+**Status:** Completed. Human reviewed and accepted the two-tier wording
+(2026-07-14). Scope was extended beyond the three named documents to also
+cover `CLAUDE.md`/`AGENTS.md` (identical files carrying the same
+unconditional wording, found during implementation and confirmed in
+scope by the human before proceeding).
 **Release:** v1.4.0
 
 ## Summary
@@ -31,11 +35,12 @@ human decision, recorded in the docs, not as an implementation side effect.
 
 ## Acceptance Criteria
 
-- [ ] All three documents state the same two-tier contract with no
+- [x] All three documents state the same two-tier contract with no
       contradicting leftover phrasing (grep for the old guarantee wording).
-- [ ] The contract explicitly states that MCP-off means no external
+      Also applied to `CLAUDE.md`/`AGENTS.md` (see Status).
+- [x] The contract explicitly states that MCP-off means no external
       capability exists at runtime.
-- [ ] Human has reviewed and accepted the wording before task 6 enables
+- [x] Human has reviewed and accepted the wording before task 6 enables
       any real external tool.
 
 ## Stop Conditions

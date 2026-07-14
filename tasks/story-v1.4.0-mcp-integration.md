@@ -70,8 +70,10 @@ mechanism, not the release-gate condition recorded here.
 - [x] Task-1 spike facts recorded in `PROJECT.md` (hard gate for tasks 3+):
       native `tools` chosen as the default presentation strategy
       (2026-07-14).
-- [ ] Task-2 locality contract revision accepted (gate for tasks 3+ as
+- [x] Task-2 locality contract revision accepted (gate for tasks 3+ as
       well: no real MCP server may be configured under the old contract).
+      Two-tier contract recorded in `PROJECT.md`, `VISION.md`, roadmap
+      rule 3, and `CLAUDE.md`/`AGENTS.md` (2026-07-14).
 - [ ] v1.3.0 Control Center exists (gate for tasks 5-6 only).
 - [x] Search provider choice accepted by the human (2026-07-14): no API
       key, minimal external identification. DuckDuckGo (unofficial,

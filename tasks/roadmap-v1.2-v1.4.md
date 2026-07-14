@@ -36,16 +36,18 @@ used only for pure build/test verification.
    not run hardware tests, contact live Ollama, download models, require
    secrets, or prove anything beyond the covered test surface.
 
-3. Runtime remains local and offline.
+3. Runtime remains local, on a two-tier contract (revised 2026-07-14,
+   story-v1.4.0 task 2 - see `PROJECT.md`'s runtime locality contract for
+   the full wording).
    One-time setup may require network, such as dependency installation or model
-   download scripts. Normal Jarvis runtime must not require network access
-   beyond the configured local Ollama endpoint.
-   Note: this wording is pre-v1.4.0. The v1.4.0 locality contract revision
-   (`tasks/story-v1.4.0-task-2-locality-contract-revision.md`) supersedes it
-   with the two-tier contract - core and inference local unconditionally;
-   external access only as a per-component capability, off by default,
-   user-enabled, user-visible - and rewrites this rule in the same change.
-   Until that task lands, the unconditional wording remains in force.
+   download scripts. Core orchestration and inference must not require network
+   access beyond the configured local Ollama endpoint, unconditionally.
+   External network access exists only as an explicit per-component
+   capability (for example an MCP tool provider): off by default, enabled
+   only by explicit user action, and reported honestly on the data-source
+   axis. With every such capability disabled - the state of every release
+   before v1.4.0, and the default afterward - this rule is byte-identical
+   to the pre-v1.4.0 single-tier wording it replaces.
 
 4. Hardware handoffs stay manual.
    Microphone, speakers, global hotkeys, screen capture, GPU/VRAM, WebView

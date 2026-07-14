@@ -19,8 +19,13 @@ can operate devices such as smart home equipment.
 
 ## Principles
 
-- Local-first by default. Jarvis should not require a cloud service for its core
-  runtime behavior.
+- Local-first by default, on a two-tier contract (revised 2026-07-14,
+  story-v1.4.0 task 2 - see `PROJECT.md`'s runtime locality contract for
+  the full wording): core orchestration and inference require no network
+  access, unconditionally. External network access exists only as an
+  explicit per-component capability - off by default, enabled only by
+  user action, and reported on the data-source axis - never a silent
+  property of core runtime behavior.
 - Local network is allowed as an optional deployment boundary. Multi-device
   operation may use LAN transport without changing the local-first guarantee.
 - The core owns orchestration, policy, state, history, and tool routing.
@@ -73,6 +78,13 @@ components registered with the orchestrator, not parts of a monolith.
 - Multiple hosts may register components. The orchestrator arbitrates which
   sensor node is active at a given moment; the arbitration mechanics are a
   later decision, but the protocol leaves room for it via registration.
+- Tool and device provider components (see Architecture Direction #4) are
+  the concrete home of the two-tier locality contract's "per-component
+  external capability" - each such component declares, at registration,
+  whether it can reach outside the local machine; the orchestrator
+  enforces off-by-default/user-enabled/user-visible for any that do. Core,
+  the backend layer, and the transport layer stay unconditionally local
+  regardless of which tool/device components are registered or enabled.
 - Security direction for LAN operation: pairing-based trust, with
   host-issued client certificates (mTLS) as the leading option for
   component nodes; UI surfaces may use token auth instead. Not decided yet.
