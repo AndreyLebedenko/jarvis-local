@@ -10,6 +10,7 @@ from jarvis.core.config import (
     BackendSettings,
     ClipboardSettings,
     ConfigError,
+    DataBoundary,
     HotkeySettings,
     McpServerSettings,
     McpSettings,
@@ -1401,6 +1402,74 @@ def test_mcp_server_enabled_defaults_to_true(tmp_path):
 
     assert settings.mcp.servers["search"].enabled is True
     assert settings.mcp.servers["search"].args == ()
+    assert settings.mcp.servers["search"].data_boundary is DataBoundary.UNKNOWN
+
+
+def test_mcp_server_parses_default_boundary_and_per_tool_overrides(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.mixed]
+        command = "mixed-server"
+        data_boundary = "local"
+
+        [mcp.servers.mixed.tool_boundaries]
+        lan_query = "lan"
+        web_search = "internet"
+        """,
+        encoding="utf-8",
+    )
+
+    server = load_settings(config_path).mcp.servers["mixed"]
+
+    assert server.boundary_for("local_lookup") is DataBoundary.LOCAL
+    assert server.boundary_for("lan_query") is DataBoundary.LAN
+    assert server.boundary_for("web_search") is DataBoundary.INTERNET
+
+
+@pytest.mark.parametrize("field", ["data_boundary", "tool_boundaries.lookup"])
+def test_mcp_server_rejects_unknown_data_boundary(tmp_path, field):
+    config_path = tmp_path / "config.toml"
+    if field == "data_boundary":
+        body = 'data_boundary = "cloud"'
+    else:
+        body = '[mcp.servers.search.tool_boundaries]\nlookup = "cloud"'
+    config_path.write_text(
+        f'[mcp.servers.search]\ncommand = "server"\n{body}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match="data boundary"):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_non_string_data_boundary(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "server"
+        data_boundary = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="data boundary must be a string"):
+        load_settings(config_path)
+
+
+def test_mcp_server_rejects_non_table_tool_boundary_overrides(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "server"
+        tool_boundaries = "internet"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="tool_boundaries must be a table"):
+        load_settings(config_path)
 
 
 def test_mcp_section_rejects_unknown_key(tmp_path):

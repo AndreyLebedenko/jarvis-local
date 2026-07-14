@@ -184,3 +184,7 @@ max_tool_calls_per_turn = 3
 # command = "npx"
 # args = ["-y", "some-mcp-search-server"]
 # enabled = true
+# data_boundary = "internet" # local | lan | internet | unknown
+# Optional overrides for a server whose tools have different reach:
+# [mcp.servers.search.tool_boundaries]
+# cached_lookup = "local"

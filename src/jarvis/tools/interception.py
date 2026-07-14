@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import DataBoundary
 from jarvis.core.system_log import publish_system_event
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.mcp_client import McpTransportError, ToolArguments, ToolCallResult
@@ -63,6 +64,7 @@ class ToolCallStarted:
     arguments: ToolArguments
     outbound_summary: str
     timestamp: float
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class ToolCallFinished:
     duration_seconds: float
     ok: bool
     error: str | None
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,7 @@ class ToolDispatcher:
                     arguments,
                     f"Tool disabled: {tool_name!r}",
                     "mcp_call_rejected_tool_disabled",
+                    data_boundary=tool.data_boundary,
                 )
             )
         client = self._get_client(tool.provider)
@@ -176,6 +180,7 @@ class ToolDispatcher:
                     arguments,
                     f"Provider not connected: {tool.provider!r}",
                     "mcp_call_rejected_provider_not_connected",
+                    data_boundary=tool.data_boundary,
                 )
             )
 
@@ -190,6 +195,7 @@ class ToolDispatcher:
                 arguments=arguments,
                 outbound_summary=summary,
                 timestamp=time.time(),
+                data_boundary=tool.data_boundary,
             ),
         )
         try:
@@ -224,6 +230,7 @@ class ToolDispatcher:
                     error="cancelled",
                     content=None,
                     structured_content=None,
+                    data_boundary=tool.data_boundary,
                     level=EventLevel.WARN,
                     log_message=(
                         f"Tool {tool_name!r} via {tool.provider!r} call was "
@@ -252,6 +259,7 @@ class ToolDispatcher:
                     error=str(exc),
                     content=None,
                     structured_content=None,
+                    data_boundary=tool.data_boundary,
                     level=EventLevel.ERROR,
                     log_message=(
                         f"Tool {tool_name!r} via {tool.provider!r} raised after "
@@ -278,6 +286,7 @@ class ToolDispatcher:
                     error=str(exc),
                     content=None,
                     structured_content=None,
+                    data_boundary=tool.data_boundary,
                     level=EventLevel.WARN,
                     log_message=(
                         f"Tool {tool_name!r} via {tool.provider!r} raised after "
@@ -301,6 +310,7 @@ class ToolDispatcher:
                 error=None if ok else "tool reported an error",
                 content=result.content,
                 structured_content=result.structured_content,
+                data_boundary=tool.data_boundary,
                 level=EventLevel.INFO if ok else EventLevel.WARN,
                 log_message=(
                     f"Tool {tool_name!r} via {tool.provider!r} finished in "
@@ -334,6 +344,7 @@ class ToolDispatcher:
         arguments: ToolArguments,
         reason: str,
         ui_key: str,
+        data_boundary: DataBoundary = DataBoundary.UNKNOWN,
     ) -> ToolDispatchResult:
         summary = summarize_outbound(provider or "?", tool_name, arguments)
         await self._bus.publish(
@@ -346,6 +357,7 @@ class ToolDispatcher:
                 duration_seconds=0.0,
                 ok=False,
                 error=reason,
+                data_boundary=data_boundary,
             ),
         )
         await publish_system_event(
@@ -373,6 +385,7 @@ class ToolDispatcher:
         error: str | None,
         content: object | None,
         structured_content: JSONObject | None,
+        data_boundary: DataBoundary,
         level: EventLevel,
         log_message: str,
         ui_key: str,
@@ -388,6 +401,7 @@ class ToolDispatcher:
                 duration_seconds=duration,
                 ok=ok,
                 error=error,
+                data_boundary=data_boundary,
             ),
         )
         await publish_system_event(

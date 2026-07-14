@@ -39,6 +39,10 @@ runs everything that needs network, a live model, or visual judgment.
 - Database: an MCP server over a local or LAN database (read-only
   queries). Stays inside the LAN perimeter; exercises the multi-tool
   registry and tool-choice behavior without external network.
+- Provider configuration must declare `data_boundary` explicitly for both
+  initial providers: `internet` for web search and `local` or `lan` for the
+  database according to the selected deployment. If a provider exposes
+  tools with different reach, use the per-tool `tool_boundaries` overrides.
 - Manual handoff checklist (exact commands prepared by the agent):
   - MCP off: no processes, no connections, no UI presence, dialog
     behavior unchanged;
@@ -58,6 +62,9 @@ runs everything that needs network, a live model, or visual judgment.
 
 - [ ] Both servers are configured through the standard component config;
       no hardcoded commands in engine code.
+- [ ] Both servers declare truthful data boundaries, and the manual
+      checklist confirms the data-source axis distinguishes local, LAN,
+      and internet calls.
 - [ ] Automated tests cover config parsing and the checklist script's
       wiring (no live servers in CI).
 - [ ] `python -m pytest` passes.

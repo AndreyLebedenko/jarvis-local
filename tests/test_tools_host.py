@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import McpServerSettings, McpSettings
+from jarvis.core.config import DataBoundary, McpServerSettings, McpSettings
 from jarvis.tools.host import McpHost, McpModuleStatus, McpModuleStatusChanged
 from jarvis.tools.mcp_client import McpTransportError, ToolCallResult, ToolDeclaration
 from jarvis.ui.contract import SystemEvent
@@ -92,6 +92,31 @@ async def test_enable_connects_every_enabled_server_and_populates_registry():
     assert search_client.connected is True
     assert db_client.connected is True
     assert {t.name for t in host.registry.all()} == {"web_search", "query"}
+
+
+async def test_enable_resolves_server_boundary_and_per_tool_override():
+    settings = McpSettings(
+        enabled=True,
+        servers={
+            "mixed": McpServerSettings(
+                command="mixed-server",
+                data_boundary=DataBoundary.LOCAL,
+                tool_boundaries={"web_search": DataBoundary.INTERNET},
+            )
+        },
+    )
+    client = FakeMcpClient(
+        tools=[
+            ToolDeclaration("local_lookup", "d", {}),
+            ToolDeclaration("web_search", "d", {}),
+        ]
+    )
+    host = McpHost(EventBus(), settings, client_factory=lambda server: client)
+
+    await host.enable()
+
+    assert host.registry.get("local_lookup").data_boundary is DataBoundary.LOCAL
+    assert host.registry.get("web_search").data_boundary is DataBoundary.INTERNET
 
 
 async def test_enable_skips_per_server_disabled_servers():

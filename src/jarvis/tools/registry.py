@@ -8,6 +8,7 @@ writer, populating it from connected McpClients.
 
 from dataclasses import dataclass, replace
 
+from jarvis.core.config import DataBoundary
 from jarvis.tools.json_types import JSONObject
 
 
@@ -18,6 +19,7 @@ class RegisteredTool:
     schema: JSONObject
     provider: str
     enabled: bool = True
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN
 
 
 class ToolRegistry:

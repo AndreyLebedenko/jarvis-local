@@ -23,6 +23,16 @@ tools, and (nice-to-have) a read-only list of registered tools.
   distinctly, per the task-2 contract wording; inference locality display
   is unaffected. This is the first real second value on the axis the
   v1.3.0 design kept extensible.
+  - The source of truth is `ToolCallStarted.data_boundary`, resolved from
+    the server default plus an optional per-tool override. The UI must not
+    classify calls from provider names, tool names, arguments, or event
+    prose.
+  - `local` keeps the turn local-only; `lan` and `internet` identify calls
+    that left the machine; `unknown` is rendered as unclassified rather
+    than guessed. Multi-call display precedence is
+    `internet > lan > unknown > local`.
+  - This is declared capability metadata, not packet-monitor evidence.
+    Enforcement/observation belongs to the separate egress-watchdog story.
 - Tool-call system events (from the interception point) appear in the
   existing events panel, including the outbound-data summary from task 3 -
   the user can see what left the machine and to which provider without a
@@ -40,7 +50,8 @@ tools, and (nice-to-have) a read-only list of registered tools.
 - [ ] MCP-off hides or clearly zeroes all MCP presence in the UI; nothing
       suggests the capability exists.
 - [ ] Data-source axis tests cover: local-only turn, external-tool turn,
-      and independence from Open/Hidden visibility mode.
+      LAN turn, unknown-boundary turn, multi-call precedence, and
+      independence from Open/Hidden visibility mode.
 - [ ] `python -m pytest` passes.
 - [ ] Manual visual checklist items prepared for task 6's handoff.
 

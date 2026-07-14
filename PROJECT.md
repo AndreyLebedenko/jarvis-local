@@ -1793,6 +1793,21 @@ dialog path, task 5 wires a Control Center switch.
   paired `SystemEvent` - a consumer must never have to parse the
   localized `ui_message` string to recover which tool, provider, or
   duration a call involved.
+- **Declared MCP data boundaries (human-approved 2026-07-14).** Each
+  `[mcp.servers.<name>]` declares a default `data_boundary` of `local`,
+  `lan`, `internet`, or `unknown`; optional
+  `[mcp.servers.<name>.tool_boundaries]` entries override that default for
+  mixed-boundary servers. Omission resolves to `unknown`, never silently
+  to `local` or `internet`. `McpHost` resolves the effective value while
+  registering each tool, and both `ToolCallStarted` and
+  `ToolCallFinished` carry it as typed `DataBoundary` data. The value is a
+  declared maximum authorized reach, not evidence from packet monitoring;
+  the separate egress-watchdog story may later enforce or observe it.
+  Task 5's data-source projection treats `local` as on-device, `lan` and
+  `internet` as leaving the machine, and `unknown` as explicitly
+  unclassified. If a turn uses several tools, its display precedence is
+  `internet > lan > unknown > local`; inference locality remains the
+  independent `DataLocality` axis.
 - `StdioMcpClient` wraps the official MCP Python SDK (`mcp>=1.28`, added
   to `requirements.txt`), imported lazily inside the connection-owner
   task started by `connect()` (matching `tts_piper.py`'s precedent) so the

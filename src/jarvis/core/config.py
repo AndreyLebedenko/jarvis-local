@@ -30,6 +30,7 @@ file-watching or hot-reload here, by design (see PROJECT.md's Architecture
 v1.2.4 section - "Do not implement live reconfiguration").
 """
 
+import enum
 import json
 import tomllib
 from dataclasses import MISSING, dataclass, field, fields
@@ -42,6 +43,19 @@ DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
 
 class ConfigError(Exception):
     pass
+
+
+class DataBoundary(enum.Enum):
+    """Furthest declared destination an MCP tool may send request data to.
+
+    UNKNOWN is the honest default: absence of configuration must never be
+    interpreted as proof that a provider stays on this machine.
+    """
+
+    LOCAL = "local"
+    LAN = "lan"
+    INTERNET = "internet"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -288,6 +302,11 @@ class McpServerSettings:
     command: str
     args: tuple[str, ...] = ()
     enabled: bool = True
+    data_boundary: DataBoundary = DataBoundary.UNKNOWN
+    tool_boundaries: dict[str, DataBoundary] = field(default_factory=dict)
+
+    def boundary_for(self, tool_name: str) -> DataBoundary:
+        return self.tool_boundaries.get(tool_name, self.data_boundary)
 
 
 @dataclass(frozen=True)
@@ -549,7 +568,13 @@ def _build_mcp_servers(section_name: str, raw: object) -> dict[str, McpServerSet
 def _build_mcp_server(
     section_name: str, name: str, raw: dict[str, object]
 ) -> McpServerSettings:
-    known_fields = {"command", "args", "enabled"}
+    known_fields = {
+        "command",
+        "args",
+        "enabled",
+        "data_boundary",
+        "tool_boundaries",
+    }
     unknown_keys = set(raw) - known_fields
     if unknown_keys:
         raise ConfigError(
@@ -576,7 +601,44 @@ def _build_mcp_server(
             f"[{section_name}.servers.{name}].enabled must be bool, got "
             f"{type(enabled).__name__}: {enabled!r}"
         )
-    return McpServerSettings(command=command, args=tuple(args_raw), enabled=enabled)
+    data_boundary = _parse_data_boundary(
+        raw.get("data_boundary", DataBoundary.UNKNOWN.value),
+        f"[{section_name}.servers.{name}].data_boundary",
+    )
+    tool_boundaries_raw = raw.get("tool_boundaries", {})
+    if not isinstance(tool_boundaries_raw, dict) or not all(
+        isinstance(tool_name, str) for tool_name in tool_boundaries_raw
+    ):
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].tool_boundaries must be a table"
+        )
+    tool_boundaries = {
+        tool_name: _parse_data_boundary(
+            boundary,
+            f"[{section_name}.servers.{name}.tool_boundaries].{tool_name}",
+        )
+        for tool_name, boundary in tool_boundaries_raw.items()
+    }
+    return McpServerSettings(
+        command=command,
+        args=tuple(args_raw),
+        enabled=enabled,
+        data_boundary=data_boundary,
+        tool_boundaries=tool_boundaries,
+    )
+
+
+def _parse_data_boundary(value: object, location: str) -> DataBoundary:
+    if not isinstance(value, str):
+        raise ConfigError(f"{location} data boundary must be a string")
+    try:
+        return DataBoundary(value)
+    except ValueError:
+        allowed = ", ".join(boundary.value for boundary in DataBoundary)
+        raise ConfigError(
+            f"{location} has unknown data boundary {value!r}; "
+            f"expected one of: {allowed}"
+        ) from None
 
 
 def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
