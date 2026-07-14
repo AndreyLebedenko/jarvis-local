@@ -1,0 +1,27 @@
+[mcp]
+enabled = true
+presentation_strategy = "native"
+max_tool_calls_per_turn = 3
+
+[mcp.servers.web]
+command = ".venv-mcp-ddgs/Scripts/ddgs.exe"
+args = ["mcp"]
+enabled = true
+data_boundary = "internet"
+
+[mcp.servers.web.tool_adapters.search_text]
+name = "web_search"
+description = "Search the current public web with DuckDuckGo."
+allowed_arguments = ["query", "timelimit"]
+fixed_arguments = { backend = "duckduckgo", safesearch = "moderate", max_results = 5 }
+
+[mcp.servers.knowledge]
+command = ".venv-mcp-qdrant/Scripts/mcp-server-qdrant.exe"
+enabled = true
+data_boundary = "lan"
+env = { QDRANT_URL = "http://192.168.1.50:6333", COLLECTION_NAME = "jarvis-demo", QDRANT_READ_ONLY = "true", QDRANT_SEARCH_LIMIT = "5", EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" }
+
+[mcp.servers.knowledge.tool_adapters.qdrant-find]
+name = "search_local_knowledge"
+description = "Search the read-only demonstration knowledge base on the LAN."
+allowed_arguments = ["query"]

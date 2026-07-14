@@ -92,6 +92,68 @@ async def test_dispatch_events_carry_the_registered_tool_data_boundary():
     assert finished[0].data_boundary is DataBoundary.INTERNET
 
 
+async def test_dispatch_maps_canonical_call_to_upstream_name_and_fixed_arguments():
+    bus = EventBus()
+    started = await _collect(bus, ToolCallStarted)
+    tool = RegisteredTool(
+        name="web_search",
+        description="",
+        schema={},
+        provider="search",
+        upstream_name="search_text",
+        allowed_arguments=("query",),
+        fixed_arguments={"backend": "duckduckgo", "max_results": 5},
+    )
+    client = FakeClient()
+    dispatcher = _dispatcher(bus, _registry_with(tool), {"search": client})
+
+    result = await dispatcher.dispatch("web_search", {"query": "local AI news"})
+
+    assert result.ok is True
+    assert client.calls == [
+        (
+            "search_text",
+            {
+                "query": "local AI news",
+                "backend": "duckduckgo",
+                "max_results": 5,
+            },
+        )
+    ]
+    assert started[0].tool_name == "web_search"
+    assert started[0].arguments == {
+        "query": "local AI news",
+        "backend": "duckduckgo",
+        "max_results": 5,
+    }
+    assert "backend='duckduckgo'" in started[0].outbound_summary
+
+
+async def test_dispatch_rejects_arguments_hidden_by_the_canonical_adapter():
+    bus = EventBus()
+    started = await _collect(bus, ToolCallStarted)
+    tool = RegisteredTool(
+        name="web_search",
+        description="",
+        schema={},
+        provider="search",
+        upstream_name="search_text",
+        allowed_arguments=("query",),
+        fixed_arguments={"backend": "duckduckgo"},
+    )
+    client = FakeClient()
+    dispatcher = _dispatcher(bus, _registry_with(tool), {"search": client})
+
+    result = await dispatcher.dispatch(
+        "web_search", {"query": "weather", "backend": "bing"}
+    )
+
+    assert result.ok is False
+    assert "unsupported argument" in result.error
+    assert client.calls == []
+    assert started == []
+
+
 async def test_rejected_registered_tool_keeps_its_data_boundary_in_outcome():
     bus = EventBus()
     finished = await _collect(bus, ToolCallFinished)

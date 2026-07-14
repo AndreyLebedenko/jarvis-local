@@ -1731,15 +1731,16 @@ dialog path, task 5 wires a Control Center switch.
   published on every transition - the typed, authoritative signal task 5
   needs; a generic `SystemEvent` alone is not fine-grained or
   guaranteed-ordered enough for a UI to reconstruct engine state from.
-  `DEGRADED` covers three distinct causes, all deliberately folded into
+  `DEGRADED` covers four distinct causes, all deliberately folded into
   one status rather than given separate states: a configured, enabled
-  server that failed to connect; a tool rejected as a name collision with
-  a different, already-registered provider's tool (see collision policy
-  below); and a previously-healthy provider whose `call_tool()` raised
-  mid-session (a transport/session failure, distinguished from the
-  provider's tool merely reporting `isError: true` in a normal result -
-  only the former pulls that provider's tools from the registry and
-  marks the module degraded).
+  server that failed to connect; a canonical adapter that does not match
+  the provider's discovered name/schema; a tool rejected as a name
+  collision with a different, already-registered provider's tool (see
+  collision policy below); and a previously-healthy provider whose
+  `call_tool()` raised mid-session (a transport/session failure,
+  distinguished from the provider's tool merely reporting `isError: true`
+  in a normal result - only the former pulls that provider's tools from the
+  registry and marks the module degraded).
 - **Admission gate, not a bool read directly by `dispatch()`.**
   `McpHost` tracks `_admitting`/an in-flight count/an `asyncio.Event`
   drain signal. `disable()` closes admission synchronously (no `await`
@@ -1767,6 +1768,20 @@ dialog path, task 5 wires a Control Center switch.
   provider still legitimately owns. The rejecting server is marked
   `DEGRADED`, not disconnected - its other, non-colliding tools still
   register normally.
+- **Canonical provider adapters (task 6, human-approved 2026-07-14).** A
+  server may declare per-process `env` and a `tool_adapters` table. An empty
+  adapter table preserves the generic MCP pass-through behavior; a non-empty
+  table is an allowlist keyed by upstream tool name. Each entry maps that
+  provider-specific declaration to one stable public name, may replace its
+  description, exposes only selected model arguments, and may inject fixed
+  provider arguments. The projected public JSON schema removes fixed and
+  hidden arguments and rejects additional properties. Dispatch validates the
+  public arguments before publishing `ToolCallStarted`, calls the upstream
+  name with fixed arguments applied, and records the actual outbound arguments
+  in the typed audit event. A configured upstream tool that is absent or has
+  an incompatible schema marks the module `DEGRADED`; it is never reported as
+  a healthy empty capability. This keeps DDGS's `search_text` and Qdrant's
+  `qdrant-find` names below the model-presentation layer.
 - **Localization.** Every `ui_message` published by `jarvis/tools/`
   goes through `jarvis.ui.text`'s catalog under the existing
   `[ui].language` contract (see Architecture v1.2.11) - `ui_language` is

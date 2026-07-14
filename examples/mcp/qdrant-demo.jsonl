@@ -1,0 +1,6 @@
+{"id": 1, "content": "Project Aurora uses the callsign Northstar for its production environment.", "metadata": {"source": "synthetic-project-handbook", "topic": "deployment"}}
+{"id": 2, "content": "The Aurora staging environment is deployed every Tuesday at 15:00 UTC.", "metadata": {"source": "synthetic-project-handbook", "topic": "deployment"}}
+{"id": 3, "content": "The incident meeting room for Project Aurora is named Kepler.", "metadata": {"source": "synthetic-project-handbook", "topic": "operations"}}
+{"id": 4, "content": "For a failed Aurora deployment, first compare the Northstar release manifest with the staging manifest.", "metadata": {"source": "synthetic-runbook", "topic": "operations"}}
+{"id": 5, "content": "Mira Chen is the fictional primary contact for Aurora release coordination.", "metadata": {"source": "synthetic-directory", "topic": "contacts"}}
+{"id": 6, "content": "Project Borealis is unrelated to Aurora and uses the callsign Glacier.", "metadata": {"source": "synthetic-project-handbook", "topic": "deployment"}}

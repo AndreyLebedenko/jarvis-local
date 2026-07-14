@@ -301,6 +301,16 @@ class ClipboardSettings:
 
 
 @dataclass(frozen=True)
+class McpToolAdapterSettings:
+    """Maps one provider tool onto Jarvis's stable public tool surface."""
+
+    public_name: str
+    description: str | None = None
+    allowed_arguments: tuple[str, ...] | None = None
+    fixed_arguments: dict[str, str | int | float | bool] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class McpServerSettings:
     """One configured MCP tool-provider component (VISION.md's component
     model sense): a stdio subprocess command plus its own enable flag, so
@@ -310,9 +320,11 @@ class McpServerSettings:
 
     command: str
     args: tuple[str, ...] = ()
+    env: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
     data_boundary: DataBoundary = DataBoundary.UNKNOWN
     tool_boundaries: dict[str, DataBoundary] = field(default_factory=dict)
+    tool_adapters: dict[str, McpToolAdapterSettings] = field(default_factory=dict)
 
     def boundary_for(self, tool_name: str) -> DataBoundary:
         return self.tool_boundaries.get(tool_name, self.data_boundary)
@@ -580,9 +592,11 @@ def _build_mcp_server(
     known_fields = {
         "command",
         "args",
+        "env",
         "enabled",
         "data_boundary",
         "tool_boundaries",
+        "tool_adapters",
     }
     unknown_keys = set(raw) - known_fields
     if unknown_keys:
@@ -603,6 +617,14 @@ def _build_mcp_server(
     ):
         raise ConfigError(
             f"[{section_name}.servers.{name}].args must be a list of strings"
+        )
+    env_raw = raw.get("env", {})
+    if not isinstance(env_raw, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in env_raw.items()
+    ):
+        raise ConfigError(
+            f"[{section_name}.servers.{name}].env must be a table of strings"
         )
     enabled = raw.get("enabled", True)
     if not isinstance(enabled, bool):
@@ -628,12 +650,109 @@ def _build_mcp_server(
         )
         for tool_name, boundary in tool_boundaries_raw.items()
     }
+    tool_adapters = _build_mcp_tool_adapters(
+        section_name, name, raw.get("tool_adapters", {})
+    )
     return McpServerSettings(
         command=command,
         args=tuple(args_raw),
+        env=dict(env_raw),
         enabled=enabled,
         data_boundary=data_boundary,
         tool_boundaries=tool_boundaries,
+        tool_adapters=tool_adapters,
+    )
+
+
+def _build_mcp_tool_adapters(
+    section_name: str, server_name: str, raw: object
+) -> dict[str, McpToolAdapterSettings]:
+    location = f"[{section_name}.servers.{server_name}.tool_adapters]"
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{location} must be a table")
+
+    adapters: dict[str, McpToolAdapterSettings] = {}
+    public_names: set[str] = set()
+    for upstream_name, adapter_raw in raw.items():
+        if not isinstance(upstream_name, str) or not upstream_name.strip():
+            raise ConfigError(f"{location} keys must be non-empty strings")
+        adapter_location = f"{location[:-1]}.{upstream_name}]"
+        if not isinstance(adapter_raw, dict):
+            raise ConfigError(f"{adapter_location} must be a table")
+        adapter = _build_mcp_tool_adapter(adapter_location, adapter_raw)
+        if adapter.public_name in public_names:
+            raise ConfigError(
+                f"{location} has duplicate canonical tool name {adapter.public_name!r}"
+            )
+        public_names.add(adapter.public_name)
+        adapters[upstream_name] = adapter
+    return adapters
+
+
+def _build_mcp_tool_adapter(
+    location: str, raw: dict[str, object]
+) -> McpToolAdapterSettings:
+    known_fields = {
+        "name",
+        "description",
+        "allowed_arguments",
+        "fixed_arguments",
+    }
+    unknown_keys = set(raw) - known_fields
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in {location}: {', '.join(sorted(unknown_keys))}"
+        )
+
+    public_name = raw.get("name")
+    if not isinstance(public_name, str) or not public_name.strip():
+        raise ConfigError(f"{location}.name must be a non-empty string")
+    description = raw.get("description")
+    if description is not None and (
+        not isinstance(description, str) or not description.strip()
+    ):
+        raise ConfigError(
+            f"{location}.description must be a non-empty string when provided"
+        )
+
+    allowed_raw = raw.get("allowed_arguments")
+    allowed_arguments: tuple[str, ...] | None = None
+    if allowed_raw is not None:
+        if not isinstance(allowed_raw, list) or not all(
+            isinstance(argument, str) and bool(argument.strip())
+            for argument in allowed_raw
+        ):
+            raise ConfigError(
+                f"{location}.allowed_arguments must be a list of non-empty strings"
+            )
+        if len(set(allowed_raw)) != len(allowed_raw):
+            raise ConfigError(
+                f"{location}.allowed_arguments must not contain duplicates"
+            )
+        allowed_arguments = tuple(allowed_raw)
+
+    fixed_raw = raw.get("fixed_arguments", {})
+    if not isinstance(fixed_raw, dict) or not all(
+        isinstance(key, str)
+        and bool(key.strip())
+        and isinstance(value, str | int | float | bool)
+        for key, value in fixed_raw.items()
+    ):
+        raise ConfigError(
+            f"{location}.fixed_arguments must be a table of JSON scalar values"
+        )
+    if allowed_arguments is not None:
+        overlap = set(allowed_arguments) & set(fixed_raw)
+        if overlap:
+            raise ConfigError(
+                f"{location} arguments cannot be both allowed and fixed: "
+                f"{', '.join(sorted(overlap))}"
+            )
+    return McpToolAdapterSettings(
+        public_name=public_name,
+        description=description,
+        allowed_arguments=allowed_arguments,
+        fixed_arguments=dict(fixed_raw),
     )
 
 

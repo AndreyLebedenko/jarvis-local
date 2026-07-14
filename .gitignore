@@ -13,4 +13,5 @@ sounds/
 .claude/settings.local.json
 .claude/settings.json
 graphify-out/
+examples/mcp/data/
 *.egg-info/

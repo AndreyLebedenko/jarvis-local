@@ -136,6 +136,39 @@ Default hotkeys:
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
+## Optional MCP examples: DDGS and Qdrant
+
+MCP stays disabled unless `[mcp].enabled` is explicitly set. The checked-in
+example exposes only two canonical tools: `web_search` through DDGS with its
+backend fixed to DuckDuckGo, and read-only `search_local_knowledge` through
+Qdrant. Provider packages use isolated virtual environments so Qdrant's pinned
+dependencies cannot change Jarvis's core environment:
+
+```powershell
+python -m venv .venv-mcp-ddgs
+& .\.venv-mcp-ddgs\Scripts\python.exe -m pip install "ddgs[mcp]==9.14.4"
+python -m venv .venv-mcp-qdrant
+& .\.venv-mcp-qdrant\Scripts\python.exe -m pip install "mcp-server-qdrant==0.8.1"
+& .\.venv-mcp-qdrant\Scripts\python.exe tools\seed_qdrant_demo.py
+Copy-Item examples\mcp\config.ddgs-qdrant-local.toml config.toml
+python -m jarvis --status-console
+```
+
+The first seed downloads the configured FastEmbed model. `--replace` is
+required to recreate an existing collection. For an unauthenticated LAN
+Qdrant instance, seed with `--url http://HOST:6333`, edit the placeholder URL
+in `config.ddgs-qdrant-lan.toml`, then use that profile. Preserve any existing
+non-MCP settings when copying or merging a profile. Also inspect
+`config.ui.toml`: its persisted `[mcp].enabled` value takes precedence over
+`config.toml`. DDGS uses an unofficial
+DuckDuckGo-facing library rather than an official DuckDuckGo API, so provider
+breakage remains possible. Print the exact human verification steps with:
+
+```powershell
+python -m manual.manual_check_mcp_providers --profile local
+python -m manual.manual_check_mcp_providers --profile lan
+```
+
 ## Architecture
 
 The installable application package lives in `src/jarvis/`. Run it from the
