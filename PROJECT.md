@@ -2,10 +2,27 @@
 
 Owner: private. Workdir: repository root. Windows 11, local consumer GPU.
 Goal: a fast local voice interface to an LLM, with on-demand screen capture.
-Jarvis core has no runtime network dependency. The supported v1.0 backend is a
-local Ollama endpoint; backend/model installation and non-local providers are
-outside Jarvis core guarantees. This file is the single source of truth for
-architectural decisions; update it when a decision changes.
+**Runtime locality contract (revised 2026-07-14, story-v1.4.0 task 2 -
+supersedes the pre-v1.4.0 single-tier wording below and everywhere else in
+this file):** core and inference remain local unconditionally - Jarvis's
+own orchestration, conversation state, and the configured local Ollama
+backend require no network access, and this does not change based on
+configuration, testing method, or which components are enabled. External
+network access exists only as an explicit per-component capability (for
+example an MCP tool provider): off by default, enabled only by explicit
+user action, and reported honestly on the data-source axis - a turn whose
+tool call left the machine is labeled as such, independently of
+`DataLocality` (which reports where inference runs, not whether a tool
+call reached the network). With every such capability disabled - the
+default, and the only state that exists before story-v1.4.0 lands - the
+runtime is unconditionally local, byte-identical to the pre-v1.4.0
+guarantee. Rationale: MCP integration (v1.4.0) gives Jarvis its first
+capability that can leave the machine at all; the human decision was to
+make that boundary explicit and per-component rather than erode the old
+blanket guarantee silently. Backend/model installation and non-local
+inference providers remain outside Jarvis core guarantees, as before. This
+file is the single source of truth for architectural decisions; update it
+when a decision changes.
 
 Long-term product direction lives in [VISION.md](VISION.md). `PROJECT.md`
 records verified facts and current architecture; `VISION.md` records where the
@@ -1324,9 +1341,12 @@ owned by the engine's asyncio loop:
   console identifies as `status-console`; the touchstrip identifies as
   `touchstrip`. `pywebview` now remains only a window shell that opens the
   server URL; all UI state and controls use the WebSocket.
-- Listening on loopback is local IPC, not outbound network access. The
-  runtime locality guarantee is unchanged: Jarvis requires no network access
-  beyond the configured local Ollama endpoint.
+- Listening on loopback is local IPC, not outbound network access. This
+  remains true under the two-tier locality contract (see the top of this
+  file, revised by story-v1.4.0 task 2): the UI transport is part of core,
+  not a per-component external capability, so it stays covered by the
+  unconditional local guarantee regardless of MCP's later per-component
+  exceptions.
 
 ## Architecture v1.2.11 (UI localization)
 
@@ -1688,9 +1708,14 @@ project memory note); this task is current-turn only.
 
 Runtime locality and CI verification are separate guarantees:
 
-- Jarvis runtime has no network dependency beyond the configured local
-  Ollama endpoint (see the top of this file). This is unconditional and is
-  not relaxed by anything below.
+- Jarvis's core and inference have no network dependency beyond the
+  configured local Ollama endpoint (see the top of this file for the full
+  two-tier contract, revised by story-v1.4.0 task 2). This is unconditional
+  for core and inference and is not relaxed by anything below. External
+  network access exists only as an explicit, off-by-default, user-enabled
+  per-component capability (MCP tools) - CI never exercises that capability
+  either, per the hardware/live-Ollama exclusions below, so this rule's
+  practical meaning for CI is unchanged.
 - Cloud CI (GitHub Actions) is allowed, but only for the pure, hardware-free
   automated suite: installing `requirements.txt`, `requirements-dev.txt`, and
   the local package in editable mode; running `python -m ruff format --check .`,

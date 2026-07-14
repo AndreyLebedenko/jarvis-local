@@ -73,10 +73,20 @@
 ## Tooling notes
 
 1. This is a Windows 11 setup. Python 3.11, asyncio.
-2. Runtime locality and CI verification are separate guarantees:
-   - The Jarvis runtime must not require network access beyond the
-     configured local Ollama endpoint. This is unconditional and does not
-     change based on how the code was tested.
+2. Runtime locality and CI verification are separate guarantees. Runtime
+   locality itself is a two-tier contract (revised 2026-07-14,
+   story-v1.4.0 task 2; full wording in `PROJECT.md`'s runtime locality
+   contract):
+   - Core orchestration and inference must not require network access
+     beyond the configured local Ollama endpoint. This is unconditional
+     and does not change based on how the code was tested, on
+     configuration, or on which components are enabled.
+   - External network access exists only as an explicit per-component
+     capability (for example an MCP tool provider): off by default,
+     enabled only by explicit user action, and reported honestly on the
+     data-source axis. With every such capability disabled - the default,
+     and the only state before v1.4.0 - the runtime is unconditionally
+     local exactly as before this revision.
    - Cloud CI is allowed, but only for the pure automated suite: installing
      `requirements.txt` and running `python -m pytest`. CI may install
      dependencies from the network.
