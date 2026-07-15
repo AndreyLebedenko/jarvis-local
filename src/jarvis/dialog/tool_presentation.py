@@ -225,6 +225,13 @@ class ToolAwareDialog:
 
         prepared = self._presentation.prepare(tools)
         current_messages = [dict(message) for message in messages]
+        if images_b64:
+            # Ollama's /api/chat is stateless. Keep current-turn media on
+            # the original user message so every tool-result/forced-final
+            # follow-up retains the request that caused the tool call.
+            # This list is local to the loop and never reaches
+            # ConversationHistory.
+            current_messages[-1]["images"] = list(images_b64)
         if prepared.prompt_suffix is not None:
             current_messages.insert(
                 max(0, len(current_messages) - 1),
@@ -233,15 +240,13 @@ class ToolAwareDialog:
 
         calls_used = 0
         force_text = False
-        first_request = True
         while True:
             response = await self._read_response(
                 current_messages,
-                images_b64 if first_request else None,
+                None,
                 reasoning_level,
                 None if force_text else prepared.tools,
             )
-            first_request = False
             calls, final_text, format_error = self._presentation.parse(
                 response.assistant_message, response.content_chunks
             )

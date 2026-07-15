@@ -1,8 +1,9 @@
 # Task: Initial tools and manual handoff
 
 **Story:** `tasks/story-v1.4.0-mcp-integration.md`
-**Status:** In progress. Provider choice accepted 2026-07-14; prerequisite
-tasks 2, 4, and 5 are completed.
+**Status:** Completed 2026-07-15. DDGS and local Qdrant success paths were
+verified by the human; lifecycle and boundary contracts are covered by the
+pure automated suite under the approved verification boundary below.
 **Release:** v1.4.0
 
 ## Summary
@@ -20,8 +21,20 @@ runs everything that needs network, a live model, or visual judgment.
   explicitly, visible in the data-source axis.
   **Provider choice, resolved (human decision, 2026-07-14): no API key,
   minimal external identification.** Default: DDGS's stdio MCP server,
-  with its text-search backend fixed to `duckduckgo`; DDGS is an
-  independent metasearch library, not an official DuckDuckGo API.
+  with its text-search backends fixed to
+  `duckduckgo,wikipedia,brave,mojeek,yahoo,yandex`; DDGS is an
+  independent metasearch library, not an official DuckDuckGo API. Human
+  testing on 2026-07-14 reproduced DDGS 9.14.4's empty-result failure outside
+  Jarvis when its DuckDuckGo engine used the hardcoded `POST`. The checked-in
+  launcher now applies a process-local `GET` compatibility override before
+  starting the standard DDGS MCP server. It does not modify the provider
+  environment. The GET-only retry also failed live. Before moving to SearXNG,
+  the human approved trying the explicit multi-backend set reported to work in
+  `deedy5/ddgs#390`. This is DDGS aggregation, not a strict ordered fallback:
+  DDGS may query multiple engines, merge their results, and stop when its
+  result limit is satisfied. The launcher validates every reviewed backend at
+  startup, and the configuration never enables DDGS's open-ended `auto`
+  behavior.
   Documented fallback if this unofficial contract breaks: a self-hosted
   SearXNG instance (also keyless from Jarvis's side, aggregates multiple
   engines) - closer to the database tool's LAN-perimeter shape than to a
@@ -32,7 +45,7 @@ runs everything that needs network, a live model, or visual judgment.
   criterion), but different search MCP servers will not necessarily
   agree on tool/argument names. This task must expose one canonical
   `web_search` tool name/schema to the model and adapt DDGS's
-  `search_text` call under it, fixing `backend = "duckduckgo"` and exposing
+  `search_text` call under it, fixing the reviewed backend set and exposing
   only the bounded text-search arguments. DDGS's image/news/video/book and
   arbitrary URL-extraction tools are not registered. Replacing or patching
   the provider later must never touch the model-presentation layer (task 4)
@@ -59,19 +72,27 @@ runs everything that needs network, a live model, or visual judgment.
     appear in outbound audit data;
   - a missing or schema-incompatible upstream tool is an honest degraded
     provider state, not a silently empty healthy registry.
+- Current-turn media retention, corrected after human live testing on
+  2026-07-14: Ollama's stateless tool-result and forced-final requests retain
+  the audio/screenshot on the original user message. Media is never attached
+  to a tool-result message or written to long-term conversation history.
 - Provider configuration must declare `data_boundary` explicitly for both
   initial providers: `internet` for web search and `local` or `lan` for the
-  Qdrant profile according to the selected deployment. The consolidated
-  checklist runs the local profile and the optional LAN profile separately
-  so all three axis states are observed. If a provider exposes tools with
-  different reach, use the per-tool `tool_boundaries` overrides.
-- Manual handoff checklist (exact commands prepared by the agent):
+  Qdrant profile according to the selected deployment. The local profile is
+  the verified live deployment. The optional LAN profile is a reviewed
+  configuration example; its boundary projection is covered by automated
+  tests and is not represented as a separately tested network topology. If a
+  provider exposes tools with different reach, use the per-tool
+  `tool_boundaries` overrides.
+- Manual handoff checklist (exact commands prepared by the agent) remains as
+  a diagnostic aid and covers:
   - MCP off: no processes, no connections, no UI presence, dialog
     behavior unchanged;
   - toggle on from Control Center: servers connect, registry populates,
     state indication truthful;
   - a voice turn that triggers web search end-to-end, with the external
-    label on the data-source axis and call/outcome events in the panel;
+    label on the data-source axis and call/outcome events in the panel; the
+    final follow-up must still understand the originating audio;
   - a turn that queries the database; a turn that must call no tool;
   - tool failure (kill a server mid-session): honest degraded state, turn
     still terminates with a text answer;
@@ -79,25 +100,38 @@ runs everything that needs network, a live model, or visual judgment.
 - Update `README`/`README.ru` for setup of the two servers.
 - After human confirmation, record verified end-to-end facts in
   `PROJECT.md`.
+- **Approved verification boundary (human decision, 2026-07-15):** the
+  required live scope is the successful DDGS and read-only local Qdrant paths
+  on the owner's single host. DDGS is accepted as a demonstration provider;
+  no production-stability claim is made. Provider failure, degraded state,
+  disconnect/toggle-off races, and boundary projection remain required pure
+  automated tests, but are not additional human-run drills. The LAN profile
+  remains an unverified deployment example. Any later live mismatch gets a
+  focused report under `tasks/bug_reports/`.
 
 ## Acceptance Criteria
 
-- [ ] Both servers are configured through the standard component config;
+- [x] Both servers are configured through the standard component config;
       no hardcoded commands in engine code.
-- [ ] The model sees only canonical `web_search` and
+- [x] The model sees only canonical `web_search` and
       `search_local_knowledge`; upstream names and fixed provider arguments
       are handled below the model-presentation layer.
-- [ ] Qdrant runtime configuration is read-only and the write tool is not
+- [x] Qdrant runtime configuration is read-only and the write tool is not
       registered; demo seeding is a separate, explicit setup action.
-- [ ] Both servers declare truthful data boundaries, and the manual
-      checklist confirms the data-source axis distinguishes local, LAN,
-      and internet calls.
-- [ ] Automated tests cover config parsing and the checklist script's
+- [x] Both servers declare truthful data boundaries. Human live checks cover
+      local Qdrant and internet DDGS; automated tests cover LAN projection and
+      cross-boundary precedence without claiming a tested LAN topology.
+- [x] Automated tests cover config parsing and the checklist script's
       wiring (no live servers in CI).
-- [ ] `python -m pytest` passes.
-- [ ] Human has run the full checklist; results and any bug reports
-      recorded before the story closes.
-- [ ] Story acceptance criteria checked off against these results.
+- [x] Automated tests cover the DDGS GET compatibility launcher, including
+      acceptance of a future upstream GET fix and explicit rejection of an
+      unknown upstream contract.
+- [x] Automated regression coverage proves current audio/screenshots remain on
+      the original user message through tool-result and forced-final requests.
+- [x] `python -m pytest` passes.
+- [x] Human has run the approved live success-path checks; results and the
+      explicit limits of those claims are recorded in `PROJECT.md`.
+- [x] Story acceptance criteria checked off against these results.
 
 ## Stop Conditions
 

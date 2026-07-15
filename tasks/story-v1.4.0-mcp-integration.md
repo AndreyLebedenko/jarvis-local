@@ -1,6 +1,7 @@
 # Story v1.4.0: MCP Integration
 
-**Status:** In progress. Tasks 1-5 are completed; task 6 remains planned.
+**Status:** Implementation completed 2026-07-15. Tasks 1-6 are completed;
+the separate egress-watchdog release gate below remains open.
 **Release gate (human decision, 2026-07-14): the
 human will not approve shipping v1.4.0 without
 `tasks/backlog/mcp-egress-watchdog.md` landing first** - see the Release
@@ -91,19 +92,19 @@ mechanism, not the release-gate condition recorded here.
 
 ## Acceptance Criteria
 
-- [ ] With MCP disabled, runtime behavior and network posture are
+- [x] With MCP disabled, runtime behavior and network posture are
       byte-identical to pre-v1.4.0: no connections, no declarations, no
       new prompts to the model.
-- [ ] With MCP enabled, at least web search and one database tool work
+- [x] With MCP enabled, at least web search and one database tool work
       end-to-end through the interception point.
-- [ ] Control Center shows an MCP toggle with truthful current state; the
+- [x] Control Center shows an MCP toggle with truthful current state; the
       data-source axis reflects turns whose tool calls left the machine.
-- [ ] Tool-call events carry the configured effective data boundary so the
+- [x] Tool-call events carry the configured effective data boundary so the
       UI and future watchdog never infer it from display text.
-- [ ] Every tool call and its outcome appear in system events.
-- [ ] Locality contract revision is recorded in `PROJECT.md`, `VISION.md`,
+- [x] Every tool call and its outcome appear in system events.
+- [x] Locality contract revision is recorded in `PROJECT.md`, `VISION.md`,
       and roadmap rule 3 before the first external call is possible.
-- [ ] `python -m pytest` passes; all pure logic (declaration building,
+- [x] `python -m pytest` passes; all pure logic (declaration building,
       interception, dispatch, config) covered without live servers.
 
 ## Task Card Sequence
@@ -122,7 +123,7 @@ mechanism, not the release-gate condition recorded here.
 5. `done/story-v1.4.0-task-5-control-center-mcp-surface.md`
    MCP toggle with state indication; data-source axis wiring; optional
    read-only tool list.
-6. `story-v1.4.0-task-6-initial-tools-and-manual-handoff.md`
+6. `done/story-v1.4.0-task-6-initial-tools-and-manual-handoff.md`
    Web search and database tools; consolidated human-run verification.
 
 ## Stop Conditions

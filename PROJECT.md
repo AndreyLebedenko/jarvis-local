@@ -1782,6 +1782,50 @@ dialog path, task 5 wires a Control Center switch.
   an incompatible schema marks the module `DEGRADED`; it is never reported as
   a healthy empty capability. This keeps DDGS's `search_text` and Qdrant's
   `qdrant-find` names below the model-presentation layer.
+- **DDGS reviewed multi-backend launcher (human-approved and verified
+  2026-07-15).**
+  Human live testing of pinned DDGS 9.14.4 showed its DuckDuckGo text backend
+  returning `DDGSException('No results found.')` for a normal query. The same
+  command failed outside Jarvis, isolating the problem to the provider. DDGS
+  hardcodes `POST` for that backend even though its base search engine already
+  supports `GET`; the upstream GET change (`deedy5/ddgs#460`) was closed
+  without merging.
+  `examples/mcp/ddgs_get_mcp.py` therefore changes only that text engine's
+  process-local `search_method` to `GET` before starting DDGS's standard MCP
+  stdio server. The GET-only retry still returned an error in human testing.
+  The approved follow-up uses the explicit set from `deedy5/ddgs#390`:
+  `duckduckgo,wikipedia,brave,mojeek,yahoo,yandex`. This is DDGS aggregation,
+  not a strict ordered fallback: DDGS may query multiple engines, merge their
+  results, and stop after satisfying `max_results`. The launcher validates
+  that every reviewed engine exists, accepts a future upstream DuckDuckGo
+  `GET` as a no-op, and fails explicitly if the expected backend or method
+  contract disappears. It never edits the provider environment or enables
+  DDGS `auto`.
+
+  Human live verification on 2026-07-15 confirmed this fixed multi-backend
+  profile working end-to-end through Jarvis. Three voice-triggered
+  `web_search` calls completed with `error=False` for an English live-score
+  query, a Russian exchange-rate query, and an English weather query; measured
+  provider times were 1.05 s, 10.88 s, and 1.42 s. Each call was followed by a
+  successful model request and spoken answer. This establishes DDGS as an
+  acceptable keyless demonstration provider, not as a production-reliability
+  guarantee: the upstream search contracts are unofficial and availability
+  may vary. If the fixed set breaks in later use, record the concrete failure
+  in a bug report; self-hosted SearXNG remains the documented replacement
+  candidate.
+- **Task-6 live-verification boundary (human decision, 2026-07-15).** The
+  owner previously verified read-only local Qdrant end-to-end and verified the
+  DDGS success path above on the same host. Those are the required live checks
+  for the initial demonstration. The optional LAN profile is a reviewed
+  configuration example, not a claim that a separate LAN topology was tested.
+  Transport failure, `DEGRADED` state, disconnect/toggle-off races, and the
+  `local`/`lan`/`internet` projection contract are verified by the pure
+  automated suite with test doubles; they are not additional required
+  hardware drills. This split is deliberate: v1.4.0 claims a working initial
+  read-only tool demonstration and deterministic host lifecycle behavior, not
+  production availability of third-party providers. Any later live mismatch
+  is handled as a focused bug report rather than pre-emptively expanding the
+  task-6 hardware matrix.
 - **Localization.** Every `ui_message` published by `jarvis/tools/`
   goes through `jarvis.ui.text`'s catalog under the existing
   `[ui].language` contract (see Architecture v1.2.11) - `ui_language` is
@@ -1858,9 +1902,9 @@ dialog path, task 5 wires a Control Center switch.
   `McpTransportError` specifically - a normal per-call failure now fails
   only that call (`SystemEvent` level `WARN`), while `McpTransportError`
   still gets `ERROR` and the host-level reaction. This is a best-effort
-  boundary based on reading the SDK's source, not verified against a live
-  broken pipe - task 6's manual handoff is where that gets exercised for
-  real.
+  boundary based on reading the SDK's source. Per the task-6 verification
+  decision above, broken-transport degradation is covered by the automated
+  host/dispatcher suite and has not been claimed as a live broken-pipe fact.
 - Verified via 89 tests across `tests/test_tools_registry.py`,
   `tests/test_tools_interception.py`, `tests/test_tools_host.py`, and
   `tests/test_tools_mcp_client.py` (plus dedicated `[mcp]` config-parsing
@@ -1906,8 +1950,18 @@ tool round trip; MCP clients remain reachable only through
   necessarily buffered until its envelope can be parsed; only the extracted
   `final_answer` is published.
 - Tool results and errors are appended only to the in-memory message list for
-  the current turn. Current media is sent only on that turn's first model
-  request, never reattached to a tool-result or forced-final message.
+  the current turn. **Current-turn media must survive every stateless tool-loop
+  request (human-approved correction, 2026-07-14).** Live DDGS/Qdrant testing
+  disproved the original first-request-only rule: after a tool call, the next
+  `/api/chat` request contained only the `[голосовое сообщение]` placeholder,
+  so the model could correctly complain that it had not received audio.
+  `ToolAwareDialog` now materializes media once on the original user message
+  in its loop-local message copy. Every tool-result or forced-final follow-up
+  therefore carries the same user media, while no media is attached to the
+  assistant/tool/system messages or persisted to `ConversationHistory`. The
+  repeated payload and media evaluation cost are accepted: Ollama's API is
+  stateless, so dropping the originating request changes the meaning of the
+  turn.
 - Budget exhaustion, malformed calls, and dispatch failure append honest
   context and trigger exactly one request with native tools removed and an
   explicit no-more-tools instruction. A failed real dispatch stops that

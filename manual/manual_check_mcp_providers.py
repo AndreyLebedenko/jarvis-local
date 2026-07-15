@@ -5,6 +5,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
+from examples.mcp.ddgs_get_mcp import DDGS_BACKEND_ARGUMENT
 from jarvis.core.config import DataBoundary, McpSettings, load_settings
 
 
@@ -27,6 +28,8 @@ PROFILES = {
     "lan": Profile(Path("examples/mcp/config.ddgs-qdrant-lan.toml"), DataBoundary.LAN),
 }
 
+WEB_SEARCH_BACKENDS = DDGS_BACKEND_ARGUMENT
+
 CHECKS = (
     Check(
         "mcp_off",
@@ -46,7 +49,9 @@ CHECKS = (
     Check(
         "web_search",
         "Ask: 'Find today's official Qdrant release news on the web.' Confirm "
-        "an internet source label and correlated call/outcome events.",
+        "the fixed DDGS multi-backend call succeeds, an internet source label and "
+        "correlated call/outcome events appear, and the final answer still "
+        "understands the originating voice request.",
     ),
     Check(
         "knowledge_search",
@@ -81,12 +86,19 @@ def validate_profile(settings: McpSettings, expected_boundary: DataBoundary) -> 
     knowledge = settings.servers["knowledge"]
     if web.data_boundary is not DataBoundary.INTERNET:
         raise ValueError("web provider must declare the internet boundary")
+    if web.command != ".venv-mcp-ddgs/Scripts/python.exe" or web.args != (
+        "examples/mcp/ddgs_get_mcp.py",
+    ):
+        raise ValueError("web provider must launch DDGS through the GET adapter")
     if knowledge.data_boundary is not expected_boundary:
         raise ValueError("knowledge provider boundary does not match the profile")
     if web.tool_adapters["search_text"].public_name != "web_search":
         raise ValueError("web profile does not expose canonical web_search")
-    if web.tool_adapters["search_text"].fixed_arguments.get("backend") != "duckduckgo":
-        raise ValueError("web profile must fix the DDGS backend to duckduckgo")
+    if (
+        web.tool_adapters["search_text"].fixed_arguments.get("backend")
+        != WEB_SEARCH_BACKENDS
+    ):
+        raise ValueError("web profile must fix the reviewed DDGS backend set")
     if knowledge.tool_adapters["qdrant-find"].public_name != "search_local_knowledge":
         raise ValueError("knowledge profile does not expose the canonical tool")
     if knowledge.env.get("QDRANT_READ_ONLY") != "true":
