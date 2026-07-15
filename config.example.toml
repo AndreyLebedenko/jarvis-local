@@ -183,8 +183,16 @@ max_tool_calls_per_turn = 3
 # [mcp.servers.search]
 # command = "npx"
 # args = ["-y", "some-mcp-search-server"]
+# env = { PROVIDER_SETTING = "value" }
 # enabled = true
 # data_boundary = "internet" # local | lan | internet | unknown
+# A non-empty tool_adapters table is an allowlist. It can rename an
+# upstream tool, hide provider-specific arguments from the model, and
+# inject fixed arguments into the audited outbound call:
+# [mcp.servers.search.tool_adapters.upstream_search]
+# name = "web_search"
+# allowed_arguments = ["query"]
+# fixed_arguments = { backend = "provider-backend" }
 # Optional overrides for a server whose tools have different reach:
 # [mcp.servers.search.tool_boundaries]
 # cached_lookup = "local"

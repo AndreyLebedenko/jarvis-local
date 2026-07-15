@@ -54,7 +54,8 @@ from jarvis.core.config import McpServerSettings, McpSettings
 from jarvis.core.system_log import publish_system_event
 from jarvis.tools.interception import SOURCE, ToolDispatcher
 from jarvis.tools.mcp_client import McpClient, StdioMcpClient
-from jarvis.tools.registry import RegisteredTool, ToolRegistry
+from jarvis.tools.provider_adapter import adapt_provider_tools
+from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.contract import EventLevel
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 
@@ -64,19 +65,20 @@ ClientFactory = Callable[[McpServerSettings], McpClient]
 
 
 def _default_client_factory(server: McpServerSettings) -> McpClient:
-    return StdioMcpClient(server.command, server.args)
+    return StdioMcpClient(server.command, server.args, env=server.env or None)
 
 
 class McpModuleStatus(enum.Enum):
     OFF = "off"
     CONNECTING = "connecting"
     ON = "on"
-    # At least one enabled server failed to connect, at least one of its
-    # declared tools was rejected as a name collision, or a previously
-    # healthy provider's call_tool() raised (transport/session failure,
-    # not a normal tool-reported error) - the module is switched on and
-    # partially working, not fully healthy. Never silently reported as ON
-    # (VISION.md's "prefer honest incomplete state over fake success").
+    # At least one enabled server failed to connect, a configured adapter
+    # did not match discovery, a declared tool collided with another
+    # provider, or a previously healthy provider's call_tool() raised
+    # (transport/session failure, not a normal tool-reported error) - the
+    # module is switched on and partially working, not fully healthy. Never
+    # silently reported as ON (VISION.md's "prefer honest incomplete state
+    # over fake success").
     DEGRADED = "degraded"
     DISCONNECTING = "disconnecting"
 
@@ -90,6 +92,7 @@ class McpModuleStatusChanged:
 class _ConnectOutcome:
     connected: bool
     rejected_tools: tuple[str, ...] = ()
+    adapter_issues: tuple[str, ...] = ()
 
 
 class McpHost:
@@ -210,6 +213,7 @@ class McpHost:
                         had_issue
                         or not outcome.connected
                         or bool(outcome.rejected_tools)
+                        or bool(outcome.adapter_issues)
                     )
 
                 # Admission opens before the terminal status is published -
@@ -354,17 +358,21 @@ class McpHost:
             return _ConnectOutcome(connected=False)
 
         self._clients[name] = client
-        registered = [
-            RegisteredTool(
-                name=declaration.name,
-                description=declaration.description,
-                schema=declaration.schema,
-                provider=name,
-                data_boundary=server.boundary_for(declaration.name),
+        adapted = adapt_provider_tools(name, server, declarations)
+        for issue in adapted.issues:
+            await publish_system_event(
+                self._bus,
+                logger,
+                SOURCE,
+                EventLevel.WARN,
+                log_message=f"MCP server {name!r} tool adapter rejected: {issue}",
+                ui_message=ui_text(
+                    "mcp_tool_adapter_rejected",
+                    self._ui_language,
+                    server=name,
+                ),
             )
-            for declaration in declarations
-        ]
-        rejected = self._registry.set_provider_tools(name, registered)
+        rejected = self._registry.set_provider_tools(name, adapted.tools)
         for tool_name in rejected:
             await publish_system_event(
                 self._bus,
@@ -383,7 +391,11 @@ class McpHost:
                     server=name,
                 ),
             )
-        return _ConnectOutcome(connected=True, rejected_tools=rejected)
+        return _ConnectOutcome(
+            connected=True,
+            rejected_tools=rejected,
+            adapter_issues=adapted.issues,
+        )
 
     async def _disconnect_server(self, name: str) -> None:
         """Only attempts the actual disconnect - disable()'s trailing

@@ -41,7 +41,7 @@ from jarvis.core.config import DataBoundary
 from jarvis.core.system_log import publish_system_event
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.mcp_client import McpTransportError, ToolArguments, ToolCallResult
-from jarvis.tools.registry import ToolRegistry
+from jarvis.tools.registry import ToolRegistry, UnsupportedToolArguments
 from jarvis.ui.contract import EventLevel
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 
@@ -184,7 +184,22 @@ class ToolDispatcher:
                 )
             )
 
-        summary = summarize_outbound(tool.provider, tool_name, arguments)
+        try:
+            upstream_name, outbound_arguments = tool.prepare_call(arguments)
+        except UnsupportedToolArguments as exc:
+            return await self._complete_outcome(
+                self._reject(
+                    correlation_id,
+                    tool_name,
+                    tool.provider,
+                    arguments,
+                    str(exc),
+                    "mcp_call_rejected_arguments",
+                    data_boundary=tool.data_boundary,
+                )
+            )
+
+        summary = summarize_outbound(tool.provider, tool_name, outbound_arguments)
         started = time.perf_counter()
         await self._bus.publish(
             ToolCallStarted,
@@ -192,7 +207,7 @@ class ToolDispatcher:
                 correlation_id=correlation_id,
                 tool_name=tool_name,
                 provider=tool.provider,
-                arguments=arguments,
+                arguments=outbound_arguments,
                 outbound_summary=summary,
                 timestamp=time.time(),
                 data_boundary=tool.data_boundary,
@@ -216,7 +231,7 @@ class ToolDispatcher:
                 ),
                 correlation_id=correlation_id,
             )
-            result = await client.call_tool(tool_name, arguments)
+            result = await client.call_tool(upstream_name, outbound_arguments)
         except asyncio.CancelledError:
             duration = time.perf_counter() - started
             await self._complete_outcome(

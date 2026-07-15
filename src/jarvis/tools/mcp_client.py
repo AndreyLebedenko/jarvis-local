@@ -111,9 +111,15 @@ class McpClient(Protocol):
 class StdioMcpClient:
     """Real MCP client over a stdio subprocess, using the official SDK."""
 
-    def __init__(self, command: str, args: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        command: str,
+        args: tuple[str, ...] = (),
+        env: dict[str, str] | None = None,
+    ) -> None:
         self._command = command
         self._args = args
+        self._env = None if env is None else dict(env)
         self._session: ClientSession | None = None
         self._connection_task: asyncio.Task[None] | None = None
         self._stop_connection: asyncio.Event | None = None
@@ -150,7 +156,9 @@ class StdioMcpClient:
         from mcp.client.stdio import StdioServerParameters, stdio_client
 
         try:
-            params = StdioServerParameters(command=self._command, args=list(self._args))
+            params = StdioServerParameters(
+                command=self._command, args=list(self._args), env=self._env
+            )
             async with stdio_client(params) as streams:
                 read_stream, write_stream = streams
                 async with ClientSession(read_stream, write_stream) as session:

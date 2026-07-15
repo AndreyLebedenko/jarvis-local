@@ -364,6 +364,43 @@ async def test_multiple_native_calls_run_sequentially_within_shared_budget():
 
 
 @pytest.mark.asyncio
+async def test_native_tool_followup_retains_media_on_the_original_user_message():
+    backend = FakeBackend(
+        [
+            _native_calls(("search_web", {"query": "weather"})),
+            _done("It is sunny."),
+        ]
+    )
+    dispatcher = FakeDispatcher(
+        [ToolDispatchResult(ok=True, correlation_id="1", content="sunny")]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool()),
+        dispatcher,
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "[voice message]"},
+    ]
+
+    await dialog.chat(
+        messages,
+        images_b64=["audio", "screenshot"],
+    )
+
+    assert len(backend.raw_calls) == 2
+    for call in backend.raw_calls:
+        assert call["images_b64"] is None
+        assert call["messages"][1]["images"] == ["audio", "screenshot"]
+    assert "images" not in backend.raw_calls[1]["messages"][-1]
+    assert "images" not in messages[-1]
+
+
+@pytest.mark.asyncio
 async def test_calls_beyond_budget_are_not_dispatched_and_model_gets_honest_error():
     backend = FakeBackend(
         [
@@ -418,8 +455,10 @@ async def test_malformed_native_arguments_force_a_final_text_request():
 
     assert dispatcher.calls == []
     assert backend.raw_calls[1]["tools"] is None
-    assert backend.raw_calls[0]["images_b64"] == ["current-image"]
+    assert backend.raw_calls[0]["images_b64"] is None
     assert backend.raw_calls[1]["images_b64"] is None
+    assert backend.raw_calls[1]["messages"][0]["images"] == ["current-image"]
+    assert "images" not in backend.raw_calls[1]["messages"][-1]
     assert "malformed" in backend.raw_calls[1]["messages"][-1]["content"].lower()
 
 

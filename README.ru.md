@@ -139,6 +139,48 @@ Jarvis регистрирует конкретные сочетания чере
 - `Ctrl+Alt+T`: переключать reasoning по кругу Off, Low, Medium, High и снова Off.
 - `Ctrl+Alt+Q`: выключить Jarvis.
 
+## Опциональные MCP-примеры: DDGS и Qdrant
+
+MCP остаётся выключенным, пока `[mcp].enabled` не включён явно. Готовый пример
+публикует только два канонических инструмента: `web_search` через DDGS с
+зафиксированным набором backend
+`duckduckgo,wikipedia,brave,mojeek,yahoo,yandex` и read-only
+`search_local_knowledge` через Qdrant. Провайдеры ставятся в отдельные virtual
+environments, поэтому зафиксированные зависимости Qdrant не меняют основное
+окружение Jarvis:
+
+```powershell
+python -m venv .venv-mcp-ddgs
+& .\.venv-mcp-ddgs\Scripts\python.exe -m pip install "ddgs[mcp]==9.14.4"
+python -m venv .venv-mcp-qdrant
+& .\.venv-mcp-qdrant\Scripts\python.exe -m pip install "mcp-server-qdrant==0.8.1"
+& .\.venv-mcp-qdrant\Scripts\python.exe tools\seed_qdrant_demo.py
+Copy-Item examples\mcp\config.ddgs-qdrant-local.toml config.toml
+python -m jarvis --status-console
+```
+
+При первом seed загружается настроенная модель FastEmbed. Для пересоздания
+существующей коллекции нужен явный `--replace`. Для Qdrant без авторизации в
+LAN выполните seed с `--url http://HOST:6333`, измените placeholder URL в
+`config.ddgs-qdrant-lan.toml` и используйте этот профиль. При копировании или
+слиянии профиля сохраните свои настройки вне MCP и проверьте `config.ui.toml`:
+сохранённый там `[mcp].enabled` имеет приоритет над `config.toml`. DDGS
+9.14.4 жёстко использует `POST` для текстового поиска DuckDuckGo, который при
+ручной проверке возвращал пустой результат. Поэтому профили запускают
+`examples/mcp/ddgs_get_mcp.py`: он переключает только этот процесс провайдера
+на `GET` перед запуском штатного DDGS MCP server. После того как вариант только
+с GET также не прошёл ручную проверку, профили получили явный набор backend из
+DDGS issue #390. DDGS агрегирует этот набор, а не гарантирует строгий порядок
+fallback. Launcher проверяет наличие всего набора при запуске, не изменяет
+virtual environment и не включает открытый режим `auto`. Контракты поисковых
+сервисов остаются неофициальными, поэтому дальнейшие поломки провайдера
+возможны. Точный ручной checklist выводится командами:
+
+```powershell
+python -m manual.manual_check_mcp_providers --profile local
+python -m manual.manual_check_mcp_providers --profile lan
+```
+
 ## Архитектура
 
 Устанавливаемый пакет приложения находится в `src/jarvis/`. Запускайте его из

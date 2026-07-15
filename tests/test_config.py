@@ -14,6 +14,7 @@ from jarvis.core.config import (
     HotkeySettings,
     McpServerSettings,
     McpSettings,
+    McpToolAdapterSettings,
     MicrophoneSettings,
     PiperTtsSettings,
     Settings,
@@ -1496,6 +1497,101 @@ def test_mcp_server_parses_default_boundary_and_per_tool_overrides(tmp_path):
     assert server.boundary_for("local_lookup") is DataBoundary.LOCAL
     assert server.boundary_for("lan_query") is DataBoundary.LAN
     assert server.boundary_for("web_search") is DataBoundary.INTERNET
+
+
+def test_mcp_server_parses_environment_and_canonical_tool_adapter(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "ddgs"
+        env = { DDGS_PROXY = "socks5://127.0.0.1:9150" }
+
+        [mcp.servers.search.tool_adapters.search_text]
+        name = "web_search"
+        description = "Search the current public web."
+        allowed_arguments = ["query", "max_results", "timelimit"]
+        fixed_arguments = { backend = "duckduckgo", safesearch = "moderate" }
+        """,
+        encoding="utf-8",
+    )
+
+    server = load_settings(config_path).mcp.servers["search"]
+
+    assert server.env == {"DDGS_PROXY": "socks5://127.0.0.1:9150"}
+    assert server.tool_adapters == {
+        "search_text": McpToolAdapterSettings(
+            public_name="web_search",
+            description="Search the current public web.",
+            allowed_arguments=("query", "max_results", "timelimit"),
+            fixed_arguments={"backend": "duckduckgo", "safesearch": "moderate"},
+        )
+    }
+
+
+def test_mcp_server_rejects_duplicate_canonical_tool_names(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [mcp.servers.search]
+        command = "server"
+
+        [mcp.servers.search.tool_adapters.first]
+        name = "web_search"
+
+        [mcp.servers.search.tool_adapters.second]
+        name = "web_search"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="duplicate canonical tool name"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("env = { TOKEN = 1 }", "env must be a table of strings"),
+        ('tool_adapters = "lookup"', "tool_adapters.*must be a table"),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = "public"\nextra = 1',
+            "Unknown key",
+        ),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = ""',
+            "name must be a non-empty string",
+        ),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = "public"\n'
+            'description = ""',
+            "description must be a non-empty string",
+        ),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = "public"\n'
+            'allowed_arguments = ["query", "query"]',
+            "must not contain duplicates",
+        ),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = "public"\n'
+            "fixed_arguments = { query = [1] }",
+            "fixed_arguments must be a table",
+        ),
+        (
+            '[mcp.servers.search.tool_adapters.lookup]\nname = "public"\n'
+            'allowed_arguments = ["query"]\nfixed_arguments = { query = "fixed" }',
+            "cannot be both allowed and fixed",
+        ),
+    ],
+)
+def test_mcp_server_rejects_invalid_tool_adapter_configuration(tmp_path, body, message):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f'[mcp.servers.search]\ncommand = "server"\n{body}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match=message):
+        load_settings(config_path)
 
 
 @pytest.mark.parametrize("field", ["data_boundary", "tool_boundaries.lookup"])

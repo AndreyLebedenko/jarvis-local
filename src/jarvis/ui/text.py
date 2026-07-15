@@ -130,8 +130,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_call_rejected_disabled": "Tool call to {tool} rejected: MCP is disabled",
         "mcp_call_rejected_unknown_tool": "Tool call rejected: unknown tool {tool}",
         "mcp_call_rejected_tool_disabled": "Tool call rejected: {tool} is disabled",
+        "mcp_call_rejected_arguments": (
+            "Tool call rejected: {tool} received unsupported arguments"
+        ),
         "mcp_call_rejected_provider_not_connected": (
             "Tool call to {tool} rejected: provider {provider} is not connected"
+        ),
+        "mcp_tool_adapter_rejected": (
+            "MCP server {server} does not match its configured tool adapter"
         ),
     },
     "ru": {
@@ -199,8 +205,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Вызов отклонён: неизвестный инструмент «{tool}»"
         ),
         "mcp_call_rejected_tool_disabled": "Вызов отклонён: «{tool}» отключён",
+        "mcp_call_rejected_arguments": (
+            "Вызов отклонён: «{tool}» получил неподдерживаемые аргументы"
+        ),
         "mcp_call_rejected_provider_not_connected": (
             "Вызов «{tool}» отклонён: провайдер «{provider}» не подключён"
+        ),
+        "mcp_tool_adapter_rejected": (
+            "MCP-сервер {server} не соответствует настроенному адаптеру инструментов"
         ),
     },
 }

@@ -1,0 +1,27 @@
+[mcp]
+enabled = true
+presentation_strategy = "native"
+max_tool_calls_per_turn = 3
+
+[mcp.servers.web]
+command = ".venv-mcp-ddgs/Scripts/python.exe"
+args = ["examples/mcp/ddgs_get_mcp.py"]
+enabled = true
+data_boundary = "internet"
+
+[mcp.servers.web.tool_adapters.search_text]
+name = "web_search"
+description = "Search the current public web with a fixed DDGS multi-engine set."
+allowed_arguments = ["query", "timelimit"]
+fixed_arguments = { backend = "duckduckgo,wikipedia,brave,mojeek,yahoo,yandex", safesearch = "moderate", max_results = 5 }
+
+[mcp.servers.knowledge]
+command = ".venv-mcp-qdrant/Scripts/mcp-server-qdrant.exe"
+enabled = true
+data_boundary = "local"
+env = { QDRANT_LOCAL_PATH = "examples/mcp/data/qdrant", COLLECTION_NAME = "jarvis-demo", QDRANT_READ_ONLY = "true", QDRANT_SEARCH_LIMIT = "5", EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2" }
+
+[mcp.servers.knowledge.tool_adapters.qdrant-find]
+name = "search_local_knowledge"
+description = "Search the read-only local demonstration knowledge base."
+allowed_arguments = ["query"]

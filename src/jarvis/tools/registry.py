@@ -6,7 +6,7 @@ registry. No network/subprocess code lives here; McpHost is the only
 writer, populating it from connected McpClients.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from jarvis.core.config import DataBoundary
 from jarvis.tools.json_types import JSONObject
@@ -20,6 +20,25 @@ class RegisteredTool:
     provider: str
     enabled: bool = True
     data_boundary: DataBoundary = DataBoundary.UNKNOWN
+    upstream_name: str | None = None
+    allowed_arguments: tuple[str, ...] | None = None
+    fixed_arguments: JSONObject = field(default_factory=dict)
+
+    def prepare_call(self, arguments: JSONObject) -> tuple[str, JSONObject]:
+        if self.allowed_arguments is not None:
+            unsupported = set(arguments) - set(self.allowed_arguments)
+            if unsupported:
+                names = ", ".join(sorted(unsupported))
+                raise UnsupportedToolArguments(
+                    f"Tool {self.name!r} received unsupported argument(s): {names}"
+                )
+        outbound = dict(arguments)
+        outbound.update(self.fixed_arguments)
+        return self.upstream_name or self.name, outbound
+
+
+class UnsupportedToolArguments(ValueError):
+    pass
 
 
 class ToolRegistry:

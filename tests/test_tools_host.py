@@ -2,7 +2,12 @@ import asyncio
 import contextlib
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import DataBoundary, McpServerSettings, McpSettings
+from jarvis.core.config import (
+    DataBoundary,
+    McpServerSettings,
+    McpSettings,
+    McpToolAdapterSettings,
+)
 from jarvis.tools.host import McpHost, McpModuleStatus, McpModuleStatusChanged
 from jarvis.tools.mcp_client import McpTransportError, ToolCallResult, ToolDeclaration
 from jarvis.ui.contract import SystemEvent
@@ -117,6 +122,85 @@ async def test_enable_resolves_server_boundary_and_per_tool_override():
 
     assert host.registry.get("local_lookup").data_boundary is DataBoundary.LOCAL
     assert host.registry.get("web_search").data_boundary is DataBoundary.INTERNET
+
+
+async def test_enable_registers_only_canonical_allowlisted_tools():
+    settings = McpSettings(
+        enabled=True,
+        servers={
+            "search": McpServerSettings(
+                command="ddgs",
+                data_boundary=DataBoundary.INTERNET,
+                tool_adapters={
+                    "search_text": McpToolAdapterSettings(
+                        public_name="web_search",
+                        description="Search the current public web.",
+                        allowed_arguments=("query", "max_results"),
+                        fixed_arguments={"backend": "duckduckgo"},
+                    )
+                },
+            )
+        },
+    )
+    client = FakeMcpClient(
+        tools=[
+            ToolDeclaration(
+                "search_text",
+                "upstream description",
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "max_results": {"type": "integer"},
+                        "backend": {"type": "string"},
+                    },
+                    "required": ["query"],
+                },
+            ),
+            ToolDeclaration("search_images", "not exposed", {"type": "object"}),
+        ]
+    )
+    host = McpHost(EventBus(), settings, client_factory=lambda server: client)
+
+    await host.enable()
+
+    assert host.status is McpModuleStatus.ON
+    assert [tool.name for tool in host.registry.all()] == ["web_search"]
+    tool = host.registry.get("web_search")
+    assert tool.description == "Search the current public web."
+    assert tool.upstream_name == "search_text"
+    assert tool.fixed_arguments == {"backend": "duckduckgo"}
+    assert tool.allowed_arguments == ("query", "max_results")
+    assert tool.schema == {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "max_results": {"type": "integer"},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+
+
+async def test_enable_degrades_when_configured_upstream_tool_is_missing():
+    settings = McpSettings(
+        enabled=True,
+        servers={
+            "search": McpServerSettings(
+                command="ddgs",
+                tool_adapters={
+                    "search_text": McpToolAdapterSettings(public_name="web_search")
+                },
+            )
+        },
+    )
+    client = FakeMcpClient(tools=[ToolDeclaration("search_images", "", {})])
+    host = McpHost(EventBus(), settings, client_factory=lambda server: client)
+
+    await host.enable()
+
+    assert host.status is McpModuleStatus.DEGRADED
+    assert host.registry.all() == ()
 
 
 async def test_enable_skips_per_server_disabled_servers():

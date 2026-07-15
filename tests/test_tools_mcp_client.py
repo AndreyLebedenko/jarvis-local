@@ -142,6 +142,24 @@ async def test_connect_passes_command_and_args_to_stdio_params(monkeypatch):
     assert captured["args"] == ["-y", "pkg"]
 
 
+async def test_connect_passes_server_specific_environment_to_stdio_params(monkeypatch):
+    captured = {}
+
+    def fake_stdio_client(params):
+        captured["env"] = params.env
+        return _FakeAsyncCtx(value=(object(), object()))
+
+    monkeypatch.setattr(stdio_module, "stdio_client", fake_stdio_client)
+    monkeypatch.setattr(
+        mcp, "ClientSession", lambda *a, **k: _FakeAsyncCtx(value=_FakeSession())
+    )
+    client = StdioMcpClient("qdrant-server", env={"QDRANT_READ_ONLY": "true"})
+
+    await client.connect()
+
+    assert captured["env"] == {"QDRANT_READ_ONLY": "true"}
+
+
 async def test_connect_failure_during_initialize_closes_both_contexts(monkeypatch):
     session = _FakeSession(initialize_exc=RuntimeError("handshake failed"))
     stdio_ctx, session_ctx = _connected_transport(monkeypatch, session)

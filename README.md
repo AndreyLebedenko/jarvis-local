@@ -136,6 +136,47 @@ Default hotkeys:
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
+## Optional MCP examples: DDGS and Qdrant
+
+MCP stays disabled unless `[mcp].enabled` is explicitly set. The checked-in
+example exposes only two canonical tools: `web_search` through DDGS with its
+backends fixed to `duckduckgo,wikipedia,brave,mojeek,yahoo,yandex`, and
+read-only `search_local_knowledge` through Qdrant. Provider packages use
+isolated virtual environments so Qdrant's pinned dependencies cannot change
+Jarvis's core environment:
+
+```powershell
+python -m venv .venv-mcp-ddgs
+& .\.venv-mcp-ddgs\Scripts\python.exe -m pip install "ddgs[mcp]==9.14.4"
+python -m venv .venv-mcp-qdrant
+& .\.venv-mcp-qdrant\Scripts\python.exe -m pip install "mcp-server-qdrant==0.8.1"
+& .\.venv-mcp-qdrant\Scripts\python.exe tools\seed_qdrant_demo.py
+Copy-Item examples\mcp\config.ddgs-qdrant-local.toml config.toml
+python -m jarvis --status-console
+```
+
+The first seed downloads the configured FastEmbed model. `--replace` is
+required to recreate an existing collection. For an unauthenticated LAN
+Qdrant instance, seed with `--url http://HOST:6333`, edit the placeholder URL
+in `config.ddgs-qdrant-lan.toml`, then use that profile. Preserve any existing
+non-MCP settings when copying or merging a profile. Also inspect
+`config.ui.toml`: its persisted `[mcp].enabled` value takes precedence over
+`config.toml`. DDGS 9.14.4 hardcodes `POST` for DuckDuckGo text search, which
+returned empty results during live testing. The example profiles therefore
+launch `examples/mcp/ddgs_get_mcp.py`; it changes only that provider process to
+`GET` before starting the standard DDGS MCP server. After the GET-only path
+also failed live, the profiles adopted the explicit multi-backend set from
+DDGS issue #390. DDGS aggregates that set rather than guaranteeing a strict
+fallback order. The launcher validates the set at startup; it does not edit
+the provider environment or enable open-ended `auto` selection. These engines
+still use unofficial search-facing contracts, so further provider breakage
+remains possible. Print the exact human verification steps with:
+
+```powershell
+python -m manual.manual_check_mcp_providers --profile local
+python -m manual.manual_check_mcp_providers --profile lan
+```
+
 ## Architecture
 
 The installable application package lives in `src/jarvis/`. Run it from the
