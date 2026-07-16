@@ -1,21 +1,24 @@
-# Roadmap: v1.2.x stabilization toward v1.4 MCP and v1.5 file attachments
+# Roadmap: v1.2.x stabilization toward v1.4 MCP, v1.5 dialog journal, and v1.6 file attachments
 
 **Status:** Accepted roadmap.
 **Branch:** codex/roadmap-v1.2-v1.3.
-**Note:** roadmap scope now extends through v1.5.0; the file name and branch
-name predate the later planning additions. v1.4.0 (MCP) and v1.5.0 (file
-attachments) were swapped by an explicit human decision: MCP unlocks
+**Note:** roadmap scope now extends through v1.6.0; the file name and branch
+name predate the later planning additions. v1.4.0 (MCP) and file
+attachments were swapped by an explicit human decision: MCP unlocks
 capabilities that are otherwise impossible (web search, database access),
 while attachments improve ergonomics of input paths that already have
-workarounds (screen capture for images, microphone for audio).
+workarounds (screen capture for images, microphone for audio). On
+2026-07-16 (human decision) the dialog journal took the v1.5.0 slot and
+file attachments moved to v1.6.0 - see the v1.5.0 section below.
 **Context:** current release tag is already v1.2.1, so new roadmap work starts
 at v1.2.2.
 
 ## Goal
 
 Move Jarvis from the current v1.2.1 state toward a v1.3.0 Control Center
-release, a v1.4.0 MCP integration release, and a later v1.5.0
-file-attachment release through small, dependency-ordered engineering
+release, a v1.4.0 MCP integration release, a v1.5.0 dialog-journal
+release, and a later v1.6.0 file-attachment release through small,
+dependency-ordered engineering
 releases. Each v1.2.x release should produce at
 most one major architectural output. If a second major architectural decision
 appears inside a release, split it into a later roadmap item instead of
@@ -244,7 +247,8 @@ Story/task status: completed.
 ## Backlog for v1.4.0+ - Activation and warmup
 
 Decision: deferred from v1.2.7. This work is not a prerequisite for v1.3.0
-Control Center, v1.4.0 MCP integration, or v1.5.0 file attachments. Until it
+Control Center, v1.4.0 MCP integration, v1.5.0 dialog journal, or v1.6.0
+file attachments. Until it
 lands, cold starts after
 idle periods and the absence of push-to-talk/orb activation remain accepted UX
 debt.
@@ -536,7 +540,40 @@ cards above; it attaches at task 3's single interception point. Concrete
 cutoff rules are written separately, closer to that story's
 implementation.
 
-## v1.5.0 - File attachments
+## v1.5.0 - Dialog journal
+
+(Added 2026-07-16, human decision; displaces file attachments to v1.6.0.)
+
+Purpose: persist every dialog to disk as an append-only journal the user can
+browse and search, so conversations stop being ephemeral. Rationale: a
+persistent record adds a reason to keep using Jarvis, and the persistence
+layer is infrastructure that later serves STT enrichment, session
+continuation, and attachments.
+
+Preliminary scope (full design in `tasks/story-v1.5.0-dialog-journal.md`):
+
+- Per-session JSONL event log (source, timestamp, text, media file
+  references, reserved derived `transcript` field); voice audio stored
+  as-is as files, messenger-style - audio is the source of truth.
+- Journal viewer: browse sessions, feed rendering (audio tiles for voice
+  turns, text for assistant answers).
+- Search over Jarvis's text answers plus date filtering, via a derived
+  SQLite FTS5 index rebuildable from the logs.
+
+Boundary:
+
+- No STT in v1.5.0 (right-click transcription of an audio tile is planned
+  for v1.5.1 or later); no session continuation; no graph storage; journal
+  is local-disk only and does not touch the runtime locality contract or
+  the model-facing text-only `ConversationHistory`.
+
+Story/task readiness: story card exists as
+`tasks/story-v1.5.0-dialog-journal.md`. No task cards yet.
+
+## v1.6.0 - File attachments
+
+(Moved from v1.5.0 on 2026-07-16; story card renamed to
+`tasks/story-v1.6.0-file-attachments.md`.)
 
 Purpose: add deliberate file input as a new turn source, including audio files,
 without weakening runtime locality or confusing file upload with live realtime
@@ -573,5 +610,5 @@ Boundary:
   features exist; the turn-source contract should not preclude it.
 
 Story/task readiness: story card exists as
-`tasks/story-v1.5.0-file-attachments.md`. No task cards are created in this
+`tasks/story-v1.6.0-file-attachments.md`. No task cards are created in this
 planning pass.
