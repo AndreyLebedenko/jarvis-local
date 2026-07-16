@@ -1,6 +1,6 @@
 # Task journal-01: Journal event schema and JSONL store
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 
 ## Summary
@@ -50,12 +50,12 @@ yet.
 
 ## Acceptance criteria
 
-- [ ] Round-trip: event -> JSON line -> event is lossless, UTF-8, one
+- [x] Round-trip: event -> JSON line -> event is lossless, UTF-8, one
       line per event.
-- [ ] `append` then `read_session` returns events in order across
+- [x] `append` then `read_session` returns events in order across
       simulated restarts (reopen store between appends in a test).
-- [ ] A corrupt line in the middle of a file does not break replay of
+- [x] A corrupt line in the middle of a file does not break replay of
       the rest.
-- [ ] `list_sessions` ordering and timestamps are covered by tests.
-- [ ] `python -m pytest` green; tests are pure (tmp_path only, no
+- [x] `list_sessions` ordering and timestamps are covered by tests.
+- [x] `python -m pytest` green; tests are pure (tmp_path only, no
       hardware, no network).
