@@ -1,6 +1,6 @@
 # Task journal-02: Record live turns into the journal
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-01.
 
@@ -52,13 +52,13 @@ the session directory, and recording stays off the turn's critical path.
 
 ## Acceptance criteria
 
-- [ ] Pure tests drive a fake turn sequence (voice with audio bytes,
+- [x] Pure tests drive a fake turn sequence (voice with audio bytes,
       clipboard, assistant answers) and assert the resulting JSONL and
       media files.
-- [ ] A test proves a failing store (e.g. read-only dir) does not raise
+- [x] A test proves a failing store (e.g. read-only dir) does not raise
       into the turn path.
-- [ ] A test proves reasoning text never reaches journal events (mirror
+- [x] A test proves reasoning text never reaches journal events (mirror
       the existing thinking-isolation test approach).
-- [ ] `config.example.toml` documents the journal section.
-- [ ] `python -m pytest` green. Live end-to-end recording is verified by
+- [x] `config.example.toml` documents the journal section.
+- [x] `python -m pytest` green. Live end-to-end recording is verified by
       the human later via the Journal view (task-journal-06 handoff).

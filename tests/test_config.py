@@ -12,6 +12,7 @@ from jarvis.core.config import (
     ConfigError,
     DataBoundary,
     HotkeySettings,
+    JournalSettings,
     McpServerSettings,
     McpSettings,
     McpToolAdapterSettings,
@@ -71,6 +72,22 @@ def test_example_config_matches_documented_defaults(tmp_path):
     settings = load_settings(EXAMPLE_CONFIG_PATH, ui_path=_no_ui_layer(tmp_path))
 
     assert settings == Settings()
+
+
+def test_journal_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [journal]
+        enabled = false
+        root = ".local/journal"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.journal == JournalSettings(enabled=False, root=".local/journal")
 
 
 def test_valid_config_file_parses_expected_values(tmp_path):

@@ -7,6 +7,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from jarvis.audio.input import (
     AudioInput,
@@ -48,6 +49,8 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
+from jarvis.journal.recorder import JournalRecorder
+from jarvis.journal.store import JournalStore
 from jarvis.tools.host import McpHost, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
@@ -124,6 +127,7 @@ class Orchestrator:
         audio_input: AudioInput | None = None,
         thinking_mode: ReasoningLevelState | None = None,
         bus: EventBus | None = None,
+        journal_recorder: JournalRecorder | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self._backend = backend
@@ -133,12 +137,14 @@ class Orchestrator:
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
         self._bus = bus
+        self._journal_recorder = journal_recorder
         self._clock = clock or time.time
         self._pending_screenshot_b64: str | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
         self._busy = False
         self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
+        self._journal_turn_started = False
 
     @property
     def is_busy(self) -> bool:
@@ -168,6 +174,7 @@ class Orchestrator:
             TurnSource.VOICE,
             inputs=tuple(inputs),
             audio_duration_seconds=event.end_seconds - event.start_seconds,
+            voice_wav_bytes=event.wav_bytes,
         )
 
     async def on_clipboard(self, event: ClipboardSubmitted) -> None:
@@ -191,6 +198,7 @@ class Orchestrator:
             TurnSource.TEXT,
             inputs=(ModelRequestInput.CLIPBOARD,),
             audio_duration_seconds=None,
+            voice_wav_bytes=None,
         )
 
     async def _start_turn(
@@ -201,6 +209,7 @@ class Orchestrator:
         *,
         inputs: tuple[ModelRequestInput, ...],
         audio_duration_seconds: float | None,
+        voice_wav_bytes: bytes | None,
     ) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
@@ -210,6 +219,14 @@ class Orchestrator:
             logger.info("Ignoring new turn: previous request still in flight")
             return
         self._busy = True
+        self._journal_turn_started = False
+        if self._journal_recorder is not None:
+            if source is TurnSource.VOICE and voice_wav_bytes is not None:
+                await self._journal_recorder.record_voice_user(voice_wav_bytes)
+                self._journal_turn_started = True
+            elif source is TurnSource.TEXT:
+                await self._journal_recorder.record_text_user(history_text)
+                self._journal_turn_started = True
         if self._bus is not None:
             await self._bus.publish(TurnAccepted, TurnAccepted(source=source))
         await self._sound_cues.play("thinking")
@@ -257,6 +274,7 @@ class Orchestrator:
             if self._bus is not None:
                 await self._bus.publish(BackendRequestFailed, BackendRequestFailed())
             await self._sound_cues.play("error")
+            self._journal_turn_started = False
             self._busy = False
 
     async def on_response_token(self, event: ResponseToken) -> None:
@@ -275,6 +293,9 @@ class Orchestrator:
         full_text = "".join(self._response_tokens)
         self._history.add("user", self._current_turn_history_text)
         self._history.add("assistant", full_text)
+        if self._journal_recorder is not None and self._journal_turn_started:
+            await self._journal_recorder.record_assistant(full_text)
+            self._journal_turn_started = False
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
         """Clears the busy flag, optionally after a cooldown, and resumes
@@ -311,6 +332,7 @@ class App:
     settings: Settings
     visibility_mode: VisibilityModeState | None = None
     history: ConversationHistory | None = None
+    journal_recorder: JournalRecorder | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
     # and structurally inert (status OFF, no clients) until enable() is
@@ -356,6 +378,11 @@ def build_app(
     thinking_mode = ReasoningLevelState(bus)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
+    journal_recorder = JournalRecorder(
+        JournalStore(Path(settings.journal.root)),
+        enabled=settings.journal.enabled,
+        logger=logger,
+    )
     # Always constructed, never conditionally omitted - see the App
     # dataclass's mcp_host field comment for why this is still safe under
     # the "off equals the capability does not exist" invariant.
@@ -376,6 +403,7 @@ def build_app(
         audio_input=audio_input,
         thinking_mode=thinking_mode,
         bus=bus,
+        journal_recorder=journal_recorder,
     )
     return App(
         bus=bus,
@@ -388,6 +416,7 @@ def build_app(
         thinking_mode=thinking_mode,
         visibility_mode=visibility_mode,
         history=history,
+        journal_recorder=journal_recorder,
         settings=settings,
         mcp_host=mcp_host,
     )
@@ -693,6 +722,9 @@ async def run_until_shutdown(
         await app.tts_output.wait_for_pending()
         logger.info("Shutdown: flushing pending sound cues")
         await app.sound_cues.wait_for_pending()
+        if app.journal_recorder is not None:
+            logger.info("Shutdown: flushing pending journal writes")
+            await app.journal_recorder.wait_for_pending()
         if app.mcp_host is not None:
             # Disabling before unwiring matters: disable() publishes a
             # SystemEvent, and the Status Console's subscription to it is

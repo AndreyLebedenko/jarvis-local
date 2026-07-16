@@ -126,6 +126,13 @@ device = ""
 # visible in-band marker, never silently cut.
 max_chars = 20000
 
+[journal]
+# Append-only local dialog journal. One app run creates one lazy session on
+# the first accepted turn; voice audio is stored as .wav files next to the
+# JSONL event log.
+enabled = true
+root = "journal"
+
 [sound_cues]
 listening = "sounds/listening.wav"
 thinking = "sounds/thinking.wav"

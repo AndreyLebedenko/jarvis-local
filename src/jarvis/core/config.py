@@ -353,6 +353,12 @@ class MicrophoneSettings:
     device: str = ""
 
 
+@dataclass(frozen=True)
+class JournalSettings:
+    enabled: bool = True
+    root: str = "journal"
+
+
 # Dialog-prompt defaults (task-v1.2.12-external-prompt-config.md). These are
 # runtime dialog data sent to the model, not UI text - deliberately not part
 # of ui_text.py's UI catalog and not governed by [ui].language. Russian
@@ -410,6 +416,7 @@ class Settings:
     ui: UiSettings = field(default_factory=UiSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
+    journal: JournalSettings = field(default_factory=JournalSettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -424,6 +431,7 @@ _SECTIONS: dict[str, type] = {
     "ui": UiSettings,
     "prompts": PromptSettings,
     "mcp": McpSettings,
+    "journal": JournalSettings,
 }
 
 SUPPORTED_UI_LANGUAGES = ("en", "ru")

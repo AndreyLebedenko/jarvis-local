@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from jarvis.journal import JournalEvent, JournalStore, new_session_id
+from jarvis.journal import JournalEvent, JournalRecorder, JournalStore, new_session_id
 
 
 def test_journal_event_json_line_round_trip_is_lossless_utf8_and_single_line() -> None:
@@ -243,6 +243,66 @@ def test_list_sessions_sorts_mixed_timezone_offsets_chronologically(
     ]
 
 
+async def test_recorder_writes_voice_clipboard_and_assistant_events(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(
+            datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC),
+            datetime(2026, 7, 16, 15, 30, 1, tzinfo=UTC),
+            datetime(2026, 7, 16, 15, 30, 2, tzinfo=UTC),
+        ),
+    )
+
+    await recorder.record_voice_user(b"same wav bytes sent to model")
+    await recorder.record_text_user("clipboard text")
+    await recorder.record_assistant("final answer")
+    await recorder.wait_for_pending()
+
+    assert recorder.session_id is not None
+    session_dir = tmp_path / recorder.session_id
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+
+    assert replay.corrupt_lines == 0
+    assert [
+        (event.role, event.source, event.text, event.media) for event in replay.events
+    ] == [
+        ("user", "voice", "", ("utterance-20260716-153000-0001.wav",)),
+        ("user", "text", "clipboard text", ()),
+        ("assistant", "assistant", "final answer", ()),
+    ]
+    assert (
+        session_dir / "utterance-20260716-153000-0001.wav"
+    ).read_bytes() == b"same wav bytes sent to model"
+
+
+async def test_recorder_write_failure_is_logged_and_not_raised(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    recorder = JournalRecorder(
+        _FailingStore(),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    with caplog.at_level("WARNING"):
+        await recorder.record_text_user("still accepted")
+        await recorder.wait_for_pending()
+
+    assert "Journal write failed" in caplog.text
+
+
+async def test_disabled_recorder_does_not_start_a_session(tmp_path: Path) -> None:
+    recorder = JournalRecorder(JournalStore(tmp_path), enabled=False)
+
+    await recorder.record_text_user("ignored")
+    await recorder.record_assistant("ignored")
+    await recorder.wait_for_pending()
+
+    assert recorder.session_id is None
+    assert list(tmp_path.iterdir()) == []
+
+
 def _event(
     *,
     session_id: str,
@@ -260,3 +320,22 @@ def _event(
         media=[],
         transcript=None,
     )
+
+
+def _fixed_clock(*timestamps: datetime):
+    remaining = list(timestamps)
+
+    def now() -> datetime:
+        if len(remaining) == 1:
+            return remaining[0]
+        return remaining.pop(0)
+
+    return now
+
+
+class _FailingStore:
+    root = Path("unused")
+
+    def append(self, event: JournalEvent) -> None:
+        del event
+        raise OSError("read-only")

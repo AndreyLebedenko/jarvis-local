@@ -32,6 +32,11 @@ class JournalStore:
             file.write(event.to_json_line())
             file.flush()
 
+    def write_media(self, session_id: str, name: str, contents: bytes) -> None:
+        media_path = self._root / session_id / name
+        media_path.parent.mkdir(parents=True, exist_ok=True)
+        media_path.write_bytes(contents)
+
     def read_session(self, session_id: str) -> JournalReplay:
         events_file = self._root / session_id / _EVENTS_FILE_NAME
         if not events_file.exists():

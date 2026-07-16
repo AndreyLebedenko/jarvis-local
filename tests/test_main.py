@@ -39,6 +39,7 @@ from jarvis.audio.tts import BilingualTtsEngine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    JournalSettings,
     McpServerSettings,
     McpSettings,
     MicrophoneSettings,
@@ -65,6 +66,7 @@ from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
+from jarvis.journal import JournalStore
 from jarvis.tools.host import McpModuleStatus, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
@@ -171,7 +173,12 @@ def test_clear_drops_every_recorded_turn():
 
 
 def _orchestrator(
-    chat_impl=None, audio_input=None, thinking_mode=None, bus=None, clock=None
+    chat_impl=None,
+    audio_input=None,
+    thinking_mode=None,
+    bus=None,
+    clock=None,
+    journal_recorder=None,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -182,6 +189,7 @@ def _orchestrator(
         audio_input=audio_input,
         thinking_mode=thinking_mode,
         bus=bus,
+        journal_recorder=journal_recorder,
         clock=clock,
     )
     return orchestrator, backend, sound_cues
@@ -194,6 +202,23 @@ class _RequestRecorder:
 
     async def _on_event(self, event: ModelRequestStarted) -> None:
         self.events.append(event)
+
+
+class _FakeJournalRecorder:
+    def __init__(self) -> None:
+        self.voice_wavs: list[bytes] = []
+        self.user_texts: list[str] = []
+        self.assistant_texts: list[str] = []
+
+    async def record_voice_user(self, wav_bytes: bytes) -> None:
+        self.voice_wavs.append(wav_bytes)
+
+    async def record_text_user(self, text: str, *, source: str = "text") -> None:
+        del source
+        self.user_texts.append(text)
+
+    async def record_assistant(self, text: str) -> None:
+        self.assistant_texts.append(text)
 
 
 async def test_accepted_voice_request_reports_its_exact_media_composition():
@@ -495,6 +520,41 @@ async def test_on_response_complete_records_plain_response_text_in_history():
 
     messages = orchestrator._history.as_messages()
     assert messages[-1] == {"role": "assistant", "content": "Ответ через API готов."}
+
+
+async def test_journal_recorder_receives_turn_inputs_and_final_response_only():
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"voice clip", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_token(ResponseToken(text="final "))
+    await orchestrator.on_response_token(ResponseToken(text="answer"))
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="clipboard text", truncated=False, is_empty=False)
+    )
+
+    assert journal_recorder.voice_wavs == [b"voice clip"]
+    assert journal_recorder.user_texts == ["clipboard text"]
+    assert journal_recorder.assistant_texts == ["final answer"]
+
+
+async def test_journal_recorder_ignores_completion_without_accepted_user_turn():
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_response_complete(_complete_event())
+
+    assert journal_recorder.voice_wavs == []
+    assert journal_recorder.user_texts == []
+    assert journal_recorder.assistant_texts == []
 
 
 async def test_busy_utterance_is_ignored_until_previous_turn_completes():
@@ -1013,7 +1073,7 @@ class _FakeTransport:
 
 
 def _settings() -> Settings:
-    return Settings()
+    return Settings(journal=JournalSettings(enabled=False))
 
 
 def _collecting_subscriber(items: list) -> Callable:
@@ -1888,6 +1948,49 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
         reasoning_level=ReasoningLevel.HIGH,
     )
 
+    assert tts_output.received_texts == ["Hello"]
+
+
+async def test_thinking_chunks_never_reach_journal_through_real_bus_wiring(tmp_path):
+    lines = [
+        {"message": {"thinking": "reasoning step one", "content": ""}, "done": False},
+        {"message": {"thinking": "reasoning step two", "content": ""}, "done": False},
+        {"message": {"content": "Hello"}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    bus = EventBus()
+    backend = OllamaBackend(
+        bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
+    )
+    tts_output = _RecordingTtsOutput()
+    settings = Settings(journal=JournalSettings(root=str(tmp_path)))
+
+    app = build_app(
+        settings,
+        bus=bus,
+        backend=backend,
+        audio_input=_FakeAudioInput(),
+        tts_output=tts_output,
+        capture_input=_FakeCaptureInput(),
+    )
+    wire(app)
+
+    await app.bus.publish(
+        UtteranceChunk,
+        UtteranceChunk(wav_bytes=b"voice clip", start_seconds=0, end_seconds=1),
+    )
+    assert app.journal_recorder is not None
+    await app.journal_recorder.wait_for_pending()
+
+    session_id = app.journal_recorder.session_id
+    assert session_id is not None
+    replay = JournalStore(tmp_path).read_session(session_id)
+
+    assert [(event.role, event.source, event.text) for event in replay.events] == [
+        ("user", "voice", ""),
+        ("assistant", "assistant", "Hello"),
+    ]
+    assert all("reasoning" not in event.text for event in replay.events)
     assert tts_output.received_texts == ["Hello"]
 
 
