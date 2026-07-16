@@ -1,6 +1,6 @@
 # Task journal-03: Derived SQLite FTS5 search index
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-01. (Independent of task-journal-02.)
 
@@ -43,13 +43,13 @@ answers plus date-range filtering. Pure logic, no UI, no transport.
 
 ## Acceptance criteria
 
-- [ ] Rebuild from a store fixture with several sessions produces correct
+- [x] Rebuild from a store fixture with several sessions produces correct
       hits; deleting index.db and rebuilding gives identical results.
-- [ ] Search matches assistant text only (a user-text-only token is not
+- [x] Search matches assistant text only (a user-text-only token is not
       found).
-- [ ] Date filtering: from/to bounds inclusive, whole-day semantics
+- [x] Date filtering: from/to bounds inclusive, whole-day semantics
       covered by tests, including a cross-midnight session.
-- [ ] Russian text round-trips: a Cyrillic query finds a Cyrillic answer
+- [x] Russian text round-trips: a Cyrillic query finds a Cyrillic answer
       (exact and prefix form).
-- [ ] `python -m pytest` green; tmp_path only, no new dependencies in
+- [x] `python -m pytest` green; tmp_path only, no new dependencies in
       `requirements.txt`.
