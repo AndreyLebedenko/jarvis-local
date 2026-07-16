@@ -1,6 +1,6 @@
 # Story v1.5.0: Dialog journal
 
-**Status:** Planned, not ready for task cards.
+**Status:** Planned; task cards created (see Task card sequence below).
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.5.0 (displaces file attachments, moved to v1.6.0: a
 persistent journal creates a reason to keep using Jarvis and is
@@ -154,6 +154,30 @@ journal introduces its first second view.
 - [ ] Pure automated tests cover event serialization, log append/replay,
       index build, and search queries. Viewer and audio playback are
       human-run checks per the Testing protocol.
+
+## Task card sequence
+
+Ordered; each card is deliberately small and self-contained (explicit
+file pointers, narrow boundary) so a modest executor can complete it
+without whole-project context. 03 may run in parallel with 02; 07 needs
+05 but not 06.
+
+1. `tasks/task-journal-01-event-schema-and-store.md` - event schema +
+   JSONL store (pure logic).
+2. `tasks/task-journal-02-recorder-wiring.md` - record live turns +
+   audio files, off the critical path.
+3. `tasks/task-journal-03-search-index.md` - derived SQLite FTS5 index +
+   query API (pure logic).
+4. `tasks/task-journal-04-transport-api.md` - journal endpoints + live
+   `journal_event` push + Hidden enforcement on the transport.
+5. `tasks/task-journal-05-journal-view-static.md` - Journal view UI,
+   read-only, reserved input dock, Hidden placeholder.
+6. `tasks/task-journal-06-live-feed-and-playback.md` - live append +
+   audio playback; carries the main human-run end-to-end handoff.
+7. `tasks/task-journal-07-search-ui.md` - search field + date filter +
+   jump to context.
+8. `tasks/task-journal-08-docs-and-release.md` - PROJECT.md, en/ru
+   screenshots, retention note, release wrap-up.
 
 ## Stop conditions
 
