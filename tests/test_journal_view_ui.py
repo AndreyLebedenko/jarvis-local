@@ -141,13 +141,31 @@ def test_stale_journal_responses_cannot_repopulate_hidden_dom():
     until the in-flight response landed."""
     clear_body = APP_JS.split("function _clearJournalContent()")[1].split("\n}")[0]
     assert "_journalContentGeneration += 1" in clear_body
-    for function_name in ("refreshJournalSessions", "selectJournalSession"):
-        body = APP_JS.split(f"async function {function_name}(")[1].split("\n}")[0]
-        assert "const generation = _journalContentGeneration;" in body
-        assert (
-            "if (generation !== _journalContentGeneration || _isHiddenActive()) return;"
-            in body
-        )
+    sessions_body = APP_JS.split("async function refreshJournalSessions(")[1].split("\n}")[0]
+    assert "const generation = _journalContentGeneration;" in sessions_body
+    assert (
+        "if (generation !== _journalContentGeneration || _isHiddenActive()) return;"
+        in sessions_body
+    )
+    # selectJournalSession must not early-return (task-journal-06: every
+    # completion drives the deferred-refetch check), so its stale/Hidden
+    # protection gates the render instead.
+    feed_body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[0]
+    assert "const generation = _journalContentGeneration;" in feed_body
+    assert (
+        "generation === _journalContentGeneration && !_isHiddenActive()"
+        in feed_body
+    )
+    assert "if (valid && _journalSelectedSessionId === sessionId) {" in feed_body
+
+
+def test_hidden_attribute_actually_hides_journal_placeholders():
+    """The feed-pane placeholder has an author display rule, which beats
+    the hidden attribute's UA display: none - without an explicit [hidden]
+    override the "empty" label keeps its flex: 1 half of the column below
+    the feed (observed live 2026-07-17)."""
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert ".journal-empty[hidden] { display: none; }" in compact
 
 
 def test_feed_reanchors_when_a_thumbnail_load_grows_the_scroll_height():
@@ -191,9 +209,9 @@ def test_journal_rendering_reads_labels_through_ui_strings():
     assert '"journal_source_" + source' in APP_JS
 
 
-def test_journal_view_is_read_only_in_this_task():
-    """No interactive content in the dock and no playback controls: the
-    only journal onclick/controls are the session rows built in app.js."""
+def test_journal_view_has_no_input_and_no_context_menu():
+    """Read-only plus playback (task-journal-06): the reserved input dock
+    stays empty and untouched by JS, and the tile has no right-click menu
+    (v1.5.1)."""
     assert "journalInputDock" not in APP_JS
-    assert "probe.controls" not in APP_JS
-    assert re.search(r"journal-audio[^\n]*addEventListener\(\"click\"", APP_JS) is None
+    assert "contextmenu" not in APP_JS

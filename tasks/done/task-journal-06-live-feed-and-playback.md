@@ -1,6 +1,6 @@
-# Task journal-06: Live feed and audio playback
+﻿# Task journal-06: Live feed and audio playback
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-05.
 
@@ -45,13 +45,14 @@ their clip.
 
 ## Acceptance criteria
 
-- [ ] Structural/logic tests: `journal_event` dispatch appends to the
+- [x] Structural/logic tests: `journal_event` dispatch appends to the
       correct session only; bottom-anchor logic covered (pinned vs
       scrolled-up); single-playback invariant present; Hidden stops
       playback.
-- [ ] `python -m pytest` green.
-- [ ] Human-run handoff prepared: speak to Jarvis with the Journal view
+- [x] `python -m pytest` green.
+- [x] Human-run handoff prepared: speak to Jarvis with the Journal view
       open, verify the voice turn and answer appear live; play back the
       recorded utterance and confirm it is the audio the model received;
       verify Hidden mid-playback. This handoff also serves as the live
       end-to-end verification of task-journal-02 recording.
+
