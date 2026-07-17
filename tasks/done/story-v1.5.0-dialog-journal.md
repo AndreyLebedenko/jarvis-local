@@ -1,6 +1,6 @@
 # Story v1.5.0: Dialog journal
 
-**Status:** Planned; task cards created (see Task card sequence below).
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
 **Release:** v1.5.0 (displaces file attachments, moved to v1.6.0: a
 persistent journal creates a reason to keep using Jarvis and is
@@ -132,28 +132,37 @@ journal introduces its first second view.
 
 ## Acceptance criteria draft
 
-- [ ] Every turn (voice, clipboard, and any other source) appends events
+- [x] Every turn (voice, clipboard, and any other source) appends events
       to a per-session JSONL log; the log survives process restarts.
-- [ ] Voice audio is persisted as files referenced from the log; no
+- [x] Voice audio is persisted as files referenced from the log; no
       binary payloads inside JSONL.
-- [ ] Event format includes source, timestamp, text, media references,
+- [x] Event format includes source, timestamp, text, media references,
       and a reserved optional `transcript` field.
-- [ ] Journal viewer lists sessions and renders a session as a feed:
+- [x] Journal viewer lists sessions and renders a session as a feed:
       audio tile for voice turns, text for assistant answers.
-- [ ] Voice audio tiles are playable in v1.5.0 (human-run check).
-- [ ] The current session renders live: a new turn appears in the open
+- [x] Voice audio tiles are playable in v1.5.0 (human-run check).
+- [x] The current session renders live: a new turn appears in the open
       Journal view without reload, via the console's existing real-time
       channel.
-- [ ] Search over assistant answer text works, with date filtering; the
+- [x] Search over assistant answer text works, with date filtering; the
       index is derived and can be rebuilt from the JSONL logs.
-- [ ] The Journal view lives inside the Status Console shell, switched
+- [x] The Journal view lives inside the Status Console shell, switched
       via a `Console | Journal` control; no new UI framework or external
       assets.
-- [ ] While Hidden is active, the Journal view shows a generic
+- [x] While Hidden is active, the Journal view shows a generic
       placeholder and exposes no dialog content.
-- [ ] Pure automated tests cover event serialization, log append/replay,
+- [x] Pure automated tests cover event serialization, log append/replay,
       index build, and search queries. Viewer and audio playback are
       human-run checks per the Testing protocol.
+
+## Release verification
+
+Task cards 01-07 and 08 are completed and moved to `tasks/done/`. The English
+and Russian Journal screenshots are `docs/screenshots/{en,ru}/chat-log.jpg`;
+the search flow and Journal playback were human-verified on 2026-07-17.
+Automated verification on 2026-07-18 passed with `962 passed, 1 skipped`, plus
+Ruff format and lint checks. The unresolved microphone shutdown race and the
+open retention policy are documented in `tasks/bug_reports/`.
 
 ## Task card sequence
 
@@ -176,7 +185,7 @@ without whole-project context. 03 may run in parallel with 02; 07 needs
    audio playback; carries the main human-run end-to-end handoff.
 7. `tasks/task-journal-07-search-ui.md` - search field + date filter +
    jump to context.
-8. `tasks/task-journal-08-docs-and-release.md` - PROJECT.md, en/ru
+8. `tasks/done/task-journal-08-docs-and-release.md` - PROJECT.md, en/ru
    screenshots, retention note, release wrap-up.
 
 ## Stop conditions

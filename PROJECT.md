@@ -2005,6 +2005,41 @@ second transport or allowing the browser to infer engine state.
 - Tool call/outcome `SystemEvent` messages continue through the existing
   event panel. No separate audit window or untyped parsing path was added.
 
+## Architecture v1.5.0 (dialog journal)
+
+See [tasks/done/story-v1.5.0-dialog-journal.md](tasks/done/story-v1.5.0-dialog-journal.md).
+The journal is a local, append-only record parallel to the model-facing
+conversation history. It is not fed back into model context.
+
+- Each session is stored as a JSONL event log. Events preserve source,
+  timestamp, text, media references, and a reserved nullable `transcript`
+  field. Voice audio and screenshots remain binary files beside the log;
+  they are never embedded in JSONL.
+- `JournalRecorder` queues writes away from the turn-critical path. The
+  journal store and its SQLite FTS5 index are rebuildable from the raw logs.
+  The index covers assistant answers only; user turns and future transcripts
+  are not searchable in v1.5.0.
+- Search accepts an answer query and an optional date range. Russian search is
+  exact/prefix matching only because SQLite FTS5 has no Russian stemming;
+  morphology and semantic search remain later work.
+- The Status Console exposes sessions, feeds, media, and search through the
+  existing authenticated local HTTP transport. Live `journal_event` updates
+  use the existing state WebSocket channel. Journal media is served through
+  that transport, never through `file://` URLs.
+- The Journal view is a second Status Console view with a live,
+  bottom-anchored feed, HTML5 audio tiles, date/query search, safe snippet
+  highlighting, and jump-to-session-context. Hidden mode replaces the whole
+  view with a neutral placeholder; transport endpoints and live pushes are
+  suppressed as a second privacy boundary.
+- v1.5.0 ships without automatic journal retention or pruning. Logs, audio,
+  and screenshots therefore grow until the user removes them manually. The
+  disk-growth/privacy policy remains an explicit open question, recorded in
+  [tasks/bug_reports/2026-07-17-journal-retention-policy.md](tasks/bug_reports/2026-07-17-journal-retention-policy.md).
+- A separate release-preparation edge case remains open: microphone shutdown
+  can race a blocking executor read. It is recorded in
+  [tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md)
+  and is outside the journal data/UI contract.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

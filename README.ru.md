@@ -15,7 +15,7 @@ routes.
 
 ## Status Console UI
 
-В v1.3.2 Status Console развивается в Control Center: состояние runtime и
+В v1.5.0 Status Console развивается в Control Center и постоянный Dialog Journal: состояние runtime и
 здоровье модулей, метаданные последнего запроса к модели с timestamp в начале,
 события движка, уровни reasoning (Off/Low/Medium/High), Open/Hidden, сброс
 контекста, защищённый Shutdown, типизированные restart-to-apply настройки
@@ -27,9 +27,11 @@ routes.
 
 ![Jarvis Touchstrip](docs/screenshots/ru/touchstrip.jpg)
 
+![Jarvis Dialog Journal](docs/screenshots/ru/chat-log.jpg)
+
 ## Статус
 
-Это рабочий v1.3.2 hobby/research release с проверенным двуязычным TTS: русский
+Это рабочий v1.5.0 hobby/research release с проверенным двуязычным TTS: русский
 текст озвучивает Silero, английский - Piper, а потоковый ответ автоматически
 маршрутизируется по набору символов. TTS-движок и локальная voice model
 настраиваются отдельно для каждого языка. Совместимый zero-config default
@@ -61,6 +63,10 @@ Jarvis не связан с Marvel, Disney или правообладателя
   интерфейса по умолчанию английский; русский включается через `[ui].language
   = "ru"` в `config.toml` (это касается только UI - язык диалога и TTS не
   меняются).
+- Постоянный Dialog Journal с JSONL-логами по сессиям, локальным
+  воспроизведением медиа, live-feed, поиском ответов Jarvis, фильтром по датам
+  и защитой Hidden. Медиа отдаётся через авторизованный локальный transport;
+  русский поиск использует точное совпадение и префиксы.
 - Контекст текущих локальных даты, дня недели, времени и числового UTC offset
   для каждого запроса без сохранения этого контекста в истории диалога.
 - Асинхронная event-bus архитектура с изолированными модулями.
@@ -220,6 +226,10 @@ python -m manual.manual_check_mcp_providers --profile lan
   по-прежнему не является надёжным способом остановки, пока foreground UI
   loop принадлежит `pywebview`.
 - Настоящий холодный старт Ollama может требовать увеличенного read timeout.
+- Для journal пока нет автоматического retention/pruning: старые логи, аудио и
+  скриншоты нужно удалять вручную до принятия политики роста диска.
+- При закрытии Status Console возможна гонка shutdown микрофона с blocking
+  executor read; см. [открытый bug report](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md).
 - В v1.0 нет полноценного эхоподавления. Jarvis может услышать собственный TTS через колонки; в коде есть cooldown mitigation, но это не полный fix.
 - Silero TTS `v3_1_ru` не поддерживает латинские символы. Jarvis перед синтезом грубо транслитерирует латиницу в кириллицу.
 - Плотные скриншоты, особенно большие IDE-окна, могут приводить к OCR-конфабуляциям. Для точечных вопросов лучше использовать region capture.

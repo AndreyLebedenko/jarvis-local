@@ -138,6 +138,15 @@
 3. Create a new git branch with a task-appropriate name unless the human
    explicitly asks to use the current branch.
 
+## Codex
+
+1. If a required command fails because the Codex sandbox session, logon
+   session, or permissions are unavailable, report the infrastructure error
+   and stop instead of applying workarounds.
+2. When the human explicitly authorizes an approved/escalated run, use the
+   Codex approval mechanism for that exact command, then record the result in
+   the task handoff.
+
 ## Task documentation workflow
 
 1. Keep implementation planning in `tasks/`.

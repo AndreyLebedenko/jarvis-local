@@ -1,7 +1,7 @@
 # Task journal-08: Documentation, screenshots, release wrap-up
 
-**Status:** Planned.
-**Story:** `tasks/story-v1.5.0-dialog-journal.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.0-dialog-journal.md`
 **Depends on:** all previous journal tasks completed and human-verified.
 
 ## Summary
@@ -47,11 +47,27 @@ release.
 
 ## Acceptance criteria
 
-- [ ] PROJECT.md updated; no story acceptance box left silently
+- [x] PROJECT.md updated; no story acceptance box left silently
       unchecked.
-- [ ] Screenshots present in both languages and referenced from docs.
-- [ ] Retention/limitations recorded (as facts or as an explicit open
+- [x] Screenshots present in both languages and referenced from docs.
+- [x] Retention/limitations recorded (as facts or as an explicit open
       question).
-- [ ] `python -m pytest` green on the final state.
-- [ ] Release handoff prepared for the human (version bump/tag per
+- [x] `python -m pytest` green on the final state.
+- [x] Release handoff prepared for the human (version bump/tag per
       project convention).
+
+## Release handoff
+
+- Project version is `1.5.0` in `pyproject.toml`.
+- Existing repository tags use the `v<major>.<minor>.<patch>` convention; the
+  release tag to create after final review is `v1.5.0`.
+- Human-provided Journal screenshots are referenced from both README files:
+  `docs/screenshots/en/chat-log.jpg` and
+  `docs/screenshots/ru/chat-log.jpg`.
+- The journal has no automatic retention policy yet; the open question is
+  recorded in `tasks/bug_reports/2026-07-17-journal-retention-policy.md`.
+- The independent microphone shutdown race is recorded in
+  `tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md` and is
+  not silently presented as fixed by this release.
+- Final checks: `python -m ruff format --check .`, `python -m ruff check .`,
+  and `python -m pytest`.
