@@ -660,6 +660,11 @@ let _journalContentGeneration = 0;
 // the deferred session is still the one on screen.
 let _journalFeedFetchesInFlight = 0;
 let _journalFeedRefetchSessionId = null;
+let _journalSessions = [];
+let _journalSearchActive = false;
+let _journalSearchGeneration = 0;
+let _journalSearchTimer = null;
+let _journalContextHighlightTimer = null;
 
 function _isJournalActive() {
   return document.documentElement.getAttribute("data-view") === "journal";
@@ -694,14 +699,22 @@ function _onJournalVisibilityChanged(mode) {
 
 function _clearJournalContent() {
   _journalContentGeneration += 1;
+  _deactivateJournalSearch();
+  _clearJournalSearchControls();
   _stopJournalPlayback();
+  _clearJournalContextHighlight();
   _journalFeedRefetchSessionId = null;
   _journalSelectedSessionId = null;
   document.getElementById("journalSessionList").replaceChildren();
-  document.getElementById("journalFeed").replaceChildren();
   document.getElementById("journalSessionsEmpty").hidden = false;
-  document.getElementById("journalFeedEmpty").hidden = false;
-  document.getElementById("journalFeedEmpty").textContent = uiString("journal_no_selection");
+  _showJournalNoSelection();
+}
+
+function _showJournalNoSelection() {
+  document.getElementById("journalFeed").replaceChildren();
+  const empty = document.getElementById("journalFeedEmpty");
+  empty.hidden = false;
+  empty.textContent = uiString("journal_no_selection");
 }
 
 async function _fetchJournalJson(path) {
@@ -728,6 +741,7 @@ async function refreshJournalSessions() {
   const sessions = payload ? payload.sessions : [];
   // Newest first regardless of the endpoint's ordering.
   sessions.sort((a, b) => (a.start_timestamp < b.start_timestamp ? 1 : -1));
+  _journalSessions = sessions;
   const list = document.getElementById("journalSessionList");
   list.replaceChildren();
   document.getElementById("journalSessionsEmpty").hidden = sessions.length !== 0;
@@ -769,7 +783,11 @@ function _journalSessionElement(session) {
   return row;
 }
 
-async function selectJournalSession(sessionId) {
+async function selectJournalSession(sessionId, contextEventPosition = null) {
+  if (_isJournalSearchActive()) {
+    _deactivateJournalSearch();
+    _clearJournalSearchControls();
+  }
   const generation = _journalContentGeneration;
   _journalSelectedSessionId = sessionId;
   document.querySelectorAll("#journalSessionList .journal-session").forEach((row) => {
@@ -792,7 +810,7 @@ async function selectJournalSession(sessionId) {
   // after Open already deferred an event for the fresh view).
   const valid = generation === _journalContentGeneration && !_isHiddenActive();
   if (valid && _journalSelectedSessionId === sessionId) {
-    _renderJournalFeed(payload ? payload.events : []);
+    _renderJournalFeed(payload ? payload.events : [], contextEventPosition);
   }
   _maybeRefetchJournalFeed();
 }
@@ -812,6 +830,197 @@ function _maybeRefetchJournalFeed() {
   selectJournalSession(sessionId);
 }
 
+// task-journal-07: Search is a transient replacement for the selected
+// session feed. It never changes the selected-session state, so clearing a
+// query or jumping to a hit can restore the user's previous context.
+function _journalSearchCriteria() {
+  return {
+    query: document.getElementById("journalSearchQuery").value.trim(),
+    dateFrom: document.getElementById("journalSearchDateFrom").value,
+    dateTo: document.getElementById("journalSearchDateTo").value,
+  };
+}
+
+function _isJournalSearchActive() {
+  return _journalSearchActive;
+}
+
+function _clearJournalSearchControls() {
+  const query = document.getElementById("journalSearchQuery");
+  if (!query) return;
+  query.value = "";
+  document.getElementById("journalSearchDateFrom").value = "";
+  document.getElementById("journalSearchDateTo").value = "";
+}
+
+function _deactivateJournalSearch() {
+  _journalSearchActive = false;
+  _journalSearchGeneration += 1;
+  if (_journalSearchTimer !== null) {
+    window.clearTimeout(_journalSearchTimer);
+    _journalSearchTimer = null;
+  }
+}
+
+function onJournalSearchInputChanged() {
+  if (_isHiddenActive()) return;
+  const criteria = _journalSearchCriteria();
+  if (!criteria.query && !criteria.dateFrom && !criteria.dateTo) {
+    clearJournalSearch();
+    return;
+  }
+  _journalSearchActive = true;
+  _scheduleJournalSearch();
+}
+
+function _scheduleJournalSearch() {
+  if (!_isJournalSearchActive()) return;
+  _journalSearchGeneration += 1;
+  const searchGeneration = _journalSearchGeneration;
+  if (_journalSearchTimer !== null) window.clearTimeout(_journalSearchTimer);
+  _journalSearchTimer = window.setTimeout(() => {
+    _journalSearchTimer = null;
+    _runJournalSearch(searchGeneration);
+  }, 250);
+}
+
+async function _runJournalSearch(searchGeneration) {
+  const criteria = _journalSearchCriteria();
+  const parameters = new URLSearchParams();
+  parameters.set("query", criteria.query);
+  if (criteria.dateFrom) parameters.set("date_from", criteria.dateFrom);
+  if (criteria.dateTo) parameters.set("date_to", criteria.dateTo);
+  const contentGeneration = _journalContentGeneration;
+  const payload = await _fetchJournalJson(
+    "/api/journal/search?" + parameters.toString());
+  if (
+    searchGeneration !== _journalSearchGeneration ||
+    contentGeneration !== _journalContentGeneration ||
+    _isHiddenActive() ||
+    !_isJournalSearchActive()
+  ) return;
+  _renderJournalSearchResults(payload ? payload.hits : [], criteria.query !== "");
+}
+
+function clearJournalSearch() {
+  const wasSearching = _isJournalSearchActive();
+  _deactivateJournalSearch();
+  _clearJournalSearchControls();
+  if (!wasSearching || _isHiddenActive()) return;
+  if (_journalSelectedSessionId !== null) {
+    selectJournalSession(_journalSelectedSessionId);
+  } else {
+    _showJournalNoSelection();
+    refreshJournalSessions();
+  }
+}
+
+function _renderJournalSearchResults(hits, highlightMatches) {
+  const feed = document.getElementById("journalFeed");
+  const empty = document.getElementById("journalFeedEmpty");
+  _stopJournalPlayback();
+  _clearJournalContextHighlight();
+  feed.replaceChildren();
+  empty.hidden = hits.length !== 0;
+  empty.textContent = uiString("journal_search_no_results");
+  if (hits.length === 0) return;
+
+  const groups = new Map();
+  for (const hit of hits) {
+    const group = groups.get(hit.session_id) || [];
+    group.push(hit);
+    groups.set(hit.session_id, group);
+  }
+  for (const [sessionId, sessionHits] of groups) {
+    const group = document.createElement("section");
+    group.className = "journal-search-group";
+    group.appendChild(_journalSearchSessionHeader(sessionId, sessionHits[0].timestamp));
+    for (const hit of sessionHits) {
+      group.appendChild(_journalSearchHitElement(hit, highlightMatches));
+    }
+    feed.appendChild(group);
+  }
+  feed.scrollTop = 0;
+}
+
+function _journalSearchSessionHeader(sessionId, timestamp) {
+  const header = document.createElement("div");
+  header.className = "journal-search-session";
+  const when = document.createElement("span");
+  when.textContent = _formatJournalDate(timestamp) + " " + _formatJournalTime(timestamp);
+  const title = document.createElement("span");
+  title.className = "journal-search-session-title";
+  const session = _journalSessions.find((item) => item.id === sessionId);
+  title.textContent = session ? session.title : sessionId;
+  header.append(when, title);
+  return header;
+}
+
+function _journalSearchHitElement(hit, highlightMatches) {
+  const result = document.createElement("button");
+  result.type = "button";
+  result.className = "journal-search-hit";
+  const meta = document.createElement("div");
+  meta.className = "journal-msg-meta";
+  const source = document.createElement("span");
+  source.className = "journal-msg-source";
+  source.textContent = uiString("journal_source_assistant");
+  const time = document.createElement("span");
+  time.textContent = _formatJournalTime(hit.timestamp);
+  meta.append(source, time);
+  const snippet = document.createElement("div");
+  snippet.className = "journal-search-snippet";
+  if (highlightMatches) {
+    _appendHighlightedJournalSnippet(snippet, hit.snippet);
+  } else {
+    snippet.textContent = hit.snippet;
+  }
+  result.append(meta, snippet);
+  result.addEventListener("click", () => _jumpToJournalSearchHit(hit));
+  return result;
+}
+
+function _appendHighlightedJournalSnippet(container, snippet) {
+  for (const part of String(snippet).split(/(\[[^\]]+\])/)) {
+    const match = /^\[([^\]]+)\]$/.exec(part);
+    if (match) {
+      const mark = document.createElement("mark");
+      mark.textContent = match[1];
+      container.appendChild(mark);
+    } else {
+      container.appendChild(document.createTextNode(part));
+    }
+  }
+}
+
+function _jumpToJournalSearchHit(hit) {
+  _deactivateJournalSearch();
+  _clearJournalSearchControls();
+  selectJournalSession(hit.session_id, hit.event_position);
+}
+
+function _clearJournalContextHighlight() {
+  if (_journalContextHighlightTimer !== null) {
+    window.clearTimeout(_journalContextHighlightTimer);
+    _journalContextHighlightTimer = null;
+  }
+  document.querySelectorAll(".journal-context-hit").forEach((element) => {
+    element.classList.remove("journal-context-hit");
+  });
+}
+
+function _highlightJournalContextEvent(position) {
+  const target = document.querySelector(
+    '#journalFeed [data-event-position="' + String(position) + '"]');
+  if (!target) return;
+  target.classList.add("journal-context-hit");
+  target.scrollIntoView({ block: "center" });
+  _journalContextHighlightTimer = window.setTimeout(() => {
+    target.classList.remove("journal-context-hit");
+    _journalContextHighlightTimer = null;
+  }, 1400);
+}
+
 // task-journal-06: live feed. A journal_event delta updates the session
 // list metadata (new sessions appear, timestamps/duration move) and appends
 // the turn to the open feed only when the affected session is the one
@@ -825,6 +1034,10 @@ function applyJournalEvent(payload) {
   if (_isHiddenActive()) return;
   if (!_isJournalActive()) return;
   refreshJournalSessions();
+  if (_isJournalSearchActive()) {
+    _scheduleJournalSearch();
+    return;
+  }
   if (payload.session_id !== _journalSelectedSessionId) return;
   if (_journalFeedFetchesInFlight > 0) {
     // A feed fetch that started before this event may resolve after it and
@@ -850,21 +1063,25 @@ function _appendJournalTurn(event) {
   if (pinned) feed.scrollTop = feed.scrollHeight;
 }
 
-function _renderJournalFeed(events) {
+function _renderJournalFeed(events, contextEventPosition = null) {
   const feed = document.getElementById("journalFeed");
   const empty = document.getElementById("journalFeedEmpty");
   // replaceChildren() detaches any playing tile, and a detached <audio>
   // keeps sounding - stop explicitly before the DOM swap.
   _stopJournalPlayback();
+  _clearJournalContextHighlight();
   feed.replaceChildren();
   empty.hidden = events.length !== 0;
   empty.textContent = uiString("journal_empty_feed");
-  for (const event of events) {
-    feed.appendChild(_journalEventElement(event));
+  for (const [position, event] of events.entries()) {
+    feed.appendChild(_journalEventElement(event, position));
   }
   // Bottom-anchored: the newest turn sits just above the reserved input
   // dock, messenger-style.
   feed.scrollTop = feed.scrollHeight;
+  if (contextEventPosition !== null) {
+    _highlightJournalContextEvent(contextEventPosition);
+  }
 }
 
 // Image thumbnails load after the feed is rendered and have no reserved
@@ -881,11 +1098,12 @@ function _reanchorJournalFeedAfterGrowth(growthPixels) {
   }
 }
 
-function _journalEventElement(event) {
+function _journalEventElement(event, position = null) {
   const message = document.createElement("div");
   message.className = "journal-msg";
   message.dataset.role = event.role;
   message.dataset.source = event.source;
+  if (position !== null) message.dataset.eventPosition = String(position);
 
   const meta = document.createElement("div");
   meta.className = "journal-msg-meta";

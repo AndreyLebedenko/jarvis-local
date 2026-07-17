@@ -155,6 +155,21 @@
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
   <section class="journal-feed-pane">
+    <form class="journal-search" id="journalSearch" onsubmit="return false">
+      <label class="journal-search-query" for="journalSearchQuery">
+        <span data-i18n="journal_search_label">Search Jarvis answers</span>
+        <input id="journalSearchQuery" type="search" autocomplete="off" data-i18n-placeholder="journal_search_placeholder" placeholder="Search exact words or prefixes" oninput="onJournalSearchInputChanged()">
+      </label>
+      <label class="journal-search-date" for="journalSearchDateFrom">
+        <span data-i18n="journal_search_date_from">From</span>
+        <input id="journalSearchDateFrom" type="date" onchange="onJournalSearchInputChanged()">
+      </label>
+      <label class="journal-search-date" for="journalSearchDateTo">
+        <span data-i18n="journal_search_date_to">To</span>
+        <input id="journalSearchDateTo" type="date" onchange="onJournalSearchInputChanged()">
+      </label>
+      <button class="journal-search-clear" type="button" data-i18n="journal_search_clear" onclick="clearJournalSearch()">Clear</button>
+    </form>
     <div class="journal-feed" id="journalFeed"></div>
     <div class="journal-empty" id="journalFeedEmpty" data-i18n="journal_no_selection">Select a session on the left</div>
     <div class="journal-input-dock" id="journalInputDock"></div>

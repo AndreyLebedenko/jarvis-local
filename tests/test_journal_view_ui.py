@@ -26,6 +26,12 @@ JOURNAL_STRING_KEYS = (
     "journal_source_voice",
     "journal_source_text",
     "journal_source_assistant",
+    "journal_search_label",
+    "journal_search_placeholder",
+    "journal_search_date_from",
+    "journal_search_date_to",
+    "journal_search_clear",
+    "journal_search_no_results",
 )
 
 
@@ -141,7 +147,9 @@ def test_stale_journal_responses_cannot_repopulate_hidden_dom():
     until the in-flight response landed."""
     clear_body = APP_JS.split("function _clearJournalContent()")[1].split("\n}")[0]
     assert "_journalContentGeneration += 1" in clear_body
-    sessions_body = APP_JS.split("async function refreshJournalSessions(")[1].split("\n}")[0]
+    sessions_body = APP_JS.split("async function refreshJournalSessions(")[1].split(
+        "\n}"
+    )[0]
     assert "const generation = _journalContentGeneration;" in sessions_body
     assert (
         "if (generation !== _journalContentGeneration || _isHiddenActive()) return;"
@@ -152,10 +160,7 @@ def test_stale_journal_responses_cannot_repopulate_hidden_dom():
     # protection gates the render instead.
     feed_body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[0]
     assert "const generation = _journalContentGeneration;" in feed_body
-    assert (
-        "generation === _journalContentGeneration && !_isHiddenActive()"
-        in feed_body
-    )
+    assert "generation === _journalContentGeneration && !_isHiddenActive()" in feed_body
     assert "if (valid && _journalSelectedSessionId === sessionId) {" in feed_body
 
 
@@ -169,7 +174,7 @@ def test_hidden_attribute_actually_hides_journal_placeholders():
 
 
 def test_feed_reanchors_when_a_thumbnail_load_grows_the_scroll_height():
-    assert '_reanchorJournalFeedAfterGrowth(image.offsetHeight)' in APP_JS
+    assert "_reanchorJournalFeedAfterGrowth(image.offsetHeight)" in APP_JS
     body = APP_JS.split("function _reanchorJournalFeedAfterGrowth(")[1].split("\n}")[0]
     assert "feed.scrollTop = feed.scrollHeight;" in body
 
@@ -215,3 +220,83 @@ def test_journal_view_has_no_input_and_no_context_menu():
     (v1.5.1)."""
     assert "journalInputDock" not in APP_JS
     assert "contextmenu" not in APP_JS
+
+
+def test_search_controls_use_localized_query_and_date_fields():
+    assert 'id="journalSearchQuery"' in INDEX_HTML
+    assert 'id="journalSearchDateFrom"' in INDEX_HTML
+    assert 'id="journalSearchDateTo"' in INDEX_HTML
+    assert 'data-i18n-placeholder="journal_search_placeholder"' in INDEX_HTML
+    assert 'data-i18n="journal_search_clear"' in INDEX_HTML
+    assert "[data-i18n-placeholder]" in STRINGS_JS
+
+
+def test_search_passes_query_and_optional_date_parameters_to_transport():
+    body = APP_JS.split("async function _runJournalSearch(")[1].split("\n}")[0]
+    assert 'parameters.set("query", criteria.query);' in body
+    assert 'parameters.set("date_from", criteria.dateFrom);' in body
+    assert 'parameters.set("date_to", criteria.dateTo);' in body
+    assert '"/api/journal/search?" + parameters.toString()' in body
+
+
+def test_search_snippet_highlighting_uses_text_nodes_not_html_injection():
+    body = APP_JS.split("function _appendHighlightedJournalSnippet(")[1].split("\n}")[0]
+    assert "document.createTextNode(part)" in body
+    assert "mark.textContent = match[1];" in body
+    assert "innerHTML" not in body
+
+
+def test_date_only_search_renders_the_raw_snippet_as_plain_text():
+    search_body = APP_JS.split("async function _runJournalSearch(")[1].split("\n}")[0]
+    expected_render = (
+        "_renderJournalSearchResults(payload ? payload.hits : [], "
+        'criteria.query !== "");'
+    )
+    assert expected_render in search_body
+    hit_body = APP_JS.split("function _journalSearchHitElement(")[1].split("\n}")[0]
+    assert "if (highlightMatches)" in hit_body
+    assert "snippet.textContent = hit.snippet;" in hit_body
+
+
+def test_search_hit_jumps_to_the_linked_session_turn_and_highlights_it():
+    jump_body = APP_JS.split("function _jumpToJournalSearchHit(")[1].split("\n}")[0]
+    assert "selectJournalSession(hit.session_id, hit.event_position);" in jump_body
+    event_body = APP_JS.split("function _journalEventElement(")[1].split("\n}")[0]
+    assert "message.dataset.eventPosition = String(position);" in event_body
+    highlight_body = APP_JS.split("function _highlightJournalContextEvent(")[1].split(
+        "\n}"
+    )[0]
+    assert "scrollIntoView" in highlight_body
+    assert '"journal-context-hit"' in highlight_body
+
+
+def test_clearing_search_restores_the_previously_selected_session():
+    body = APP_JS.split("function clearJournalSearch(")[1].split("\n}")[0]
+    assert "selectJournalSession(_journalSelectedSessionId);" in body
+    assert "refreshJournalSessions();" in body
+    assert "_clearJournalSearchControls();" in body
+
+
+def test_clearing_search_without_a_selected_session_replaces_stale_results():
+    clear_body = APP_JS.split("function clearJournalSearch(")[1].split("\n}")[0]
+    assert "_showJournalNoSelection();" in clear_body
+    empty_body = APP_JS.split("function _showJournalNoSelection(")[1].split("\n}")[0]
+    assert 'document.getElementById("journalFeed").replaceChildren();' in empty_body
+    assert 'uiString("journal_no_selection")' in empty_body
+
+
+def test_selecting_a_session_while_searching_clears_the_stale_filter_controls():
+    body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[0]
+    assert "if (_isJournalSearchActive()) {" in body
+    assert "_deactivateJournalSearch();" in body
+    assert "_clearJournalSearchControls();" in body
+
+
+def test_search_input_is_debounced_and_no_results_text_is_localized():
+    body = APP_JS.split("function _scheduleJournalSearch(")[1].split("\n}")[0]
+    assert "window.setTimeout" in body
+    assert "}, 250);" in body
+    render_body = APP_JS.split("function _renderJournalSearchResults(")[1].split("\n}")[
+        0
+    ]
+    assert 'uiString("journal_search_no_results")' in render_body
