@@ -33,7 +33,9 @@ def test_journal_event_appends_only_to_the_displayed_session():
     append = "_appendJournalTurn(payload);"
     assert guard in body
     assert append in body
-    assert body.index("refreshJournalSessions();") < body.index(guard) < body.index(append)
+    assert (
+        body.index("refreshJournalSessions();") < body.index(guard) < body.index(append)
+    )
 
 
 def test_journal_event_is_ignored_while_hidden_or_off_view():
@@ -118,7 +120,9 @@ def test_natural_end_releases_the_active_audio_and_resets_the_button():
     ended_body = tile_body.split('audio.addEventListener("ended"')[1].split("});")[0]
     assert "showPaused();" in ended_body
     show_paused = tile_body.split("const showPaused = () => {")[1].split("};")[0]
-    assert "if (_journalActiveAudio === audio) _journalActiveAudio = null;" in show_paused
+    assert (
+        "if (_journalActiveAudio === audio) _journalActiveAudio = null;" in show_paused
+    )
     assert 'tile.dataset.playing = "false";' in show_paused
 
 
@@ -148,8 +152,7 @@ def test_live_event_during_inflight_feed_fetch_defers_to_a_refetch():
     render_guard = "if (valid && _journalSelectedSessionId === sessionId) {"
     assert render_guard in before_check
     assert (
-        "generation === _journalContentGeneration && !_isHiddenActive()"
-        in before_check
+        "generation === _journalContentGeneration && !_isHiddenActive()" in before_check
     )
 
     maybe_body = _function_body("_maybeRefetchJournalFeed")

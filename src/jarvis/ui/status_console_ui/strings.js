@@ -115,6 +115,12 @@ const UI_STRINGS = {
     journal_source_assistant: "Jarvis",
     journal_audio_play: "Play",
     journal_audio_pause: "Pause",
+    journal_search_label: "Search Jarvis answers",
+    journal_search_placeholder: "Search exact words or prefixes",
+    journal_search_date_from: "From",
+    journal_search_date_to: "To",
+    journal_search_clear: "Clear",
+    journal_search_no_results: "No matching Jarvis answers",
     transport_no_connection: "No connection to engine",
     transport_no_token: "No UI transport token in URL",
     transport_data_error: "UI transport data error",
@@ -227,6 +233,12 @@ const UI_STRINGS = {
     journal_source_assistant: "Jarvis",
     journal_audio_play: "Воспроизвести",
     journal_audio_pause: "Пауза",
+    journal_search_label: "Поиск ответов Jarvis",
+    journal_search_placeholder: "Точные слова или начала слов",
+    journal_search_date_from: "С",
+    journal_search_date_to: "По",
+    journal_search_clear: "Очистить",
+    journal_search_no_results: "Подходящих ответов Jarvis нет",
     transport_no_connection: "Нет связи с engine",
     transport_no_token: "Нет токена UI transport в URL",
     transport_data_error: "Ошибка данных UI transport",
@@ -268,5 +280,8 @@ function applyUiLanguage(payload) {
   });
   document.querySelectorAll("[data-i18n-title]").forEach((element) => {
     element.title = uiString(element.getAttribute("data-i18n-title"));
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    element.placeholder = uiString(element.getAttribute("data-i18n-placeholder"));
   });
 }

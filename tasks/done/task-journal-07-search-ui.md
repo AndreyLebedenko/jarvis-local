@@ -1,6 +1,6 @@
 # Task journal-07: Search UI with date filter
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-05. (Playback from -06 not required.)
 
@@ -49,3 +49,23 @@ jump-to-session-context action.
 - [ ] `python -m pytest` green.
 - [ ] Human-run handoff prepared: search a known Russian answer by exact
       and prefix form, filter by a date range, jump to context.
+
+## Human-run handoff
+
+1. Start Jarvis with a journal containing a known Russian assistant answer,
+   then open the Status Console and switch to Journal.
+2. Search that answer using its exact Russian word form, then a prefix form.
+   Confirm only assistant-answer hits appear and matched text is highlighted.
+3. Clear the query, set a date-from and/or date-to range, and confirm
+   date-only browsing shows the answer text unchanged, including literal
+   square brackets if the selected answer contains them.
+4. Click a hit. Confirm its session opens in the normal feed, scrolls to the
+   matching turn, and briefly highlights that turn.
+5. Clear search with a selected session and confirm its prior normal feed is
+   restored. Repeat after reaching a no-selection state and confirm stale
+   results are replaced by the normal no-selection empty state.
+6. Start a search, then select a session in the sidebar. Confirm the filter
+   controls clear and the normal feed is shown.
+7. Switch to Hidden. Confirm the Journal placeholder covers the search UI and
+   no dialog content is visible. Switch back to Open and confirm content is
+   fetched again.
