@@ -343,6 +343,7 @@ function applyVisibilityMode(payload) {
     .querySelectorAll("#visibilityToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
   renderModules();
+  _onJournalVisibilityChanged(payload.mode);
 }
 
 function setVisibilityMode(modeValue) {
@@ -625,6 +626,283 @@ function applyConfigSelection() {
     },
     tts_routes: _collectTtsRoutes(),
   });
+}
+
+// task-journal-05: Journal view (static). Read-only: session list + feed
+// over the task-journal-04 HTTP endpoints, no live journal_event handling
+// (task-journal-06) and no search (task-journal-07). Content fetches reuse
+// the same token the WS transport reads from the URL, so the journal is
+// gated by exactly the auth the rest of the console already has.
+//
+// Hidden mode is defense in depth, deliberately on both sides: the CSS
+// swaps the whole view for a generic placeholder the moment
+// data-visibility="hidden" lands (same pattern as the vision chip detail),
+// _onJournalVisibilityChanged() drops already-fetched content from the DOM,
+// AND the transport itself refuses journal content while Hidden
+// (task-journal-04) - so even a UI bug here cannot surface dialog history.
+let _journalSelectedSessionId = null;
+// Bumped whenever already-rendered journal content stops being valid
+// (Hidden activates). Every fetch captures the generation before its await
+// and drops its response if it changed - a stale sessions/feed response
+// must never repopulate the DOM that _clearJournalContent() just wiped,
+// or the "app.js drops fetched content while Hidden" layer would only be
+// true until the next response arrived.
+let _journalContentGeneration = 0;
+
+function _isJournalActive() {
+  return document.documentElement.getAttribute("data-view") === "journal";
+}
+
+function _isHiddenActive() {
+  return document.documentElement.getAttribute("data-visibility") === "hidden";
+}
+
+function setActiveView(view) {
+  // Pure UI navigation - unlike the engine-confirmed controls above,
+  // there is no engine state to wait for, so this applies immediately.
+  document.documentElement.setAttribute("data-view", view);
+  document
+    .querySelectorAll("#viewToggle button")
+    .forEach((button) => button.classList.toggle("sel", button.dataset.view === view));
+  if (view === "journal" && !_isHiddenActive()) {
+    refreshJournalSessions();
+  }
+}
+
+function _onJournalVisibilityChanged(mode) {
+  // demo.html loads app.js without the journal markup (it is a pre-journal
+  // QA harness); the hook must be a no-op there.
+  if (!document.getElementById("journalView")) return;
+  if (mode === "hidden") {
+    _clearJournalContent();
+  } else if (_isJournalActive()) {
+    refreshJournalSessions();
+  }
+}
+
+function _clearJournalContent() {
+  _journalContentGeneration += 1;
+  _journalSelectedSessionId = null;
+  document.getElementById("journalSessionList").replaceChildren();
+  document.getElementById("journalFeed").replaceChildren();
+  document.getElementById("journalSessionsEmpty").hidden = false;
+  document.getElementById("journalFeedEmpty").hidden = false;
+  document.getElementById("journalFeedEmpty").textContent = uiString("journal_no_selection");
+}
+
+async function _fetchJournalJson(path) {
+  const token = new URLSearchParams(window.location.search).get("token");
+  if (!token) return null;
+  try {
+    const separator = path.includes("?") ? "&" : "?";
+    const response = await fetch(path + separator + "token=" + encodeURIComponent(token));
+    if (!response.ok) throw new Error("journal request failed: " + response.status);
+    const payload = await response.json();
+    // The transport answers {"status": "hidden"} while Hidden - treat it
+    // exactly like having no content (the CSS placeholder is already up).
+    return payload.status === "ok" ? payload : null;
+  } catch (error) {
+    console.error("Journal fetch failed:", error);
+    return null;
+  }
+}
+
+async function refreshJournalSessions() {
+  const generation = _journalContentGeneration;
+  const payload = await _fetchJournalJson("/api/journal/sessions");
+  if (generation !== _journalContentGeneration || _isHiddenActive()) return;
+  const sessions = payload ? payload.sessions : [];
+  // Newest first regardless of the endpoint's ordering.
+  sessions.sort((a, b) => (a.start_timestamp < b.start_timestamp ? 1 : -1));
+  const list = document.getElementById("journalSessionList");
+  list.replaceChildren();
+  document.getElementById("journalSessionsEmpty").hidden = sessions.length !== 0;
+  if (!sessions.some((session) => session.id === _journalSelectedSessionId)) {
+    _journalSelectedSessionId = null;
+  }
+  for (const session of sessions) {
+    list.appendChild(_journalSessionElement(session));
+  }
+  if (_journalSelectedSessionId === null && sessions.length !== 0) {
+    selectJournalSession(sessions[0].id);
+  }
+}
+
+function _journalSessionElement(session) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "journal-session";
+  row.dataset.sessionId = session.id;
+  row.classList.toggle("sel", session.id === _journalSelectedSessionId);
+
+  const when = document.createElement("div");
+  when.className = "journal-session-when";
+  const date = document.createElement("span");
+  date.textContent = _formatJournalDate(session.start_timestamp);
+  const time = document.createElement("span");
+  time.textContent = _formatJournalTime(session.start_timestamp);
+  const duration = document.createElement("span");
+  duration.textContent = _formatJournalDuration(
+    session.start_timestamp, session.end_timestamp);
+  when.append(date, time, duration);
+
+  const title = document.createElement("div");
+  title.className = "journal-session-title";
+  title.textContent = session.title;
+
+  row.append(when, title);
+  row.addEventListener("click", () => selectJournalSession(session.id));
+  return row;
+}
+
+async function selectJournalSession(sessionId) {
+  const generation = _journalContentGeneration;
+  _journalSelectedSessionId = sessionId;
+  document.querySelectorAll("#journalSessionList .journal-session").forEach((row) => {
+    row.classList.toggle("sel", row.dataset.sessionId === sessionId);
+  });
+  const payload = await _fetchJournalJson(
+    "/api/journal/sessions/" + encodeURIComponent(sessionId));
+  // A slow response for a session the user has already navigated away
+  // from (or that Hidden invalidated) must not overwrite the feed.
+  if (generation !== _journalContentGeneration || _isHiddenActive()) return;
+  if (_journalSelectedSessionId !== sessionId) return;
+  _renderJournalFeed(payload ? payload.events : []);
+}
+
+function _renderJournalFeed(events) {
+  const feed = document.getElementById("journalFeed");
+  const empty = document.getElementById("journalFeedEmpty");
+  feed.replaceChildren();
+  empty.hidden = events.length !== 0;
+  empty.textContent = uiString("journal_empty_feed");
+  for (const event of events) {
+    feed.appendChild(_journalEventElement(event));
+  }
+  // Bottom-anchored: the newest turn sits just above the reserved input
+  // dock, messenger-style.
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// Image thumbnails load after the feed is rendered and have no reserved
+// height, so each load grows scrollHeight and would leave the feed no
+// longer pinned to the bottom. Re-anchor on load, but only when the view
+// is still (near) the bottom - growth from the loaded image itself counts
+// as "near", a user who deliberately scrolled further up must not be
+// yanked back down.
+function _reanchorJournalFeedAfterGrowth(growthPixels) {
+  const feed = document.getElementById("journalFeed");
+  const distanceFromBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+  if (distanceFromBottom <= growthPixels + 40) {
+    feed.scrollTop = feed.scrollHeight;
+  }
+}
+
+function _journalEventElement(event) {
+  const message = document.createElement("div");
+  message.className = "journal-msg";
+  message.dataset.role = event.role;
+  message.dataset.source = event.source;
+
+  const meta = document.createElement("div");
+  meta.className = "journal-msg-meta";
+  const source = document.createElement("span");
+  source.className = "journal-msg-source";
+  source.textContent = _journalSourceLabel(event.source);
+  const time = document.createElement("span");
+  time.textContent = _formatJournalTime(event.timestamp);
+  meta.append(source, time);
+  message.appendChild(meta);
+
+  for (const item of event.media || []) {
+    message.appendChild(
+      item.path.toLowerCase().endsWith(".wav")
+        ? _journalAudioTile(item)
+        : _journalImageThumbnail(item)
+    );
+  }
+  if (event.text) {
+    const text = document.createElement("div");
+    text.className = "journal-msg-text";
+    text.textContent = event.text;
+    message.appendChild(text);
+  }
+  return message;
+}
+
+function _journalSourceLabel(source) {
+  const key = "journal_source_" + source;
+  const catalog = UI_STRINGS[currentUiLanguage()] || UI_STRINGS[DEFAULT_UI_LANGUAGE];
+  // The event source is an open set by design (story-v1.5.0: later
+  // sources must not require a format change), so an unknown source
+  // renders as-is instead of throwing.
+  return Object.prototype.hasOwnProperty.call(catalog, key) ? uiString(key) : source;
+}
+
+// Static audio tile: icon, duration, filename. Duration is not part of the
+// journal event payload, so it is read from the wav's own metadata via a
+// non-playing <audio preload="metadata"> - no controls and no click
+// handling in this task (task-journal-06 wires playback).
+function _journalAudioTile(mediaItem) {
+  const tile = document.createElement("div");
+  tile.className = "journal-audio-tile";
+
+  const icon = document.createElement("span");
+  icon.className = "journal-audio-icon";
+  icon.textContent = "♪";
+
+  const duration = document.createElement("span");
+  duration.className = "journal-audio-duration";
+  duration.textContent = "--:--";
+  const probe = document.createElement("audio");
+  probe.preload = "metadata";
+  probe.src = mediaItem.url;
+  probe.addEventListener("loadedmetadata", () => {
+    duration.textContent = _formatJournalSeconds(probe.duration);
+  });
+
+  const name = document.createElement("span");
+  name.className = "journal-audio-name";
+  name.textContent = mediaItem.path.split("/").pop();
+
+  tile.append(icon, duration, name);
+  return tile;
+}
+
+function _journalImageThumbnail(mediaItem) {
+  const image = document.createElement("img");
+  image.src = mediaItem.url;
+  image.alt = mediaItem.path.split("/").pop();
+  image.loading = "lazy";
+  image.addEventListener("load", () => {
+    _reanchorJournalFeedAfterGrowth(image.offsetHeight);
+  });
+  return image;
+}
+
+function _formatJournalDate(isoTimestamp) {
+  const date = new Date(isoTimestamp);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function _formatJournalTime(isoTimestamp) {
+  const date = new Date(isoTimestamp);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function _formatJournalDuration(startIso, endIso) {
+  const seconds = (new Date(endIso) - new Date(startIso)) / 1000;
+  return _formatJournalSeconds(seconds);
+}
+
+function _formatJournalSeconds(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "--:--";
+  const whole = Math.round(totalSeconds);
+  const minutes = Math.floor(whole / 60);
+  const seconds = String(whole % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 if (typeof startUiTransport === "function") {

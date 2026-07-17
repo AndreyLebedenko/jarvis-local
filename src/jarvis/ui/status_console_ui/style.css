@@ -142,6 +142,21 @@ body {
 .visibility-toggle button.sel[data-mode="open"] { background: var(--cyan); color: var(--bg); }
 .visibility-toggle button.sel[data-mode="hidden"] { background: var(--violet); color: var(--bg); }
 
+/* task-journal-05: Console | Journal view switcher. Same segmented-control
+   shape as the Open/Hidden toggle; both options use cyan (calm/default) -
+   switching views is navigation, not a mode with severity semantics. */
+.view-toggle {
+  display: flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); border-radius: 20px; padding: 3px;
+  background: var(--panel-2);
+}
+.view-toggle button {
+  border: none; background: none; color: var(--text-dim);
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
+  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.5px;
+}
+.view-toggle button.sel { background: var(--cyan); color: var(--bg); }
+
 /* ===== MAIN ===== */
 .main {
   grid-area: main;
@@ -449,6 +464,126 @@ html[data-transport="offline"] .transport-status {
 .legend span { display: flex; align-items: center; gap: 5px; }
 .legend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 
+/* ===== JOURNAL VIEW (task-journal-05, static) ===== */
+/* The Journal view replaces the central column and hides System Events
+   while active (story-v1.5.0 UI/UX). data-view="console" is the default
+   on <html>, and none of these rules match then, so the Console view
+   stays exactly as before this task. */
+.journal { display: none; }
+html[data-view="journal"] .main { display: none; }
+html[data-view="journal"] .logpanel { display: none; }
+html[data-view="journal"] body {
+  grid-template-columns: 1fr;
+  grid-template-areas: "top" "main";
+}
+html[data-view="journal"] .journal {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.journal-sessions {
+  border-right: 1px solid var(--border); background: var(--panel);
+  padding: 18px 16px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.journal-sessions h2 {
+  margin: 0; color: var(--text-dim); font: 11px "Consolas", "Cascadia Mono", monospace;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+#journalSessionList { display: flex; flex-direction: column; gap: 6px; }
+.journal-session {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 11px; cursor: pointer; color: var(--text-dim);
+  transition: border-color 0.15s, background 0.15s;
+}
+.journal-session:hover { border-color: var(--cyan-dim); }
+.journal-session.sel { border-color: var(--cyan-dim); background: var(--cyan-tint); color: var(--text); }
+.journal-session-when {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px;
+  color: var(--text-faint); display: flex; gap: 8px;
+}
+.journal-session.sel .journal-session-when { color: var(--cyan); }
+.journal-session-title {
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.journal-feed-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.journal-feed {
+  flex: 1; overflow-y: auto; padding: 18px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.journal-empty {
+  font-size: 11.5px; color: var(--text-faint); text-align: center;
+  margin: auto; padding: 20px;
+}
+.journal-feed-pane .journal-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* Messenger pattern: user turns right, Jarvis left. */
+.journal-msg {
+  max-width: 72%; border-radius: 10px; padding: 9px 12px;
+  border: 1px solid var(--border); background: var(--panel-2);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.journal-msg[data-role="user"] {
+  align-self: flex-end; border-color: var(--cyan-dim); background: var(--cyan-tint);
+}
+.journal-msg[data-role="assistant"] { align-self: flex-start; }
+.journal-msg-meta {
+  display: flex; gap: 8px; align-items: baseline;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9.5px;
+  color: var(--text-faint);
+}
+.journal-msg-source {
+  text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 5px;
+  border-radius: 4px; background: var(--gray-tint); color: var(--text-dim);
+}
+.journal-msg-text { font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
+.journal-msg img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+
+/* Audio tile: icon + duration + filename. Static in this task - no
+   controls, no click handling; task-journal-06 wires playback, and a
+   v1.5.1+ right-click menu must attach without re-layout (story card). */
+.journal-audio-tile {
+  display: flex; align-items: center; gap: 9px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+  padding: 7px 10px;
+}
+.journal-audio-icon { color: var(--cyan); font-size: 13px; flex-shrink: 0; }
+.journal-audio-duration {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; color: var(--text);
+  flex-shrink: 0;
+}
+.journal-audio-name {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Reserved input dock (story-v1.5.0: empty in v1.5.0; the v1.5.1 text
+   field slots in without re-layout). It participates in the flex column,
+   so the feed's scroll area already ends above it. */
+.journal-input-dock {
+  min-height: 46px; flex-shrink: 0;
+  border-top: 1px solid var(--border); background: var(--panel);
+}
+
+/* Hidden mode: the whole Journal view swaps to a generic placeholder
+   (same pattern as the vision chip detail). The transport additionally
+   refuses journal content while Hidden (task-journal-04) - this CSS is
+   defense in depth on top of that, not the only barrier. */
+.journal-hidden-placeholder {
+  display: none; grid-column: 1 / -1;
+  align-items: center; justify-content: center;
+  color: var(--violet); font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 12px; letter-spacing: 0.5px;
+}
+html[data-visibility="hidden"] .journal-sessions,
+html[data-visibility="hidden"] .journal-feed-pane { display: none; }
+html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
+
 /* ===== RESPONSIVE ===== */
 /* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).
    Below this, drop the fixed two-column grid and stack top-to-bottom so
@@ -466,4 +601,15 @@ html[data-transport="offline"] .transport-status {
   .topbar { flex-wrap: wrap; height: auto; padding: 10px 16px; gap: 8px; }
   .chip { min-width: 130px; }
   .action-row { flex-wrap: wrap; }
+  /* task-journal-05: at narrow widths the session list stacks above the
+     feed instead of squeezing it into an unreadable column. */
+  html[data-view="journal"] .journal {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .journal-sessions {
+    border-right: none; border-bottom: 1px solid var(--border);
+    max-height: 190px;
+  }
+  html[data-view="journal"] body { height: 100vh; overflow: hidden; }
 }
