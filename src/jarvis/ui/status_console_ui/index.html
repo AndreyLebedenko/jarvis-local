@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-state="idle" data-visibility="open">
+<html lang="en" data-state="idle" data-visibility="open" data-view="console">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,6 +14,10 @@
     <div class="brand-name">JARVIS <span>Status Console</span></div>
   </div>
   <div class="topbar-right">
+    <div class="view-toggle" id="viewToggle">
+      <button data-view="console" class="sel" data-i18n="view_console" onclick="setActiveView('console')">Console</button>
+      <button data-view="journal" data-i18n="view_journal" onclick="setActiveView('journal')">Journal</button>
+    </div>
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
       <span class="locality-label">Local</span>
@@ -142,6 +146,20 @@
     <div class="pending-restart" id="pendingRestart" data-i18n="pending_restart_text">Changes saved - restart Jarvis to apply.</div>
   </div>
 
+</div>
+
+<div class="journal" id="journalView">
+  <aside class="journal-sessions" aria-labelledby="journalSessionsHeading">
+    <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
+    <div id="journalSessionList"></div>
+    <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
+  </aside>
+  <section class="journal-feed-pane">
+    <div class="journal-feed" id="journalFeed"></div>
+    <div class="journal-empty" id="journalFeedEmpty" data-i18n="journal_no_selection">Select a session on the left</div>
+    <div class="journal-input-dock" id="journalInputDock"></div>
+  </section>
+  <div class="journal-hidden-placeholder" id="journalHiddenPlaceholder" data-i18n="journal_hidden_placeholder">Journal hidden (Hidden)</div>
 </div>
 
 <div class="logpanel">
