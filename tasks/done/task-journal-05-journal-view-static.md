@@ -1,6 +1,6 @@
 # Task journal-05: Journal view in the Status Console (static)
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-04.
 
@@ -53,12 +53,12 @@ switcher, session list, read-only feed rendering. Static in the sense of
 
 ## Acceptance criteria
 
-- [ ] Structural tests: switcher exists and toggles view visibility;
+- [x] Structural tests: switcher exists and toggles view visibility;
       System Events hidden in Journal view; input dock element exists
       and is empty; Hidden placeholder logic present in `app.js`.
-- [ ] All new user-visible strings come from `strings.js` (test parses
+- [x] All new user-visible strings come from `strings.js` (test parses
       for hardcoded literals in new code).
-- [ ] `python -m pytest` green.
-- [ ] Human-run visual check handoff prepared: exact steps to open the
+- [x] `python -m pytest` green.
+- [x] Human-run visual check handoff prepared: exact steps to open the
       console with a populated journal root and what to verify (layout,
       both languages, Hidden behavior, responsive rule).
