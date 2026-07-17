@@ -88,6 +88,7 @@ function _applyStateDelta(payload) {
     pending_restart: applyPendingRestart,
     ui_language: applyUiLanguage,
     config_values: applyConfigValues,
+    journal_event: applyJournalEvent,
   });
 }
 
@@ -628,11 +629,12 @@ function applyConfigSelection() {
   });
 }
 
-// task-journal-05: Journal view (static). Read-only: session list + feed
-// over the task-journal-04 HTTP endpoints, no live journal_event handling
-// (task-journal-06) and no search (task-journal-07). Content fetches reuse
-// the same token the WS transport reads from the URL, so the journal is
-// gated by exactly the auth the rest of the console already has.
+// task-journal-05/06: Journal view. Read-only session list + feed over the
+// task-journal-04 HTTP endpoints, plus (task-journal-06) live appends via
+// the journal_event state delta and audio playback on the tiles. No search
+// (task-journal-07) and no input (v1.5.1). Content fetches reuse the same
+// token the WS transport reads from the URL, so the journal is gated by
+// exactly the auth the rest of the console already has.
 //
 // Hidden mode is defense in depth, deliberately on both sides: the CSS
 // swaps the whole view for a generic placeholder the moment
@@ -648,6 +650,16 @@ let _journalSelectedSessionId = null;
 // or the "app.js drops fetched content while Hidden" layer would only be
 // true until the next response arrived.
 let _journalContentGeneration = 0;
+// task-journal-06 (review P2): a live journal_event racing an in-flight
+// feed fetch must not append and then be wiped by the older response's
+// _renderJournalFeed(). While any feed fetch is in flight, live events for
+// the displayed session record the session id in
+// _journalFeedRefetchSessionId instead of appending; every fetch completion
+// (rendered or stale - a stale one can be the last to land) runs
+// _maybeRefetchJournalFeed(), which refetches once all fetches are done and
+// the deferred session is still the one on screen.
+let _journalFeedFetchesInFlight = 0;
+let _journalFeedRefetchSessionId = null;
 
 function _isJournalActive() {
   return document.documentElement.getAttribute("data-view") === "journal";
@@ -682,6 +694,8 @@ function _onJournalVisibilityChanged(mode) {
 
 function _clearJournalContent() {
   _journalContentGeneration += 1;
+  _stopJournalPlayback();
+  _journalFeedRefetchSessionId = null;
   _journalSelectedSessionId = null;
   document.getElementById("journalSessionList").replaceChildren();
   document.getElementById("journalFeed").replaceChildren();
@@ -761,18 +775,87 @@ async function selectJournalSession(sessionId) {
   document.querySelectorAll("#journalSessionList .journal-session").forEach((row) => {
     row.classList.toggle("sel", row.dataset.sessionId === sessionId);
   });
-  const payload = await _fetchJournalJson(
-    "/api/journal/sessions/" + encodeURIComponent(sessionId));
+  _journalFeedFetchesInFlight += 1;
+  let payload;
+  try {
+    payload = await _fetchJournalJson(
+      "/api/journal/sessions/" + encodeURIComponent(sessionId));
+  } finally {
+    _journalFeedFetchesInFlight -= 1;
+  }
   // A slow response for a session the user has already navigated away
-  // from (or that Hidden invalidated) must not overwrite the feed.
-  if (generation !== _journalContentGeneration || _isHiddenActive()) return;
-  if (_journalSelectedSessionId !== sessionId) return;
-  _renderJournalFeed(payload ? payload.events : []);
+  // from (or that Hidden invalidated) must not overwrite the feed - but it
+  // still has to fall through to _maybeRefetchJournalFeed() below: any
+  // completion (stale, generation-invalidated, whatever) can be the last
+  // one in flight, and returning early here would strand a deferred live
+  // event set after the invalidation (e.g. a pre-Hidden fetch draining
+  // after Open already deferred an event for the fresh view).
+  const valid = generation === _journalContentGeneration && !_isHiddenActive();
+  if (valid && _journalSelectedSessionId === sessionId) {
+    _renderJournalFeed(payload ? payload.events : []);
+  }
+  _maybeRefetchJournalFeed();
+}
+
+// Safety lives here, not at the call sites: every fetch completion calls
+// this unconditionally, and this decides whether a refetch is safe (all
+// fetches drained, not Hidden, deferred session still on screen).
+function _maybeRefetchJournalFeed() {
+  if (_journalFeedFetchesInFlight !== 0) return;
+  if (_isHiddenActive()) return;
+  if (_journalFeedRefetchSessionId === null) return;
+  const sessionId = _journalFeedRefetchSessionId;
+  _journalFeedRefetchSessionId = null;
+  // A deferred event for a session no longer on screen needs no refetch -
+  // that session's feed is fetched fresh whenever it is selected again.
+  if (sessionId !== _journalSelectedSessionId) return;
+  selectJournalSession(sessionId);
+}
+
+// task-journal-06: live feed. A journal_event delta updates the session
+// list metadata (new sessions appear, timestamps/duration move) and appends
+// the turn to the open feed only when the affected session is the one
+// displayed - viewing an old session must not jump to the current one.
+function applyJournalEvent(payload) {
+  // demo.html loads app.js without the journal markup (pre-journal QA
+  // harness) - same no-op guard as _onJournalVisibilityChanged().
+  if (!document.getElementById("journalView")) return;
+  // Defense in depth alongside the transport suppressing pushes while
+  // Hidden: even a stray push must not touch the wiped DOM.
+  if (_isHiddenActive()) return;
+  if (!_isJournalActive()) return;
+  refreshJournalSessions();
+  if (payload.session_id !== _journalSelectedSessionId) return;
+  if (_journalFeedFetchesInFlight > 0) {
+    // A feed fetch that started before this event may resolve after it and
+    // _renderJournalFeed() would rebuild the feed from the older response,
+    // silently dropping the appended turn. Defer to a refetch once every
+    // in-flight response has landed instead of racing them.
+    _journalFeedRefetchSessionId = payload.session_id;
+    return;
+  }
+  _appendJournalTurn(payload);
+}
+
+// Bottom-anchoring: pinned-to-bottom stays pinned as turns append; a user
+// who scrolled up keeps their position. Appending never re-renders existing
+// turns, so a playing audio tile survives (single appendChild, no
+// replaceChildren on the live path).
+function _appendJournalTurn(event) {
+  const feed = document.getElementById("journalFeed");
+  const pinned =
+    feed.scrollHeight - feed.scrollTop - feed.clientHeight <= 40;
+  document.getElementById("journalFeedEmpty").hidden = true;
+  feed.appendChild(_journalEventElement(event));
+  if (pinned) feed.scrollTop = feed.scrollHeight;
 }
 
 function _renderJournalFeed(events) {
   const feed = document.getElementById("journalFeed");
   const empty = document.getElementById("journalFeedEmpty");
+  // replaceChildren() detaches any playing tile, and a detached <audio>
+  // keeps sounding - stop explicitly before the DOM swap.
+  _stopJournalPlayback();
   feed.replaceChildren();
   empty.hidden = events.length !== 0;
   empty.textContent = uiString("journal_empty_feed");
@@ -839,34 +922,104 @@ function _journalSourceLabel(source) {
   return Object.prototype.hasOwnProperty.call(catalog, key) ? uiString(key) : source;
 }
 
-// Static audio tile: icon, duration, filename. Duration is not part of the
-// journal event payload, so it is read from the wav's own metadata via a
-// non-playing <audio preload="metadata"> - no controls and no click
-// handling in this task (task-journal-06 wires playback).
+// task-journal-06: playback. One tile plays at a time - starting a tile
+// pauses the previous one; Hidden and any feed re-render stop playback via
+// _stopJournalPlayback() (a detached <audio> would keep sounding). The tile
+// keeps the task-journal-05 flat layout so the v1.5.1+ right-click menu
+// attaches without re-layout. Playback uses the plain HTML5 <audio> element
+// against the task-journal-04 media endpoint - no player library, no
+// file:// access.
+let _journalActiveAudio = null;
+
+function _stopJournalPlayback() {
+  if (_journalActiveAudio === null) return;
+  _journalActiveAudio.pause();
+  _journalActiveAudio = null;
+}
+
+// The tile UI (button glyph, progress fill) only ever changes from the
+// audio element's own play/pause/timeupdate events, never optimistically
+// from the click handler - same "the UI shows confirmed state" shape as
+// the engine-driven controls above.
 function _journalAudioTile(mediaItem) {
   const tile = document.createElement("div");
   tile.className = "journal-audio-tile";
 
-  const icon = document.createElement("span");
-  icon.className = "journal-audio-icon";
-  icon.textContent = "♪";
+  const audio = document.createElement("audio");
+  audio.preload = "metadata";
+  audio.src = mediaItem.url;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "journal-audio-play";
+  button.textContent = "▶";
+  button.title = uiString("journal_audio_play");
+
+  const progress = document.createElement("div");
+  progress.className = "journal-audio-progress";
+  const fill = document.createElement("div");
+  fill.className = "journal-audio-progress-fill";
+  progress.appendChild(fill);
 
   const duration = document.createElement("span");
   duration.className = "journal-audio-duration";
   duration.textContent = "--:--";
-  const probe = document.createElement("audio");
-  probe.preload = "metadata";
-  probe.src = mediaItem.url;
-  probe.addEventListener("loadedmetadata", () => {
-    duration.textContent = _formatJournalSeconds(probe.duration);
+  audio.addEventListener("loadedmetadata", () => {
+    duration.textContent = _formatJournalSeconds(audio.duration);
   });
 
   const name = document.createElement("span");
   name.className = "journal-audio-name";
   name.textContent = mediaItem.path.split("/").pop();
 
-  tile.append(icon, duration, name);
+  button.addEventListener("click", () => _toggleJournalPlayback(audio));
+  audio.addEventListener("play", () => {
+    tile.dataset.playing = "true";
+    button.textContent = "⏸";
+    button.title = uiString("journal_audio_pause");
+  });
+  // Shared paused-state updater (review P1): pause and natural end must
+  // both release the single-playback slot and return the button to the
+  // play glyph - relying on browsers to always emit pause on ended left
+  // the tile stuck in "active" and the next click paused instead of
+  // replaying.
+  const showPaused = () => {
+    tile.dataset.playing = "false";
+    button.textContent = "▶";
+    button.title = uiString("journal_audio_play");
+    if (_journalActiveAudio === audio) _journalActiveAudio = null;
+  };
+  audio.addEventListener("pause", showPaused);
+  audio.addEventListener("timeupdate", () => {
+    const ratio = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+    fill.style.width = (ratio * 100).toFixed(1) + "%";
+    duration.textContent = _formatJournalSeconds(
+      audio.paused && audio.currentTime === 0 ? audio.duration : audio.currentTime);
+  });
+  audio.addEventListener("ended", () => {
+    showPaused();
+    audio.currentTime = 0;
+    fill.style.width = "0%";
+    duration.textContent = _formatJournalSeconds(audio.duration);
+  });
+
+  tile.append(button, progress, duration, name, audio);
   return tile;
+}
+
+function _toggleJournalPlayback(audio) {
+  if (_journalActiveAudio === audio) {
+    audio.pause();
+    return;
+  }
+  // Single-playback invariant: pausing the previous tile before starting
+  // this one (its pause listener clears _journalActiveAudio).
+  _stopJournalPlayback();
+  _journalActiveAudio = audio;
+  audio.play().catch((error) => {
+    console.error("Journal audio playback failed:", error);
+    if (_journalActiveAudio === audio) _journalActiveAudio = null;
+  });
 }
 
 function _journalImageThumbnail(mediaItem) {
