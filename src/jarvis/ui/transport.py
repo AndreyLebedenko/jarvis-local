@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
+from urllib.parse import quote
 
 from aiohttp import web
 
@@ -25,6 +26,9 @@ from jarvis.core.config import (
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.journal.events import JournalEvent, JournalEventAppended
+from jarvis.journal.search import JournalSearchIndex
+from jarvis.journal.store import JournalStore
 from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
     DataLocality,
@@ -45,6 +49,9 @@ from jarvis.ui.status_console import (
     config_values_payload,
     data_locality_payload,
     data_source_payload,
+    journal_event_payload,
+    journal_search_hit_payload,
+    journal_session_payload,
     model_request_payload,
     module_health_payload,
     runtime_state_payload,
@@ -59,6 +66,12 @@ PROTOCOL_VERSION = 1
 MAX_SYSTEM_EVENTS = 200
 HANDSHAKE_TIMEOUT_SECONDS = 5.0
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
+JOURNAL_MEDIA_TYPES = {
+    ".wav": "audio/wav",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
 
 JSONScalar = str | int | float | bool | None
 JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
@@ -421,6 +434,8 @@ class UiTransportServer:
         port: int = 0,
         token_factory: Callable[[], str] | None = None,
         ui_dir: Path = UI_DIR,
+        journal_store: JournalStore | None = None,
+        journal_search_index: JournalSearchIndex | None = None,
     ) -> None:
         self._bus = bus
         self._control_api = control_api
@@ -430,6 +445,10 @@ class UiTransportServer:
         self._port = port
         self._token_factory = token_factory or (lambda: secrets.token_urlsafe(32))
         self._ui_dir = ui_dir
+        self._journal_store = journal_store
+        self._journal_search_index = journal_search_index
+        visibility = cast(JsonObject, self._state.snapshot()["visibility"])
+        self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._token: str | None = None
@@ -453,9 +472,19 @@ class UiTransportServer:
             self._control_api.set_loop(asyncio.get_running_loop())
         if self._token is None:
             self._token = self._token_factory()
+        await self._rebuild_journal_index()
         self._subscribe_to_bus()
         app = web.Application()
         app.router.add_get("/ws", self._websocket_handler)
+        app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
+        app.router.add_get(
+            "/api/journal/sessions/{session_id}", self._journal_feed_handler
+        )
+        app.router.add_get("/api/journal/search", self._journal_search_handler)
+        app.router.add_get(
+            "/api/journal/media/{session_id}/{media_path:.*}",
+            self._journal_media_handler,
+        )
         app.router.add_get("/", self._index_handler)
         app.router.add_static("/", self._ui_dir, show_index=False)
         self._runner = web.AppRunner(app)
@@ -514,6 +543,7 @@ class UiTransportServer:
         self._publish_delta(self._state.set_thinking_mode(level))
 
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
+        self._visibility_mode = mode
         self._publish_delta(self._state.set_visibility_mode(mode))
 
     def _subscribe_to_bus(self) -> None:
@@ -527,6 +557,7 @@ class UiTransportServer:
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
+            (JournalEventAppended, self._on_journal_event_appended),
         ]
         for event_type, handler in subscriptions:
             self._bus.subscribe(event_type, cast(Callable[..., object], handler))
@@ -541,7 +572,7 @@ class UiTransportServer:
         self._publish_delta(self._state.set_thinking_mode(event.level))
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
-        self._publish_delta(self._state.set_visibility_mode(event.mode))
+        self.set_visibility_mode(event.mode)
 
     async def _on_module_health_changed(self, event: ModuleHealthChanged) -> None:
         # One mechanism for every module (v1.2.14 task 2): the tracker
@@ -587,6 +618,147 @@ class UiTransportServer:
     async def _on_ui_config_saved(self, event: UiConfigSaved) -> None:
         del event
         self._publish_delta(self._state.set_pending_restart(True))
+
+    async def _on_journal_event_appended(self, event: JournalEventAppended) -> None:
+        await self._update_journal_index(event.event.session_id)
+        if self._is_hidden():
+            return
+        self._publish_delta(
+            make_message(
+                "state",
+                "delta",
+                {
+                    "key": "journal_event",
+                    "value": journal_event_payload(
+                        event.event, self._journal_media_url
+                    ),
+                },
+            )
+        )
+
+    async def _journal_sessions_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_store is None:
+            return web.json_response({"status": "ok", "sessions": []})
+        return web.json_response(
+            {
+                "status": "ok",
+                "sessions": [
+                    journal_session_payload(summary, self._journal_store)
+                    for summary in self._journal_store.list_sessions()
+                ],
+            }
+        )
+
+    async def _journal_feed_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        session_id = request.match_info["session_id"]
+        if self._journal_store is None:
+            return web.json_response(
+                {"status": "ok", "session_id": session_id, "events": []}
+            )
+        replay = self._journal_store.read_session(session_id)
+        return web.json_response(
+            {
+                "status": "ok",
+                "session_id": session_id,
+                "events": [
+                    journal_event_payload(event, self._journal_media_url)
+                    for event in replay.events
+                ],
+            }
+        )
+
+    async def _journal_search_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        limit = self._parse_search_limit(request.query.get("limit"))
+        if self._journal_search_index is None:
+            hits = []
+        else:
+            hits = self._journal_search_index.search(
+                request.query.get("query", request.query.get("q", "")),
+                date_from=request.query.get("date_from"),
+                date_to=request.query.get("date_to"),
+                limit=limit,
+            )
+        return web.json_response(
+            {
+                "status": "ok",
+                "hits": [journal_search_hit_payload(hit) for hit in hits],
+            }
+        )
+
+    async def _journal_media_handler(self, request: web.Request) -> web.StreamResponse:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_store is None:
+            raise web.HTTPNotFound(text="journal media not available")
+        media_path = self._resolve_journal_media_path(
+            request.match_info["session_id"], request.match_info["media_path"]
+        )
+        content_type = JOURNAL_MEDIA_TYPES[media_path.suffix.casefold()]
+        return web.FileResponse(media_path, headers={"Content-Type": content_type})
+
+    def _require_http_token(self, request: web.Request) -> None:
+        if not token_matches(self.token, request.query.get("token")):
+            raise web.HTTPUnauthorized(text="invalid UI transport token")
+
+    def _is_hidden(self) -> bool:
+        return self._visibility_mode is VisibilityMode.HIDDEN
+
+    @staticmethod
+    def _journal_hidden_response() -> web.Response:
+        return web.json_response({"status": "hidden"})
+
+    async def _rebuild_journal_index(self) -> None:
+        if self._journal_search_index is None:
+            return
+        await asyncio.to_thread(self._journal_search_index.rebuild)
+
+    async def _update_journal_index(self, session_id: str) -> None:
+        if self._journal_search_index is None:
+            return
+        await asyncio.to_thread(self._journal_search_index.update_session, session_id)
+
+    @staticmethod
+    def _parse_search_limit(raw: str | None) -> int:
+        if raw is None:
+            return 50
+        try:
+            limit = int(raw)
+        except ValueError:
+            raise web.HTTPBadRequest(text="limit must be an integer") from None
+        if limit < 1:
+            raise web.HTTPBadRequest(text="limit must be positive")
+        return limit
+
+    def _journal_media_url(self, event: JournalEvent, media_path: str) -> str:
+        return (
+            "/api/journal/media/"
+            f"{quote(event.session_id, safe='')}/"
+            f"{quote(media_path, safe='/')}?token={quote(self.token, safe='')}"
+        )
+
+    def _resolve_journal_media_path(self, session_id: str, media_path: str) -> Path:
+        if self._journal_store is None:
+            raise web.HTTPNotFound(text="journal media not available")
+        root = self._journal_store.root.resolve()
+        candidate = (root / session_id / media_path).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise web.HTTPNotFound(text="journal media not found") from None
+        suffix = candidate.suffix.casefold()
+        if suffix not in JOURNAL_MEDIA_TYPES or not candidate.is_file():
+            raise web.HTTPNotFound(text="journal media not found")
+        return candidate
 
     def _publish_delta(self, message: JsonObject | None) -> None:
         if message is None:

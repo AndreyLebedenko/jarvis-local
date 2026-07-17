@@ -5,7 +5,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from jarvis.journal.events import JournalEvent, new_session_id
+from jarvis.core.bus import EventBus
+from jarvis.journal.events import JournalEvent, JournalEventAppended, new_session_id
 from jarvis.journal.store import JournalStore
 
 
@@ -15,11 +16,13 @@ class JournalRecorder:
         store: JournalStore,
         *,
         enabled: bool = True,
+        bus: EventBus | None = None,
         clock: Callable[[], datetime] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._store = store
         self._enabled = enabled
+        self._bus = bus
         self._clock = clock or (lambda: datetime.now().astimezone())
         self._logger = logger or logging.getLogger(__name__)
         self._session_id: str | None = None
@@ -149,3 +152,5 @@ class JournalRecorder:
             transcript=None,
         )
         await asyncio.to_thread(self._store.append, event)
+        if self._bus is not None:
+            await self._bus.publish(JournalEventAppended, JournalEventAppended(event))

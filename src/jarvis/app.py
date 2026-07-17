@@ -50,6 +50,7 @@ from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from jarvis.journal.recorder import JournalRecorder
+from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.store import JournalStore
 from jarvis.tools.host import McpHost, McpModuleStatusChanged
 from jarvis.ui.contract import (
@@ -332,6 +333,8 @@ class App:
     settings: Settings
     visibility_mode: VisibilityModeState | None = None
     history: ConversationHistory | None = None
+    journal_store: JournalStore | None = None
+    journal_search_index: JournalSearchIndex | None = None
     journal_recorder: JournalRecorder | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
@@ -378,9 +381,12 @@ def build_app(
     thinking_mode = ReasoningLevelState(bus)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
+    journal_store = JournalStore(Path(settings.journal.root))
+    journal_search_index = JournalSearchIndex(journal_store, journal_store.root)
     journal_recorder = JournalRecorder(
-        JournalStore(Path(settings.journal.root)),
+        journal_store,
         enabled=settings.journal.enabled,
+        bus=bus,
         logger=logger,
     )
     # Always constructed, never conditionally omitted - see the App
@@ -416,6 +422,8 @@ def build_app(
         thinking_mode=thinking_mode,
         visibility_mode=visibility_mode,
         history=history,
+        journal_store=journal_store,
+        journal_search_index=journal_search_index,
         journal_recorder=journal_recorder,
         settings=settings,
         mcp_host=mcp_host,
@@ -838,6 +846,8 @@ def run_with_status_console(
 ) -> None:
     settings = settings or load_settings()
     app = build_app(settings)
+    if app.journal_store is None or app.journal_search_index is None:
+        raise RuntimeError("live Status Console requires journal read services")
     live_console = create_live_status_console(
         app, include_touchstrip=include_touchstrip
     )
@@ -855,6 +865,8 @@ def run_with_status_console(
             config_values=config_values_payload(settings),
         ),
         logger=logger,
+        journal_store=app.journal_store,
+        journal_search_index=app.journal_search_index,
     )
     live_console.create_windows()
 

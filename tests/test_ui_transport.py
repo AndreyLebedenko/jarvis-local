@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import aiohttp
 import pytest
@@ -12,6 +13,13 @@ from jarvis.core.config import (
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.journal import (
+    JournalEvent,
+    JournalEventAppended,
+    JournalRecorder,
+    JournalSearchIndex,
+    JournalStore,
+)
 from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
     EventLevel,
@@ -36,6 +44,7 @@ from jarvis.ui.transport import (
     serialize_message,
     token_matches,
 )
+from jarvis.ui.visibility import VisibilityModeChanged
 
 
 class _FakeControlApi:
@@ -720,3 +729,326 @@ def test_snapshot_contains_config_values_section():
         "put_yo",
     ]
     assert values["vad_ranges"]["max_chunk_seconds"] == [1, 120]
+
+
+# --- story-v1.5.0 journal transport API ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_journal_sessions_feed_and_search_use_existing_http_transport(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    store = JournalStore(tmp_path)
+    search_index = JournalSearchIndex(store, tmp_path)
+    session_id = "20260716-153000-ab12"
+    later_session_id = "20260717-090000-cd34"
+    store.append(
+        _journal_event(
+            session_id=session_id,
+            timestamp="2026-07-16T15:30:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance.wav",),
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=session_id,
+            timestamp="2026-07-16T15:30:02+01:00",
+            source="assistant",
+            role="assistant",
+            text="The orbital relay is stable.",
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=session_id,
+            timestamp="2026-07-16T15:30:03+01:00",
+            source="text",
+            role="user",
+            text="the real topic after voice",
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=later_session_id,
+            timestamp="2026-07-17T09:00:00+01:00",
+            source="text",
+            role="user",
+            text="reactor check",
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=later_session_id,
+            timestamp="2026-07-17T09:00:01+01:00",
+            source="assistant",
+            role="assistant",
+            text="The reactor telemetry is nominal.",
+        )
+    )
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_search_index=search_index,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            sessions = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/sessions?token=valid-token",
+            )
+            assert sessions["status"] == "ok"
+            assert sessions["sessions"] == [
+                {
+                    "id": session_id,
+                    "start_timestamp": "2026-07-16T15:30:00+01:00",
+                    "end_timestamp": "2026-07-16T15:30:03+01:00",
+                    "title": "the real topic after voice",
+                },
+                {
+                    "id": later_session_id,
+                    "start_timestamp": "2026-07-17T09:00:00+01:00",
+                    "end_timestamp": "2026-07-17T09:00:01+01:00",
+                    "title": "reactor check",
+                },
+            ]
+
+            feed = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/{session_id}"
+                "?token=valid-token",
+            )
+            assert feed["session_id"] == session_id
+            assert feed["events"][0]["transcript"] is None
+            assert feed["events"][0]["media"] == [
+                {
+                    "path": "utterance.wav",
+                    "url": (
+                        f"/api/journal/media/{session_id}/utterance.wav"
+                        "?token=valid-token"
+                    ),
+                }
+            ]
+            assert feed["events"][1]["text"] == "The orbital relay is stable."
+
+            search = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                "?token=valid-token&query=reactor&date_from=2026-07-17"
+                "&date_to=2026-07-17",
+            )
+            assert [
+                (hit["session_id"], hit["event_position"], hit["snippet"])
+                for hit in search["hits"]
+            ] == [(later_session_id, 1, "The [reactor] telemetry is nominal.")]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_media_serves_known_types_and_rejects_traversal(
+    tmp_path: Path,
+) -> None:
+    session_id = "20260716-153000-ab12"
+    session_dir = tmp_path / session_id
+    session_dir.mkdir(parents=True)
+    (session_dir / "clip.wav").write_bytes(b"RIFF demo")
+    (session_dir / "screen.png").write_bytes(b"\x89PNG demo")
+    (session_dir / "photo.jpg").write_bytes(b"\xff\xd8 demo")
+    (tmp_path / "outside.wav").write_bytes(b"outside")
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=JournalStore(tmp_path),
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            for name, content_type in [
+                ("clip.wav", "audio/wav"),
+                ("screen.png", "image/png"),
+                ("photo.jpg", "image/jpeg"),
+            ]:
+                response = await session.get(
+                    f"http://127.0.0.1:{info.port}/api/journal/media/"
+                    f"{session_id}/{name}?token=valid-token"
+                )
+                assert response.status == 200
+                assert response.headers["Content-Type"].startswith(content_type)
+                await response.read()
+
+            traversal = await session.get(
+                f"http://127.0.0.1:{info.port}/api/journal/media/"
+                f"{session_id}/%2e%2e/outside.wav?token=valid-token"
+            )
+            assert traversal.status == 404
+            assert await traversal.read() != b"outside"
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    store = JournalStore(tmp_path)
+    event = _journal_event(
+        session_id="20260716-153000-ab12",
+        timestamp="2026-07-16T15:30:00+01:00",
+        source="assistant",
+        role="assistant",
+        text="hidden text",
+    )
+    store.append(event)
+    media_dir = tmp_path / event.session_id
+    media_dir.mkdir(exist_ok=True)
+    (media_dir / "clip.wav").write_bytes(b"RIFF demo")
+    state = UiStateStore(visibility_mode=VisibilityMode.HIDDEN)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        state=state,
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_search_index=JournalSearchIndex(store, tmp_path),
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            assert (
+                await _get_json(
+                    session,
+                    f"http://127.0.0.1:{info.port}/api/journal/sessions"
+                    "?token=valid-token",
+                )
+            ) == {"status": "hidden"}
+            assert (
+                await _get_json(
+                    session,
+                    f"http://127.0.0.1:{info.port}/api/journal/search"
+                    "?token=valid-token&query=hidden",
+                )
+            ) == {"status": "hidden"}
+            assert (
+                await _get_json(
+                    session,
+                    f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                    f"{event.session_id}?token=valid-token",
+                )
+            ) == {"status": "hidden"}
+            assert (
+                await _get_json(
+                    session,
+                    f"http://127.0.0.1:{info.port}/api/journal/media/"
+                    f"{event.session_id}/clip.wav?token=valid-token",
+                )
+            ) == {"status": "hidden"}
+
+            async with session.ws_connect(info.websocket_url) as websocket:
+                await websocket.send_json(hello_message("status-console", ["state"]))
+                await websocket.receive_json()
+                await websocket.receive_json()
+
+                await bus.publish(JournalEventAppended, JournalEventAppended(event))
+                with pytest.raises(TimeoutError):
+                    await websocket.receive(timeout=0.05)
+
+            await bus.publish(
+                VisibilityModeChanged, VisibilityModeChanged(VisibilityMode.OPEN)
+            )
+            restored_feed = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{event.session_id}?token=valid-token",
+            )
+            assert restored_feed["events"][0]["text"] == "hidden text"
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_append_pushes_exactly_one_live_event(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(store, bus=bus, clock=_journal_clock())
+    search_index = JournalSearchIndex(store, tmp_path)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_search_index=search_index,
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()
+            await websocket.receive_json()
+
+            await recorder.record_assistant("live answer")
+            await recorder.wait_for_pending()
+
+            delta = await websocket.receive_json()
+            assert delta["type"] == "delta"
+            assert delta["payload"]["key"] == "journal_event"
+            assert delta["payload"]["value"]["text"] == "live answer"
+            assert delta["payload"]["value"]["transcript"] is None
+            search = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                "?token=valid-token&query=live",
+            )
+            assert [
+                (hit["session_id"], hit["event_position"], hit["snippet"])
+                for hit in search["hits"]
+            ] == [(delta["payload"]["value"]["session_id"], 0, "[live] answer")]
+            with pytest.raises(TimeoutError):
+                await websocket.receive(timeout=0.05)
+    finally:
+        await server.stop()
+
+
+async def _get_json(session: aiohttp.ClientSession, url: str) -> dict:
+    response = await session.get(url)
+    assert response.status == 200
+    return await response.json()
+
+
+def _journal_event(
+    *,
+    session_id: str,
+    timestamp: str,
+    source: str,
+    role: str,
+    text: str,
+    media: tuple[str, ...] = (),
+) -> JournalEvent:
+    return JournalEvent(
+        session_id=session_id,
+        timestamp=timestamp,
+        source=source,
+        role=role,
+        text=text,
+        media=media,
+        transcript=None,
+    )
+
+
+def _journal_clock():
+    from datetime import UTC, datetime
+
+    return lambda: datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)

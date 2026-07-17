@@ -105,6 +105,39 @@ class SystemEvent:
     correlation_id: str | None = None
 
 
+@dataclass(frozen=True)
+class JournalMediaItem:
+    path: str
+    url: str
+
+
+@dataclass(frozen=True)
+class JournalEventPayload:
+    session_id: str
+    timestamp: str
+    source: str
+    role: str
+    text: str
+    media: tuple[JournalMediaItem, ...]
+    transcript: str | None
+
+
+@dataclass(frozen=True)
+class JournalSessionPayload:
+    id: str
+    start_timestamp: str
+    end_timestamp: str
+    title: str
+
+
+@dataclass(frozen=True)
+class JournalSearchHitPayload:
+    session_id: str
+    timestamp: str
+    event_position: int
+    snippet: str
+
+
 class VisibilityMode(enum.Enum):
     """System visibility mode (tasks/task-ui-privacy-and-touchstrip-
     requirements.md): how much Jarvis exposes itself outward. Independent

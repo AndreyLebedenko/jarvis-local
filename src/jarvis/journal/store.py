@@ -25,6 +25,10 @@ class JournalStore:
     def __init__(self, root: Path) -> None:
         self._root = root
 
+    @property
+    def root(self) -> Path:
+        return self._root
+
     def append(self, event: JournalEvent) -> None:
         session_dir = self._root / event.session_id
         session_dir.mkdir(parents=True, exist_ok=True)

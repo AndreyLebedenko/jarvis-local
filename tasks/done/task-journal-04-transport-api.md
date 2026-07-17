@@ -1,6 +1,6 @@
 # Task journal-04: Journal API on the console transport
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.0-dialog-journal.md`
 **Depends on:** task-journal-01, -02, -03.
 
@@ -56,12 +56,12 @@ serve media files, and push a live event when a new turn is journaled.
 
 ## Acceptance criteria
 
-- [ ] Transport tests cover: session list, feed, search (incl. date
+- [x] Transport tests cover: session list, feed, search (incl. date
       filter), media serving with traversal rejection, and correct
       Content-Type.
-- [ ] A test proves Hidden blocks feed/search/media responses and
+- [x] A test proves Hidden blocks feed/search/media responses and
       suppresses `journal_event` pushes; switching back to Open restores
       them.
-- [ ] A test proves a journal append while a WS client is connected
+- [x] A test proves a journal append while a WS client is connected
       results in exactly one `journal_event` push with the event payload.
-- [ ] `python -m pytest` green; no new dependencies.
+- [x] `python -m pytest` green; no new dependencies.
