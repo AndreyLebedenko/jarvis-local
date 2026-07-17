@@ -24,6 +24,9 @@ from jarvis.core.config import (
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.journal.events import JournalEvent
+from jarvis.journal.search import JournalSearchHit
+from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.tools.host import McpModuleStatus
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.config_selection import (
@@ -38,6 +41,10 @@ from jarvis.ui.contract import (
     DataLocality,
     DataSource,
     EventLevel,
+    JournalEventPayload,
+    JournalMediaItem,
+    JournalSearchHitPayload,
+    JournalSessionPayload,
     ModelRequestSummary,
     ModuleHealth,
     ModuleId,
@@ -56,6 +63,7 @@ from jarvis.ui.visibility import VisibilityModeState
 UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
 TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
+VOICE_ONLY_SESSION_TITLE = "Voice turn"
 
 
 def runtime_state_payload(
@@ -126,6 +134,61 @@ def system_event_payload(event: SystemEvent) -> dict:
         "message": event.message,
         "correlation_id": event.correlation_id,
     }
+
+
+def journal_event_payload(
+    event: JournalEvent, media_url_for: Callable[[JournalEvent, str], str]
+) -> dict:
+    payload = JournalEventPayload(
+        session_id=event.session_id,
+        timestamp=event.timestamp,
+        source=event.source,
+        role=event.role,
+        text=event.text,
+        media=tuple(
+            JournalMediaItem(path=path, url=media_url_for(event, path))
+            for path in event.media
+        ),
+        transcript=event.transcript,
+    )
+    return {
+        "session_id": payload.session_id,
+        "timestamp": payload.timestamp,
+        "source": payload.source,
+        "role": payload.role,
+        "text": payload.text,
+        "media": [asdict(item) for item in payload.media],
+        "transcript": payload.transcript,
+    }
+
+
+def journal_session_payload(
+    summary: JournalSessionSummary, store: JournalStore
+) -> dict:
+    payload = JournalSessionPayload(
+        id=summary.session_id,
+        start_timestamp=summary.first_timestamp,
+        end_timestamp=summary.last_timestamp,
+        title=_journal_session_title(summary.session_id, store),
+    )
+    return asdict(payload)
+
+
+def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
+    payload = JournalSearchHitPayload(
+        session_id=hit.session_id,
+        timestamp=hit.timestamp,
+        event_position=hit.event_position,
+        snippet=hit.snippet,
+    )
+    return asdict(payload)
+
+
+def _journal_session_title(session_id: str, store: JournalStore) -> str:
+    for event in store.read_session(session_id).events:
+        if event.role == "user" and event.text.strip():
+            return event.text.strip()
+    return VOICE_ONLY_SESSION_TITLE
 
 
 def thinking_mode_payload(level: ReasoningLevel) -> dict:

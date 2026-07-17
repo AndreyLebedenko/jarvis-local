@@ -1313,10 +1313,14 @@ def test_parse_args_enables_status_console_without_touchstrip():
 
 
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
+    journal_store = object()
+    journal_search_index = object()
     fake_app = types.SimpleNamespace(
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
+        journal_store=journal_store,
+        journal_search_index=journal_search_index,
     )
     fake_live_console = types.SimpleNamespace(
         api=object(),
@@ -1345,6 +1349,39 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(start=start))
 
     main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
+
+
+def test_status_console_transport_receives_journal_read_services(monkeypatch):
+    app = _fake_app()
+    captured_kwargs = {}
+
+    class _FakeUiTransportServer:
+        def __init__(self, *args, **kwargs) -> None:
+            del args
+            captured_kwargs.update(kwargs)
+
+    fake_live_console = types.SimpleNamespace(
+        api=object(),
+        transport=None,
+        create_windows=lambda: None,
+    )
+    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(
+        main_module,
+        "create_live_status_console",
+        lambda app, include_touchstrip: fake_live_console,
+    )
+    monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        types.SimpleNamespace(start=lambda callback: None),
+    )
+
+    main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
+
+    assert captured_kwargs["journal_store"] is app.journal_store
+    assert captured_kwargs["journal_search_index"] is app.journal_search_index
 
 
 async def test_unwire_removes_all_subscriptions():

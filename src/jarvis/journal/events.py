@@ -112,3 +112,8 @@ def _require_str_list(payload: dict[str, Any], field: str) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise ValueError(f"{field} must be a list of strings")
     return list(value)
+
+
+@dataclass(frozen=True)
+class JournalEventAppended:
+    event: JournalEvent
