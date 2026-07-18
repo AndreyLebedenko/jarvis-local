@@ -1,7 +1,11 @@
 ﻿# Story v1.6.0: File attachments
 
 **Status:** Backlog, not ready for task cards.
-**Roadmap:** TBD
+**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (entry-point decision,
+2026-07-18: attachments are added from the Journal view's input dock -
+attach control and drag-and-drop - building on the v1.5.2 text input;
+no new hotkey. Turn-source contract, limits, and media rules below are
+unchanged.)
 **Release:** v1.6.0 (moved from v1.5.0 by human decision, 2026-07-16: the
 dialog journal took the v1.5.0 slot - see
 `story-v1.5.0-dialog-journal.md` - because a persistent journal
