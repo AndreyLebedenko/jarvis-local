@@ -36,6 +36,7 @@ from jarvis.ui.contract import (
     ModelRequestItem,
     ModelRequestSummary,
     ModuleHealth,
+    ModuleId,
     RuntimeState,
     SystemEvent,
     VisibilityMode,
@@ -981,12 +982,20 @@ class UiTransportServer:
         module_id = arguments.get("module_id")
         if not isinstance(module_id, str):
             raise ProtocolError("reset_module requires arguments.module_id")
+        try:
+            ModuleId(module_id)
+        except ValueError:
+            raise ProtocolError(f"unknown module id: {module_id!r}") from None
         self._control_api.reset_module(module_id)
 
     def _set_visibility_mode(self, arguments: JsonObject) -> None:
         mode = arguments.get("mode")
         if not isinstance(mode, str):
             raise ProtocolError("set_visibility_mode requires arguments.mode")
+        try:
+            VisibilityMode(mode)
+        except ValueError:
+            raise ProtocolError(f"unknown visibility mode: {mode!r}") from None
         self._control_api.set_visibility_mode(mode)
 
     def _request_shutdown(self, arguments: JsonObject) -> None:
