@@ -1,6 +1,9 @@
 import asyncio
+import concurrent.futures
 import io
+import logging
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -772,6 +775,166 @@ async def test_stop_unblocks_a_microphone_loop_waiting_inside_stream_read():
     assert fake_stream.read_calls == 1
     assert fake_stream.exited is True
     assert chunker.chunk_calls == 0
+
+
+# --- task-v1.5.1-1: terminal stop boundary -----------------------------------
+#
+# run_until_shutdown() cancels background tasks right after stop() returns
+# and the process tears down the loop/executor shortly after. If the
+# microphone loop or its read worker is still alive at that point, teardown
+# races them (see
+# tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md).
+# stop() is terminal: it completes only once the loop has actually exited,
+# and a loop starting after stop() must exit without opening a stream.
+
+
+class _SlowDrainFakeStream:
+    """stop() unblocks a pending read, but the worker thread then takes a
+    while to actually return - modelling a device read that drains slowly
+    after the stream is stopped. This is the window the pre-fix stop()
+    left open: it returned while the loop (and its read worker) were
+    still alive."""
+
+    def __init__(self, block_samples: int, drain_seconds: float = 0.3) -> None:
+        self._block_samples = block_samples
+        self._drain_seconds = drain_seconds
+        self._stopped = threading.Event()
+        self._waiting = threading.Event()
+        self.stop_calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def block_until_read_is_pending(self, timeout: float) -> None:
+        if not self._waiting.wait(timeout):
+            raise AssertionError("read() was never called")
+
+    def read(self, block_samples):
+        self._waiting.set()
+        self._stopped.wait()
+        time.sleep(self._drain_seconds)
+        return np.zeros((self._block_samples, 1), dtype=np.float32), False
+
+    def stop(self):
+        self.stop_calls += 1
+        self._stopped.set()
+
+    def start(self):
+        raise AssertionError("shutdown stop must not restart the stream")
+
+
+async def test_stop_stays_pending_until_the_read_worker_and_loop_have_finished(
+    caplog,
+):
+    """The regression property: with the read worker still blocked, stop()
+    must not complete (the pre-fix stop() returned here, leaving the loop
+    and its worker alive for teardown to race). Once the worker is
+    released, the loop finishes first and only then does stop()."""
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    # _SteppedFakeStream's stop() does not unblock a pending read - the
+    # worker stays parked until the test releases it.
+    fake_stream = _SteppedFakeStream(blocks=[], fill_value=silence)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
+    await _wait_until_read_pending(fake_stream)
+
+    with caplog.at_level(logging.WARNING, logger="jarvis.audio.input"):
+        stop_task = asyncio.create_task(audio_input.stop())
+        try:
+            await asyncio.sleep(0.1)
+
+            assert not task.done()
+            assert not stop_task.done()
+        finally:
+            # Release on every path, including a failing assertion (the
+            # pre-fix stop() completing early): a worker left parked in
+            # read() would hang pytest's executor teardown instead of
+            # letting the failure report.
+            fake_stream.release_next_read()
+        await asyncio.wait_for(stop_task, timeout=2)
+
+    assert task.done()
+
+    # Mirror run_until_shutdown()'s exact ordering: cancel-after-stop must
+    # find an already-finished task and the shutdown gather must see a
+    # clean exit, not an exception it would log as a task failure.
+    task.cancel()
+    [result] = await asyncio.gather(task, return_exceptions=True)
+    assert result is None
+    assert caplog.records == []
+
+
+class _CountingExecutor(concurrent.futures.ThreadPoolExecutor):
+    def __init__(self) -> None:
+        super().__init__(max_workers=4)
+        self.submissions = 0
+
+    def submit(self, fn, /, *args, **kwargs):
+        self.submissions += 1
+        return super().submit(fn, *args, **kwargs)
+
+
+async def test_no_executor_submission_happens_after_stop_has_returned():
+    """Supporting evidence for the terminal-stop boundary (the regression
+    property is the pending-stop test above): asyncio.to_thread() routes
+    through the loop's default executor, so a counting executor observes
+    that nothing is submitted once stop() has returned - even with a read
+    worker that drains slowly after the stream stop."""
+    executor = _CountingExecutor()
+    asyncio.get_running_loop().set_default_executor(executor)
+
+    fake_stream = _SlowDrainFakeStream(block_samples=160)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
+    await asyncio.to_thread(fake_stream.block_until_read_is_pending, 2.0)
+
+    await audio_input.stop()
+    submissions_at_boundary = executor.submissions
+
+    assert task.done()
+    await asyncio.sleep(0.05)
+    assert executor.submissions == submissions_at_boundary
+
+
+async def test_stop_before_the_loop_ever_started_returns_immediately():
+    audio_input = AudioInput(bus=EventBus(), chunker=_FakeChunker())
+
+    await asyncio.wait_for(audio_input.stop(), timeout=1)
+
+
+async def test_stop_is_terminal_a_late_starting_loop_never_opens_a_stream():
+    """stop() must win a stop-before-start race: a loop scheduled after
+    stop() exits immediately without opening a stream or submitting any
+    executor job (before the fix, the loop reset the stop flag on entry
+    and ran as if stop() had never happened)."""
+    factory_calls: list[int] = []
+
+    def stream_factory(block_samples: int):
+        factory_calls.append(block_samples)
+        raise AssertionError("a stopped AudioInput must not open a stream")
+
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=stream_factory
+    )
+
+    await asyncio.wait_for(audio_input.stop(), timeout=1)
+
+    await asyncio.wait_for(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01), timeout=1
+    )
+    assert factory_calls == []
 
 
 # --- task-10: MicSleepToggled event and real hotkey listener -----------------

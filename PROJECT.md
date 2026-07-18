@@ -398,6 +398,25 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   blocking `stream.read()` running inside `asyncio.to_thread()` can return
   before `run_until_shutdown()` awaits all background tasks. Do not replace
   this with a teardown timeout that leaves background tasks alive.
+  Since task-v1.5.1-1, `stop()` is terminal: it waits unconditionally
+  until the loop (and its blocking read worker) has actually exited, so
+  after `stop()` returns the microphone code can submit no further
+  executor job, and a loop started after `stop()` exits immediately
+  without opening a stream (the loop no longer resets the stop flag on
+  entry). There is deliberately no timeout: `stream.stop()` interrupting
+  a blocked read is verified device behavior (stale-buffer-replay fix);
+  a driver whose read never returns even then would need its own
+  explicit degraded-shutdown design, not a silent WARN-and-continue.
+  Related process-lifecycle fact (verified 2026-07-18 against pywebview
+  6.2.1 source): `webview.start(func)` runs `func` in a plain thread it
+  never joins and can return before that thread is even scheduled, so
+  `run_with_status_console()` owns the engine lifetime through a
+  `concurrent.futures.Future` completed by the engine callback (result
+  or exception) and blocks on it after `webview.start()` returns -
+  otherwise interpreter shutdown races the engine teardown and in-flight
+  `asyncio.to_thread()` submissions raise; an engine exception now
+  propagates to the caller instead of dying in the unjoined thread (see
+  `tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md`).
 - `tts.py` - common TTS contracts, response buffering, language routing,
   ordered playback, and health events. Silero remains the compatible
   default when no explicit bilingual routing table is configured; configured
