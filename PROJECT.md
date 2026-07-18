@@ -882,29 +882,27 @@ first JS -> Python direction of the bridge (`pywebview`'s `js_api`,
   reset (`ConversationHistory.clear()`, added by this task - a genuinely
   implementable, narrowly-scoped capability, not blocked by the Stop
   Condition).
-- `status_console.py` gained `StatusConsoleApi`, exposed to the front-end
-  as `window.pywebview.api` (`js_api=` on `webview.create_window()`).
-  Every public method is a plain sync callable scheduling its real async
-  work via `asyncio.run_coroutine_threadsafe()` onto a given loop - the
-  same race-avoidance pattern this project's hotkey listeners already use
-  (`thinking_mode.py`/`audio_in.py`'s `run_hotkey_listener`), since
-  `pywebview` invokes `js_api` methods from its own GUI thread, not the
-  asyncio loop's thread. `loop` is optional at construction and set later
-  via `set_loop()` (every method is a no-op before that): `create_window
-  (js_api=...)` needs the object before `webview.start()` runs the GUI
-  loop, but the real asyncio loop this object schedules onto is typically
-  created *inside* the callback `webview.start()` invokes - see
-  `manual_check_status_console.py` for the real ordering.
-- The front-end deliberately does not optimistically flip the Think switch
-  on click: `toggleThinking()` only calls the `js_api`; the switch's
-  visual only ever changes via `applyThinkingMode()`, called back from the
-  real `ThinkingModeToggled` event - the UI never shows a state the engine
-  has not actually confirmed (story's Key Decision: "UI consumes engine
-  state through explicit events/snapshots"). `window.pywebview` is
-  `undefined` outside a real `pywebview` window, so every `js_api` call in
-  `app.js` is guarded - `demo.html` exercises the switch/reset-confirm
-  visuals directly via `applyThinkingMode()`/`showResetConfirm()` without
-  a live backend.
+- At task-ui-04 time, `status_console.py` gained `StatusConsoleApi`, exposed
+  to the front-end as `window.pywebview.api` (`js_api=` on
+  `webview.create_window()`). Each public method was a plain sync callable
+  scheduling its real async work via `asyncio.run_coroutine_threadsafe()`
+  onto a given loop because pywebview invoked `js_api` methods from its GUI
+  thread. The optional-loop construction order existed to bind that object
+  before `webview.start()` created the real asyncio loop. This direct bridge
+  was removed in v1.2.10. Task-v1.5.1-2 confirmed that no `create_window()`
+  site binds `js_api` anymore and removed the API layer's silent
+  warn-and-return guards for unknown enum values. Membership validation now
+  lives in `UiTransportServer`'s control dispatch as `ProtocolError`s, while
+  a direct programmatic call with a bad value raises `ValueError`.
+  `_schedule()` remains because the native pywebview GUI-thread `on_closed`
+  hook still drives `request_shutdown()` across the thread boundary and must
+  never receive a closed-loop exception.
+- At task-ui-04 time, the front-end deliberately did not optimistically flip
+  the Think switch: `toggleThinking()` called the `js_api`, while the visual
+  changed only through `applyThinkingMode()` after a real
+  `ThinkingModeToggled` event. The v1.2.10 transport migration preserved this
+  authoritative-state rule while replacing direct `window.pywebview` calls
+  with WebSocket control messages and state updates.
 - Global context reset requires confirmation before the destructive
   action (`showResetConfirm()`/`hideResetConfirm()` are pure local UI
   state; only `confirmContextReset()` calls `reset_context()`). Per-module

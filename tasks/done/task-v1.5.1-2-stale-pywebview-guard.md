@@ -1,6 +1,6 @@
 # Task v1.5.1-2: Resolve the stale pywebview crash guard
 
-**Status:** Ready.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.1-stabilization.md`
 **Source card:**
 `tasks/backlog/status-console-api-stale-pywebview-crash-guard.md`
@@ -40,15 +40,25 @@ transport-layer validation or re-document the real reason it stays.
 
 ## Acceptance criteria
 
-- [ ] Verified that no `webview.create_window(...)` site passes `js_api`
-      bound to `StatusConsoleApi` (or any equivalent direct JS bridge),
-      by grep plus reading every window-creation call site.
-- [ ] Either the silent-reject pattern is removed from all three methods
-      with docstrings/comments and the regression tests updated, or the
-      guard's documentation names the actual reachable path that still
-      justifies it - no stale justification remains either way.
-- [ ] `python -m pytest`, `python -m ruff check .`,
-      `python -m ruff format --check .` green.
+- [x] Verified that no `webview.create_window(...)` site passes `js_api`
+      bound to `StatusConsoleApi`: the only `create_window` call in the
+      codebase (`StatusConsoleWindow._default_window_factory`) passes
+      title/url/size only, and a front-end regression test asserts
+      `window.pywebview` is absent from `app.js`.
+- [x] Both outcomes applied where each is true. The enum-value
+      silent-reject pattern is removed from all three methods: membership
+      validation moved into `UiTransportServer._reset_module()` /
+      `_set_visibility_mode()` as `ProtocolError`s (reasoning level was
+      already validated there), and a direct call with a bad value now
+      raises `ValueError`. The `_schedule()` loop guard is kept and
+      re-documented with its real remaining justification: pywebview's
+      GUI thread still calls `request_shutdown()` directly via the
+      window's native `on_closed` hook, and that path must never raise
+      into pywebview. Regression-test framings updated accordingly.
+- [x] `python -m pytest` (983 passed, 1 skipped), `python -m ruff
+      check .`, `python -m ruff format --check .` green. Advisory
+      Pyright on the two touched files: 10 findings before and after -
+      no new findings introduced.
 
 ## Stop conditions
 

@@ -263,11 +263,38 @@ async def test_api_methods_are_a_no_op_before_set_loop_is_called():
     api.set_reasoning_level("high")
     api.reset_context()
     api.reset_module("backend")
-    api.reset_module("not-a-real-module")  # invalid id, still a no-op pre-set_loop
     api.request_shutdown()
     await asyncio.sleep(0.05)
 
     assert thinking_mode.level is ReasoningLevel.OFF
+
+
+@pytest.mark.parametrize(
+    ("method_name", "bad_value"),
+    [
+        ("set_reasoning_level", "max"),
+        ("reset_module", "not-a-real-module"),
+        ("set_visibility_mode", "invisible"),
+    ],
+)
+async def test_direct_call_with_an_unknown_value_raises_value_error(
+    method_name, bad_value
+):
+    """task-v1.5.1-2: the old "log a warning and silently return" guard
+    carried a stale justification (the pywebview js_api bridge removed in
+    v1.2.10). The WS control path rejects unknown values one layer up as
+    a ProtocolError (see test_ui_transport.py); a direct programmatic
+    call now fails loudly instead of silently doing nothing."""
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    with pytest.raises(ValueError):
+        getattr(api, method_name)(bad_value)
 
 
 def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
@@ -275,10 +302,13 @@ def test_api_methods_are_a_safe_no_op_after_the_loop_has_closed():
     successful shutdown, a duplicate UI call can still race with the
     already-closed asyncio loop. This used to crash with "RuntimeError:
     Event loop is closed" raised synchronously inside pywebview's own
-    JS-API dispatch thread (call_soon_threadsafe() -> _check_closed()),
-    because only a None loop was ever guarded against, not an already-
-    closed one. No await here: everything must return immediately without
-    ever touching the closed loop."""
+    dispatch thread (call_soon_threadsafe() -> _check_closed()), at the
+    time reachable through the since-removed js_api bridge. The guard is
+    still required: pywebview's GUI thread calls request_shutdown()
+    directly via the window's native on_closed hook (task-v1.5.1-2
+    resolution), and that path must never raise into pywebview. No await
+    here: everything must return immediately without ever touching the
+    closed loop."""
     closed_loop = asyncio.new_event_loop()
     closed_loop.close()
     thinking_mode = ReasoningLevelState(bus=EventBus())
@@ -485,14 +515,14 @@ async def test_set_reasoning_level_accepts_every_product_value(
     assert thinking_mode.level is expected_level
 
 
-async def test_set_reasoning_level_api_layer_rejects_unknown_value_as_a_fallback():
-    """The real protocol-error rejection for an unknown level (task 3 item
-    11) happens one layer up, in UiTransportServer._set_reasoning_level()
-    (see test_ui_transport.py) - a WS client gets a ProtocolError, not a
-    silent no-op. This method is never reached with a bad value through
-    that path. It still guards itself the same way set_visibility_mode()
-    does, in case it is ever called directly with one - never raising, per
-    the closed-loop pywebview crash this module's docstring documents."""
+async def test_set_reasoning_level_with_unknown_value_does_not_change_state():
+    """The real protocol-error rejection for an unknown level happens one
+    layer up, in UiTransportServer._set_reasoning_level() (see
+    test_ui_transport.py) - a WS client gets a ProtocolError, not a silent
+    no-op. Since task-v1.5.1-2, a direct call with a bad value raises
+    ValueError (the old silent warn-and-return guard carried a stale
+    pywebview-bridge justification); either way, engine state must not
+    change."""
     thinking_mode = ReasoningLevelState(bus=EventBus())
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
@@ -502,7 +532,8 @@ async def test_set_reasoning_level_api_layer_rejects_unknown_value_as_a_fallback
         logger=logger,
     )
 
-    api.set_reasoning_level("max")  # not a supported product value
+    with pytest.raises(ValueError):
+        api.set_reasoning_level("max")  # not a supported product value
     await asyncio.sleep(0.05)
 
     assert thinking_mode.level is ReasoningLevel.OFF

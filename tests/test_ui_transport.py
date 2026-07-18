@@ -338,6 +338,32 @@ def test_set_reasoning_level_rejects_an_unknown_level_value():
     assert control_api.calls == []
 
 
+def test_reset_module_rejects_an_unknown_module_id():
+    """task-v1.5.1-2: with StatusConsoleApi's silent warn-and-return guard
+    removed, the transport owns membership validation - a WS client with a
+    bad module id gets a ProtocolError, and the control API is never
+    reached (it would raise ValueError)."""
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="unknown module id"):
+        server._dispatch_control("reset_module", {"module_id": "not-a-module"})
+
+    assert control_api.calls == []
+
+
+def test_set_visibility_mode_rejects_an_unknown_mode():
+    """task-v1.5.1-2: same transport-owned membership validation as
+    reset_module, for the visibility axis."""
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="unknown visibility mode"):
+        server._dispatch_control("set_visibility_mode", {"mode": "invisible"})
+
+    assert control_api.calls == []
+
+
 @pytest.mark.asyncio
 async def test_reasoning_level_changed_projects_level_and_derived_is_enabled():
     """story-v1.3.1 task 3: the transport payload carries the authoritative

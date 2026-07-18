@@ -90,8 +90,11 @@ older backlog question relevant to console/runtime hygiene:
       observable-executor test additionally records zero submissions
       after the boundary (supporting evidence, not required to fail
       pre-fix on its own).
-- [ ] The pywebview guard question is closed in code or in documentation;
-      no silently-stale justification remains.
+- [x] The pywebview guard question is closed (task-v1.5.1-2 completed):
+      enum-value silent-rejects removed in favor of transport-layer
+      `ProtocolError` validation; the `_schedule()` loop guard kept and
+      re-documented with its real remaining justification (GUI-thread
+      `on_closed` -> `request_shutdown()`).
 - [ ] Both non-code reports carry their dispositions.
 - [ ] The microphone device matrix has been run by the human on at least
       one USB and one Bluetooth device, with per-device-class results

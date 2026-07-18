@@ -1,6 +1,12 @@
 # Backlog: Verify StatusConsoleApi's "never raise" guard is still needed
 
-**Status:** Backlog.
+**Status:** Resolved by
+`tasks/done/task-v1.5.1-2-stale-pywebview-guard.md` (2026-07-18): the direct
+js_api bridge is confirmed gone, the enum-value silent-reject guards were
+removed in favor of transport-layer `ProtocolError` validation, and
+`_schedule()`'s loop guard was re-documented with its real remaining
+justification (the GUI-thread `on_closed` -> `request_shutdown()` path).
+See that card's acceptance criteria for details.
 **Source:** story-v1.3.1 task 3 review (2026-07-13), while deciding how
 `StatusConsoleApi.set_reasoning_level()` should reject an unknown level.
 

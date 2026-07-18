@@ -434,7 +434,14 @@ async def _default_microphone_options_source() -> list[str]:
 
 
 class StatusConsoleApi:
-    """Synchronous JS API facade that schedules work on the engine loop."""
+    """Synchronous control facade that schedules work on the engine loop.
+
+    Reached today via UiTransportServer's WS control dispatch (which
+    validates arguments and raises ProtocolError before calling in) and,
+    for request_shutdown() only, directly from pywebview's GUI thread
+    through the desktop window's native on_closed hook. The historical
+    pywebview js_api bridge was removed in v1.2.10; no create_window()
+    call binds js_api anymore (verified for task-v1.5.1-2)."""
 
     def __init__(
         self,
@@ -479,15 +486,18 @@ class StatusConsoleApi:
         self._dispatch_pending_shutdown()
 
     def _schedule(self, coroutine: Coroutine) -> bool:
-        """Single scheduling path for every JS API method: pywebview calls
-        them from its own GUI thread, so real work always hops onto the
-        engine loop via run_coroutine_threadsafe().
+        """Single scheduling path for every control method: callers may be
+        off the engine loop's thread (pywebview's GUI thread invokes
+        request_shutdown() via the window's native on_closed hook), so
+        real work always hops onto the engine loop via
+        run_coroutine_threadsafe().
 
-        Guards in one place what used to be eight copies of the same
-        pattern: no loop yet (window clickable before the engine loop
-        exists), loop already closed (verified live: a control clicked
-        after shutdown crashed pywebview's JS dispatch thread), the
-        check-then-schedule race where the loop closes in between
+        Guards in one place: no loop yet (the window is closable before
+        the engine loop exists), loop already closed (verified live on
+        2026-07-07, then via the js_api bridge: a control after shutdown
+        crashed pywebview's dispatch thread - the bridge is gone, but the
+        GUI-thread on_closed path still must never raise into pywebview),
+        the check-then-schedule race where the loop closes in between
         (run_coroutine_threadsafe() then raises RuntimeError
         synchronously), and scheduled coroutines whose exceptions would
         otherwise be silently dropped with the discarded future."""
@@ -515,12 +525,13 @@ class StatusConsoleApi:
         self._schedule(self._thinking_mode.cycle_level(source="UI"))
 
     def set_reasoning_level(self, level_value: str) -> None:
-        try:
-            level = ReasoningLevel(level_value)
-        except ValueError:
-            self._logger.warning("Ignoring unknown reasoning level %r", level_value)
-            return
-        self._schedule(self._thinking_mode.set_level(level, source="UI"))
+        # Unknown values are rejected one layer up as a ProtocolError
+        # (UiTransportServer._set_reasoning_level); a direct caller with a
+        # bad value gets the ValueError. See the stale-guard resolution in
+        # tasks/done/task-v1.5.1-2-stale-pywebview-guard.md.
+        self._schedule(
+            self._thinking_mode.set_level(ReasoningLevel(level_value), source="UI")
+        )
 
     def set_mcp_enabled(self, enabled: bool) -> None:
         if self._mcp_host is None:
@@ -553,14 +564,10 @@ class StatusConsoleApi:
         )
 
     def reset_module(self, module_id: str) -> None:
-        try:
-            module = ModuleId(module_id)
-        except ValueError:
-            # Raising here would crash pywebview's JS dispatch thread, the
-            # same failure shape as the verified closed-loop crash.
-            self._logger.warning("Ignoring reset for unknown module %r", module_id)
-            return
-        self._schedule(self._reset_module_async(module))
+        # Unknown ids are rejected one layer up as a ProtocolError
+        # (UiTransportServer._reset_module); a direct caller with a bad id
+        # gets the ValueError.
+        self._schedule(self._reset_module_async(ModuleId(module_id)))
 
     async def _reset_module_async(self, module: ModuleId) -> None:
         """Reports that per-module reset is not implemented yet."""
@@ -581,12 +588,10 @@ class StatusConsoleApi:
         )
 
     def set_visibility_mode(self, mode_value: str) -> None:
-        try:
-            mode = VisibilityMode(mode_value)
-        except ValueError:
-            self._logger.warning("Ignoring unknown visibility mode %r", mode_value)
-            return
-        self._schedule(self._set_visibility_mode_async(mode))
+        # Unknown modes are rejected one layer up as a ProtocolError
+        # (UiTransportServer._set_visibility_mode); a direct caller with a
+        # bad mode gets the ValueError.
+        self._schedule(self._set_visibility_mode_async(VisibilityMode(mode_value)))
 
     async def _set_visibility_mode_async(self, mode: VisibilityMode) -> None:
         previous_mode = self._visibility_mode.mode
