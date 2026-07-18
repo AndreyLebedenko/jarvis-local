@@ -1,10 +1,10 @@
 ﻿# Story v1.6.0: File attachments
 
 **Status:** Backlog, not ready for task cards.
-**Roadmap:** `tasks/roadmap-v1.2-v1.4.md`
+**Roadmap:** TBD
 **Release:** v1.6.0 (moved from v1.5.0 by human decision, 2026-07-16: the
 dialog journal took the v1.5.0 slot - see
-`tasks/story-v1.5.0-dialog-journal.md` - because a persistent journal
+`story-v1.5.0-dialog-journal.md` - because a persistent journal
 adds a reason to keep using Jarvis and is infrastructure the attachments
 story can later build on, while attachments improve input paths that
 already have workarounds. Earlier move from v1.4.0: MCP integration was
