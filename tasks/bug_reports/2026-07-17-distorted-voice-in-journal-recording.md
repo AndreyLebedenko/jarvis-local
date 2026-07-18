@@ -43,11 +43,28 @@ nearby alternatives:
 - discarding/re-recording the turn is impossible by design - the log is
   append-only and the moment is gone.
 
+## Recurrence protocol (2026-07-18)
+
+If distorted captures recur, preserve the affected wav before any cleanup or
+manual deletion. Compare its waveform against a clean sibling from the same
+or nearby session, checking for clipping, dropouts, unexpected silence, sample
+rate or duration mismatch, and resampling artifacts.
+
+For each recurrence, record the surrounding runtime conditions: whether TTS
+or a sound cue was playing at capture time, whether model inference was under
+load, and whether any other application may have been using or reconfiguring
+the microphone. Also record the microphone device type and connection in use
+(USB, Bluetooth, built-in, or other). If `task-v1.5.1-4`'s device matrix
+results are available, cross-reference the relevant device-class findings.
+
+Roadmap pointer: `tasks/roadmap-v1.5.1-v1.7.md`, v1.5.1 stabilization scope.
+That roadmap keeps this report as a monitored anomaly and explicitly excludes
+blind capture-path or VAD changes from v1.5.1.
+
 ## Future considerations and boundaries
 
-- If distorted captures recur, compare the affected wav's waveform
-  (clipping? dropouts? resampling artifacts?) against a clean sibling -
-  the journal now preserves the evidence needed for that.
+- If distorted captures recur, follow the recurrence protocol above; the
+  journal now preserves the evidence needed for that analysis.
 - Check whether occurrences correlate with concurrent TTS/sound-cue
   playback or model inference load (shared audio device or CPU
   starvation of the capture stream).

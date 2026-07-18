@@ -1,6 +1,6 @@
 # Task v1.5.1-3: Dispositions for the non-code v1.5.0 reports
 
-**Status:** Ready.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.1-stabilization.md`
 
 ## Summary
@@ -43,9 +43,9 @@ open reports that need no code in this release, so neither carries a stale
 
 ## Acceptance criteria
 
-- [ ] Both reports carry their disposition/protocol sections with the
+- [x] Both reports carry their disposition/protocol sections with the
       2026-07-18 decision date and a pointer to the roadmap.
-- [ ] No other files change except an optional one-line `PROJECT.md`
+- [x] No other files change except an optional one-line `PROJECT.md`
       cross-reference.
-- [ ] `python -m pytest` still green (docs-only change; run as the
+- [x] `python -m pytest` still green (docs-only change; run as the
       standard gate).
