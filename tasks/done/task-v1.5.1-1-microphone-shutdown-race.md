@@ -1,7 +1,7 @@
 # Task v1.5.1-1: Microphone shutdown executor race
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.5.1-stabilization.md`
+**Story:** `tasks/done/story-v1.5.1-stabilization.md`
 **Source report:**
 `tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md`
 

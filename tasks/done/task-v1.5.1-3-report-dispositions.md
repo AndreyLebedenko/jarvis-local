@@ -1,7 +1,7 @@
 # Task v1.5.1-3: Dispositions for the non-code v1.5.0 reports
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.5.1-stabilization.md`
+**Story:** `tasks/done/story-v1.5.1-stabilization.md`
 
 ## Summary
 

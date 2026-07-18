@@ -1,6 +1,6 @@
 # Story v1.5.1: Stabilization after the journal release
 
-**Status:** Accepted; task cards created (tasks 1-4 below).
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md`
 **Release:** v1.5.1 (bugfix/hygiene release; no features)
 
@@ -95,11 +95,11 @@ older backlog question relevant to console/runtime hygiene:
       `ProtocolError` validation; the `_schedule()` loop guard kept and
       re-documented with its real remaining justification (GUI-thread
       `on_closed` -> `request_shutdown()`).
-- [ ] Both non-code reports carry their dispositions.
-- [ ] The microphone device matrix has been run by the human on at least
+- [x] Both non-code reports carry their dispositions.
+- [x] The microphone device matrix has been run by the human on at least
       one USB and one Bluetooth device, with per-device-class results
       recorded in `PROJECT.md` and any defects filed as bug reports.
-- [ ] `python -m pytest`, `python -m ruff check .`, and
+- [x] `python -m pytest`, `python -m ruff check .`, and
       `python -m ruff format --check .` pass.
 
 ## Stop conditions

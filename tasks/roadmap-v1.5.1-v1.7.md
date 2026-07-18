@@ -89,9 +89,9 @@ Boundary:
   unreproduced distortion. Device-matrix findings become bug reports, not
   in-release fixes.
 
-Story/task readiness: story card exists as
-`tasks/story-v1.5.1-stabilization.md`; task cards 1-4 exist as
-`tasks/task-v1.5.1-*.md`.
+Story/task readiness: completed story card exists as
+`tasks/done/story-v1.5.1-stabilization.md`; completed task cards 1-4 exist as
+`tasks/done/task-v1.5.1-*.md`.
 
 ## v1.5.2 - Journal UX pack
 
