@@ -3,10 +3,13 @@ import base64
 import json
 import logging
 import sys
+import threading
+import time
 import types
 from collections.abc import Callable
 
 import httpx
+import numpy as np
 import pytest
 
 import jarvis.app as main_module
@@ -1322,10 +1325,19 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         journal_store=journal_store,
         journal_search_index=journal_search_index,
     )
+
+    class _FakeTransportServer:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        async def start(self) -> object:
+            return object()
+
     fake_live_console = types.SimpleNamespace(
         api=object(),
         transport=None,
         windows_created=False,
+        load_transport_urls=lambda info: None,
     )
 
     def create_windows() -> None:
@@ -1338,13 +1350,19 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         "create_live_status_console",
         lambda app, include_touchstrip: fake_live_console,
     )
-    monkeypatch.setattr(
-        main_module, "UiTransportServer", lambda *args, **kwargs: object()
-    )
+    monkeypatch.setattr(main_module, "UiTransportServer", _FakeTransportServer)
+
+    async def fake_run(settings=None, app=None, live_console=None) -> None:
+        del settings, app, live_console
+
+    monkeypatch.setattr(main_module, "run", fake_run)
 
     def start(callback) -> None:
-        del callback
         assert fake_live_console.windows_created is True
+        # The real pywebview always runs its func argument; a fake that
+        # never does would deadlock the engine-completion future
+        # run_with_status_console() now blocks on.
+        callback()
 
     monkeypatch.setitem(sys.modules, "webview", types.SimpleNamespace(start=start))
 
@@ -1360,10 +1378,14 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
             del args
             captured_kwargs.update(kwargs)
 
+        async def start(self) -> object:
+            return object()
+
     fake_live_console = types.SimpleNamespace(
         api=object(),
         transport=None,
         create_windows=lambda: None,
+        load_transport_urls=lambda info: None,
     )
     monkeypatch.setattr(main_module, "build_app", lambda settings: app)
     monkeypatch.setattr(
@@ -1372,16 +1394,111 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
         lambda app, include_touchstrip: fake_live_console,
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
+
+    async def fake_run(settings=None, app=None, live_console=None) -> None:
+        del settings, app, live_console
+
+    monkeypatch.setattr(main_module, "run", fake_run)
+    # The real pywebview always runs its func argument; a fake that never
+    # does would deadlock the engine-completion future.
     monkeypatch.setitem(
         sys.modules,
         "webview",
-        types.SimpleNamespace(start=lambda callback: None),
+        types.SimpleNamespace(start=lambda callback: callback()),
     )
 
     main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
 
     assert captured_kwargs["journal_store"] is app.journal_store
     assert captured_kwargs["journal_search_index"] is app.journal_search_index
+
+
+def _patch_status_console_composition(monkeypatch, app, fake_run) -> None:
+    """Shared fixture shape for run_with_status_console() lifecycle tests:
+    fake every collaborator except the engine-completion contract under
+    test."""
+
+    class _FakeTransportServer:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        async def start(self) -> object:
+            return object()
+
+    fake_live_console = types.SimpleNamespace(
+        api=object(),
+        transport=None,
+        create_windows=lambda: None,
+        load_transport_urls=lambda info: None,
+    )
+    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(
+        main_module,
+        "create_live_status_console",
+        lambda app, include_touchstrip: fake_live_console,
+    )
+    monkeypatch.setattr(main_module, "UiTransportServer", _FakeTransportServer)
+    monkeypatch.setattr(main_module, "run", fake_run)
+
+
+def test_run_with_status_console_waits_for_a_delayed_engine_callback(monkeypatch):
+    """pywebview's start() runs its func in a plain thread it never joins
+    (verified against pywebview 6.2.1 source), and can return - GUI loop
+    over - before that thread has even been scheduled. Returning to
+    main() at that point starts interpreter shutdown that races the
+    engine teardown (the shutdown executor-race bug report's root cause).
+    run_with_status_console() must block on the engine's own completion,
+    not on thread bookkeeping."""
+    app = _fake_app()
+    engine_finished = threading.Event()
+
+    async def fake_run(settings=None, app=None, live_console=None) -> None:
+        del settings, app, live_console
+        await asyncio.sleep(0.05)
+        engine_finished.set()
+
+    _patch_status_console_composition(monkeypatch, app, fake_run)
+
+    def gui_start_without_join(callback) -> None:
+        def delayed_callback() -> None:
+            # The callback has not even started when start() returns.
+            time.sleep(0.15)
+            callback()
+
+        threading.Thread(target=delayed_callback).start()
+
+    monkeypatch.setitem(
+        sys.modules, "webview", types.SimpleNamespace(start=gui_start_without_join)
+    )
+
+    main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
+
+    assert engine_finished.is_set()
+
+
+def test_run_with_status_console_reraises_an_engine_callback_failure(monkeypatch):
+    """An exception that kills the engine must reach
+    run_with_status_console()'s caller, not die silently in pywebview's
+    unjoined thread."""
+    app = _fake_app()
+
+    async def failing_run(settings=None, app=None, live_console=None) -> None:
+        del settings, app, live_console
+        raise RuntimeError("engine exploded")
+
+    _patch_status_console_composition(monkeypatch, app, failing_run)
+
+    def gui_start_without_join(callback) -> None:
+        threading.Thread(target=callback).start()
+
+    monkeypatch.setitem(
+        sys.modules, "webview", types.SimpleNamespace(start=gui_start_without_join)
+    )
+
+    with pytest.raises(RuntimeError, match="engine exploded"):
+        main_module.run_with_status_console(
+            settings=Settings(), include_touchstrip=False
+        )
 
 
 async def test_unwire_removes_all_subscriptions():
@@ -1399,6 +1516,68 @@ async def test_unwire_removes_all_subscriptions():
 
 
 # --- shutdown --------------------------------------------------------------
+
+
+async def test_run_until_shutdown_with_a_real_microphone_loop_exits_cleanly(caplog):
+    """The reported failure shape at the pure level: a real AudioInput
+    parked in a blocked executor read enters the standard shutdown
+    sequence. stop() must see the loop (and its read worker) actually
+    finish, and the shutdown gather must log no task failure."""
+
+    class _NoSpeechChunker:
+        settings = types.SimpleNamespace(request_end_pause_seconds=2.0)
+
+        def chunk(self, samples):
+            return []
+
+    class _BlockedDrainingStream:
+        def __init__(self) -> None:
+            self._stopped = threading.Event()
+            self._waiting = threading.Event()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self, block_samples):
+            self._waiting.set()
+            self._stopped.wait()
+            time.sleep(0.05)  # slow drain after the stream stop
+            return np.zeros((block_samples, 1), dtype=np.float32), False
+
+        def stop(self) -> None:
+            self._stopped.set()
+
+        def start(self) -> None:
+            raise AssertionError("shutdown must not restart the stream")
+
+    stream = _BlockedDrainingStream()
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_NoSpeechChunker(), stream_factory=lambda bs: stream
+    )
+    app = build_app(
+        _settings(),
+        backend=_FakeBackend(),
+        audio_input=audio_input,
+        tts_output=_FakeTtsOutput(),
+        capture_input=_FakeCaptureInput(),
+    )
+    subscriptions = wire(app)
+    shutdown_event = asyncio.Event()
+    mic_task = asyncio.create_task(audio_input.run_microphone_loop())
+    await asyncio.to_thread(stream._waiting.wait, 2.0)
+
+    shutdown_event.set()
+    with caplog.at_level(logging.ERROR):
+        await asyncio.wait_for(
+            run_until_shutdown(app, subscriptions, shutdown_event, [mic_task]),
+            timeout=5,
+        )
+
+    assert mic_task.done()
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
 
 
 async def test_run_until_shutdown_cancels_tasks_and_unsubscribes():

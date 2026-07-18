@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import base64
+import concurrent.futures
 import logging
 import time
 from collections.abc import Callable
@@ -713,7 +714,10 @@ async def run_until_shutdown(
         logger.info("Shutdown: stopping microphone capture")
         # Cancelling a task awaiting a running executor future cannot stop
         # the underlying blocking read; the microphone loop needs its own
-        # cooperative stop before we await all background tasks.
+        # cooperative stop before we await all background tasks. stop() is
+        # terminal: it returns only after the loop and its read worker
+        # have actually finished, so the cancellation below can no longer
+        # race a microphone executor submission.
         await app.audio_input.stop()
         logger.info("Shutdown: cancelling %d background task(s)", len(background_tasks))
         for task in background_tasks:
@@ -870,6 +874,20 @@ def run_with_status_console(
     )
     live_console.create_windows()
 
+    # pywebview's start() runs its func argument in a plain thread it
+    # never joins, and returns the moment the GUI loop exits (verified
+    # against pywebview 6.2.1 source) - possibly before that thread has
+    # even been scheduled. Returning from main() at that point begins
+    # interpreter shutdown while the engine is still running its clean
+    # shutdown sequence, and concurrent.futures' atexit hook then makes
+    # any in-flight asyncio.to_thread() submission raise "cannot schedule
+    # new futures ..." - the shutdown race recorded in
+    # tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md.
+    # The completion future owns the engine lifetime: the process waits
+    # for the engine's actual result, and an engine exception surfaces
+    # here instead of dying silently in the unjoined thread.
+    engine_done: concurrent.futures.Future[None] = concurrent.futures.Future()
+
     def start_jarvis() -> None:
         async def start() -> None:
             if live_console.transport is None:
@@ -878,11 +896,17 @@ def run_with_status_console(
             live_console.load_transport_urls(transport_info)
             await run(settings=settings, app=app, live_console=live_console)
 
-        asyncio.run(start())
+        try:
+            asyncio.run(start())
+        except BaseException as exc:
+            engine_done.set_exception(exc)
+        else:
+            engine_done.set_result(None)
 
     import webview
 
     webview.start(start_jarvis)
+    engine_done.result()
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

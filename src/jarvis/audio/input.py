@@ -156,6 +156,13 @@ class AudioInput:
         # buffer hygiene independent of stream.read() returning promptly -
         # see the stale-buffer-replay bug report in tasks/bug_reports/.
         self._buffer_invalidated = False
+        # Set while run_microphone_loop() is NOT running. stop() awaits it
+        # so that once stop() returns, the loop can submit no further
+        # executor jobs - the deterministic boundary run_until_shutdown()
+        # needs before cancelling tasks and tearing down the loop/executor
+        # (see the shutdown-race bug report in tasks/bug_reports/).
+        self._loop_exited = asyncio.Event()
+        self._loop_exited.set()
 
     @property
     def is_awake(self) -> bool:
@@ -199,10 +206,20 @@ class AudioInput:
             await self._bus.publish(UtteranceChunk, chunk)
 
     async def stop(self) -> None:
+        """Terminal shutdown: request the loop to exit, interrupt a
+        blocked read, then wait - unconditionally - until the loop has
+        actually finished. After this returns, the microphone code can
+        submit no further executor job, and a microphone loop started
+        after stop() exits immediately without opening a stream.
+        stream.stop() interrupting a blocked read is verified device
+        behavior (see the stale-buffer-replay fix); a driver whose read
+        never returns even then would need its own explicit
+        degraded-shutdown design, not a silent timeout here."""
         self._stop_requested = True
         self._awake.set()
         if self._active_stream is not None:
             await asyncio.to_thread(self._active_stream.stop)
+        await self._loop_exited.wait()
 
     async def _read_stream_block(
         self, stream: InputStreamLike, block_samples: int
@@ -241,12 +258,21 @@ class AudioInput:
 
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
         """Records microphone audio until cancelled or stopped."""
+        self._loop_exited.clear()
+        try:
+            await self._run_microphone_loop(poll_interval_seconds)
+        finally:
+            self._loop_exited.set()
+
+    async def _run_microphone_loop(self, poll_interval_seconds: float) -> None:
         request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
         buffer = np.zeros(0, dtype=np.float32)
         published_end_seconds = 0.0
         block_samples = int(SAMPLE_RATE * poll_interval_seconds)
 
-        self._stop_requested = False
+        # Deliberately no reset of _stop_requested here: stop() is
+        # terminal, and a loop that starts after stop() must exit at once
+        # (sleep/wake is a separate mechanism, not a loop restart).
         while not self._stop_requested:
             await self._awake.wait()
             if self._stop_requested:

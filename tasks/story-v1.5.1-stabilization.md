@@ -80,13 +80,16 @@ older backlog question relevant to console/runtime hygiene:
 
 ## Acceptance criteria
 
-- [ ] The reported human scenario (launch with Status Console, change UI
+- [x] The reported human scenario (launch with Status Console, change UI
       language, close the console without any request) shuts down with no
-      ERROR-level log, verified by the human in both English and Russian
-      UI languages.
-- [ ] A pure test proves the microphone stop boundary: no `to_thread()`
-      submission after stop, clean task exit. The test fails on the
-      pre-fix code.
+      ERROR-level log - human-verified three times on 2026-07-18
+      (task-v1.5.1-1 completed).
+- [x] A pure test proves the microphone stop boundary: `stop()` stays
+      pending until the read worker and loop have finished, and the task
+      exits cleanly. The test fails on the pre-fix code. An
+      observable-executor test additionally records zero submissions
+      after the boundary (supporting evidence, not required to fail
+      pre-fix on its own).
 - [ ] The pywebview guard question is closed in code or in documentation;
       no silently-stale justification remains.
 - [ ] Both non-code reports carry their dispositions.
