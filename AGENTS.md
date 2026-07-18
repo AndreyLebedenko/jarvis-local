@@ -22,6 +22,9 @@
    0.9. Build or test tooling produces an unexpected error (including
         access/permission errors, missing dependencies, environment issues).
         Do not attempt to work around infrastructure problems.
+        Exception: follow the exact Codex approval retry defined in the
+        `Codex` section for `A specified logon session does not exist` before
+        treating that error as a stop condition.
         Rule: an error in the code is your responsibility;
               an error in the environment is not.
 
@@ -140,12 +143,18 @@
 
 ## Codex
 
-1. If a required command fails because the Codex sandbox session, logon
-   session, or permissions are unavailable, report the infrastructure error
-   and stop instead of applying workarounds.
-2. When the human explicitly authorizes an approved/escalated run, use the
-   Codex approval mechanism for that exact command, then record the result in
-   the task handoff.
+1. If a required command fails with `A specified logon session does not
+   exist`, immediately retry that exact command through the Codex approval
+   mechanism. This approved retry is the required recovery path, not an
+   infrastructure workaround, and does not require a separate conversational
+   authorization from the human.
+2. If the approved retry is denied, cannot start, or fails with the same
+   infrastructure error, report the infrastructure error and stop. Do not
+   attempt a different command, shell, interpreter, or other workaround.
+3. For other Codex sandbox, logon-session, or permission failures, report the
+   infrastructure error and stop unless the human explicitly authorizes an
+   approved/escalated run. Use the approval mechanism for that exact command
+   and record the result in the task handoff.
 
 ## Task documentation workflow
 
