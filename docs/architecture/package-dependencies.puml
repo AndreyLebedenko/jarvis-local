@@ -1,0 +1,112 @@
+@startuml
+title Jarvis - package responsibilities and dependency direction
+
+top to bottom direction
+skinparam backgroundColor #FAFAFA
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam linetype ortho
+skinparam nodesep 40
+skinparam ranksep 55
+skinparam ArrowColor #475569
+skinparam componentBorderColor #475569
+skinparam componentBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #94A3B8
+skinparam rectangleBackgroundColor #F8FAFC
+
+rectangle "REQUESTS, OPTIONS, AND EVENTS" as ContractsZone #EAF2FF {
+  component "config\nSettings, options,\nTOML validation" as Config
+  component "lifecycle\nTurn and model-request\nevents" as Lifecycle
+  component "bus\nTyped async\nevent routing" as Bus
+  component "ui.contract\nUI state and\nevent DTOs" as UiContract
+  component "system_log\nAtomic log +\nUI event publication" as SystemLog
+
+  Config -[hidden]right-> Lifecycle
+  Lifecycle -[hidden]right-> Bus
+  Bus -[hidden]right-> UiContract
+  UiContract -[hidden]right-> SystemLog
+}
+
+rectangle "APPLICATION RUNTIME" as RuntimeZone #F8FAFC {
+  component "inputs  <<package>>\n---\nhotkeys: global commands\ncapture: screenshots\nclipboard: text submission\ndepends on: config, bus" as Inputs
+
+  component "audio  <<package>>\n---\ninput: microphone + VAD\ntts: buffering + synthesis\nsound_cues: local feedback\ndepends on: config, bus, dialog events" as Audio
+
+  component "app.py  <<composition root>>\n---\nconstruct modules\nwire subscriptions\norchestrate each turn\nown startup and shutdown\ndepends on: all runtime packages + contracts" as App
+
+  component "dialog  <<package>>\n---\nbackend: Ollama streaming\ntool_presentation: dialog loop\nthinking/time: request context\ndepends on: config, bus, tools" as Dialog
+
+  component "tools  <<package>>\n---\nhost: MCP lifecycle\nregistry: typed catalog\ndispatch: policy + audit\nclient: stdio JSON-RPC\ndepends on: config, bus, ui.contract" as Tools
+
+  component "journal  <<package>>\n---\nrecorder: ordered background writes\nstore: local JSONL + media\nsearch: session lookup\ndepends on: bus" as Journal
+
+  component "ui  <<package>>\n---\ntrackers: state projections\ntransport: local bridge\nconsole: controls and windows\nHTML/CSS/JS views\ndepends on: config, bus, lifecycle, ui.contract" as Ui
+
+  Inputs -[hidden]right-> Audio
+  Audio -[hidden]right-> App
+  App -[hidden]right-> Dialog
+  Dialog -[hidden]right-> Tools
+  App -[hidden]down-> Journal
+  Journal -[hidden]right-> Ui
+  Tools -[hidden]down-> Ui
+}
+
+rectangle "USER, DEVICES, AND EXTERNAL SERVICES" as BoundariesZone #FFF7E8 {
+  actor "User" as User
+  rectangle "Input devices\nMicrophone / screen / clipboard" as InputDevices
+  rectangle "Speakers" as Speakers
+  cloud "Local Ollama\n/api/chat" as Ollama
+  node "Explicitly enabled\nMCP server processes" as McpServers
+  node "WebView2\nlocal UI host" as WebView
+
+  User -[hidden]right-> InputDevices
+  InputDevices -[hidden]right-> Speakers
+  Speakers -[hidden]right-> Ollama
+  Ollama -[hidden]right-> McpServers
+  McpServers -[hidden]right-> WebView
+}
+
+ContractsZone -[hidden]down-> RuntimeZone
+RuntimeZone -[hidden]down-> BoundariesZone
+
+' Composition dependencies: app.py is deliberately the high-fan-out root.
+App --> Inputs : constructs / wires
+App --> Audio : constructs / wires
+App --> Dialog : orchestrates
+App --> Tools : composes
+App --> Journal : records / searches
+App --> Ui : exposes state / control
+
+' High-signal connections to the contracts layer. Repeated package-level
+' dependencies are listed inside each package instead of drawn in parallel.
+App -up-> Config : loads validated settings
+App -up-> Lifecycle : publishes turn/request state
+App -[dashed]up-> Bus : owns event routing
+Ui -up-> UiContract : renders DTOs
+SystemLog -up-> UiContract : creates SystemEvent
+
+' Cross-package implementation dependencies kept explicit.
+Audio --> Dialog : response event types
+Dialog --> Tools : registry + dispatcher
+
+' External boundaries stay in one bottom rank.
+User -up-> Inputs : hotkeys / commands
+InputDevices -up-> Inputs : screen + clipboard
+InputDevices -up-> Audio : microphone samples
+Audio -down-> Speakers : speech + cues
+Dialog -down-> Ollama : local streaming HTTP
+Tools -down-> McpServers : stdio JSON-RPC\nonly when enabled
+Ui -down-> WebView : loopback transport + views
+
+legend bottom
+  |= Relation |= Meaning |
+  | --> | Direct call, construction, import, or external I/O |
+  | ..> | Typed event publication/subscription path |
+  Repeated config/bus/contract dependencies are listed inside package blocks.
+  Hidden links control ranks only and are not dependencies.
+  Use graphify-out/graph.html for exhaustive symbol-level relationships.
+endlegend
+
+@enduml

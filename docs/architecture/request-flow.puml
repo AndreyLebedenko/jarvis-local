@@ -1,0 +1,111 @@
+@startuml
+title Jarvis - end-to-end request flow
+
+skinparam backgroundColor #FAFAFA
+skinparam shadowing false
+skinparam defaultFontName Segoe UI
+skinparam sequenceArrowThickness 1
+skinparam sequenceGroupBorderColor #64748B
+skinparam sequenceGroupBackgroundColor #F8FAFC
+skinparam ParticipantBorderColor #475569
+skinparam ParticipantBackgroundColor #FFFFFF
+skinparam ActorBorderColor #475569
+skinparam ActorBackgroundColor #FFFFFF
+
+actor User
+participant "Input adapter\n(audio / clipboard / capture)" as Input
+participant "EventBus" as Bus
+participant "Orchestrator" as Orch
+participant "ConversationHistory" as History
+participant "JournalRecorder" as Journal
+participant "ToolAwareDialog" as Dialog
+participant "OllamaBackend" as Backend
+database "Local Ollama" as Ollama
+participant "ToolRegistry" as Registry
+participant "ToolDispatcher" as Dispatcher
+participant "StdioMcpClient" as McpClient
+participant "Enabled MCP server" as McpServer
+participant "TtsOutput" as Tts
+participant "AudioInput" as Mic
+participant "Runtime/UI trackers" as Trackers
+participant "UiTransportServer" as UiTransport
+boundary "Status Console / touchstrip" as Ui
+participant "Speakers" as Speakers
+
+note over Input
+  Converts hardware or hotkey activity into typed events.
+  ScreenshotCaptured is cached until the next accepted turn.
+end note
+
+User -> Input : speak, submit clipboard, or capture screen
+Input -> Bus : publish input event
+Bus -> Orch : on_utterance / on_clipboard / on_screenshot
+
+alt screenshot only
+  Orch -> Orch : cache image for next accepted request
+else voice or clipboard turn
+  Orch -> Orch : reject if another turn is busy
+  Orch -> Journal : record user text or WAV asynchronously
+  Orch -> Bus : TurnAccepted
+  Bus -> Trackers : update runtime projection
+  Trackers -> Bus : RuntimeStateChanged(THINKING)
+  Bus -> UiTransport : update snapshot and clients
+  UiTransport -> Ui : render current state
+
+  Orch -> History : read prior text turns
+  Orch -> Orch : add system prompt, time context,\nand current-turn media
+  Orch -> Bus : ModelRequestStarted
+  Orch -> Dialog : chat(messages, media, reasoning level)
+  Dialog -> Registry : list enabled tools
+
+  loop until final answer or tool-call budget is exhausted
+    Dialog -> Backend : iter_chat(messages, tools)
+    Backend -> Ollama : POST /api/chat (streaming)
+    Ollama --> Backend : content, tool calls, metrics
+    Backend --> Dialog : parsed stream chunks
+
+    alt model requests an enabled tool
+      Dialog -> Dispatcher : dispatch(name, typed arguments)
+      Dispatcher -> Dispatcher : validate policy and data boundary
+      Dispatcher -> Bus : ToolCallStarted
+      Dispatcher -> McpClient : call_tool(...)
+      McpClient -> McpServer : JSON-RPC request over stdio
+      McpServer --> McpClient : JSON-RPC result/error
+      McpClient --> Dispatcher : typed result/error
+      Dispatcher -> Bus : ToolCallFinished
+      Dispatcher --> Dialog : ToolDispatchResult
+      Dialog -> Dialog : append tool result to messages
+    else model produces final text
+      Dialog -> Bus : ResponseToken (one or more)
+      Bus -> Orch : collect answer; pause mic on first token
+      Orch -> Mic : auto_pause_for_speech()
+      Bus -> Tts : buffer and synthesize complete speech units
+      Tts -> Speakers : serialized playback
+    end
+  end
+
+  Dialog -> Bus : ResponseComplete(metrics)
+  Bus -> Tts : flush trailing speech unit
+  Bus -> Orch : persist completed turn
+  Orch -> History : append user and assistant text
+  Orch -> Journal : record assistant text asynchronously
+  Tts -> Tts : wait for all queued playback
+  Orch -> Mic : resume after configured cooldown
+  Orch -> Bus : TurnCompleted
+  Bus -> Trackers : update runtime projection
+  Trackers -> Bus : RuntimeStateChanged(LISTENING)
+  Bus -> UiTransport : update snapshot and clients
+  UiTransport -> Ui : render final state and journal events
+end
+
+note over Dialog,Dispatcher
+  Tool use is optional. With MCP disabled, Registry returns no enabled
+  tools and ToolAwareDialog delegates directly to OllamaBackend.
+end note
+
+note over Orch,Tts
+  Response completion ordering is deliberate: flush TTS, record history,
+  wait for playback, resume the microphone, then publish TurnCompleted.
+end note
+
+@enduml

@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .venv-mcp-*/
+/.tools/
 config.toml
 config.ui.toml
 .idea/
