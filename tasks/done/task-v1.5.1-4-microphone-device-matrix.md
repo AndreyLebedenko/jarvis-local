@@ -1,7 +1,7 @@
 # Task v1.5.1-4: Microphone device-type quality and stability matrix
 
-**Status:** Ready.
-**Story:** `tasks/story-v1.5.1-stabilization.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.1-stabilization.md`
 **Depends on:** task-v1.5.1-1 (run the matrix on the fixed shutdown path,
 so device findings are not confused with the known race).
 
@@ -43,6 +43,15 @@ output, per the Testing protocol.
 - The script must run fully offline and must not require the Jarvis app
   or Ollama to be running - `audio_in` machinery plus playback only.
 
+## Current finding
+
+- USB and Bluetooth matrix runs on 2026-07-18 reproduced a transient degraded
+  first capture after a long hardware-mute stall on `Microphone (Yeti X)` and
+  `Headset (TicPods ANC)`, both via MME. Evidence and the verified fact are
+  recorded in `PROJECT.md`; the defect is filed as
+  `tasks/bug_reports/2026-07-18-microphone-post-mute-first-capture-degraded.md`.
+- Per the story boundary, no capture-path fix is made in this task.
+
 ## Requirements
 
 The script guides the human through the same checklist per device:
@@ -73,16 +82,16 @@ The script guides the human through the same checklist per device:
 
 ## Acceptance criteria
 
-- [ ] The manual script covers steps 1-6 and prints per-device result
+- [x] The manual script covers steps 1-6 and prints per-device result
       lines suitable for pasting into a report.
-- [ ] Any pure-logic helpers added for the script (e.g. result
+- [x] Any pure-logic helpers added for the script (e.g. result
       formatting) have automated tests; the device interactions
       themselves are human-run by definition.
-- [ ] The human has run the matrix on at least one USB and one Bluetooth
+- [x] The human has run the matrix on at least one USB and one Bluetooth
       microphone; results (including failures) are recorded in
       `PROJECT.md` as verified per-device-class facts, and any defect
       found is filed as its own bug report.
-- [ ] `python -m pytest`, `python -m ruff check .`,
+- [x] `python -m pytest`, `python -m ruff check .`,
       `python -m ruff format --check .` green.
 
 ## Stop conditions

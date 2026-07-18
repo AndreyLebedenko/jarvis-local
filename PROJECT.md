@@ -239,6 +239,24 @@ system is intended to grow.
   inside `toggle_user_sleep()` on the event loop, never in the hotkey
   callback thread. All three fixes have regression tests confirmed to
   fail without the fix and pass with it.
+- **Microphone device matrix post-mute finding (2026-07-18):** the earlier
+  distorted-capture class reproduced through PortAudio MME on both a USB Yeti
+  X and a Bluetooth TicPods ANC headset during task-v1.5.1-4's human-run
+  matrix. Sequence in both cases: several clean chunks, hardware mute on the
+  microphone for about 3 minutes, hardware unmute, wait for the device's ready
+  signal, then immediate dictation. The first post-unmute wav was low quality
+  (`utterance-007.wav` for USB, `utterance-003.wav` for Bluetooth); the next
+  chunk recorded immediately afterward, without settings changes or another
+  user action, was clean like the initial chunks. Initial waveform inspection
+  found no clipping in either degraded wav, so this is not classified as
+  amplitude saturation. Evidence is preserved locally under
+  `manual_check_microphone_devices_out/20260718-214650-1-Microphone_Yeti_X/`
+  and
+  `manual_check_microphone_devices_out/20260718-215925-4-Headset_TicPods_ANC/`.
+  The defect is tracked in
+  `tasks/bug_reports/2026-07-18-microphone-post-mute-first-capture-degraded.md`.
+  No capture-path change is made in v1.5.1 task 4; a fix requires a dedicated
+  capture-path task.
 - **Graded Ollama `think` values `"low"`, `"medium"`, and `"high"` are all
   accepted alongside `false` (story-v1.3.1 task 1).** Human-run
   `python -m manual.manual_check_graded_reasoning` on 2026-07-13 against

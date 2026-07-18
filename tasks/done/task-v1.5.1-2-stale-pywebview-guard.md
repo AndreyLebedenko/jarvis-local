@@ -1,7 +1,7 @@
 # Task v1.5.1-2: Resolve the stale pywebview crash guard
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.5.1-stabilization.md`
+**Story:** `tasks/done/story-v1.5.1-stabilization.md`
 **Source card:**
 `tasks/backlog/status-console-api-stale-pywebview-crash-guard.md`
 (promoted into this release; execute it as written there, with the
