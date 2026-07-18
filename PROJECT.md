@@ -257,6 +257,21 @@ system is intended to grow.
   `tasks/bug_reports/2026-07-18-microphone-post-mute-first-capture-degraded.md`.
   No capture-path change is made in v1.5.1 task 4; a fix requires a dedicated
   capture-path task.
+- **Silero VAD full-buffer re-scan exceeds the capture loop's real-time
+  budget at roughly a 35-40 s buffer (measured 2026-07-18, dev machine,
+  CPU).** `get_speech_timestamps` cost scales linearly with buffer length:
+  about 0.25 s for a 30 s buffer, 0.5 s at 60 s, 1.5 s at 180 s, against the
+  loop's 0.3 s block budget. Before the silence-trim fix
+  (`tasks/task-fix-mic-silence-buffer-vad-overload.md`), the capture buffer
+  grew unboundedly during speech-free stretches because trimming only
+  happened after a published utterance; a 3-minute silent stretch therefore
+  pushed the loop several times slower than real time, PortAudio's input
+  ring overflowed (the overflow flag was silently discarded), and the first
+  post-silence capture was published from spliced, degraded audio. This is
+  the identified root cause of the post-mute degraded-capture finding above:
+  the hardware mute merely supplied the silence. The loop now bounds the
+  buffer to the in-progress utterance plus a 1.0 s lead-in (or 1.0 s of
+  tail during pure silence) and logs input overflows.
 - **Graded Ollama `think` values `"low"`, `"medium"`, and `"high"` are all
   accepted alongside `false` (story-v1.3.1 task 1).** Human-run
   `python -m manual.manual_check_graded_reasoning` on 2026-07-13 against

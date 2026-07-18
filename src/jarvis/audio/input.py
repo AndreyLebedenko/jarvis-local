@@ -6,6 +6,7 @@ privacy sleep, speech auto-pause, and bus publication.
 
 import asyncio
 import functools
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -21,6 +22,16 @@ from jarvis.core.config import HotkeySettings, VadSettings
 from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
 
 SAMPLE_RATE = 16000
+
+# Lead-in kept ahead of any point of interest when the capture buffer is
+# trimmed: pre-roll before an in-progress utterance, context retained for
+# speech that starts in the next block, and pre-roll behind a published
+# utterance. Bounding the buffer this way is what keeps the per-block VAD
+# scan within the real-time budget during long silence - see the
+# post-mute-first-capture-degraded bug report in tasks/bug_reports/.
+BUFFER_LEAD_SECONDS = 1.0
+
+logger = logging.getLogger(__name__)
 
 
 class InputStreamLike(Protocol):
@@ -225,7 +236,7 @@ class AudioInput:
         self, stream: InputStreamLike, block_samples: int
     ) -> np.ndarray | None:
         try:
-            data, _ = await asyncio.to_thread(stream.read, block_samples)
+            data, overflowed = await asyncio.to_thread(stream.read, block_samples)
         except Exception:
             if self._stop_requested or not self._awake.is_set():
                 return None
@@ -236,16 +247,20 @@ class AudioInput:
             return None
         if self._buffer_invalidated:
             return None
+        if overflowed:
+            logger.warning(
+                "PortAudio input overflow: the capture loop fell behind "
+                "and audio was dropped before this read"
+            )
         return data[:, 0]
 
-    async def _publish_complete_utterances(
-        self,
-        buffer: np.ndarray,
-        published_end_seconds: float,
-        request_end_pause_seconds: float,
-    ) -> float:
+    async def _publish_and_trim(
+        self, buffer: np.ndarray, published_end_seconds: float
+    ) -> tuple[np.ndarray, float]:
+        request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
         buffer_duration = len(buffer) / SAMPLE_RATE
-        for utterance in self._chunker.chunk(torch.from_numpy(buffer)):
+        utterances = self._chunker.chunk(torch.from_numpy(buffer))
+        for utterance in utterances:
             already_published = utterance.end_seconds <= published_end_seconds
             still_extending = (
                 buffer_duration - utterance.end_seconds < request_end_pause_seconds
@@ -254,7 +269,28 @@ class AudioInput:
                 continue
             await self._bus.publish(UtteranceChunk, utterance)
             published_end_seconds = utterance.end_seconds
-        return published_end_seconds
+
+        # Trim audio that can no longer contribute to a future utterance.
+        # The buffer must stay bounded even when nothing is ever published:
+        # the whole buffer is re-scanned by VAD on every block, and an
+        # unbounded silence buffer pushes that scan past the real-time
+        # budget until the input ring overflows and drops audio.
+        unpublished_starts = [
+            utterance.start_seconds
+            for utterance in utterances
+            if utterance.end_seconds > published_end_seconds
+        ]
+        if unpublished_starts:
+            keep_from_seconds = min(unpublished_starts) - BUFFER_LEAD_SECONDS
+        else:
+            keep_from_seconds = buffer_duration - BUFFER_LEAD_SECONDS
+        trim_seconds = max(
+            published_end_seconds - BUFFER_LEAD_SECONDS, keep_from_seconds, 0.0
+        )
+        if trim_seconds > 0:
+            buffer = buffer[int(trim_seconds * SAMPLE_RATE) :]
+            published_end_seconds = max(published_end_seconds - trim_seconds, 0.0)
+        return buffer, published_end_seconds
 
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
         """Records microphone audio until cancelled or stopped."""
@@ -265,7 +301,6 @@ class AudioInput:
             self._loop_exited.set()
 
     async def _run_microphone_loop(self, poll_interval_seconds: float) -> None:
-        request_end_pause_seconds = self._chunker.settings.request_end_pause_seconds
         buffer = np.zeros(0, dtype=np.float32)
         published_end_seconds = 0.0
         block_samples = int(SAMPLE_RATE * poll_interval_seconds)
@@ -294,16 +329,9 @@ class AudioInput:
                         if block is None:
                             break
                         buffer = np.concatenate([buffer, block])
-                        published_end_seconds = await self._publish_complete_utterances(
-                            buffer,
-                            published_end_seconds,
-                            request_end_pause_seconds,
+                        buffer, published_end_seconds = await self._publish_and_trim(
+                            buffer, published_end_seconds
                         )
-
-                        trim_seconds = max(published_end_seconds - 1.0, 0.0)
-                        if trim_seconds > 0:
-                            buffer = buffer[int(trim_seconds * SAMPLE_RATE) :]
-                            published_end_seconds -= trim_seconds
                 finally:
                     self._active_stream = None
 

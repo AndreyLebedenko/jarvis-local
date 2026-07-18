@@ -4,7 +4,10 @@
 script on branch `codex/task-v1.5.1-4-microphone-device-matrix`.
 **Detected during:** task-v1.5.1-4 human-run microphone device matrix,
 2026-07-18.
-**Status:** Open.
+**Status:** Resolved 2026-07-18. Root cause identified (see below), fixed
+by `tasks/done/task-fix-mic-silence-buffer-vad-overload.md`; human-run
+hardware verification on the same devices confirmed the first post-mute
+capture is clean with the fix.
 
 ## Symptoms
 
@@ -49,7 +52,48 @@ Bluetooth device and evidence:
 
 The matrix logs show clean shutdown for both runs.
 
-## Suspected current cause
+## Root cause (identified 2026-07-18)
+
+`run_microphone_loop()` trimmed its accumulated buffer only after a
+published utterance. During the ~3-minute hardware mute the device kept
+delivering silence frames, nothing was published, and the buffer grew to
+roughly 200 s. `VadChunker.chunk()` re-scans the entire buffer on every
+0.3 s block; measured on the dev machine that scan crosses the 0.3 s
+real-time budget at about a 35-40 s buffer and costs ~1.5 s per block at
+180 s. The capture loop therefore ran several times slower than real time
+after the unmute, PortAudio's input ring overflowed (the overflow flag
+returned by `stream.read()` was silently discarded), and the first
+post-unmute utterance was assembled from spliced, partially dropped
+audio. Publishing that utterance triggered the existing post-publish
+trim, which shrank the buffer back to ~1 s and restored real-time
+capture - which is exactly why the immediately following chunk was clean
+with no user action.
+
+Supporting evidence:
+
+- Timing measurement: `get_speech_timestamps` cost is linear in buffer
+  length (0.25 s at 30 s, 0.5 s at 60 s, 1.5 s at 180 s of audio).
+- Evidence-wav mtimes: Yeti `utterance-007.wav` was written 3 m 23 s
+  after `utterance-006.wav` (mute plus lagged processing), while
+  `utterance-008.wav` followed at normal cadence; same pattern for the
+  Bluetooth pair.
+- Waveform analysis of both degraded wavs: no clipping, no zero-run
+  dropouts, low RMS with relatively elevated high-frequency content -
+  consistent with splice-garbled speech, not amplitude saturation and not
+  a device-level fault.
+- The mechanism is device-independent, matching the USB + Bluetooth
+  reproduction; the hardware mute merely supplied the long silence.
+  Prediction for the verification run: the same degradation reproduces
+  with no mute at all, by simply staying silent for ~3 minutes before
+  dictating (pre-fix).
+
+The 2026-07-17 distorted journal capture
+(`tasks/bug_reports/2026-07-17-distorted-voice-in-journal-recording.md`)
+is plausibly the same mechanism (that turn followed a ~50 s
+speech-free stretch under concurrent inference load), but that report
+stays open until a post-fix recurrence check.
+
+## Original suspected cause (superseded)
 
 Unknown. The defect is capture-side and transient: the first post-hardware-mute
 capture can be degraded even though the next capture on the same still-active

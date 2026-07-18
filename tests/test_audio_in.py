@@ -937,6 +937,123 @@ async def test_stop_is_terminal_a_late_starting_loop_never_opens_a_stream():
     assert factory_calls == []
 
 
+# --- fix: mic silence buffer VAD overload (see tasks/bug_reports/ -----------
+#     2026-07-18-microphone-post-mute-first-capture-degraded.md)
+#
+# The buffer used to be trimmed only after a published utterance, so any
+# long speech-free stretch (hardware mute delivering silence frames, or a
+# quiet room) grew it without bound while VAD re-scanned all of it every
+# block - eventually slower than real time, overflowing the input ring and
+# degrading the first post-silence capture.
+
+
+class _LengthRecordingFakeChunker(_FakeChunker):
+    def __init__(self, request_end_pause_seconds: float = 2.0) -> None:
+        super().__init__(request_end_pause_seconds)
+        self.sample_lengths: list[int] = []
+
+    def chunk(self, samples):
+        self.sample_lengths.append(len(samples))
+        return []
+
+
+async def test_buffer_stays_bounded_across_long_silence():
+    chunker = _LengthRecordingFakeChunker()
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)  # 1s blocks
+    fake_stream = _SteppedFakeStream(blocks=[], fill_value=silence)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=chunker, stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
+    for expected_count in range(1, 21):
+        await _wait_until_read_pending(fake_stream)
+        fake_stream.release_next_read()
+        await _wait_until(
+            lambda expected_count=expected_count: (
+                fake_stream.read_calls >= expected_count
+            )
+        )
+    await _wait_until(lambda: len(chunker.sample_lengths) >= 20)
+    await _run_until_cancelled(task)
+
+    # Steady state: 1s of retained lead-in plus the fresh 1s block. Before
+    # the fix, silence accumulated linearly (~20s by the last call here,
+    # minutes in the live bug).
+    steady_state_lengths = chunker.sample_lengths[2:]
+    assert max(steady_state_lengths) <= int(2.5 * SAMPLE_RATE)
+
+
+async def test_speech_after_long_trimmed_silence_publishes_one_full_utterance(
+    vad_model,
+):
+    """The trim must never clip the onset of speech that follows trimmed
+    silence: after many silence-only blocks (each of which trims the
+    buffer), a2 must still come out as exactly one utterance of its full
+    duration."""
+    a2_samples = read_audio("audio/a2.wav", sampling_rate=SAMPLE_RATE).numpy()
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    fake_stream = _SteppedFakeStream(
+        blocks=[silence] * 8 + [a2_samples], fill_value=silence
+    )
+
+    bus = EventBus()
+    received = []
+
+    async def on_chunk(chunk: UtteranceChunk) -> None:
+        received.append(chunk)
+
+    bus.subscribe(UtteranceChunk, on_chunk)
+    chunker = VadChunker(VadSettings(), model=vad_model)
+    audio_input = AudioInput(
+        bus=bus, chunker=chunker, stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=1.0)
+    )
+    for expected_count in range(1, 16):
+        await _wait_until_read_pending(fake_stream)
+        fake_stream.release_next_read()
+        await _wait_until(
+            lambda expected_count=expected_count: (
+                fake_stream.read_calls >= expected_count
+            )
+        )
+        if received:
+            break
+    await _run_until_cancelled(task)
+
+    assert len(received) == 1
+    duration = received[0].end_seconds - received[0].start_seconds
+    assert duration == pytest.approx(4.4, abs=0.1)
+
+
+class _OverflowingFakeStream(_FreeRunningFakeStream):
+    def read(self, block_samples):
+        self.read_calls += 1
+        return np.zeros((block_samples, 1), dtype=np.float32), True
+
+
+async def test_input_overflow_is_logged_instead_of_silently_discarded(caplog):
+    fake_stream = _OverflowingFakeStream(block_samples=160)
+    audio_input = AudioInput(
+        bus=EventBus(), chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    with caplog.at_level(logging.WARNING, logger="jarvis.audio.input"):
+        task = asyncio.create_task(
+            audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+        )
+        await _wait_until(
+            lambda: any("overflow" in record.message for record in caplog.records),
+            message="the overflow flag never produced a warning record",
+        )
+        await _run_until_cancelled(task)
+
+
 # --- task-10: MicSleepToggled event and real hotkey listener -----------------
 
 
