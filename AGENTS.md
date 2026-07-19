@@ -22,9 +22,9 @@
    0.9. Build or test tooling produces an unexpected error (including
         access/permission errors, missing dependencies, environment issues).
         Do not attempt to work around infrastructure problems.
-        Exception: follow the exact Codex approval retry defined in the
-        `Codex` section for `A specified logon session does not exist` before
-        treating that error as a stop condition.
+        Exception: follow the Codex approval rules in the `Codex` section
+        before treating `A specified logon session does not exist` as a stop
+        condition.
         Rule: an error in the code is your responsibility;
               an error in the environment is not.
 
@@ -143,15 +143,20 @@
 
 ## Codex
 
-1. If a required command fails with `A specified logon session does not
-   exist`, immediately retry that exact command through the Codex approval
-   mechanism. This approved retry is the required recovery path, not an
-   infrastructure workaround, and does not require a separate conversational
-   authorization from the human.
-2. If the approved retry is denied, cannot start, or fails with the same
+1. For Codex-based agents, the Codex approval mechanism is the default path
+   for required commands that are known or reasonably expected to need
+   approval in this environment, including commands that have previously hit
+   `A specified logon session does not exist`. Do not perform an intentionally
+   doomed direct run just to retry it through approval afterward.
+2. If a required command unexpectedly fails with the infrastructure error
+   `A specified logon session does not exist`, immediately retry that exact
+   command through the Codex approval mechanism. This approved retry is the
+   required recovery path, not an infrastructure workaround, and does not
+   require a separate conversational authorization from the human.
+3. If the approved retry is denied, cannot start, or fails with the same
    infrastructure error, report the infrastructure error and stop. Do not
    attempt a different command, shell, interpreter, or other workaround.
-3. For other Codex sandbox, logon-session, or permission failures, report the
+4. For other Codex sandbox, logon-session, or permission failures, report the
    infrastructure error and stop unless the human explicitly authorizes an
    approved/escalated run. Use the approval mechanism for that exact command
    and record the result in the task handoff.

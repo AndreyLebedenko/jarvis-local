@@ -1,6 +1,6 @@
-﻿# Story v1.6.0: File attachments
+# Story v1.6.0: File attachments
 
-**Status:** Backlog, not ready for task cards.
+**Status:** Planned, task cards approved.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (entry-point decision,
 2026-07-18: attachments are added from the Journal view's input dock -
 attach control and drag-and-drop - building on the v1.5.2 text input;
@@ -26,7 +26,10 @@ same feature as realtime microphone listening.
   v1.4.0 MCP integration, and v1.5.0 dialog journal foundations.
 - Activation/warmup is not a prerequisite; its backlog story may land
   independently of file attachments.
-- Do not create task cards until the v1.4.0 MCP story scope is clearer.
+- Task cards exist for planning, but implementation still depends on the
+  Journal input dock from v1.5.2. Memory work from v1.5.3 may land before
+  this story, but file attachments must not depend on memory retrieval or
+  curated memory files.
 - Treating MCP tool results/resources as attachments is out of scope here,
   but the turn-source contract must not preclude it.
 - Treat model self-description as a capability hint only, not as a verified
@@ -70,6 +73,19 @@ same feature as realtime microphone listening.
 - [ ] Payload construction follows verified Ollama media behavior.
 - [ ] Human-run checks verify real uploaded audio behavior before `PROJECT.md`
       records it as a fact.
+
+## Task cards
+
+- `tasks/task-v1.6.0-1-attachment-policy-and-format-gate.md`
+- `tasks/task-v1.6.0-2-attachment-domain-plan.md`
+- `tasks/task-v1.6.0-3-text-attachments.md`
+- `tasks/task-v1.6.0-4-image-attachments.md`
+- `tasks/task-v1.6.0-5-audio-attachments.md`
+- `tasks/task-v1.6.0-6-turn-orchestration.md`
+- `tasks/task-v1.6.0-7-journal-upload-api.md`
+- `tasks/task-v1.6.0-8-journal-attachment-ui.md`
+- `tasks/task-v1.6.0-9-code-quality-entropy-review.md`
+- `tasks/task-v1.6.0-10-release-verification.md`
 
 ## Stop Conditions
 
