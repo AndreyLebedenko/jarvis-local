@@ -17,5 +17,6 @@ sounds/
 .claude/settings.json
 graphify-out/
 /journal/
+/memory/
 examples/mcp/data/
 *.egg-info/
