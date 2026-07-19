@@ -37,6 +37,12 @@ class TextSubmissionReason(Enum):
     OVER_LIMIT = "over_limit"
 
 
+class AttachmentSubmissionReason(Enum):
+    ACCEPTED = "accepted"
+    BUSY = "busy"
+    NO_ACCEPTED_CONTENT = "no_accepted_content"
+
+
 class NewContextReason(Enum):
     ACCEPTED = "accepted"
     BUSY = "busy"
@@ -50,6 +56,15 @@ class TextSubmissionResult:
     @property
     def accepted(self) -> bool:
         return self.reason is TextSubmissionReason.ACCEPTED
+
+
+@dataclass(frozen=True)
+class AttachmentSubmissionResult:
+    reason: AttachmentSubmissionReason
+
+    @property
+    def accepted(self) -> bool:
+        return self.reason is AttachmentSubmissionReason.ACCEPTED
 
 
 @dataclass(frozen=True)
