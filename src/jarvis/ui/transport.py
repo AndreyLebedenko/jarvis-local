@@ -16,6 +16,7 @@ from aiohttp import web
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    DEFAULT_FORK_SEED_MAX_CHARS,
     TTS_ROUTE_TYPES,
     DataBoundary,
     Settings,
@@ -482,7 +483,7 @@ class UiTransportServer:
         journal_text_submitter: TextInputSubmitter | None = None,
         journal_new_context_handler: NewContextHandler | None = None,
         journal_fork_handler: JournalForkHandler | None = None,
-        journal_fork_seed_max_chars: int = 12000,
+        journal_fork_seed_max_chars: int = DEFAULT_FORK_SEED_MAX_CHARS,
         journal_active_session_id: Callable[[], str | None] | None = None,
         memory_file_repository: MemoryFileRepository | None = None,
     ) -> None:
@@ -756,22 +757,17 @@ class UiTransportServer:
                 {"status": "rejected", "reason": "unknown_session"}, status=404
             )
         source_session_id = request.match_info["session_id"]
-        summaries = {
-            summary.session_id: summary
-            for summary in await asyncio.to_thread(self._journal_store.list_sessions)
-        }
-        summary = summaries.get(source_session_id)
-        if summary is None:
-            return web.json_response(
-                {"status": "rejected", "reason": "unknown_session"}, status=404
-            )
         replay = await asyncio.to_thread(
             self._journal_store.read_session, source_session_id
         )
+        if not replay.events:
+            return web.json_response(
+                {"status": "rejected", "reason": "unknown_session"}, status=404
+            )
         result = await self._journal_fork_handler(
             source_session_id=source_session_id,
             replay=replay,
-            source_end_timestamp=summary.last_timestamp,
+            source_end_timestamp=replay.events[-1].timestamp,
             seed_budget_chars=self._journal_fork_seed_max_chars,
         )
         return self._journal_fork_response(source_session_id, result)
@@ -981,6 +977,7 @@ class UiTransportServer:
                     "seed": {
                         "dropped_turns": seed.dropped_turns,
                         "skipped_events": seed.skipped_events,
+                        "excluded_events": seed.excluded_events,
                         "truncated": seed.truncated,
                         "max_chars": result.max_chars,
                     },

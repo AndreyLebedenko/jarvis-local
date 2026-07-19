@@ -124,6 +124,7 @@ class JournalRecorder:
                 "seed": {
                     "dropped_turns": seed_drop_report.dropped_turns,
                     "skipped_events": seed_drop_report.skipped_events,
+                    "excluded_events": seed_drop_report.excluded_events,
                     "truncated": seed_drop_report.truncated,
                 },
             },

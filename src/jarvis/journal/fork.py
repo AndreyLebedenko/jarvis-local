@@ -19,6 +19,7 @@ class ForkSeedDropReport:
     dropped_turns: int
     skipped_events: int
     truncated: bool
+    excluded_events: int = 0
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,11 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
 
     seedable_turns: list[ForkSeedTurn] = []
     skipped_events = 0
+    excluded_events = 0
     for event in replay.events:
+        if _is_excluded_event(event):
+            excluded_events += 1
+            continue
         turn = _seed_turn(event)
         if turn is None:
             skipped_events += 1
@@ -90,13 +95,16 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
             dropped_turns=dropped_turns,
             skipped_events=skipped_events,
             truncated=dropped_turns > 0,
+            excluded_events=excluded_events,
         ),
     )
 
 
+def _is_excluded_event(event: JournalEvent) -> bool:
+    return event.source == "context"
+
+
 def _seed_turn(event: JournalEvent) -> ForkSeedTurn | None:
-    if event.source == "context":
-        return None
     text = _model_facing_text(event)
     if text == "":
         return None

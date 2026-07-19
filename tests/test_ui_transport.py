@@ -6,6 +6,7 @@ import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    DEFAULT_FORK_SEED_MAX_CHARS,
     DataBoundary,
     MemorySettings,
     PiperTtsSettings,
@@ -155,6 +156,11 @@ class _FakeNewContextHandler:
     async def __call__(self) -> NewContextResult:
         self.calls += 1
         return self.result
+
+
+class _NoListJournalStore(JournalStore):
+    def list_sessions(self):
+        raise AssertionError("fork endpoint must not list every session")
 
 
 def test_protocol_message_round_trips_with_channel_and_payload():
@@ -1207,6 +1213,7 @@ async def test_journal_fork_endpoint_reads_source_and_maps_success(
                 "seed": {
                     "dropped_turns": 1,
                     "skipped_events": 0,
+                    "excluded_events": 0,
                     "truncated": True,
                     "max_chars": 25,
                 },
@@ -1221,6 +1228,54 @@ async def test_journal_fork_endpoint_reads_source_and_maps_success(
                 "source turn",
                 "source answer",
             ]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_fork_endpoint_reads_only_the_requested_session(
+    tmp_path: Path,
+) -> None:
+    store = _NoListJournalStore(tmp_path)
+    source_session_id = "20260718-150000-ab12"
+    store.append(
+        _journal_event(
+            session_id=source_session_id,
+            timestamp="2026-07-18T15:00:00+01:00",
+            source="dock",
+            role="user",
+            text="source turn",
+        )
+    )
+    fork_handler = _FakeJournalForkHandler(
+        ForkSessionResult(
+            ForkSessionReason.ACCEPTED,
+            new_session_id="20260719-100000-cd34",
+            drop_report=ForkSeedDropReport(
+                dropped_turns=0, skipped_events=0, truncated=False
+            ),
+            provenance_text="continued",
+            max_chars=DEFAULT_FORK_SEED_MAX_CHARS,
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_fork_handler=fork_handler,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{source_session_id}/fork?token=valid-token"
+            )
+            assert response.status == 200
+            assert fork_handler.calls[0]["seed_budget_chars"] == (
+                DEFAULT_FORK_SEED_MAX_CHARS
+            )
     finally:
         await server.stop()
 

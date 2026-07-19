@@ -349,7 +349,7 @@ def test_journal_memory_panel_loads_and_saves_fixed_file_ids():
     assert '"/api/memory/files/" + fileId' in load_body
     assert '"/api/memory/files/" + fileId' in save_body
     assert 'method: "PUT"' in save_body
-    assert "JSON.stringify({ content: state.content })" in save_body
+    assert "JSON.stringify({ content: savedContent })" in save_body
 
 
 def test_journal_memory_client_blocks_over_cap_and_preserves_text_on_rejection():
@@ -358,7 +358,19 @@ def test_journal_memory_client_blocks_over_cap_and_preserves_text_on_rejection()
     save_body = APP_JS.split("async function saveJournalMemoryFile(")[1].split("\n}")[0]
     assert "state.content.length > state.maxChars" in save_body
     assert 'payload.reason === "over_limit"' in APP_JS
-    assert "savedContent: payload.content" in save_body
+    assert "savedContent: persistedContent" in save_body
+
+
+def test_journal_memory_save_preserves_edits_typed_during_inflight_save():
+    save_body = APP_JS.split("async function saveJournalMemoryFile(")[1].split("\n}")[0]
+    assert "const savedContent = state.content;" in save_body
+    assert "const latest = _journalMemoryFiles.get(fileId) || state;" in save_body
+    assert (
+        "content: latest.content === savedContent ? persistedContent : latest.content,"
+        in save_body
+    )
+    assert "_refreshJournalMemoryFileState(fileId);" in save_body
+    assert "_renderJournalMemoryFiles();" not in save_body
 
 
 def test_journal_memory_typing_updates_existing_dom_without_rerendering_textarea():

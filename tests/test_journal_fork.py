@@ -114,6 +114,7 @@ def test_fork_seed_skips_events_without_model_facing_text() -> None:
 
     assert result.turns == (ForkSeedTurn(role="user", text="текст"),)
     assert result.drop_report.skipped_events == 1
+    assert result.drop_report.excluded_events == 0
 
 
 def test_fork_seed_skips_blank_context_provenance_events() -> None:
@@ -129,7 +130,8 @@ def test_fork_seed_skips_blank_context_provenance_events() -> None:
     result = build_fork_seed(replay, budget_chars=100)
 
     assert result.turns == (ForkSeedTurn(role="user", text="real turn"),)
-    assert result.drop_report.skipped_events == 1
+    assert result.drop_report.skipped_events == 0
+    assert result.drop_report.excluded_events == 1
 
 
 def test_fork_seed_keeps_fork_provenance_as_part_of_the_seed_chain() -> None:

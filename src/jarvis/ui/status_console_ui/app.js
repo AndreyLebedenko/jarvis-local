@@ -908,7 +908,7 @@ async function saveJournalMemoryFile(fileId) {
       ...state,
       status: uiString("journal_memory_over_limit"),
     });
-    _renderJournalMemoryFiles();
+    _refreshJournalMemoryFileState(fileId);
     return;
   }
   const url = _journalUrl("/api/memory/files/" + fileId);
@@ -916,40 +916,44 @@ async function saveJournalMemoryFile(fileId) {
     _setJournalInputStatus(uiString("transport_no_token"));
     return;
   }
+  const savedContent = state.content;
   _journalMemoryFiles.set(fileId, { ...state, saving: true, status: "" });
-  _renderJournalMemoryFiles();
+  _refreshJournalMemoryFileState(fileId);
   try {
     const response = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: state.content }),
+      body: JSON.stringify({ content: savedContent }),
     });
     const payload = await response.json();
+    const latest = _journalMemoryFiles.get(fileId) || state;
     if (payload.status === "ok") {
+      const persistedContent = payload.content || "";
       _journalMemoryFiles.set(fileId, {
-        ...state,
-        content: payload.content || "",
-        savedContent: payload.content || "",
-        maxChars: payload.max_chars || state.maxChars,
+        ...latest,
+        content: latest.content === savedContent ? persistedContent : latest.content,
+        savedContent: persistedContent,
+        maxChars: payload.max_chars || latest.maxChars,
         saving: false,
         status: uiString("journal_memory_saved"),
       });
     } else {
       _journalMemoryFiles.set(fileId, {
-        ...state,
+        ...latest,
         saving: false,
         status: _journalMemorySaveError(payload),
       });
     }
   } catch (error) {
     console.error("Journal memory save failed:", error);
+    const latest = _journalMemoryFiles.get(fileId) || state;
     _journalMemoryFiles.set(fileId, {
-      ...state,
+      ...latest,
       saving: false,
       status: uiString("journal_memory_save_failed"),
     });
   }
-  _renderJournalMemoryFiles();
+  _refreshJournalMemoryFileState(fileId);
 }
 
 function _journalMemorySaveError(payload) {

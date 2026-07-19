@@ -32,3 +32,9 @@ split the report into reason-specific counters, for example textless events vs
 excluded provenance markers. Keep backward compatibility for existing
 `metadata.seed.skipped_events` readers or introduce a schema-versioned seed
 metadata shape.
+
+## Resolution
+
+Resolved by `tasks/task-v1.5.3-9-review-polish.md`: `skipped_events` now counts
+events without model-facing text, while `excluded_events` counts intentionally
+excluded provenance markers such as `source="context"`.

@@ -478,7 +478,12 @@ async def test_recorder_start_fork_session_writes_provenance_before_return(
     assert event.text == "continued from earlier"
     assert event.metadata == {
         "continued_from": "20260718-100000-ab12",
-        "seed": {"dropped_turns": 0, "skipped_events": 0, "truncated": False},
+        "seed": {
+            "dropped_turns": 0,
+            "skipped_events": 0,
+            "excluded_events": 0,
+            "truncated": False,
+        },
     }
 
 

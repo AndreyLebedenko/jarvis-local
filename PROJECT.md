@@ -2182,12 +2182,15 @@ surface while preserving the append-only journal invariant.
   context. The source session log is never appended to or rewritten.
 - The new journal session records exactly one `role="system"`,
   `source="fork"` provenance event with `metadata.continued_from` and the seed
-  drop report. Seeded user/assistant turns are not replayed aloud and are not
-  re-recorded as fresh journal events.
+  drop report. The seed report separates `skipped_events` (events with no
+  model-facing text) from `excluded_events` (intentional provenance exclusions).
+  Seeded user/assistant turns are not replayed aloud and are not re-recorded as
+  fresh journal events.
 - When forking a session that already contains provenance, `source="fork"`
   system events are retained as part of the seed chain, but
   `source="context"` blank-context markers are skipped because they only
-  describe the UI boundary and do not carry source conversation content.
+  describe the UI boundary and do not carry source conversation content; these
+  markers are counted as `excluded_events`, not `skipped_events`.
 - Blank context creation is also explicit. `POST /api/journal/context/new`
   clears the live model-facing history, resamples the session-start system
   prompt/memory snapshot, and creates a new journal-visible session
@@ -2208,7 +2211,10 @@ surface while preserving the append-only journal invariant.
   `GET`/`PUT /api/memory/files/{self|memory}` endpoints and a plain-text
   memory panel. Writes are explicit, exact, cap-checked, and atomic
   temp-file-plus-replace operations; the API never accepts arbitrary paths and
-  never silently writes truncated content.
+  never silently writes truncated content. The local v1.5.3 write contract is
+  last-write-wins across multiple clients: there is no version check or
+  cross-window conflict resolution. The UI preserves edits typed into the same
+  textarea while a save request is in flight.
 - Hidden mode suppresses fork and memory-file surfaces in the transport and
   clears memory editor DOM content in the UI. Runtime locality is unchanged:
   all new work is local files plus the existing authenticated local transport,

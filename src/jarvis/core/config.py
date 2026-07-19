@@ -359,6 +359,9 @@ class JournalSettings:
     root: str = "journal"
 
 
+DEFAULT_FORK_SEED_MAX_CHARS = 12000
+
+
 @dataclass(frozen=True)
 class MemorySettings:
     root: str = "memory"
@@ -371,7 +374,8 @@ class MemorySettings:
         default=8000, metadata={"minimum": 0, "exclusive_minimum": True}
     )
     fork_seed_max_chars: int = field(
-        default=12000, metadata={"minimum": 0, "exclusive_minimum": True}
+        default=DEFAULT_FORK_SEED_MAX_CHARS,
+        metadata={"minimum": 0, "exclusive_minimum": True},
     )
 
 

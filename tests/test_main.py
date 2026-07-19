@@ -1003,7 +1003,12 @@ async def test_fork_from_journal_session_seeds_history_and_records_provenance(
     assert fork_events[0].text == expected_provenance
     assert fork_events[0].metadata == {
         "continued_from": source_session_id,
-        "seed": {"dropped_turns": 0, "skipped_events": 0, "truncated": False},
+        "seed": {
+            "dropped_turns": 0,
+            "skipped_events": 0,
+            "excluded_events": 0,
+            "truncated": False,
+        },
     }
 
 
