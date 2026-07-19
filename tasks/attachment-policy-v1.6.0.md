@@ -102,6 +102,17 @@ for.
   screenshot path already sends full-resolution PNG with no resize, and
   `PROJECT.md` records a 1120 visual-token OCR budget as the relevant
   model-side knob if downscaling is ever needed.
+- task-v1.6.0-4 decision (2026-07-19): **no resize/recompression in
+  v1.6.0.** Uploaded image bytes are base64-encoded as-is, matching the
+  screenshot path's full-resolution precedent. Resizing would require an
+  image decode dependency (Pillow), which nothing in this iteration
+  justifies - same stop-condition reasoning as the M4A decision above.
+  Byte-level validation is a PNG/JPEG signature sniff (the image analog of
+  the audio path's `soundfile.info()` header probe): bytes that do not
+  start with a PNG or JPEG signature are rejected as
+  "not a valid PNG or JPEG image". The sniff is class-level, consistent
+  with the class-level MIME check - a `.png` holding valid JPEG bytes is
+  accepted, since the model receives working bytes either way.
 
 ### Text
 

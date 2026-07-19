@@ -18,6 +18,7 @@ from jarvis.inputs.attachments import (
     AttachmentPlanItem,
     AttachmentUpload,
     PlannedTextPart,
+    compose_turn_images,
     compose_turn_text,
     plan_attachments,
 )
@@ -40,9 +41,18 @@ def _text_upload(
     )
 
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURE = b"\xff\xd8\xff"
+
+
 def _image_upload(filename: str = "photo.png", size: int = 100) -> AttachmentUpload:
-    data = b"\x89PNG" + b"x" * size
+    data = PNG_SIGNATURE + b"x" * size
     return AttachmentUpload(filename=filename, content_type="image/png", data=data)
+
+
+def _jpeg_upload(filename: str = "photo.jpg", size: int = 100) -> AttachmentUpload:
+    data = JPEG_SIGNATURE + b"x" * size
+    return AttachmentUpload(filename=filename, content_type="image/jpeg", data=data)
 
 
 def _audio_upload(
@@ -82,6 +92,32 @@ def test_accepts_a_png_image_and_base64_encodes_the_raw_bytes():
     assert item.attachment_class is AttachmentClass.IMAGE
     assert item.image is not None
     assert base64.b64decode(item.image.base64_data) == upload.data
+
+
+def test_accepts_a_jpeg_image_and_base64_encodes_the_raw_bytes():
+    upload = _jpeg_upload("photo.jpg")
+
+    plan = plan_attachments([upload])
+
+    (item,) = plan.items
+    assert item.accepted is True
+    assert item.attachment_class is AttachmentClass.IMAGE
+    assert base64.b64decode(item.image.base64_data) == upload.data
+
+
+def test_accepts_jpeg_bytes_behind_a_png_extension():
+    # The byte sniff is class-level, matching the class-level MIME check:
+    # a renamed-but-valid image still reaches the model as working bytes.
+    upload = AttachmentUpload(
+        filename="renamed.png",
+        content_type="image/png",
+        data=JPEG_SIGNATURE + b"x" * 50,
+    )
+
+    plan = plan_attachments([upload])
+
+    (item,) = plan.items
+    assert item.accepted is True
 
 
 def test_accepts_a_short_wav_and_reports_duration_without_normalizing():
@@ -204,6 +240,32 @@ def test_rejects_empty_file_with_unsupported_extension_as_unclassified():
     assert item.accepted is False
     assert item.attachment_class is None
     assert "unsupported file type" in item.rejection_reason
+
+
+def test_rejects_image_bytes_without_a_png_or_jpeg_signature():
+    upload = AttachmentUpload(
+        filename="fake.png", content_type="image/png", data=b"this is not an image"
+    )
+
+    plan = plan_attachments([upload])
+
+    (item,) = plan.items
+    assert item.accepted is False
+    assert item.attachment_class is AttachmentClass.IMAGE
+    assert item.image is None
+    assert "not a valid PNG or JPEG image" in item.rejection_reason
+
+
+def test_rejects_truncated_image_signature():
+    upload = AttachmentUpload(
+        filename="cut.png", content_type="image/png", data=PNG_SIGNATURE[:4]
+    )
+
+    plan = plan_attachments([upload])
+
+    (item,) = plan.items
+    assert item.accepted is False
+    assert "not a valid PNG or JPEG image" in item.rejection_reason
 
 
 def test_rejects_oversize_image():
@@ -409,12 +471,44 @@ def test_composes_typed_message_before_attached_text():
     assert composed.index("[Attached file: notes.txt]") > typed_end
 
 
-def test_composes_typed_message_alone_when_no_text_attachment():
-    plan = plan_attachments([_image_upload("photo.png")])
+def test_composes_an_image_cue_naming_the_file_without_binary_data():
+    upload = _image_upload("photo.png")
+    plan = plan_attachments([upload])
 
     composed = compose_turn_text("describe this image", plan)
 
-    assert composed == "describe this image"
+    assert composed == "describe this image\n\n[Attached image: photo.png]"
+    assert plan.items[0].image.base64_data not in composed
+
+
+def test_composes_image_cues_and_text_blocks_in_upload_order():
+    uploads = [
+        _image_upload("first.png"),
+        _text_upload("notes.txt", "meeting notes"),
+        _jpeg_upload("second.jpg"),
+    ]
+
+    plan = plan_attachments(uploads)
+    composed = compose_turn_text("hello", plan)
+
+    first_cue = composed.index("[Attached image: first.png]")
+    text_block = composed.index("[Attached file: notes.txt]")
+    second_cue = composed.index("[Attached image: second.jpg]")
+    assert composed.startswith("hello")
+    assert first_cue < text_block < second_cue
+
+
+def test_compose_excludes_the_cue_for_a_rejected_image():
+    uploads = [
+        AttachmentUpload(
+            filename="fake.png", content_type="image/png", data=b"not an image"
+        ),
+    ]
+
+    plan = plan_attachments(uploads)
+    composed = compose_turn_text("hello", plan)
+
+    assert composed == "hello"
 
 
 def test_composes_attachment_text_alone_when_typed_message_is_empty():
@@ -426,12 +520,12 @@ def test_composes_attachment_text_alone_when_typed_message_is_empty():
     assert not composed.startswith("\n\n")
 
 
-def test_compose_excludes_rejected_and_non_text_items():
+def test_compose_excludes_rejected_text_and_contributes_nothing_for_audio():
     uploads = [
         AttachmentUpload(
             filename="bad.txt", content_type="text/plain", data=b"\xff\xfe\x00"
         ),
-        _image_upload("photo.png"),
+        _audio_upload("memo.wav"),
     ]
 
     plan = plan_attachments(uploads)
@@ -469,6 +563,42 @@ def test_compose_excludes_a_rejected_item_even_if_it_carries_a_text_part():
     composed = compose_turn_text("hello", plan)
 
     assert composed == "hello"
+
+
+def test_compose_turn_images_returns_base64_media_in_upload_order():
+    uploads = [
+        _image_upload("first.png"),
+        _text_upload("notes.txt", "meeting notes"),
+        _jpeg_upload("second.jpg"),
+    ]
+
+    plan = plan_attachments(uploads)
+    images = compose_turn_images(plan)
+
+    assert images == (
+        base64.b64encode(uploads[0].data).decode(),
+        base64.b64encode(uploads[2].data).decode(),
+    )
+
+
+def test_compose_turn_images_excludes_rejected_images():
+    uploads = [
+        AttachmentUpload(
+            filename="fake.png", content_type="image/png", data=b"not an image"
+        ),
+        _image_upload("real.png"),
+    ]
+
+    plan = plan_attachments(uploads)
+    images = compose_turn_images(plan)
+
+    assert images == (base64.b64encode(uploads[1].data).decode(),)
+
+
+def test_compose_turn_images_is_empty_for_a_text_only_plan():
+    plan = plan_attachments([_text_upload("notes.txt", "hello")])
+
+    assert compose_turn_images(plan) == ()
 
 
 def test_compose_preserves_plan_item_order_for_multiple_text_parts():
