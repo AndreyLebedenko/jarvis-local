@@ -1,6 +1,6 @@
 # Task v1.6.0-1: Attachment policy and format gate
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.0-file-attachments.md`
 **Depends on:** roadmap readiness for v1.6.0; no code task dependencies.
 
@@ -48,11 +48,31 @@ rules, and the dependency decision for compressed audio formats.
 
 ## Acceptance criteria
 
-- [ ] The first-iteration attachment policy is written down with numeric
+- [x] The first-iteration attachment policy is written down with numeric
       limits and explicit supported/unsupported format lists.
-- [ ] The compressed-audio dependency decision is recorded; if unresolved,
+      See `tasks/attachment-policy-v1.6.0.md`.
+- [x] The compressed-audio dependency decision is recorded; if unresolved,
       later implementation cards are explicitly blocked.
-- [ ] A small pure or local check proves which existing decoder paths are
+      MP3: supported, no new dependency. M4A: deferred, task-v1.6.0-5 is
+      blocked on it pending a human dependency decision. See
+      `tasks/attachment-policy-v1.6.0.md` and the new `PROJECT.md`
+      verified-facts entry.
+- [x] A small pure or local check proves which existing decoder paths are
       available for the selected audio formats.
-- [ ] No production behavior changes in this card.
+      `tests/test_audio_decoder_formats.py`, part of `python -m pytest`.
+- [x] No production behavior changes in this card.
+      Only `tests/`, `tasks/`, `PROJECT.md`, and one new committed audio
+      fixture (`audio/sample.m4a`) changed; no `src/jarvis/` edits.
+
+## Outcome
+
+Policy recorded in `tasks/attachment-policy-v1.6.0.md`. Format-gate proof
+in `tests/test_audio_decoder_formats.py` (4 new tests, full suite still
+green: `python -m pytest` -> 995 passed, 1 skipped before this task's
+tests, +4 after). Ruff clean. New verified fact recorded in `PROJECT.md`.
+`story-v1.6.0-file-attachments.md`'s preliminary scope updated to point at
+the M4A deferral instead of listing it as supported.
+
+Awaiting human review before this card is marked `Completed.` and moved to
+`tasks/done/`, per the standard task-card workflow.
 

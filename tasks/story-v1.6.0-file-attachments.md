@@ -45,9 +45,14 @@ same feature as realtime microphone listening.
 ## Preliminary Scope
 
 - Add a file attachment turn source separate from microphone and clipboard.
-- Initial file classes:
-  - audio files, such as WAV/MP3/M4A;
-  - image files, such as PNG/JPG;
+- Initial file classes (exact formats, MIME types, and numeric limits
+  decided by task-v1.6.0-1, recorded in
+  `tasks/attachment-policy-v1.6.0.md`):
+  - audio files: WAV and MP3. M4A was originally listed as an example here
+    but is explicitly deferred - it would require a large new parser
+    dependency or an external executable, which task-v1.6.0-1's own stop
+    condition rules out for this iteration;
+  - image files: PNG/JPG;
   - text files with explicit size limits.
 - Normalize audio into model-safe clips, respecting known audio constraints.
 - Make truncation, chunking, or unsupported format decisions visible to the
