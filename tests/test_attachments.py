@@ -10,10 +10,15 @@ from jarvis.inputs.attachments import (
     MAX_IMAGE_UPLOAD_BYTES,
     MAX_IMAGES_PER_TURN,
     MAX_TEXT_CHARS,
+    MAX_TEXT_FILES_PER_TURN,
     MAX_TEXT_UPLOAD_BYTES,
     MAX_TOTAL_UPLOAD_BYTES_PER_TURN,
     AttachmentClass,
+    AttachmentPlan,
+    AttachmentPlanItem,
     AttachmentUpload,
+    PlannedTextPart,
+    compose_turn_text,
     plan_attachments,
 )
 
@@ -348,6 +353,20 @@ def test_enforces_max_audio_files_per_turn():
     assert "maximum" in plan.items[1].rejection_reason
 
 
+def test_enforces_max_text_files_per_turn():
+    uploads = [
+        _text_upload(f"note{i}.txt", "hello")
+        for i in range(MAX_TEXT_FILES_PER_TURN + 1)
+    ]
+
+    plan = plan_attachments(uploads)
+
+    accepted_flags = [item.accepted for item in plan.items]
+    assert accepted_flags == [True] * MAX_TEXT_FILES_PER_TURN + [False]
+    assert "maximum" in plan.items[-1].rejection_reason
+    assert plan.items[-1].text is None
+
+
 def test_enforces_max_total_attachments_per_turn_across_classes():
     uploads = [
         _image_upload("a.png"),
@@ -373,3 +392,103 @@ def test_enforces_combined_upload_bytes_per_turn():
 
     assert [item.accepted for item in plan.items] == [True, True, False]
     assert "combined" in plan.items[-1].rejection_reason
+
+
+# --- composing the model-facing turn text -----------------------------
+
+
+def test_composes_typed_message_before_attached_text():
+    plan = plan_attachments([_text_upload("notes.txt", "meeting notes")])
+
+    composed = compose_turn_text("what should I do with this?", plan)
+
+    assert composed.startswith("what should I do with this?")
+    typed_end = composed.index("what should I do with this?") + len(
+        "what should I do with this?"
+    )
+    assert composed.index("[Attached file: notes.txt]") > typed_end
+
+
+def test_composes_typed_message_alone_when_no_text_attachment():
+    plan = plan_attachments([_image_upload("photo.png")])
+
+    composed = compose_turn_text("describe this image", plan)
+
+    assert composed == "describe this image"
+
+
+def test_composes_attachment_text_alone_when_typed_message_is_empty():
+    plan = plan_attachments([_text_upload("notes.txt", "meeting notes")])
+
+    composed = compose_turn_text("", plan)
+
+    assert composed == plan.items[0].text.content
+    assert not composed.startswith("\n\n")
+
+
+def test_compose_excludes_rejected_and_non_text_items():
+    uploads = [
+        AttachmentUpload(
+            filename="bad.txt", content_type="text/plain", data=b"\xff\xfe\x00"
+        ),
+        _image_upload("photo.png"),
+    ]
+
+    plan = plan_attachments(uploads)
+    composed = compose_turn_text("hello", plan)
+
+    assert composed == "hello"
+
+
+def test_compose_makes_truncation_visible_in_the_composed_text():
+    long_text = "x" * (MAX_TEXT_CHARS + 500)
+    plan = plan_attachments([_text_upload("log.txt", long_text)])
+
+    composed = compose_turn_text("summarize this", plan)
+
+    assert str(MAX_TEXT_CHARS) in composed
+    assert "truncated" in composed
+
+
+def test_compose_excludes_a_rejected_item_even_if_it_carries_a_text_part():
+    # plan_attachments() never actually builds a rejected item with `text`
+    # set, but compose_turn_text() must not rely on that as an implicit
+    # invariant - it checks item.accepted directly.
+    plan = AttachmentPlan(
+        items=(
+            AttachmentPlanItem(
+                filename="rejected.txt",
+                attachment_class=AttachmentClass.TEXT,
+                accepted=False,
+                text=PlannedTextPart(content="[should not appear]", truncated=False),
+                rejection_reason="rejected.txt: some policy violation.",
+            ),
+        )
+    )
+
+    composed = compose_turn_text("hello", plan)
+
+    assert composed == "hello"
+
+
+def test_compose_preserves_plan_item_order_for_multiple_text_parts():
+    plan = AttachmentPlan(
+        items=(
+            AttachmentPlanItem(
+                filename="first.txt",
+                attachment_class=AttachmentClass.TEXT,
+                accepted=True,
+                text=PlannedTextPart(content="[first part]", truncated=False),
+            ),
+            AttachmentPlanItem(
+                filename="second.txt",
+                attachment_class=AttachmentClass.TEXT,
+                accepted=True,
+                text=PlannedTextPart(content="[second part]", truncated=False),
+            ),
+        )
+    )
+
+    composed = compose_turn_text("typed message", plan)
+
+    assert composed == "typed message\n\n[first part]\n\n[second part]"

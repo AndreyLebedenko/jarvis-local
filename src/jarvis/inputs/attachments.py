@@ -415,3 +415,22 @@ def plan_attachments(uploads: Sequence[AttachmentUpload]) -> AttachmentPlan:
         items.append(item)
 
     return AttachmentPlan(items=tuple(items))
+
+
+def compose_turn_text(typed_text: str, plan: AttachmentPlan) -> str:
+    """Joins the Journal input dock's typed message with any accepted text
+    attachments (task-v1.6.0-3), typed text always leading so the model
+    reads the user's own words before any attached document - it is not
+    lost or buried among file content. Only TEXT-class items carry a
+    `text` part; image/audio items reach the model through `images`
+    instead, so they contribute nothing here. Each text part already
+    carries its own filename delimiters and truncation marker
+    (`_wrap_text`/`_plan_text` above), so this is a plain join, not
+    another layer of wrapping."""
+    text_parts = [
+        item.text.content
+        for item in plan.items
+        if item.accepted and item.text is not None
+    ]
+    parts = [typed_text, *text_parts] if typed_text else text_parts
+    return "\n\n".join(parts)
