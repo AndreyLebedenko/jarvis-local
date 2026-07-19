@@ -1,7 +1,7 @@
 # Task v1.5.2-2: Journal input dock UI
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** task-v1.5.2-1 (the endpoint must exist).
 
 ## Summary
@@ -46,11 +46,11 @@ the structured result. UI only.
 
 ## Acceptance criteria
 
-- [ ] Automated tests pin whatever pure logic exists (e.g. request
+- [x] Automated tests pin whatever pure logic exists (e.g. request
       payload construction or response-to-message mapping) if it is
       factored testably; DOM behavior itself is manual scope.
-- [ ] A human-run manual handoff script/checklist covers: send by
+- [x] A human-run manual handoff script/checklist covers: send by
       button and by Enter, newline by Shift+Enter, busy rejection
       feedback, Hidden mode suppression, and the answer appearing in
       the live feed and aloud.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.

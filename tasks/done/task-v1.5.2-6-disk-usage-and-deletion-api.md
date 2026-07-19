@@ -1,7 +1,7 @@
 # Task v1.5.2-6: Journal disk usage and deletion API
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** nothing in this story; independent of tasks 1-5.
 
 ## Summary
@@ -63,13 +63,13 @@ transport only; the UI flow is task-v1.5.2-7.
 
 ## Acceptance criteria
 
-- [ ] Store tests cover usage numbers (sessions with and without
+- [x] Store tests cover usage numbers (sessions with and without
       media), deletion removing log and media, unknown-session error,
       and traversal-safe id validation.
-- [ ] Search tests prove a deleted session's hits disappear while other
+- [x] Search tests prove a deleted session's hits disappear while other
       sessions' hits survive.
-- [ ] Transport tests cover auth, Hidden suppression, successful
+- [x] Transport tests cover auth, Hidden suppression, successful
       usage/delete round trips, active-session rejection, and the
       other structured error cases.
-- [ ] No UI behavior changes.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] No UI behavior changes.
+- [x] `python -m pytest` and Ruff checks are green.

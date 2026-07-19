@@ -38,6 +38,26 @@ def test_journal_event_appends_only_to_the_displayed_session():
     )
 
 
+def test_dock_input_event_selects_its_new_session():
+    submit_body = _function_body("submitJournalInput", prefix="async function ")
+    assert "_journalSelectPendingInputSession = true;" in submit_body
+    assert submit_body.index("_journalSelectPendingInputSession = true;") < (
+        submit_body.index("await fetch")
+    )
+
+    apply_body = _function_body("applyJournalEvent")
+    select_call = "selectJournalSession(payload.session_id);"
+    guard = "if (payload.session_id !== _journalSelectedSessionId) return;"
+    assert "if (_shouldSelectJournalInputSession(payload)) {" in apply_body
+    assert select_call in apply_body
+    assert apply_body.index(select_call) < apply_body.index(guard)
+
+    helper = _function_body("_shouldSelectJournalInputSession")
+    assert "_journalSelectPendingInputSession" in helper
+    assert 'payload.role === "user"' in helper
+    assert 'payload.source === "dock"' in helper
+
+
 def test_journal_event_is_ignored_while_hidden_or_off_view():
     body = _function_body("applyJournalEvent")
     assert "if (_isHiddenActive()) return;" in body
@@ -87,6 +107,16 @@ def test_audio_tile_uses_plain_html5_audio_against_the_media_url():
     assert '"file:' not in APP_JS  # no file:// URLs built in code
 
 
+def test_image_tile_uses_media_url_and_missing_placeholder():
+    body = _function_body("_journalImageThumbnail")
+    assert "image.src = mediaItem.url;" in body
+    assert "journal-image-missing" in body
+    assert 'uiString("journal_image_missing")' in body
+    assert 'image.addEventListener("error"' in body
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert ".journal-image-tile {" in compact
+
+
 def test_audio_tile_has_play_toggle_progress_and_duration():
     body = _function_body("_journalAudioTile")
     assert "_toggleJournalPlayback(audio)" in body
@@ -124,6 +154,26 @@ def test_natural_end_releases_the_active_audio_and_resets_the_button():
         "if (_journalActiveAudio === audio) _journalActiveAudio = null;" in show_paused
     )
     assert 'tile.dataset.playing = "false";' in show_paused
+
+
+def test_assistant_copy_button_copies_recorded_text():
+    body = _function_body("_journalEventElement")
+    assert 'event.role === "assistant" && event.text' in body
+    assert "copyJournalAnswer(event.text, copy)" in body
+    copy_body = _function_body("copyJournalAnswer", prefix="async function ")
+    assert "navigator.clipboard.writeText" in APP_JS
+    assert 'document.execCommand("copy")' in APP_JS
+    assert 'uiString("journal_copy_done")' in copy_body
+
+
+def test_usage_and_delete_controls_are_wired_to_session_list():
+    assert '_fetchJournalJson("/api/journal/usage")' in APP_JS
+    assert "journalUsageTotal" in APP_JS
+    assert "deleteJournalSession(session.id)" in APP_JS
+    delete_body = _function_body("deleteJournalSession", prefix="async function ")
+    assert "window.confirm(message)" in delete_body
+    assert 'method: "DELETE"' in delete_body
+    assert "_scheduleJournalSearch();" in delete_body
 
 
 def test_live_event_during_inflight_feed_fetch_defers_to_a_refetch():

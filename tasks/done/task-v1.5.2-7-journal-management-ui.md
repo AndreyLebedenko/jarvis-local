@@ -1,7 +1,7 @@
 # Task v1.5.2-7: Journal management UI
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** task-v1.5.2-6 (usage and deletion API).
 
 ## Summary
@@ -43,10 +43,10 @@ only.
 
 ## Acceptance criteria
 
-- [ ] Pure logic that is factored testably (byte-size formatting,
+- [x] Pure logic that is factored testably (byte-size formatting,
       response-to-state mapping) has tests.
-- [ ] Human-run manual handoff covers: usage display sanity against
+- [x] Human-run manual handoff covers: usage display sanity against
       on-disk sizes, full confirm-delete flow, cancel flow,
       active-session protection, search consistency after deletion,
       and Hidden mode suppression.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.

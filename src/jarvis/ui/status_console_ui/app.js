@@ -634,10 +634,10 @@ function applyConfigSelection() {
   });
 }
 
-// task-journal-05/06: Journal view. Read-only session list + feed over the
+// task-journal-05/06: Journal view. Session list + feed over the
 // task-journal-04 HTTP endpoints, plus (task-journal-06) live appends via
-// the journal_event state delta and audio playback on the tiles. No search
-// (task-journal-07) and no input (v1.5.1). Content fetches reuse the same
+// the journal_event state delta and audio playback on the tiles. Content
+// fetches reuse the same
 // token the WS transport reads from the URL, so the journal is gated by
 // exactly the auth the rest of the console already has.
 //
@@ -670,6 +670,10 @@ let _journalSearchActive = false;
 let _journalSearchGeneration = 0;
 let _journalSearchTimer = null;
 let _journalContextHighlightTimer = null;
+let _journalUsageBySession = new Map();
+let _journalActiveSessionId = null;
+let _journalInputInFlight = false;
+let _journalSelectPendingInputSession = false;
 
 function _isJournalActive() {
   return document.documentElement.getAttribute("data-view") === "journal";
@@ -710,7 +714,12 @@ function _clearJournalContent() {
   _clearJournalContextHighlight();
   _journalFeedRefetchSessionId = null;
   _journalSelectedSessionId = null;
+  _journalUsageBySession = new Map();
+  _journalActiveSessionId = null;
+  _journalSelectPendingInputSession = false;
+  _setJournalInputStatus("");
   document.getElementById("journalSessionList").replaceChildren();
+  document.getElementById("journalUsageTotal").textContent = "";
   document.getElementById("journalSessionsEmpty").hidden = false;
   _showJournalNoSelection();
 }
@@ -722,12 +731,79 @@ function _showJournalNoSelection() {
   empty.textContent = uiString("journal_no_selection");
 }
 
-async function _fetchJournalJson(path) {
-  const token = new URLSearchParams(window.location.search).get("token");
-  if (!token) return null;
+async function submitJournalInput() {
+  if (_journalInputInFlight) {
+    _setJournalInputStatus(uiString("journal_input_busy"));
+    return;
+  }
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_input_hidden"));
+    return;
+  }
+  const input = document.getElementById("journalTextInput");
+  const send = document.getElementById("journalSendButton");
+  const text = input.value;
+  const url = _journalUrl("/api/journal/input");
+  if (url === null) {
+    _setJournalInputStatus(uiString("transport_no_token"));
+    return;
+  }
+  _journalInputInFlight = true;
+  _journalSelectPendingInputSession = true;
+  send.disabled = true;
   try {
-    const separator = path.includes("?") ? "&" : "?";
-    const response = await fetch(path + separator + "token=" + encodeURIComponent(token));
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const payload = await response.json();
+    if (payload.status === "accepted") {
+      if (input.value === text) input.value = "";
+      _setJournalInputStatus(uiString("journal_input_sent"));
+    } else if (payload.status === "hidden") {
+      _journalSelectPendingInputSession = false;
+      _setJournalInputStatus(uiString("journal_input_hidden"));
+    } else {
+      _journalSelectPendingInputSession = false;
+      _setJournalInputStatus(_journalInputErrorMessage(payload));
+    }
+  } catch (error) {
+    console.error("Journal input failed:", error);
+    _journalSelectPendingInputSession = false;
+    _setJournalInputStatus(uiString("journal_input_failed"));
+  } finally {
+    _journalInputInFlight = false;
+    send.disabled = false;
+  }
+}
+
+function _journalInputErrorMessage(payload) {
+  if (payload.reason === "busy") return uiString("journal_input_busy");
+  if (payload.reason === "empty") return uiString("journal_input_empty");
+  if (payload.reason === "over_limit") {
+    return uiString("journal_input_over_limit").replace(
+      "{max}", String(payload.max_chars));
+  }
+  return uiString("journal_input_failed");
+}
+
+function _setJournalInputStatus(text) {
+  const status = document.getElementById("journalInputStatus");
+  if (status) status.textContent = text;
+}
+
+function onJournalInputKeyDown(event) {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  event.preventDefault();
+  submitJournalInput();
+}
+
+async function _fetchJournalJson(path) {
+  const url = _journalUrl(path);
+  if (url === null) return null;
+  try {
+    const response = await fetch(url);
     if (!response.ok) throw new Error("journal request failed: " + response.status);
     const payload = await response.json();
     // The transport answers {"status": "hidden"} while Hidden - treat it
@@ -739,10 +815,21 @@ async function _fetchJournalJson(path) {
   }
 }
 
+function _journalUrl(path) {
+  const token = new URLSearchParams(window.location.search).get("token");
+  if (!token) return null;
+  const separator = path.includes("?") ? "&" : "?";
+  return path + separator + "token=" + encodeURIComponent(token);
+}
+
 async function refreshJournalSessions() {
   const generation = _journalContentGeneration;
-  const payload = await _fetchJournalJson("/api/journal/sessions");
+  const [payload, usage] = await Promise.all([
+    _fetchJournalJson("/api/journal/sessions"),
+    _fetchJournalJson("/api/journal/usage"),
+  ]);
   if (generation !== _journalContentGeneration || _isHiddenActive()) return;
+  _applyJournalUsage(usage);
   const sessions = payload ? payload.sessions : [];
   // Newest first regardless of the endpoint's ordering.
   sessions.sort((a, b) => (a.start_timestamp < b.start_timestamp ? 1 : -1));
@@ -761,9 +848,19 @@ async function refreshJournalSessions() {
   }
 }
 
+function _applyJournalUsage(payload) {
+  const usage = payload || { total_bytes: 0, active_session_id: null, sessions: [] };
+  _journalActiveSessionId = usage.active_session_id || null;
+  _journalUsageBySession = new Map(
+    (usage.sessions || []).map((session) => [session.id, session.bytes || 0]));
+  document.getElementById("journalUsageTotal").textContent =
+    uiString("journal_usage_total").replace("{size}", _formatJournalBytes(usage.total_bytes || 0));
+}
+
 function _journalSessionElement(session) {
-  const row = document.createElement("button");
-  row.type = "button";
+  const row = document.createElement("div");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
   row.className = "journal-session";
   row.dataset.sessionId = session.id;
   row.classList.toggle("sel", session.id === _journalSelectedSessionId);
@@ -783,9 +880,68 @@ function _journalSessionElement(session) {
   title.className = "journal-session-title";
   title.textContent = session.title;
 
-  row.append(when, title);
+  const size = document.createElement("div");
+  size.className = "journal-session-size";
+  size.textContent = _formatJournalBytes(_journalUsageBySession.get(session.id) || 0);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "journal-session-delete";
+  deleteButton.textContent = "×";
+  deleteButton.title = uiString(
+    session.id === _journalActiveSessionId
+      ? "journal_session_active"
+      : "journal_session_delete");
+  deleteButton.disabled = session.id === _journalActiveSessionId;
+  deleteButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteJournalSession(session.id);
+  });
+
+  row.append(when, title, size, deleteButton);
   row.addEventListener("click", () => selectJournalSession(session.id));
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") selectJournalSession(session.id);
+  });
   return row;
+}
+
+async function deleteJournalSession(sessionId) {
+  const session = _journalSessions.find((item) => item.id === sessionId);
+  const title = session ? session.title : sessionId;
+  const size = _formatJournalBytes(_journalUsageBySession.get(sessionId) || 0);
+  const message = uiString("journal_delete_confirm")
+    .replace("{title}", title)
+    .replace("{size}", size);
+  if (!window.confirm(message)) return;
+  const url = _journalUrl("/api/journal/sessions/" + encodeURIComponent(sessionId));
+  if (url === null) {
+    _setJournalInputStatus(uiString("transport_no_token"));
+    return;
+  }
+  try {
+    const response = await fetch(url, { method: "DELETE" });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      if (_journalSelectedSessionId === sessionId) {
+        _journalSelectedSessionId = null;
+        _showJournalNoSelection();
+      }
+      await refreshJournalSessions();
+      if (_isJournalSearchActive()) _scheduleJournalSearch();
+      return;
+    }
+    _setJournalInputStatus(_journalDeleteErrorMessage(payload.reason));
+  } catch (error) {
+    console.error("Journal delete failed:", error);
+    _setJournalInputStatus(uiString("journal_delete_failed"));
+  }
+}
+
+function _journalDeleteErrorMessage(reason) {
+  if (reason === "active_session") return uiString("journal_delete_active");
+  if (reason === "not_found") return uiString("journal_delete_not_found");
+  return uiString("journal_delete_failed");
 }
 
 async function selectJournalSession(sessionId, contextEventPosition = null) {
@@ -1039,6 +1195,11 @@ function applyJournalEvent(payload) {
   if (_isHiddenActive()) return;
   if (!_isJournalActive()) return;
   refreshJournalSessions();
+  if (_shouldSelectJournalInputSession(payload)) {
+    _journalSelectPendingInputSession = false;
+    selectJournalSession(payload.session_id);
+    return;
+  }
   if (_isJournalSearchActive()) {
     _scheduleJournalSearch();
     return;
@@ -1053,6 +1214,14 @@ function applyJournalEvent(payload) {
     return;
   }
   _appendJournalTurn(payload);
+}
+
+function _shouldSelectJournalInputSession(payload) {
+  return (
+    _journalSelectPendingInputSession &&
+    payload.role === "user" &&
+    payload.source === "dock"
+  );
 }
 
 // Bottom-anchoring: pinned-to-bottom stays pinned as turns append; a user
@@ -1118,6 +1287,17 @@ function _journalEventElement(event, position = null) {
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(event.timestamp);
   meta.append(source, time);
+  if (event.role === "assistant" && event.text) {
+    const spacer = document.createElement("span");
+    spacer.className = "journal-msg-meta-spacer";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "journal-copy";
+    copy.textContent = uiString("journal_copy_answer");
+    copy.title = uiString("journal_copy_answer");
+    copy.addEventListener("click", () => copyJournalAnswer(event.text, copy));
+    meta.append(spacer, copy);
+  }
   message.appendChild(meta);
 
   for (const item of event.media || []) {
@@ -1245,15 +1425,57 @@ function _toggleJournalPlayback(audio) {
   });
 }
 
+async function copyJournalAnswer(text, button) {
+  try {
+    await _writeClipboardText(text);
+    const original = button.textContent;
+    button.textContent = uiString("journal_copy_done");
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 900);
+  } catch (error) {
+    console.error("Journal copy failed:", error);
+    _setJournalInputStatus(uiString("journal_copy_failed"));
+  }
+}
+
+async function _writeClipboardText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const scratch = document.createElement("textarea");
+  scratch.value = text;
+  scratch.setAttribute("readonly", "");
+  scratch.style.position = "fixed";
+  scratch.style.left = "-9999px";
+  document.body.appendChild(scratch);
+  scratch.select();
+  const copied = document.execCommand("copy");
+  scratch.remove();
+  if (!copied) throw new Error("document.execCommand copy failed");
+}
+
 function _journalImageThumbnail(mediaItem) {
+  const tile = document.createElement("div");
+  tile.className = "journal-image-tile";
   const image = document.createElement("img");
   image.src = mediaItem.url;
   image.alt = mediaItem.path.split("/").pop();
   image.loading = "lazy";
+  const missing = document.createElement("div");
+  missing.className = "journal-image-missing";
+  missing.textContent = uiString("journal_image_missing");
+  missing.hidden = true;
   image.addEventListener("load", () => {
     _reanchorJournalFeedAfterGrowth(image.offsetHeight);
   });
-  return image;
+  image.addEventListener("error", () => {
+    image.hidden = true;
+    missing.hidden = false;
+  });
+  tile.append(image, missing);
+  return tile;
 }
 
 function _formatJournalDate(isoTimestamp) {
@@ -1279,6 +1501,19 @@ function _formatJournalSeconds(totalSeconds) {
   const minutes = Math.floor(whole / 60);
   const seconds = String(whole % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function _formatJournalBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return "0 B";
+  if (value < 1024) return `${Math.round(value)} B`;
+  const units = ["KB", "MB", "GB"];
+  let scaled = value / 1024;
+  for (const unit of units) {
+    if (scaled < 1024) return `${scaled.toFixed(scaled < 10 ? 1 : 0)} ${unit}`;
+    scaled /= 1024;
+  }
+  return `${scaled.toFixed(0)} TB`;
 }
 
 if (typeof startUiTransport === "function") {

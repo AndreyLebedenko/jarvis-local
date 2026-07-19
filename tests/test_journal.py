@@ -243,6 +243,72 @@ def test_list_sessions_sorts_mixed_timezone_offsets_chronologically(
     ]
 
 
+def test_store_usage_reports_log_plus_media_bytes_per_session(tmp_path: Path) -> None:
+    store = _CountingJournalStore(tmp_path)
+    first = _event(
+        session_id="20260716-153000-ab12",
+        timestamp="2026-07-16T15:30:00+01:00",
+        text="first",
+    )
+    second = _event(
+        session_id="20260717-153000-cd34",
+        timestamp="2026-07-17T15:30:00+01:00",
+        text="second",
+    )
+    store.append(first)
+    store.append(second)
+    store.write_media(first.session_id, "clip.wav", b"12345")
+
+    usage = store.usage()
+
+    first_bytes = (tmp_path / first.session_id / "events.jsonl").stat().st_size + 5
+    second_bytes = (tmp_path / second.session_id / "events.jsonl").stat().st_size
+    assert usage.total_bytes == first_bytes + second_bytes
+    assert [(session.session_id, session.bytes) for session in usage.sessions] == [
+        (first.session_id, first_bytes),
+        (second.session_id, second_bytes),
+    ]
+    assert store.list_sessions_calls == 1
+
+
+def test_store_delete_session_removes_log_and_media(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path)
+    session_id = "20260716-153000-ab12"
+    store.append(
+        _event(
+            session_id=session_id,
+            timestamp="2026-07-16T15:30:00+01:00",
+            text="first",
+        )
+    )
+    store.write_media(session_id, "clip.wav", b"12345")
+
+    store.delete_session(session_id)
+
+    assert not (tmp_path / session_id).exists()
+    assert store.list_sessions() == []
+
+
+def test_store_delete_session_rejects_unknown_and_traversal_ids(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            text="first",
+        )
+    )
+    (tmp_path / "outside.txt").write_text("keep", encoding="utf-8")
+
+    for session_id in ("20260716-153000-missing", "../outside.txt"):
+        with pytest.raises(KeyError):
+            store.delete_session(session_id)
+
+    assert (tmp_path / "outside.txt").read_text(encoding="utf-8") == "keep"
+
+
 async def test_recorder_writes_voice_clipboard_and_assistant_events(
     tmp_path: Path,
 ) -> None:
@@ -275,6 +341,36 @@ async def test_recorder_writes_voice_clipboard_and_assistant_events(
     assert (
         session_dir / "utterance-20260716-153000-0001.wav"
     ).read_bytes() == b"same wav bytes sent to model"
+
+
+async def test_recorder_writes_voice_event_with_screenshot_media(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_voice_user(
+        b"same wav bytes sent to model",
+        screenshot_png_bytes=b"\x89PNG same screenshot bytes sent to model",
+    )
+    await recorder.wait_for_pending()
+
+    assert recorder.session_id is not None
+    session_dir = tmp_path / recorder.session_id
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert event.media == (
+        "utterance-20260716-153000-0001.wav",
+        "utterance-20260716-153000-0002.png",
+    )
+    assert (
+        session_dir / "utterance-20260716-153000-0001.wav"
+    ).read_bytes() == b"same wav bytes sent to model"
+    assert (
+        session_dir / "utterance-20260716-153000-0002.png"
+    ).read_bytes() == b"\x89PNG same screenshot bytes sent to model"
 
 
 async def test_recorder_writes_a_custom_source_label(tmp_path: Path) -> None:
@@ -361,3 +457,13 @@ class _FailingStore:
     def append(self, event: JournalEvent) -> None:
         del event
         raise OSError("read-only")
+
+
+class _CountingJournalStore(JournalStore):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.list_sessions_calls = 0
+
+    def list_sessions(self):
+        self.list_sessions_calls += 1
+        return super().list_sessions()

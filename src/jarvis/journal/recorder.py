@@ -34,16 +34,29 @@ class JournalRecorder:
     def session_id(self) -> str | None:
         return self._session_id
 
-    async def record_voice_user(self, wav_bytes: bytes) -> None:
+    async def record_voice_user(
+        self, wav_bytes: bytes, *, screenshot_png_bytes: bytes | None = None
+    ) -> None:
         if not self._enabled:
             return
         timestamp = self._now()
-        media_name = self._next_media_name(timestamp)
+        media_name = self._next_media_name(timestamp, ".wav")
+        screenshot_name = (
+            self._next_media_name(timestamp, ".png")
+            if screenshot_png_bytes is not None
+            else None
+        )
         self._schedule(
             self._write_voice_user(
                 timestamp=timestamp,
                 media_name=media_name,
                 wav_bytes=bytes(wav_bytes),
+                screenshot_name=screenshot_name,
+                screenshot_png_bytes=(
+                    bytes(screenshot_png_bytes)
+                    if screenshot_png_bytes is not None
+                    else None
+                ),
             )
         )
 
@@ -90,10 +103,10 @@ class JournalRecorder:
             self._session_id = new_session_id(timestamp)
         return self._session_id
 
-    def _next_media_name(self, timestamp: datetime) -> str:
+    def _next_media_name(self, timestamp: datetime, suffix: str) -> str:
         self._media_counter += 1
         stamp = timestamp.strftime("%Y%m%d-%H%M%S")
-        return f"utterance-{stamp}-{self._media_counter:04d}.wav"
+        return f"utterance-{stamp}-{self._media_counter:04d}{suffix}"
 
     def _schedule(self, coroutine: Awaitable[None]) -> None:
         previous = self._tail
@@ -116,7 +129,13 @@ class JournalRecorder:
             self._logger.warning("Journal write failed", exc_info=True)
 
     async def _write_voice_user(
-        self, *, timestamp: datetime, media_name: str, wav_bytes: bytes
+        self,
+        *,
+        timestamp: datetime,
+        media_name: str,
+        wav_bytes: bytes,
+        screenshot_name: str | None,
+        screenshot_png_bytes: bytes | None,
     ) -> None:
         session_id = self._session(timestamp)
         await asyncio.to_thread(
@@ -125,12 +144,21 @@ class JournalRecorder:
             name=media_name,
             contents=wav_bytes,
         )
+        media = [media_name]
+        if screenshot_name is not None and screenshot_png_bytes is not None:
+            await asyncio.to_thread(
+                self._store.write_media,
+                session_id=session_id,
+                name=screenshot_name,
+                contents=screenshot_png_bytes,
+            )
+            media.append(screenshot_name)
         await self._append_event(
             timestamp=timestamp,
             source="voice",
             role="user",
             text="",
-            media=(media_name,),
+            media=tuple(media),
         )
 
     async def _append_event(

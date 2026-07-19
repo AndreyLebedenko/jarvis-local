@@ -12,13 +12,14 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.5.0 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
+v1.5.2 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
 runtime and module health, timestamp-first metadata for the latest request to
 the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
 visibility mode, context reset, guarded Shutdown, typed restart-to-apply
-configuration (model, microphone, TTS routes, UI language, and VAD), and a
-compact touchstrip glance surface. Since v1.2.11 the UI is English by default,
-with Russian available via `[ui].language = "ru"`.
+configuration (model, microphone, TTS routes, UI language, and VAD), Journal
+text input, answer copy controls, screenshot thumbnails, manual journal disk
+management, and a compact touchstrip glance surface. Since v1.2.11 the UI is
+English by default, with Russian available via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
@@ -28,7 +29,7 @@ with Russian available via `[ui].language = "ru"`.
 
 ## Status
 
-This is a usable v1.5.0 hobby/research release with verified bilingual TTS:
+This is a usable v1.5.2 hobby/research release with verified bilingual TTS:
 Silero handles Russian and Piper handles English, with streamed text routed
 automatically by character set. TTS engines and local voice models remain
 configurable per language. The zero-config compatibility default uses Russian
@@ -60,10 +61,12 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   configuration, and touchstrip glance surface. The UI language is English by
   default; Russian is available via `[ui].language = "ru"` in `config.toml`
   (UI chrome only - the assistant's dialog language and TTS are not affected).
-- Persistent Dialog Journal with per-session JSONL logs, local media playback,
-  live feed updates, assistant-answer search, date filtering, and Hidden-mode
-  privacy enforcement. Journal media is served through the authenticated local
-  transport; search is exact/prefix matching for Russian text.
+- Persistent Dialog Journal with per-session JSONL logs, typed messages to
+  Jarvis, answer copy controls, local audio playback, screenshot thumbnails,
+  live feed updates, assistant-answer search, date filtering, disk-usage
+  display, manual per-session deletion, and Hidden-mode privacy enforcement.
+  Journal media is served through the authenticated local transport; search is
+  exact/prefix matching for Russian text.
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
 - Async event-bus architecture with isolated modules.
@@ -220,7 +223,8 @@ This repository was built with an agent-assisted workflow: project facts were re
   reliable stop path while `pywebview` owns the foreground UI loop.
 - A true cold Ollama start can take long enough to require a generous read timeout.
 - Journal logs, audio, and screenshots have no automatic retention policy yet;
-  remove old journal data manually until a disk-growth policy is decided.
+  use the Journal view's manual per-session deletion controls until a
+  disk-growth policy is decided.
 - Closing the Status Console can expose a microphone shutdown race around a
   blocking executor read; see
   [the open bug report](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md).

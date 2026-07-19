@@ -11,7 +11,12 @@ from jarvis.core.config import (
     SileroTtsSettings,
     VadSettings,
 )
-from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
+from jarvis.core.lifecycle import (
+    ModelRequestInput,
+    ModelRequestStarted,
+    TextSubmissionReason,
+    TextSubmissionResult,
+)
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.journal import (
     JournalEvent,
@@ -93,6 +98,16 @@ class _FakeControlApi:
             "vad": vad,
             "tts_routes": tts_routes,
         }
+
+
+class _FakeTextSubmitter:
+    def __init__(self, reason: TextSubmissionReason) -> None:
+        self.reason = reason
+        self.calls: list[str] = []
+
+    async def __call__(self, text: str) -> TextSubmissionResult:
+        self.calls.append(text)
+        return TextSubmissionResult(self.reason, max_chars=20)
 
 
 def test_protocol_message_round_trips_with_channel_and_payload():
@@ -949,6 +964,157 @@ async def test_journal_media_serves_known_types_and_rejects_traversal(
 
 
 @pytest.mark.asyncio
+async def test_journal_input_endpoint_maps_structured_submit_results() -> None:
+    for reason, expected in [
+        (TextSubmissionReason.ACCEPTED, {"status": "accepted", "reason": "accepted"}),
+        (
+            TextSubmissionReason.BUSY,
+            {"status": "rejected", "reason": "busy", "max_chars": 20},
+        ),
+        (
+            TextSubmissionReason.EMPTY,
+            {"status": "rejected", "reason": "empty", "max_chars": 20},
+        ),
+        (
+            TextSubmissionReason.OVER_LIMIT,
+            {"status": "rejected", "reason": "over_limit", "max_chars": 20},
+        ),
+    ]:
+        submitter = _FakeTextSubmitter(reason)
+        server = UiTransportServer(
+            EventBus(),
+            _FakeControlApi(),
+            token_factory=lambda: "valid-token",
+            journal_text_submitter=submitter,
+        )
+        info = await server.start()
+        try:
+            async with aiohttp.ClientSession() as session:
+                response = await session.post(
+                    f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                    json={"text": "typed from dock"},
+                )
+                assert response.status == 200
+                assert await response.json() == expected
+                assert submitter.calls == ["typed from dock"]
+        finally:
+            await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_reuses_auth_and_rejects_bad_payload() -> None:
+    submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_text_submitter=submitter,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            missing_token = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input",
+                json={"text": "typed"},
+            )
+            bad_payload = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                json={"text": 5},
+            )
+            assert missing_token.status == 401
+            assert bad_payload.status == 400
+            assert submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_usage_and_delete_api_keep_search_consistent(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    deleted_session = "20260716-153000-ab12"
+    active_session = "20260717-153000-cd34"
+    store.append(
+        _journal_event(
+            session_id=deleted_session,
+            timestamp="2026-07-16T15:30:00+01:00",
+            source="assistant",
+            role="assistant",
+            text="delete me answer",
+        )
+    )
+    store.write_media(deleted_session, "clip.wav", b"12345")
+    store.append(
+        _journal_event(
+            session_id=active_session,
+            timestamp="2026-07-17T15:30:00+01:00",
+            source="assistant",
+            role="assistant",
+            text="keep me answer",
+        )
+    )
+    search_index = JournalSearchIndex(store, tmp_path)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_search_index=search_index,
+        journal_active_session_id=lambda: active_session,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            usage = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/usage?token=valid-token",
+            )
+            assert usage["status"] == "ok"
+            assert usage["total_bytes"] > 5
+            assert {item["id"] for item in usage["sessions"]} == {
+                deleted_session,
+                active_session,
+            }
+
+            active_delete = await session.delete(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{active_session}?token=valid-token"
+            )
+            assert active_delete.status == 409
+            assert await active_delete.json() == {
+                "status": "rejected",
+                "reason": "active_session",
+            }
+
+            deleted = await session.delete(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{deleted_session}?token=valid-token"
+            )
+            assert deleted.status == 200
+            assert await deleted.json() == {
+                "status": "ok",
+                "deleted_session_id": deleted_session,
+            }
+            assert not (tmp_path / deleted_session).exists()
+            assert [hit.session_id for hit in search_index.search("answer")] == [
+                active_session
+            ]
+
+            missing = await session.delete(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                "20260718-153000-missing?token=valid-token"
+            )
+            assert missing.status == 404
+            assert await missing.json() == {
+                "status": "rejected",
+                "reason": "not_found",
+            }
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
     tmp_path: Path,
 ) -> None:
@@ -966,6 +1132,7 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
     media_dir.mkdir(exist_ok=True)
     (media_dir / "clip.wav").write_bytes(b"RIFF demo")
     state = UiStateStore(visibility_mode=VisibilityMode.HIDDEN)
+    submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
     server = UiTransportServer(
         bus,
         _FakeControlApi(),
@@ -973,6 +1140,7 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
         token_factory=lambda: "valid-token",
         journal_store=store,
         journal_search_index=JournalSearchIndex(store, tmp_path),
+        journal_text_submitter=submitter,
     )
     info = await server.start()
     try:
@@ -994,6 +1162,12 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
             assert (
                 await _get_json(
                     session,
+                    f"http://127.0.0.1:{info.port}/api/journal/usage?token=valid-token",
+                )
+            ) == {"status": "hidden"}
+            assert (
+                await _get_json(
+                    session,
                     f"http://127.0.0.1:{info.port}/api/journal/sessions/"
                     f"{event.session_id}?token=valid-token",
                 )
@@ -1005,6 +1179,19 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
                     f"{event.session_id}/clip.wav?token=valid-token",
                 )
             ) == {"status": "hidden"}
+            hidden_input = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                json={"text": "must not leave transport"},
+            )
+            assert hidden_input.status == 200
+            assert await hidden_input.json() == {"status": "hidden"}
+            assert submitter.calls == []
+            hidden_delete = await session.delete(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{event.session_id}?token=valid-token"
+            )
+            assert hidden_delete.status == 200
+            assert await hidden_delete.json() == {"status": "hidden"}
 
             async with session.ws_connect(info.websocket_url) as websocket:
                 await websocket.send_json(hello_message("status-console", ["state"]))

@@ -2115,6 +2115,46 @@ conversation history. It is not fed back into model context.
   [tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md)
   and is outside the journal data/UI contract.
 
+## Architecture v1.5.2 (Journal UX pack)
+
+See [tasks/done/story-v1.5.2-journal-ux-pack.md](tasks/done/story-v1.5.2-journal-ux-pack.md).
+The Journal view is now an action surface on top of the v1.5.0 journal, while
+the journal's append-only normal-operation contract remains intact.
+
+- `POST /api/journal/input` accepts typed text through the existing
+  authenticated local HTTP transport. Hidden mode is enforced in the
+  transport before the text reaches the orchestrator. Accepted text enters
+  the shared `_start_turn()` path as `TurnSource.TEXT_INPUT`, records as a
+  `dock` user journal event, and never consumes a pending screenshot.
+  Empty, busy, and over-limit submissions return structured rejections; typed
+  over-limit text is rejected, not truncated. The length cap reuses the
+  configured clipboard cap, but clipboard semantics remain truncation with a
+  marker because the source is external.
+- The Journal input dock sends by button or Enter, keeps text on rejection,
+  and relies on live `journal_event` pushes for the feed update. Shift+Enter
+  inserts a newline. Hidden mode suppresses the whole dock with the rest of
+  the Journal view.
+- Assistant answers expose a UI-only copy control that copies the recorded
+  answer text. Arbitrary fragments remain normal browser/WebView text
+  selection plus Ctrl+C; no transport path or custom selection model exists.
+- A voice turn that consumes a pending screenshot records both the WAV and
+  the exact PNG bytes sent to the model on the same user journal event.
+  Thumbnails render those image media references through the existing
+  authenticated media endpoint; no `file://` URLs or backend resizing are
+  introduced.
+- `JournalStore` reports total and per-session disk usage and can delete a
+  whole existing session directory. Deletion is manual, per-session, and
+  explicit; no retention schedule or automatic cleanup exists in v1.5.2.
+  The active-session guard lives in the transport, using the recorder's
+  current session id, while the store remains a file store with no runtime
+  dependency.
+- The SQLite FTS index is kept consistent by targeted deletion of the
+  deleted session's rows. A full rebuild remains a recovery path, not the
+  routine deletion path.
+- Privacy and locality boundaries are unchanged: every new endpoint uses the
+  existing token-authenticated local transport and returns `hidden` while
+  Hidden is active. No new network capability is added.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

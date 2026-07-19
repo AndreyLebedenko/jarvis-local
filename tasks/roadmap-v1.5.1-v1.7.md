@@ -121,8 +121,8 @@ Boundary:
   for exactly these extensions.
 
 Story/task readiness: story card exists as
-`tasks/story-v1.5.2-journal-ux-pack.md` with task cards
-`tasks/task-v1.5.2-1..8-*.md` (created 2026-07-19 to unblock
+`tasks/done/story-v1.5.2-journal-ux-pack.md` with task cards
+`tasks/done/task-v1.5.2-1..8-*.md` (created 2026-07-19 to unblock
 task-v1.6.0-7; implemented on branches from current main, not from the
 v1.5.1 tag - owner decision 2026-07-19).
 

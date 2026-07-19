@@ -27,6 +27,8 @@ from jarvis.core.lifecycle import (
     BackendRequestFailed,
     ModelRequestInput,
     ModelRequestStarted,
+    TextSubmissionReason,
+    TextSubmissionResult,
     TurnAccepted,
     TurnCompleted,
     TurnSource,
@@ -125,6 +127,7 @@ class ConversationHistory:
 
 
 VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
+DEFAULT_TEXT_INPUT_MAX_CHARS = 20000
 
 
 class Orchestrator:
@@ -141,6 +144,7 @@ class Orchestrator:
         bus: EventBus | None = None,
         journal_recorder: JournalRecorder | None = None,
         clock: Callable[[], float] | None = None,
+        text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -151,7 +155,9 @@ class Orchestrator:
         self._bus = bus
         self._journal_recorder = journal_recorder
         self._clock = clock or time.time
+        self._text_input_max_chars = text_input_max_chars
         self._pending_screenshot_b64: str | None = None
+        self._pending_screenshot_png: bytes | None = None
         self._response_tokens: list[str] = []
         self._spoke_this_turn = False
         self._busy = False
@@ -164,6 +170,7 @@ class Orchestrator:
 
     async def on_screenshot(self, event: ScreenshotCaptured) -> None:
         self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
+        self._pending_screenshot_png = bytes(event.png_bytes)
 
     async def on_utterance(self, event: UtteranceChunk) -> None:
         if self._busy:
@@ -174,9 +181,13 @@ class Orchestrator:
         # a screenshot that was meant for the next *accepted* turn.
         media = [base64.b64encode(event.wav_bytes).decode()]
         has_pending_screenshot = self._pending_screenshot_b64 is not None
+        screenshot_png = (
+            self._pending_screenshot_png if has_pending_screenshot else None
+        )
         if has_pending_screenshot:
             media.append(self._pending_screenshot_b64)
             self._pending_screenshot_b64 = None
+            self._pending_screenshot_png = None
         inputs = [ModelRequestInput.AUDIO]
         if has_pending_screenshot:
             inputs.append(ModelRequestInput.SCREENSHOT)
@@ -187,6 +198,7 @@ class Orchestrator:
             inputs=tuple(inputs),
             audio_duration_seconds=event.end_seconds - event.start_seconds,
             voice_wav_bytes=event.wav_bytes,
+            screenshot_png_bytes=screenshot_png,
         )
 
     async def on_clipboard(self, event: ClipboardSubmitted) -> None:
@@ -211,6 +223,37 @@ class Orchestrator:
             inputs=(ModelRequestInput.CLIPBOARD,),
             audio_duration_seconds=None,
             voice_wav_bytes=None,
+            screenshot_png_bytes=None,
+        )
+
+    async def submit_text_input(self, text: str) -> TextSubmissionResult:
+        if not text.strip():
+            return TextSubmissionResult(
+                TextSubmissionReason.EMPTY, self._text_input_max_chars
+            )
+        if len(text) > self._text_input_max_chars:
+            return TextSubmissionResult(
+                TextSubmissionReason.OVER_LIMIT, self._text_input_max_chars
+            )
+        if self._busy:
+            logger.info(
+                "Ignoring text input submission: previous request still in flight"
+            )
+            return TextSubmissionResult(
+                TextSubmissionReason.BUSY, self._text_input_max_chars
+            )
+        await self._start_turn(
+            text,
+            None,
+            TurnSource.TEXT_INPUT,
+            inputs=(ModelRequestInput.TEXT_INPUT,),
+            audio_duration_seconds=None,
+            voice_wav_bytes=None,
+            screenshot_png_bytes=None,
+            journal_source="dock",
+        )
+        return TextSubmissionResult(
+            TextSubmissionReason.ACCEPTED, self._text_input_max_chars
         )
 
     async def on_attachment_submission(
@@ -291,6 +334,7 @@ class Orchestrator:
             inputs=tuple(inputs),
             audio_duration_seconds=audio_duration_seconds,
             voice_wav_bytes=None,
+            screenshot_png_bytes=None,
         )
 
     async def _start_turn(
@@ -302,6 +346,8 @@ class Orchestrator:
         inputs: tuple[ModelRequestInput, ...],
         audio_duration_seconds: float | None,
         voice_wav_bytes: bytes | None,
+        screenshot_png_bytes: bytes | None,
+        journal_source: str | None = None,
     ) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
@@ -314,10 +360,14 @@ class Orchestrator:
         self._journal_turn_started = False
         if self._journal_recorder is not None:
             if source is TurnSource.VOICE and voice_wav_bytes is not None:
-                await self._journal_recorder.record_voice_user(voice_wav_bytes)
+                await self._journal_recorder.record_voice_user(
+                    voice_wav_bytes, screenshot_png_bytes=screenshot_png_bytes
+                )
                 self._journal_turn_started = True
-            elif source is TurnSource.TEXT:
-                await self._journal_recorder.record_text_user(history_text)
+            elif source in {TurnSource.TEXT, TurnSource.TEXT_INPUT}:
+                await self._journal_recorder.record_text_user(
+                    history_text, source=journal_source or "text"
+                )
                 self._journal_turn_started = True
             elif source is TurnSource.ATTACHMENT:
                 # No media reference is recorded, matching record_text_user()'s
@@ -510,6 +560,7 @@ def build_app(
         thinking_mode=thinking_mode,
         bus=bus,
         journal_recorder=journal_recorder,
+        text_input_max_chars=settings.clipboard.max_chars,
     )
     return App(
         bus=bus,
@@ -970,6 +1021,12 @@ def run_with_status_console(
         logger=logger,
         journal_store=app.journal_store,
         journal_search_index=app.journal_search_index,
+        journal_text_submitter=app.orchestrator.submit_text_input,
+        journal_active_session_id=(
+            lambda: app.journal_recorder.session_id
+            if app.journal_recorder is not None
+            else None
+        ),
     )
     live_console.create_windows()
 

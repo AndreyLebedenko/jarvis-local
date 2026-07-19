@@ -1,7 +1,7 @@
 # Task v1.5.2-3: Feed copy controls
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** nothing in this story; independent of tasks 1-2.
 
 ## Summary
@@ -40,11 +40,11 @@ UI only.
 
 ## Acceptance criteria
 
-- [ ] If copy logic is factored as a pure function (tile data -> copied
+- [x] If copy logic is factored as a pure function (tile data -> copied
       string), a test pins that the copied text matches the recorded
       answer text, including multi-line answers.
-- [ ] Human-run manual handoff covers: copy button on a short and a
+- [x] Human-run manual handoff covers: copy button on a short and a
       multi-line answer, paste into an external editor, partial
       selection copy, and behavior in Hidden mode (no feed, nothing to
       copy).
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.

@@ -43,6 +43,14 @@ class JournalSearchIndex:
             )
             self._index_session(connection, session_id)
 
+    def delete_session(self, session_id: str) -> None:
+        with closing(self._connect()) as connection, connection:
+            self._create_schema(connection)
+            connection.execute(
+                "DELETE FROM journal_search_events WHERE session_id = ?",
+                (session_id,),
+            )
+
     def search(
         self,
         query: str,

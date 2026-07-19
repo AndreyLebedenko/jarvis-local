@@ -25,6 +25,7 @@ JOURNAL_STRING_KEYS = (
     "journal_hidden_placeholder",
     "journal_source_voice",
     "journal_source_text",
+    "journal_source_dock",
     "journal_source_assistant",
     "journal_search_label",
     "journal_search_placeholder",
@@ -32,6 +33,25 @@ JOURNAL_STRING_KEYS = (
     "journal_search_date_to",
     "journal_search_clear",
     "journal_search_no_results",
+    "journal_input_placeholder",
+    "journal_input_send",
+    "journal_input_busy",
+    "journal_input_hidden",
+    "journal_input_empty",
+    "journal_input_over_limit",
+    "journal_input_failed",
+    "journal_input_sent",
+    "journal_copy_answer",
+    "journal_copy_done",
+    "journal_copy_failed",
+    "journal_image_missing",
+    "journal_usage_total",
+    "journal_session_delete",
+    "journal_session_active",
+    "journal_delete_confirm",
+    "journal_delete_failed",
+    "journal_delete_active",
+    "journal_delete_not_found",
 )
 
 
@@ -43,7 +63,7 @@ class _JournalViewParser(HTMLParser):
         self.depth = 0
         self.texts = []  # (text, owning tag attrs) for text inside the view
         self.input_dock_depth = None
-        self.input_dock_content = []
+        self.input_dock_tags = []
         self.view_toggle_buttons = []
         self._attr_stack = []
         self._in_view_toggle_depth = None
@@ -59,6 +79,8 @@ class _JournalViewParser(HTMLParser):
             self._attr_stack.append(attrs_dict)
             if attrs_dict.get("id") == "journalInputDock":
                 self.input_dock_depth = self.depth
+            if self.input_dock_depth:
+                self.input_dock_tags.append((tag, attrs_dict))
         if attrs_dict.get("id") == "viewToggle":
             self._in_view_toggle_depth = 1
         elif self._in_view_toggle_depth:
@@ -78,8 +100,6 @@ class _JournalViewParser(HTMLParser):
     def handle_data(self, data):
         if self.depth and data.strip():
             self.texts.append((data.strip(), self._attr_stack[-1]))
-        if self.input_dock_depth and data.strip():
-            self.input_dock_content.append(data.strip())
 
 
 def _parse_journal_view():
@@ -114,10 +134,15 @@ def test_system_events_panel_is_hidden_in_journal_view():
     assert 'html[data-view="journal"] .logpanel { display: none; }' in compact
 
 
-def test_input_dock_exists_and_is_empty():
+def test_input_dock_has_textarea_and_send_action():
     parser = _parse_journal_view()
-    assert 'id="journalInputDock"' in INDEX_HTML
-    assert parser.input_dock_content == []
+    tags = {attrs.get("id"): tag for tag, attrs in parser.input_dock_tags}
+    assert tags["journalInputDock"] == "form"
+    assert tags["journalTextInput"] == "textarea"
+    assert tags["journalSendButton"] == "button"
+    assert 'data-i18n-placeholder="journal_input_placeholder"' in INDEX_HTML
+    assert 'onsubmit="submitJournalInput(); return false"' in INDEX_HTML
+    assert 'onkeydown="onJournalInputKeyDown(event)"' in INDEX_HTML
 
 
 def test_hidden_placeholder_logic_present():
@@ -214,12 +239,28 @@ def test_journal_rendering_reads_labels_through_ui_strings():
     assert '"journal_source_" + source' in APP_JS
 
 
-def test_journal_view_has_no_input_and_no_context_menu():
-    """Read-only plus playback (task-journal-06): the reserved input dock
-    stays empty and untouched by JS, and the tile has no right-click menu
-    (v1.5.1)."""
-    assert "journalInputDock" not in APP_JS
+def test_journal_view_has_no_context_menu():
+    """Copy is explicit button plus normal text selection; no custom
+    context menu is introduced."""
     assert "contextmenu" not in APP_JS
+
+
+def test_journal_input_posts_json_and_preserves_text_on_rejection():
+    body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
+    assert '_journalUrl("/api/journal/input")' in body
+    assert 'method: "POST"' in body
+    assert "JSON.stringify({ text })" in body
+    assert 'if (input.value === text) input.value = "";' in body
+    assert 'payload.status === "accepted"' in body
+    assert "journal_input_busy" in APP_JS
+    assert "journal_input_over_limit" in APP_JS
+
+
+def test_journal_input_enter_and_shift_enter_contract_is_present():
+    body = APP_JS.split("function onJournalInputKeyDown(")[1].split("\n}")[0]
+    assert 'event.key !== "Enter" || event.shiftKey' in body
+    assert "event.preventDefault();" in body
+    assert "submitJournalInput();" in body
 
 
 def test_search_controls_use_localized_query_and_date_fields():

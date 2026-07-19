@@ -1,7 +1,7 @@
 # Task v1.5.2-1: Text input endpoint and turn source
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** nothing new; builds on the existing transport and
 `_start_turn()` path.
 
@@ -67,18 +67,18 @@ no UI changes in this task.
 
 ## Acceptance criteria
 
-- [ ] Transport tests cover authorized submission, missing/invalid
+- [x] Transport tests cover authorized submission, missing/invalid
       token, Hidden rejection, empty text, over-limit text, and busy
       rejection.
-- [ ] A transport test proves a Hidden-mode submission does not call
+- [x] A transport test proves a Hidden-mode submission does not call
       the orchestrator entry point at all (the text never leaves the
       transport layer).
-- [ ] An orchestrator-level test proves the typed turn goes through the
+- [x] An orchestrator-level test proves the typed turn goes through the
       shared `_start_turn()` path and never attaches a pending
       screenshot.
-- [ ] Orchestrator-level tests pin the structured accepted/rejected
+- [x] Orchestrator-level tests pin the structured accepted/rejected
       result (accepted, busy, empty, over-limit) independently of the
       HTTP layer, and a transport test proves the handler maps that
       result without reading orchestrator busy state directly.
-- [ ] No UI behavior changes.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] No UI behavior changes.
+- [x] `python -m pytest` and Ruff checks are green.

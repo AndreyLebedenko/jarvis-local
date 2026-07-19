@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,18 @@ class JournalSessionSummary:
     session_id: str
     first_timestamp: str
     last_timestamp: str
+
+
+@dataclass(frozen=True)
+class JournalSessionUsage:
+    session_id: str
+    bytes: int
+
+
+@dataclass(frozen=True)
+class JournalUsage:
+    total_bytes: int
+    sessions: list[JournalSessionUsage]
 
 
 class JournalStore:
@@ -78,3 +91,46 @@ class JournalStore:
             summaries,
             key=lambda summary: parse_journal_timestamp(summary.first_timestamp),
         )
+
+    def usage(self) -> JournalUsage:
+        summaries = self.list_sessions()
+        sessions = [
+            JournalSessionUsage(
+                session_id=summary.session_id,
+                bytes=self._directory_size_bytes(self._session_dir(summary.session_id)),
+            )
+            for summary in summaries
+        ]
+        return JournalUsage(
+            total_bytes=sum(session.bytes for session in sessions),
+            sessions=sessions,
+        )
+
+    def delete_session(self, session_id: str) -> None:
+        session_dir = self._existing_session_dir(session_id)
+        shutil.rmtree(session_dir)
+
+    def _existing_session_dir(self, session_id: str) -> Path:
+        real_session_ids = {summary.session_id for summary in self.list_sessions()}
+        if session_id not in real_session_ids:
+            raise KeyError(session_id)
+        return self._session_dir(session_id)
+
+    def _session_dir(self, session_id: str) -> Path:
+        root = self._root.resolve()
+        candidate = (root / session_id).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise KeyError(session_id) from None
+        if not candidate.is_dir():
+            raise KeyError(session_id)
+        return candidate
+
+    @staticmethod
+    def _directory_size_bytes(session_dir: Path) -> int:
+        total = 0
+        for path in session_dir.rglob("*"):
+            if path.is_file():
+                total += path.stat().st_size
+        return total

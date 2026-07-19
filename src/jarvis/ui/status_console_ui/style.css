@@ -494,8 +494,12 @@ html[data-view="journal"] .journal {
   letter-spacing: 0.8px; text-transform: uppercase;
 }
 #journalSessionList { display: flex; flex-direction: column; gap: 6px; }
+.journal-usage {
+  color: var(--text-faint);
+  font: 10.5px "Consolas", "Cascadia Mono", monospace;
+}
 .journal-session {
-  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 3px 8px; text-align: left;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
   padding: 9px 11px; cursor: pointer; color: var(--text-dim);
   transition: border-color 0.15s, background 0.15s;
@@ -510,6 +514,18 @@ html[data-view="journal"] .journal {
 .journal-session-title {
   font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.journal-session-size {
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
+  color: var(--text-faint);
+}
+.journal-session-delete {
+  grid-row: 1 / span 3; grid-column: 2; align-self: center;
+  width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text-faint); cursor: pointer;
+}
+.journal-session-delete:hover { border-color: var(--red-dim); color: var(--red); background: var(--red-tint); }
+.journal-session-delete:disabled { opacity: 0.35; cursor: not-allowed; }
+.journal-session-delete:disabled:hover { border-color: var(--border); color: var(--text-faint); background: var(--panel); }
 
 .journal-feed-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .journal-search {
@@ -564,12 +580,33 @@ html[data-view="journal"] .journal {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9.5px;
   color: var(--text-faint);
 }
+.journal-msg-meta-spacer { flex: 1; }
 .journal-msg-source {
   text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 5px;
   border-radius: 4px; background: var(--gray-tint); color: var(--text-dim);
 }
-.journal-msg-text { font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
-.journal-msg img { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); }
+.journal-copy {
+  border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
+  color: var(--text-faint); font: 9.5px "Consolas", "Cascadia Mono", monospace;
+  padding: 2px 6px; cursor: pointer;
+}
+.journal-copy:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-msg-text {
+  font-size: 12.5px; color: var(--text); overflow-wrap: anywhere;
+  white-space: pre-wrap; user-select: text;
+}
+.journal-image-tile {
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
+  overflow: hidden; max-width: min(100%, 420px);
+}
+.journal-image-tile img {
+  display: block; width: 100%; max-height: 260px; object-fit: contain;
+  background: var(--bg);
+}
+.journal-image-missing {
+  padding: 10px; color: var(--text-faint);
+  font: 10.5px "Consolas", "Cascadia Mono", monospace;
+}
 
 .journal-search-group { display: flex; flex-direction: column; gap: 6px; }
 .journal-search-session {
@@ -626,8 +663,26 @@ html[data-view="journal"] .journal {
    field slots in without re-layout). It participates in the flex column,
    so the feed's scroll area already ends above it. */
 .journal-input-dock {
-  min-height: 46px; flex-shrink: 0;
+  min-height: 56px; flex-shrink: 0;
   border-top: 1px solid var(--border); background: var(--panel);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px; padding: 9px 22px; align-items: end;
+}
+.journal-input-dock textarea {
+  min-height: 34px; max-height: 96px; resize: vertical;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+  color: var(--text); padding: 8px 10px; font: 12.5px system-ui, sans-serif;
+}
+.journal-input-dock textarea:focus { outline: none; border-color: var(--cyan-dim); }
+.journal-input-dock button {
+  height: 34px; padding: 0 14px; border: 1px solid var(--cyan-dim);
+  border-radius: 7px; background: var(--cyan-tint); color: var(--cyan);
+  cursor: pointer; font-size: 12px;
+}
+.journal-input-dock button:disabled { opacity: 0.45; cursor: not-allowed; }
+.journal-input-status {
+  grid-column: 1 / -1; min-height: 14px;
+  color: var(--text-faint); font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
 
 /* Hidden mode: the whole Journal view swaps to a generic placeholder

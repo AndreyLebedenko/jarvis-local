@@ -24,7 +24,12 @@ from jarvis.core.config import (
     tts_field_matches_spec,
     tts_route_field_specs,
 )
-from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
+from jarvis.core.lifecycle import (
+    ModelRequestInput,
+    ModelRequestStarted,
+    TextSubmissionReason,
+    TextSubmissionResult,
+)
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.journal.events import JournalEvent, JournalEventAppended
 from jarvis.journal.search import JournalSearchIndex
@@ -256,6 +261,10 @@ class ControlApi(Protocol):
     ) -> None: ...
 
 
+class TextInputSubmitter(Protocol):
+    async def __call__(self, text: str) -> TextSubmissionResult: ...
+
+
 class UiStateStore:
     """Owns the JSON state projection shared by all UI clients."""
 
@@ -446,6 +455,8 @@ class UiTransportServer:
         ui_dir: Path = UI_DIR,
         journal_store: JournalStore | None = None,
         journal_search_index: JournalSearchIndex | None = None,
+        journal_text_submitter: TextInputSubmitter | None = None,
+        journal_active_session_id: Callable[[], str | None] | None = None,
     ) -> None:
         self._bus = bus
         self._control_api = control_api
@@ -457,6 +468,8 @@ class UiTransportServer:
         self._ui_dir = ui_dir
         self._journal_store = journal_store
         self._journal_search_index = journal_search_index
+        self._journal_text_submitter = journal_text_submitter
+        self._journal_active_session_id = journal_active_session_id or (lambda: None)
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
         self._runner: web.AppRunner | None = None
@@ -487,8 +500,13 @@ class UiTransportServer:
         app = web.Application()
         app.router.add_get("/ws", self._websocket_handler)
         app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
+        app.router.add_post("/api/journal/input", self._journal_input_handler)
+        app.router.add_get("/api/journal/usage", self._journal_usage_handler)
         app.router.add_get(
             "/api/journal/sessions/{session_id}", self._journal_feed_handler
+        )
+        app.router.add_delete(
+            "/api/journal/sessions/{session_id}", self._journal_delete_handler
         )
         app.router.add_get("/api/journal/search", self._journal_search_handler)
         app.router.add_get(
@@ -662,6 +680,47 @@ class UiTransportServer:
             }
         )
 
+    async def _journal_input_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_text_submitter is None:
+            raise web.HTTPServiceUnavailable(text="journal input not available")
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+            raise web.HTTPBadRequest(text="request body requires string text")
+        result = await self._journal_text_submitter(payload["text"])
+        return web.json_response(self._text_submission_payload(result))
+
+    async def _journal_usage_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_store is None:
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "total_bytes": 0,
+                    "active_session_id": self._journal_active_session_id(),
+                    "sessions": [],
+                }
+            )
+        usage = await asyncio.to_thread(self._journal_store.usage)
+        return web.json_response(
+            {
+                "status": "ok",
+                "total_bytes": usage.total_bytes,
+                "active_session_id": self._journal_active_session_id(),
+                "sessions": [
+                    {"id": session.session_id, "bytes": session.bytes}
+                    for session in usage.sessions
+                ],
+            }
+        )
+
     async def _journal_feed_handler(self, request: web.Request) -> web.Response:
         self._require_http_token(request)
         if self._is_hidden():
@@ -682,6 +741,31 @@ class UiTransportServer:
                 ],
             }
         )
+
+    async def _journal_delete_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        session_id = request.match_info["session_id"]
+        if self._journal_store is None:
+            return web.json_response(
+                {"status": "rejected", "reason": "not_found"}, status=404
+            )
+        if session_id == self._journal_active_session_id():
+            return web.json_response(
+                {"status": "rejected", "reason": "active_session"}, status=409
+            )
+        try:
+            await asyncio.to_thread(self._journal_store.delete_session, session_id)
+        except KeyError:
+            return web.json_response(
+                {"status": "rejected", "reason": "not_found"}, status=404
+            )
+        if self._journal_search_index is not None:
+            await asyncio.to_thread(
+                self._journal_search_index.delete_session, session_id
+            )
+        return web.json_response({"status": "ok", "deleted_session_id": session_id})
 
     async def _journal_search_handler(self, request: web.Request) -> web.Response:
         self._require_http_token(request)
@@ -726,6 +810,16 @@ class UiTransportServer:
     @staticmethod
     def _journal_hidden_response() -> web.Response:
         return web.json_response({"status": "hidden"})
+
+    @staticmethod
+    def _text_submission_payload(result: TextSubmissionResult) -> JsonObject:
+        if result.reason is TextSubmissionReason.ACCEPTED:
+            return {"status": "accepted", "reason": result.reason.value}
+        return {
+            "status": "rejected",
+            "reason": result.reason.value,
+            "max_chars": result.max_chars,
+        }
 
     async def _rebuild_journal_index(self) -> None:
         if self._journal_search_index is None:

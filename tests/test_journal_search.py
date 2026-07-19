@@ -185,6 +185,32 @@ def test_update_session_replaces_existing_session_rows(tmp_path: Path) -> None:
     ]
 
 
+def test_delete_session_removes_only_that_sessions_search_rows(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path)
+    deleted_session = "20260716-153000-ab12"
+    kept_session = "20260717-153000-cd34"
+    _append_assistant(
+        store,
+        session_id=deleted_session,
+        timestamp="2026-07-16T15:30:00+01:00",
+        text="shared answer deleted",
+    )
+    _append_assistant(
+        store,
+        session_id=kept_session,
+        timestamp="2026-07-17T15:30:00+01:00",
+        text="shared answer kept",
+    )
+    index = JournalSearchIndex(store, tmp_path)
+    index.rebuild()
+
+    index.delete_session(deleted_session)
+
+    assert [(hit.session_id, hit.snippet) for hit in index.search("shared")] == [
+        (kept_session, "[shared] answer kept")
+    ]
+
+
 def _append_assistant(
     store: JournalStore,
     *,

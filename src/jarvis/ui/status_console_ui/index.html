@@ -151,6 +151,7 @@
 <div class="journal" id="journalView">
   <aside class="journal-sessions" aria-labelledby="journalSessionsHeading">
     <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
+    <div class="journal-usage" id="journalUsageTotal"></div>
     <div id="journalSessionList"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
@@ -172,7 +173,11 @@
     </form>
     <div class="journal-feed" id="journalFeed"></div>
     <div class="journal-empty" id="journalFeedEmpty" data-i18n="journal_no_selection">Select a session on the left</div>
-    <div class="journal-input-dock" id="journalInputDock"></div>
+    <form class="journal-input-dock" id="journalInputDock" onsubmit="submitJournalInput(); return false">
+      <textarea id="journalTextInput" rows="1" data-i18n-placeholder="journal_input_placeholder" placeholder="Message Jarvis" onkeydown="onJournalInputKeyDown(event)"></textarea>
+      <button type="submit" id="journalSendButton" data-i18n="journal_input_send">Send</button>
+      <div class="journal-input-status" id="journalInputStatus"></div>
+    </form>
   </section>
   <div class="journal-hidden-placeholder" id="journalHiddenPlaceholder" data-i18n="journal_hidden_placeholder">Journal hidden (Hidden)</div>
 </div>

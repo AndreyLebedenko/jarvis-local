@@ -14,6 +14,7 @@ from enum import Enum
 class TurnSource(Enum):
     VOICE = "voice"
     TEXT = "text"
+    TEXT_INPUT = "text_input"
     ATTACHMENT = "attachment"
 
 
@@ -21,9 +22,27 @@ class ModelRequestInput(Enum):
     AUDIO = "audio"
     SCREENSHOT = "screenshot"
     CLIPBOARD = "clipboard"
+    TEXT_INPUT = "text_input"
     ATTACHMENT_IMAGE = "attachment_image"
     ATTACHMENT_AUDIO = "attachment_audio"
     ATTACHMENT_TEXT = "attachment_text"
+
+
+class TextSubmissionReason(Enum):
+    ACCEPTED = "accepted"
+    BUSY = "busy"
+    EMPTY = "empty"
+    OVER_LIMIT = "over_limit"
+
+
+@dataclass(frozen=True)
+class TextSubmissionResult:
+    reason: TextSubmissionReason
+    max_chars: int
+
+    @property
+    def accepted(self) -> bool:
+        return self.reason is TextSubmissionReason.ACCEPTED
 
 
 @dataclass(frozen=True)

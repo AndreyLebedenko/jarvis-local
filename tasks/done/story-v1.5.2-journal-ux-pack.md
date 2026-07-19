@@ -1,6 +1,6 @@
 # Story v1.5.2: Journal UX pack
 
-**Status:** Planned, task cards pending human approval.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.5.2 section).
 **Created:** 2026-07-19, to unblock `task-v1.6.0-7-journal-upload-api.md`,
 which depends on the v1.5.2 text input endpoint. Owner decision
@@ -70,42 +70,58 @@ the disk space the journal occupies.
 
 ## Scope (ordered task cards)
 
-- `tasks/task-v1.5.2-1-text-input-endpoint.md` - transport endpoint and
+- `tasks/done/task-v1.5.2-1-text-input-endpoint.md` - transport endpoint and
   orchestrator turn source for typed messages.
-- `tasks/task-v1.5.2-2-input-dock-ui.md` - the Journal input dock UI
+- `tasks/done/task-v1.5.2-2-input-dock-ui.md` - the Journal input dock UI
   wired to that endpoint.
-- `tasks/task-v1.5.2-3-feed-copy-controls.md` - copy answer / copy
+- `tasks/done/task-v1.5.2-3-feed-copy-controls.md` - copy answer / copy
   selection from the feed.
-- `tasks/task-v1.5.2-4-journal-screenshot-media.md` - record the
+- `tasks/done/task-v1.5.2-4-journal-screenshot-media.md` - record the
   screenshot sent to the model as journal media (recorder wiring).
-- `tasks/task-v1.5.2-5-image-thumbnails.md` - image thumbnails in the
+- `tasks/done/task-v1.5.2-5-image-thumbnails.md` - image thumbnails in the
   feed for media sent to the model.
-- `tasks/task-v1.5.2-6-disk-usage-and-deletion-api.md` - store and
+- `tasks/done/task-v1.5.2-6-disk-usage-and-deletion-api.md` - store and
   transport support for usage visibility and manual session deletion.
-- `tasks/task-v1.5.2-7-journal-management-ui.md` - usage display and
+- `tasks/done/task-v1.5.2-7-journal-management-ui.md` - usage display and
   confirmed deletion flow in the Journal view.
-- `tasks/task-v1.5.2-8-docs-and-release-verification.md` - PROJECT.md
+- `tasks/done/task-v1.5.2-8-docs-and-release-verification.md` - PROJECT.md
   update, config example update if needed, and the human-run release
   checklist.
 
 ## Acceptance criteria
 
-- [ ] A message typed in the Journal input dock reaches the model through
+- [x] A message typed in the Journal input dock reaches the model through
       the shared `_start_turn()` path, is answered aloud and in the feed,
       and is recorded in the journal like other text turns.
-- [ ] Submission while busy or in Hidden mode is rejected with visible,
+- [x] Submission while busy or in Hidden mode is rejected with visible,
       non-destructive feedback (typed text is not lost).
-- [ ] A whole Jarvis answer or an arbitrary selected fragment can be
+- [x] A whole Jarvis answer or an arbitrary selected fragment can be
       copied from the feed.
-- [ ] Screenshots sent to the model are recorded as journal media and
+- [x] Screenshots sent to the model are recorded as journal media and
       appear as thumbnails in the feed, served through the
       authenticated media transport.
-- [ ] The Journal view shows total and per-session disk usage; a session
+- [x] The Journal view shows total and per-session disk usage; a session
       can be deleted only through an explicit confirmation flow, after
       which the feed, the usage numbers, and search results are
       consistent.
-- [ ] `python -m pytest` and Ruff checks are green; hardware/WebView
+- [x] `python -m pytest` and Ruff checks are green; hardware/WebView
       verification is a prepared human-run handoff.
+
+## Release verification
+
+Task cards 1-8 are completed and moved to `tasks/done/`. Automated
+verification on 2026-07-19 passed with `1087 passed, 1 skipped`, plus Ruff
+format and lint checks. Human verification on 2026-07-19 passed: typed Journal
+input creates and auto-selects the new runtime journal session, displays user
+input and the assistant answer live, speaks the answer, preserves text on
+rejection, supports answer/selection copy, renders screenshot thumbnails,
+reports disk usage sanely, and supports confirmed non-active session deletion.
+
+Follow-up notes from verification: the input dock is visually global but sits
+under the selected session, which can read like archived-session continuation;
+v1.5.2 intentionally does not implement continuation or an explicit "new
+session" control. PNG screenshots can dominate journal size, but v1.5.2 keeps
+the exact PNG bytes sent to the model rather than lossy thumbnail derivatives.
 
 ## Stop conditions
 

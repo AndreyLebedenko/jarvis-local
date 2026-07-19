@@ -31,6 +31,7 @@ Subscription = tuple[type, Callable]
 _TURN_SOURCE_SUBSTATUS_KEY: dict[TurnSource, str] = {
     TurnSource.VOICE: "processing_voice",
     TurnSource.TEXT: "processing_text",
+    TurnSource.TEXT_INPUT: "processing_text",
     TurnSource.ATTACHMENT: "processing_attachment",
 }
 

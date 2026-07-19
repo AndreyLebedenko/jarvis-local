@@ -15,7 +15,7 @@ and prepare the human-run release checklist that closes the story.
   revised the journal-context contract sentence - verify the final
   wording is consistent with what actually shipped.
 - All six task cards of this story and their outcomes.
-- `tasks/task-v1.5.2-8-docs-and-release-verification.md` as the shape
+- `tasks/done/task-v1.5.2-8-docs-and-release-verification.md` as the shape
   precedent.
 
 ## Boundary

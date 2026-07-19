@@ -58,6 +58,7 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import (
     ModelRequestInput,
     ModelRequestStarted,
+    TextSubmissionReason,
     TurnAccepted,
     TurnSource,
 )
@@ -199,6 +200,7 @@ def _orchestrator(
     bus=None,
     clock=None,
     journal_recorder=None,
+    text_input_max_chars=main_module.DEFAULT_TEXT_INPUT_MAX_CHARS,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -211,6 +213,7 @@ def _orchestrator(
         bus=bus,
         journal_recorder=journal_recorder,
         clock=clock,
+        text_input_max_chars=text_input_max_chars,
     )
     return orchestrator, backend, sound_cues
 
@@ -227,12 +230,16 @@ class _RequestRecorder:
 class _FakeJournalRecorder:
     def __init__(self) -> None:
         self.voice_wavs: list[bytes] = []
+        self.voice_screenshots: list[bytes | None] = []
         self.user_texts: list[str] = []
         self.user_text_sources: list[str] = []
         self.assistant_texts: list[str] = []
 
-    async def record_voice_user(self, wav_bytes: bytes) -> None:
+    async def record_voice_user(
+        self, wav_bytes: bytes, *, screenshot_png_bytes: bytes | None = None
+    ) -> None:
         self.voice_wavs.append(wav_bytes)
+        self.voice_screenshots.append(screenshot_png_bytes)
 
     async def record_text_user(self, text: str, *, source: str = "text") -> None:
         self.user_texts.append(text)
@@ -510,6 +517,81 @@ async def test_clipboard_turn_is_ignored_while_busy_same_as_audio():
 
     still_busy.set()
     await first
+
+
+# --- Orchestrator: Journal typed input turns (story-v1.5.2 task 1) ---------
+
+
+async def test_submit_text_input_starts_shared_turn_without_pending_screenshot():
+    journal_recorder = _FakeJournalRecorder()
+    bus = EventBus()
+    request_recorder = _RequestRecorder(bus)
+    orchestrator, backend, sound_cues = _orchestrator(
+        bus=bus, journal_recorder=journal_recorder, clock=lambda: 1700000300.0
+    )
+    await orchestrator.on_screenshot(
+        ScreenshotCaptured(png_bytes=b"pending", mode="full", width=1, height=1)
+    )
+
+    result = await orchestrator.submit_text_input("typed from dock")
+
+    assert result.reason is TextSubmissionReason.ACCEPTED
+    assert sound_cues.played == ["thinking"]
+    [(messages, media)] = backend.calls
+    assert messages[-1] == {"role": "user", "content": "typed from dock"}
+    assert media is None
+    assert journal_recorder.user_texts == ["typed from dock"]
+    assert journal_recorder.user_text_sources == ["dock"]
+    assert request_recorder.events == [
+        ModelRequestStarted(
+            timestamp=1700000300.0,
+            inputs=(ModelRequestInput.TEXT_INPUT,),
+            audio_duration_seconds=None,
+        )
+    ]
+
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
+    )
+    assert len(backend.calls[-1][1]) == 2
+
+
+async def test_submit_text_input_rejections_are_structured_and_do_not_start_turn():
+    still_busy = asyncio.Event()
+
+    async def slow_chat() -> None:
+        await still_busy.wait()
+
+    orchestrator, backend, sound_cues = _orchestrator(chat_impl=slow_chat)
+    first = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)
+
+    busy = await orchestrator.submit_text_input("busy")
+    empty = await orchestrator.submit_text_input(" \n\t ")
+
+    assert busy.reason is TextSubmissionReason.BUSY
+    assert empty.reason is TextSubmissionReason.EMPTY
+    assert len(backend.calls) == 1
+    assert sound_cues.played == ["thinking"]
+
+    still_busy.set()
+    await first
+
+
+async def test_submit_text_input_rejects_over_limit_without_truncating():
+    orchestrator, backend, _sound_cues = _orchestrator(text_input_max_chars=5)
+
+    result = await orchestrator.submit_text_input("123456")
+
+    assert result.reason is TextSubmissionReason.OVER_LIMIT
+    assert result.max_chars == 5
+    assert backend.calls == []
 
 
 # --- Orchestrator: attachment turns (task-v1.6.0-6) ------------------------
@@ -1608,6 +1690,8 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
+        orchestrator=types.SimpleNamespace(submit_text_input=object()),
+        journal_recorder=types.SimpleNamespace(session_id=None),
         journal_store=journal_store,
         journal_search_index=journal_search_index,
     )

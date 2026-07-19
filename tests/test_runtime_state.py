@@ -65,14 +65,31 @@ async def test_turn_source_selects_the_thinking_substatus():
     await bus.publish(TurnCompleted, TurnCompleted())
     await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.TEXT))
     await bus.publish(TurnCompleted, TurnCompleted())
+    await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.TEXT_INPUT))
+    await bus.publish(TurnCompleted, TurnCompleted())
     await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.ATTACHMENT))
 
     thinking = [e for e in recorder.events if e.state is RuntimeState.THINKING]
     assert [e.substatus_key for e in thinking] == [
         "processing_voice",
         "processing_text",
+        "processing_text",
         "processing_attachment",
     ]
+
+
+async def test_text_input_turn_reaches_speaking_state():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.TEXT_INPUT))
+    await bus.publish(ResponseToken, ResponseToken(text="x"))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.THINKING,
+        RuntimeState.SPEAKING,
+    ]
+    assert recorder.events[0].substatus_key == "processing_text"
+    assert recorder.events[1].substatus_key == "speaking_response"
 
 
 async def test_token_flood_publishes_speaking_once():

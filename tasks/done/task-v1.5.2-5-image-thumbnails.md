@@ -1,7 +1,7 @@
 # Task v1.5.2-5: Image thumbnails in the feed
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** task-v1.5.2-4 (screenshot media must be recorded in
 the journal first).
 
@@ -46,10 +46,10 @@ use.
 
 ## Acceptance criteria
 
-- [ ] Tests cover media-URL construction for image events and the
+- [x] Tests cover media-URL construction for image events and the
       content-type returned by the media handler for PNG (alongside the
       existing audio case).
-- [ ] Human-run manual handoff covers: a screenshot turn produces a
+- [x] Human-run manual handoff covers: a screenshot turn produces a
       thumbnail in the live feed and after reload, and the missing-file
       placeholder renders when the media file is removed on disk.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.

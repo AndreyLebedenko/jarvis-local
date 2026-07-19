@@ -1,7 +1,7 @@
 # Task v1.5.2-4: Record screenshot media in the journal
 
-**Status:** Backlog.
-**Story:** `tasks/story-v1.5.2-journal-ux-pack.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.5.2-journal-ux-pack.md`
 **Depends on:** nothing in this story; independent of tasks 1-3.
 
 ## Summary
@@ -57,9 +57,9 @@ task-v1.5.2-5.
 
 ## Acceptance criteria
 
-- [ ] Tests cover: voice turn with screenshot records both wav and png
+- [x] Tests cover: voice turn with screenshot records both wav and png
       media references on the user event; voice turn without screenshot
       is unchanged; text turns still record `media=()`; the stored png
       bytes equal the captured bytes.
-- [ ] No UI or transport behavior changes.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] No UI or transport behavior changes.
+- [x] `python -m pytest` and Ruff checks are green.
