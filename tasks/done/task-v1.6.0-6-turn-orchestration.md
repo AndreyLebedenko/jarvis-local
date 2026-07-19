@@ -181,6 +181,6 @@ test_server_projects_attachment_audio_duration_like_mic_audio` drives a real
 Both new tests were confirmed to fail without their respective fix (git
 stash of the fix showed both red) before being confirmed passing with it.
 
-Awaiting human review before this card is marked `Completed.` and moved to
-`tasks/done/`, per the standard task-card workflow.
+Reviewed and approved by the human (no findings); card marked `Completed.`
+and moved to `tasks/done/`.
 
