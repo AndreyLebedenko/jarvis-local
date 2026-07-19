@@ -448,9 +448,11 @@ def compose_turn_text(typed_text: str, plan: AttachmentPlan) -> str:
     (task-v1.6.0-4): the binary reaches the model through the `images`
     payload (`compose_turn_images`), never through text, but without the
     cue the model would see nameless media it cannot connect to the user's
-    words. Audio items contribute nothing here yet; their clip
-    representation is task-v1.6.0-5's job. Attachment parts keep plan
-    order, which is upload order."""
+    words. Audio items contribute nothing here by design: their cue comes
+    from the normalization result (`attachment_audio.compose_audio_cue`),
+    not from the plan, so a cue can never name audio whose decode later
+    failed - orchestration (task-v1.6.0-6) appends it. Attachment parts
+    keep plan order, which is upload order."""
     parts = [typed_text] if typed_text else []
     for item in plan.items:
         if not item.accepted:
