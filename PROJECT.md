@@ -357,6 +357,31 @@ system is intended to grow.
     not distinguish which shape Ollama 0.32.0 actually returned - task 3's
     real parser should confirm this directly against a live call rather
     than assume either shape.
+- **Audio attachment format-gate (task-v1.6.0-1, verified 2026-07-19
+  against the project's actual `.venv`: `soundfile 0.14.0`,
+  `torchaudio 2.8.0+cpu`, no new package installed for the check).**
+  MP3 decodes with the already-declared stack: libsndfile 1.1+ (bundled by
+  `soundfile`) has a native MP3 decoder/encoder -
+  `soundfile.available_formats()` lists `MP3`, and a synthetic tone
+  encoded to MP3 with `sf.write(..., format="MP3")` round-tripped
+  successfully through both `sf.read()` and `torchaudio.load()`
+  (torchaudio's Windows backend is soundfile itself,
+  `torchaudio.list_audio_backends() == ['soundfile']`). M4A/AAC does not:
+  `MP4`/`M4A`/`AAC` are absent from `available_formats()`, and both
+  `sf.read()` and `torchaudio.load()` raised `LibsndfileError: Format not
+  recognised` against a real AAC-in-MP4 fixture
+  (`audio/sample.m4a`, built once with PyAV as an incidental
+  authoring-machine tool, not a project dependency). Decoding M4A would
+  need either PyAV (bundles a full static FFmpeg build, a large new
+  runtime dependency) or `pydub` plus an external `ffmpeg` executable
+  (its own Windows install/PATH story) - both hit
+  task-v1.6.0-1's stop condition. Decision: MP3 is supported for v1.6.0
+  file attachments with no new dependency; M4A is explicitly deferred,
+  and task-v1.6.0-5 is blocked from implementing M4A decode until a human
+  decides to accept one of those dependencies. Full policy (formats,
+  numeric limits, chunking/truncation/rejection rules) is in
+  `tasks/attachment-policy-v1.6.0.md`; proof is
+  `tests/test_audio_decoder_formats.py`.
 
 ## Open questions (unverified - do not assume an answer)
 
