@@ -277,6 +277,28 @@ async def test_recorder_writes_voice_clipboard_and_assistant_events(
     ).read_bytes() == b"same wav bytes sent to model"
 
 
+async def test_recorder_writes_a_custom_source_label(tmp_path: Path) -> None:
+    """record_text_user()'s source parameter defaults to "text" (clipboard),
+    but task-v1.6.0-6's attachment turns pass source="attachment" - proves
+    that label round-trips through the real store, not just a test fake."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 19, 12, 0, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_text_user("attached notes.txt content", source="attachment")
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert (event.role, event.source, event.text, event.media) == (
+        "user",
+        "attachment",
+        "attached notes.txt content",
+        (),
+    )
+
+
 async def test_recorder_write_failure_is_logged_and_not_raised(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

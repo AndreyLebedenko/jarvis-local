@@ -161,12 +161,17 @@ function renderModules() {
   }
 }
 
+// Both the microphone path (audio) and the upload path (attachment_audio)
+// carry the same single-per-turn ModelRequestStarted.audio_duration_seconds
+// value (see transport.py's _AUDIO_DURATION_INPUTS) - either kind renders it.
+const _AUDIO_DURATION_KINDS = new Set(["audio", "attachment_audio"]);
+
 function applyLastModelRequest(payload) {
   const list = document.getElementById("lastRequestList");
   list.replaceChildren();
   for (const item of payload.items || []) {
     const row = document.createElement("li");
-    const detail = item.kind === "audio" && item.duration_seconds !== undefined
+    const detail = _AUDIO_DURATION_KINDS.has(item.kind) && item.duration_seconds !== undefined
       ? ": " + item.duration_seconds.toFixed(1) + " s"
       : "";
     row.textContent = formatLogTime(payload.timestamp) + " - "

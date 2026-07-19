@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 Subscription = tuple[type, Callable]
 
+_TURN_SOURCE_SUBSTATUS_KEY: dict[TurnSource, str] = {
+    TurnSource.VOICE: "processing_voice",
+    TurnSource.TEXT: "processing_text",
+    TurnSource.ATTACHMENT: "processing_attachment",
+}
+
 
 @dataclass(frozen=True)
 class RuntimeStateChanged:
@@ -66,11 +72,7 @@ class RuntimeStateTracker:
         await self._transition(RuntimeState.LISTENING, key="ready_to_listen")
 
     async def _on_turn_accepted(self, event: TurnAccepted) -> None:
-        key = (
-            "processing_voice"
-            if event.source is TurnSource.VOICE
-            else "processing_text"
-        )
+        key = _TURN_SOURCE_SUBSTATUS_KEY[event.source]
         await self._transition(RuntimeState.THINKING, key=key)
 
     async def _on_response_token(self, event: ResponseToken) -> None:

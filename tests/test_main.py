@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import io
 import json
 import logging
 import sys
@@ -11,6 +12,7 @@ from collections.abc import Callable
 import httpx
 import numpy as np
 import pytest
+import soundfile as sf
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -53,7 +55,12 @@ from jarvis.core.config import (
     TtsSettings,
     VadSettings,
 )
-from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
+from jarvis.core.lifecycle import (
+    ModelRequestInput,
+    ModelRequestStarted,
+    TurnAccepted,
+    TurnSource,
+)
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
@@ -67,6 +74,16 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
+from jarvis.inputs.attachments import (
+    AttachmentClass,
+    AttachmentPlan,
+    AttachmentPlanItem,
+    PendingAudioMedia,
+    PlannedImageMedia,
+    PlannedTextPart,
+    compose_turn_images,
+    compose_turn_text,
+)
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.journal import JournalStore
@@ -211,14 +228,15 @@ class _FakeJournalRecorder:
     def __init__(self) -> None:
         self.voice_wavs: list[bytes] = []
         self.user_texts: list[str] = []
+        self.user_text_sources: list[str] = []
         self.assistant_texts: list[str] = []
 
     async def record_voice_user(self, wav_bytes: bytes) -> None:
         self.voice_wavs.append(wav_bytes)
 
     async def record_text_user(self, text: str, *, source: str = "text") -> None:
-        del source
         self.user_texts.append(text)
+        self.user_text_sources.append(source)
 
     async def record_assistant(self, text: str) -> None:
         self.assistant_texts.append(text)
@@ -492,6 +510,274 @@ async def test_clipboard_turn_is_ignored_while_busy_same_as_audio():
 
     still_busy.set()
     await first
+
+
+# --- Orchestrator: attachment turns (task-v1.6.0-6) ------------------------
+#
+# on_attachment_submission() goes through the same _start_turn() shared
+# path as on_utterance()/on_clipboard() - busy-guard, thinking cue, and
+# history recording are already covered above and are not re-tested from
+# scratch here. These tests focus on what this task actually owns: turning
+# an accepted AttachmentPlan into composed text/media, normalizing any
+# pending audio (the one plan item planning could not fully resolve), and
+# the attachment-specific source/input metadata.
+
+_ATTACHMENT_SAMPLE_RATE = 16000
+
+
+def _attachment_wav_bytes(duration_seconds: float) -> bytes:
+    samples = np.zeros(
+        int(_ATTACHMENT_SAMPLE_RATE * duration_seconds), dtype=np.float32
+    )
+    buffer = io.BytesIO()
+    sf.write(buffer, samples, _ATTACHMENT_SAMPLE_RATE, format="WAV", subtype="PCM_16")
+    return buffer.getvalue()
+
+
+def _image_plan_item(filename: str = "photo.png") -> AttachmentPlanItem:
+    return AttachmentPlanItem(
+        filename=filename,
+        attachment_class=AttachmentClass.IMAGE,
+        accepted=True,
+        image=PlannedImageMedia(base64_data=base64.b64encode(b"png-bytes").decode()),
+    )
+
+
+def _text_plan_item(
+    filename: str = "notes.txt", content: str = "hello"
+) -> AttachmentPlanItem:
+    wrapped = f"[Attached file: {filename}]\n{content}\n[End of {filename}]"
+    return AttachmentPlanItem(
+        filename=filename,
+        attachment_class=AttachmentClass.TEXT,
+        accepted=True,
+        text=PlannedTextPart(content=wrapped, truncated=False),
+    )
+
+
+def _audio_plan_item(
+    filename: str = "memo.wav", duration_seconds: float = 2.0
+) -> AttachmentPlanItem:
+    return AttachmentPlanItem(
+        filename=filename,
+        attachment_class=AttachmentClass.AUDIO,
+        accepted=True,
+        pending_audio=PendingAudioMedia(
+            data=_attachment_wav_bytes(duration_seconds),
+            content_type="audio/wav",
+            duration_seconds=duration_seconds,
+        ),
+    )
+
+
+def _undecodable_audio_plan_item(filename: str = "broken.wav") -> AttachmentPlanItem:
+    return AttachmentPlanItem(
+        filename=filename,
+        attachment_class=AttachmentClass.AUDIO,
+        accepted=True,
+        pending_audio=PendingAudioMedia(
+            data=b"RIFF then garbage", content_type="audio/wav", duration_seconds=1.0
+        ),
+    )
+
+
+class _TurnAcceptedRecorder:
+    def __init__(self, bus: EventBus) -> None:
+        self.events: list[TurnAccepted] = []
+        bus.subscribe(TurnAccepted, self._on_event)
+
+    async def _on_event(self, event: TurnAccepted) -> None:
+        self.events.append(event)
+
+
+async def test_on_attachment_submission_sends_composed_text_and_image_media():
+    orchestrator, backend, sound_cues = _orchestrator()
+    plan = AttachmentPlan(
+        items=(_image_plan_item("photo.png"), _text_plan_item("notes.txt", "hello"))
+    )
+
+    await orchestrator.on_attachment_submission("check these", plan)
+
+    assert sound_cues.played == ["thinking"]
+    [(messages, media)] = backend.calls
+    assert messages[-1] == {
+        "role": "user",
+        "content": compose_turn_text("check these", plan),
+    }
+    assert media == list(compose_turn_images(plan))
+
+
+async def test_on_attachment_submission_normalizes_audio_and_appends_clip_and_cue():
+    orchestrator, backend, _sound_cues = _orchestrator()
+    plan = AttachmentPlan(items=(_audio_plan_item("memo.wav", duration_seconds=2.0),))
+
+    await orchestrator.on_attachment_submission("", plan)
+
+    [(messages, media)] = backend.calls
+    assert len(media) == 1  # one <=30s clip for a 2s file
+    assert messages[-1]["content"] == "[Attached audio: memo.wav, 2.0 s]"
+
+
+async def test_on_attachment_submission_orders_media_images_then_audio():
+    orchestrator, backend, _sound_cues = _orchestrator()
+    plan = AttachmentPlan(
+        items=(
+            _image_plan_item("a.png"),
+            _audio_plan_item("memo.wav", duration_seconds=1.0),
+            _image_plan_item("b.png"),
+        )
+    )
+
+    await orchestrator.on_attachment_submission("look and listen", plan)
+
+    [(_messages, media)] = backend.calls
+    image_b64 = base64.b64encode(b"png-bytes").decode()
+    assert media[:2] == [image_b64, image_b64]  # images first, upload order
+    assert len(media) == 3  # then the one audio clip
+
+
+async def test_on_attachment_submission_reports_source_and_input_metadata():
+    bus = EventBus()
+    turn_recorder = _TurnAcceptedRecorder(bus)
+    request_recorder = _RequestRecorder(bus)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus, clock=lambda: 1700000200.0
+    )
+    plan = AttachmentPlan(
+        items=(
+            _image_plan_item("photo.png"),
+            _text_plan_item("notes.txt"),
+            _audio_plan_item("memo.wav", duration_seconds=3.0),
+        )
+    )
+
+    await orchestrator.on_attachment_submission("hi", plan)
+
+    assert turn_recorder.events == [TurnAccepted(source=TurnSource.ATTACHMENT)]
+    assert request_recorder.events == [
+        ModelRequestStarted(
+            timestamp=1700000200.0,
+            inputs=(
+                ModelRequestInput.ATTACHMENT_IMAGE,
+                ModelRequestInput.ATTACHMENT_TEXT,
+                ModelRequestInput.ATTACHMENT_AUDIO,
+            ),
+            audio_duration_seconds=3.0,
+        )
+    ]
+
+
+async def test_on_attachment_submission_undecodable_audio_warns_and_continues():
+    bus = EventBus()
+    orchestrator, backend, _sound_cues = _orchestrator(bus=bus)
+    events: list[SystemEvent] = []
+
+    async def on_system_event(event: SystemEvent) -> None:
+        events.append(event)
+
+    bus.subscribe(SystemEvent, on_system_event)
+    plan = AttachmentPlan(
+        items=(
+            _text_plan_item("notes.txt", "hello"),
+            _undecodable_audio_plan_item("broken.wav"),
+        )
+    )
+
+    await orchestrator.on_attachment_submission("", plan)
+
+    # the turn still went through with what was left (the text attachment)
+    [(messages, media)] = backend.calls
+    assert media is None
+    assert "hello" in messages[-1]["content"]
+    assert "[Attached audio" not in messages[-1]["content"]
+    # ... and the audio-specific failure was not silently dropped
+    assert len(events) == 1
+    assert events[0].level is EventLevel.WARN
+    assert "broken.wav" in events[0].message
+
+
+async def test_attachment_media_is_not_stored_in_conversation_history():
+    orchestrator, _backend, _sound_cues = _orchestrator()
+    plan = AttachmentPlan(
+        items=(_image_plan_item("photo.png"), _audio_plan_item("memo.wav")),
+    )
+
+    await orchestrator.on_attachment_submission("describe these", plan)
+    await orchestrator.on_response_token(ResponseToken(text="Done."))
+    await orchestrator.on_response_complete(_complete_event())
+
+    messages = orchestrator._history.as_messages()
+    assert all("images" not in message for message in messages)
+    recorded_texts = " ".join(str(message["content"]) for message in messages)
+    assert base64.b64encode(b"png-bytes").decode() not in recorded_texts
+
+
+async def test_attachment_submission_is_ignored_while_busy():
+    still_busy = asyncio.Event()
+
+    async def slow_chat() -> None:
+        await still_busy.wait()
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, sound_cues = _orchestrator(
+        chat_impl=slow_chat, journal_recorder=journal_recorder
+    )
+    first = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)  # let the first call start and set _busy
+
+    await orchestrator.on_screenshot(
+        ScreenshotCaptured(png_bytes=b"png", mode="full", width=1, height=1)
+    )
+    plan = AttachmentPlan(items=(_text_plan_item("notes.txt"),))
+    await orchestrator.on_attachment_submission("ignored while busy", plan)
+
+    assert len(backend.calls) == 1  # the attachment submission was ignored
+    assert sound_cues.played == ["thinking"]  # only the in-flight turn's cue
+    assert journal_recorder.user_texts == []  # no user event was journaled
+
+    still_busy.set()
+    await first
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    # the pending screenshot from before the rejected submission survived
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"c", start_seconds=0, end_seconds=1)
+    )
+    assert len(backend.calls[-1][1]) == 2  # audio + the surviving screenshot
+
+
+async def test_attachment_submission_backend_failure_plays_error_and_clears_busy():
+    async def failing_chat() -> None:
+        raise ValueError("boom")
+
+    orchestrator, backend, sound_cues = _orchestrator(chat_impl=failing_chat)
+    plan = AttachmentPlan(items=(_text_plan_item("notes.txt"),))
+
+    await orchestrator.on_attachment_submission("hi", plan)
+
+    assert sound_cues.played == ["thinking", "error"]
+
+    # busy was cleared, so a subsequent submission is not ignored
+    await orchestrator.on_attachment_submission("hi again", plan)
+    assert len(backend.calls) == 2
+
+
+async def test_attachment_submission_records_journal_with_attachment_source():
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        journal_recorder=journal_recorder
+    )
+    plan = AttachmentPlan(items=(_text_plan_item("notes.txt", "hello"),))
+
+    await orchestrator.on_attachment_submission("check this", plan)
+
+    assert journal_recorder.user_text_sources == ["attachment"]
+    assert journal_recorder.user_texts == [compose_turn_text("check this", plan)]
 
 
 async def test_on_response_token_plays_speaking_cue_only_once():

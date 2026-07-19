@@ -14,12 +14,16 @@ from enum import Enum
 class TurnSource(Enum):
     VOICE = "voice"
     TEXT = "text"
+    ATTACHMENT = "attachment"
 
 
 class ModelRequestInput(Enum):
     AUDIO = "audio"
     SCREENSHOT = "screenshot"
     CLIPBOARD = "clipboard"
+    ATTACHMENT_IMAGE = "attachment_image"
+    ATTACHMENT_AUDIO = "attachment_audio"
+    ATTACHMENT_TEXT = "attachment_text"
 
 
 @dataclass(frozen=True)

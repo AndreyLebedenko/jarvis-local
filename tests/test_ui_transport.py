@@ -256,6 +256,34 @@ def test_last_model_request_delta_contains_metadata_only():
     }
 
 
+@pytest.mark.asyncio
+async def test_server_projects_attachment_audio_duration_like_mic_audio():
+    """Regression test: _on_model_request_started() used to key the
+    duration projection off `input_kind is ModelRequestInput.AUDIO`
+    specifically, so an attachment-audio turn's audio_duration_seconds
+    (task-v1.6.0-6) was silently dropped from the UI payload even though
+    the bus event carried it."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=5.0,
+                inputs=(ModelRequestInput.ATTACHMENT_AUDIO,),
+                audio_duration_seconds=3.5,
+            ),
+        )
+        assert server.state.snapshot()["last_model_request"] == {
+            "timestamp": 5.0,
+            "items": [{"kind": "attachment_audio", "duration_seconds": 3.5}],
+        }
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
 class _FakeWebSocket:
     def __init__(self) -> None:
         self.closed = False
