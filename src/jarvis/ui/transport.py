@@ -6,13 +6,14 @@ import hmac
 import json
 import logging
 import secrets
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from aiohttp import web
+from aiohttp.multipart import BodyPartReader
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
@@ -26,6 +27,7 @@ from jarvis.core.config import (
     tts_route_field_specs,
 )
 from jarvis.core.lifecycle import (
+    AttachmentSubmissionResult,
     ModelRequestInput,
     ModelRequestStarted,
     NewContextReason,
@@ -34,6 +36,14 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.inputs.attachments import (
+    MAX_ATTACHMENTS_PER_TURN,
+    MAX_TOTAL_UPLOAD_BYTES_PER_TURN,
+    AttachmentPlan,
+    AttachmentPlanItem,
+    AttachmentUpload,
+    plan_attachments,
+)
 from jarvis.journal.events import JournalEvent, JournalEventAppended
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
 from jarvis.journal.search import JournalSearchIndex
@@ -88,6 +98,8 @@ JOURNAL_MEDIA_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
 }
+UPLOAD_READ_CHUNK_BYTES = 64 * 1024
+MAX_JOURNAL_UPLOAD_REQUEST_BYTES = MAX_TOTAL_UPLOAD_BYTES_PER_TURN + 1024 * 1024
 
 # ModelRequestStarted.audio_duration_seconds is a single per-turn value that
 # applies whichever audio-bearing input produced it - the mic path's AUDIO
@@ -105,6 +117,13 @@ JsonObject = dict[str, JSONValue]
 
 class ProtocolError(ValueError):
     """Raised when a message does not satisfy protocol v1."""
+
+
+class UploadTooLargeError(Exception):
+    def __init__(self, actual_bytes: int, max_bytes: int) -> None:
+        super().__init__("multipart attachment upload exceeds the per-turn byte budget")
+        self.actual_bytes = actual_bytes
+        self.max_bytes = max_bytes
 
 
 @dataclass(frozen=True)
@@ -230,6 +249,28 @@ def token_matches(expected: str, actual: str | None) -> bool:
     )
 
 
+@web.middleware
+async def journal_input_413_json_middleware(
+    request: web.Request,
+    handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+) -> web.StreamResponse:
+    try:
+        return await handler(request)
+    except web.HTTPRequestEntityTooLarge:
+        if request.path != "/api/journal/input":
+            raise
+        return web.json_response(
+            {
+                "status": "rejected",
+                "reason": "request_too_large",
+                "actual_bytes": request.content_length or 0,
+                "max_bytes": MAX_JOURNAL_UPLOAD_REQUEST_BYTES,
+                "files": [],
+            },
+            status=413,
+        )
+
+
 def hello_message(client_id: str, capabilities: Sequence[str]) -> JsonObject:
     return make_message(
         "control",
@@ -273,6 +314,12 @@ class ControlApi(Protocol):
 
 class TextInputSubmitter(Protocol):
     async def __call__(self, text: str) -> TextSubmissionResult: ...
+
+
+class AttachmentInputSubmitter(Protocol):
+    async def __call__(
+        self, typed_text: str, plan: AttachmentPlan
+    ) -> AttachmentSubmissionResult: ...
 
 
 class NewContextHandler(Protocol):
@@ -481,6 +528,7 @@ class UiTransportServer:
         journal_store: JournalStore | None = None,
         journal_search_index: JournalSearchIndex | None = None,
         journal_text_submitter: TextInputSubmitter | None = None,
+        journal_attachment_submitter: AttachmentInputSubmitter | None = None,
         journal_new_context_handler: NewContextHandler | None = None,
         journal_fork_handler: JournalForkHandler | None = None,
         journal_fork_seed_max_chars: int = DEFAULT_FORK_SEED_MAX_CHARS,
@@ -498,6 +546,7 @@ class UiTransportServer:
         self._journal_store = journal_store
         self._journal_search_index = journal_search_index
         self._journal_text_submitter = journal_text_submitter
+        self._journal_attachment_submitter = journal_attachment_submitter
         self._journal_new_context_handler = journal_new_context_handler
         self._journal_fork_handler = journal_fork_handler
         self._journal_fork_seed_max_chars = journal_fork_seed_max_chars
@@ -530,7 +579,10 @@ class UiTransportServer:
             self._token = self._token_factory()
         await self._rebuild_journal_index()
         self._subscribe_to_bus()
-        app = web.Application()
+        app = web.Application(
+            client_max_size=MAX_JOURNAL_UPLOAD_REQUEST_BYTES,
+            middlewares=[journal_input_413_json_middleware],
+        )
         app.router.add_get("/ws", self._websocket_handler)
         app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
         app.router.add_post("/api/journal/input", self._journal_input_handler)
@@ -726,6 +778,8 @@ class UiTransportServer:
         self._require_http_token(request)
         if self._is_hidden():
             return self._journal_hidden_response()
+        if request.content_type == "multipart/form-data":
+            return await self._journal_multipart_input_handler(request)
         if self._journal_text_submitter is None:
             raise web.HTTPServiceUnavailable(text="journal input not available")
         try:
@@ -736,6 +790,131 @@ class UiTransportServer:
             raise web.HTTPBadRequest(text="request body requires string text")
         result = await self._journal_text_submitter(payload["text"])
         return web.json_response(self._text_submission_payload(result))
+
+    async def _journal_multipart_input_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        if self._journal_attachment_submitter is None:
+            raise web.HTTPServiceUnavailable(
+                text="journal attachment input not available"
+            )
+        try:
+            typed_text, uploads, pre_rejected_files = await self._read_multipart_input(
+                request
+            )
+        except UploadTooLargeError as error:
+            return web.json_response(
+                {
+                    "status": "rejected",
+                    "reason": "request_too_large",
+                    "actual_bytes": error.actual_bytes,
+                    "max_bytes": error.max_bytes,
+                    "files": [],
+                },
+                status=413,
+            )
+        if not uploads:
+            if self._journal_text_submitter is None:
+                raise web.HTTPServiceUnavailable(text="journal input not available")
+            result = await self._journal_text_submitter(typed_text)
+            payload = self._text_submission_payload(result)
+            payload["files"] = []
+            return web.json_response(payload)
+
+        plan = plan_attachments(uploads)
+        result = await self._journal_attachment_submitter(typed_text, plan)
+        return web.json_response(
+            self._attachment_submission_payload(result, plan, pre_rejected_files)
+        )
+
+    async def _read_multipart_input(
+        self, request: web.Request
+    ) -> tuple[str, list[AttachmentUpload], list[JsonObject]]:
+        try:
+            reader = await request.multipart()
+        except ValueError:
+            raise web.HTTPBadRequest(text="request body must be multipart") from None
+
+        typed_text = ""
+        uploads: list[AttachmentUpload] = []
+        pre_rejected_files: list[JsonObject] = []
+        total_bytes = 0
+
+        async for part in reader:
+            if part.filename is None:
+                if part.name == "text":
+                    raw_text = await self._read_multipart_text_part(part)
+                    typed_text = raw_text.decode("utf-8", errors="replace")
+                else:
+                    await part.release()
+                continue
+
+            filename = self._client_upload_basename(part.filename)
+            if len(uploads) >= MAX_ATTACHMENTS_PER_TURN:
+                pre_rejected_files.append(
+                    {
+                        "filename": filename,
+                        "status": "rejected",
+                        "class": None,
+                        "warnings": [],
+                        "reason": (
+                            f"{filename}: turn already has the maximum of "
+                            f"{MAX_ATTACHMENTS_PER_TURN} attachments."
+                        ),
+                    }
+                )
+                total_bytes = await self._discard_multipart_part(part, total_bytes)
+                continue
+
+            data, total_bytes = await self._read_multipart_part(part, total_bytes)
+            uploads.append(
+                AttachmentUpload(
+                    filename=filename,
+                    content_type=part.headers.get("Content-Type", ""),
+                    data=data,
+                )
+            )
+
+        return typed_text, uploads, pre_rejected_files
+
+    async def _read_multipart_text_part(self, part: BodyPartReader) -> bytes:
+        chunks: list[bytes] = []
+        while True:
+            chunk = await part.read_chunk(size=UPLOAD_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    async def _read_multipart_part(
+        self, part: BodyPartReader, total_bytes: int
+    ) -> tuple[bytes, int]:
+        chunks: list[bytes] = []
+        while True:
+            chunk = await part.read_chunk(size=UPLOAD_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > MAX_TOTAL_UPLOAD_BYTES_PER_TURN:
+                raise UploadTooLargeError(
+                    actual_bytes=total_bytes, max_bytes=MAX_TOTAL_UPLOAD_BYTES_PER_TURN
+                )
+            chunks.append(chunk)
+        return b"".join(chunks), total_bytes
+
+    async def _discard_multipart_part(
+        self, part: BodyPartReader, total_bytes: int
+    ) -> int:
+        while True:
+            chunk = await part.read_chunk(size=UPLOAD_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > MAX_TOTAL_UPLOAD_BYTES_PER_TURN:
+                raise UploadTooLargeError(
+                    actual_bytes=total_bytes, max_bytes=MAX_TOTAL_UPLOAD_BYTES_PER_TURN
+                )
+        return total_bytes
 
     async def _journal_new_context_handler_http(
         self, request: web.Request
@@ -959,6 +1138,48 @@ class UiTransportServer:
             "reason": result.reason.value,
             "max_chars": result.max_chars,
         }
+
+    @staticmethod
+    def _attachment_submission_payload(
+        result: AttachmentSubmissionResult,
+        plan: AttachmentPlan,
+        pre_rejected_files: Sequence[JsonObject],
+    ) -> JsonObject:
+        status = "accepted" if result.accepted else "rejected"
+        return {
+            "status": status,
+            "reason": result.reason.value,
+            "files": [
+                *(
+                    UiTransportServer._attachment_item_payload(item)
+                    for item in plan.items
+                ),
+                *pre_rejected_files,
+            ],
+        }
+
+    @staticmethod
+    def _attachment_item_payload(item: AttachmentPlanItem) -> JsonObject:
+        if not item.accepted:
+            status = "rejected"
+        elif item.warnings:
+            status = "warning"
+        else:
+            status = "accepted"
+        payload: JsonObject = {
+            "filename": item.filename,
+            "status": status,
+            "class": item.attachment_class.value if item.attachment_class else None,
+            "warnings": list(item.warnings),
+        }
+        if item.rejection_reason is not None:
+            payload["reason"] = item.rejection_reason
+        return payload
+
+    @staticmethod
+    def _client_upload_basename(filename: str) -> str:
+        normalized = unquote(filename).replace("\\", "/")
+        return normalized.rsplit("/", maxsplit=1)[-1]
 
     @staticmethod
     def _journal_fork_response(

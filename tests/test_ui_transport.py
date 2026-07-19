@@ -14,6 +14,8 @@ from jarvis.core.config import (
     VadSettings,
 )
 from jarvis.core.lifecycle import (
+    AttachmentSubmissionReason,
+    AttachmentSubmissionResult,
     ModelRequestInput,
     ModelRequestStarted,
     NewContextReason,
@@ -22,6 +24,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
     JournalEvent,
     JournalEventAppended,
@@ -122,6 +125,18 @@ class _FakeTextSubmitter:
     async def __call__(self, text: str) -> TextSubmissionResult:
         self.calls.append(text)
         return TextSubmissionResult(self.reason, max_chars=20)
+
+
+class _FakeAttachmentSubmitter:
+    def __init__(self, reason: AttachmentSubmissionReason) -> None:
+        self.reason = reason
+        self.calls: list[tuple[str, AttachmentPlan]] = []
+
+    async def __call__(
+        self, typed_text: str, plan: AttachmentPlan
+    ) -> AttachmentSubmissionResult:
+        self.calls.append((typed_text, plan))
+        return AttachmentSubmissionResult(self.reason)
 
 
 class _FakeJournalForkHandler:
@@ -1082,6 +1097,385 @@ async def test_journal_input_endpoint_reuses_auth_and_rejects_bad_payload() -> N
 
 
 @pytest.mark.asyncio
+async def test_journal_input_endpoint_accepts_mixed_attachment_upload() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("text", "look at these")
+        form.add_field(
+            "files",
+            b"\x89PNG\r\n\x1a\nimage-bytes",
+            filename="photo.png",
+            content_type="image/png",
+        )
+        form.add_field(
+            "files",
+            b"ignored",
+            filename="manual.pdf",
+            content_type="application/pdf",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "accepted",
+                "reason": "accepted",
+                "files": [
+                    {
+                        "filename": "photo.png",
+                        "status": "accepted",
+                        "class": "image",
+                        "warnings": [],
+                    },
+                    {
+                        "filename": "manual.pdf",
+                        "status": "rejected",
+                        "class": None,
+                        "warnings": [],
+                        "reason": (
+                            "manual.pdf: unsupported file type (.pdf). Supported: "
+                            "csv, jpeg, jpg, json, log, md, mp3, png, txt, wav."
+                        ),
+                    },
+                ],
+            }
+        [(typed_text, plan)] = attachment_submitter.calls
+        assert typed_text == "look at these"
+        assert [item.filename for item in plan.items] == ["photo.png", "manual.pdf"]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_never_trusts_uploaded_filename_paths() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field(
+            "files",
+            b"notes",
+            filename="..\\..\\memory.txt",
+            content_type="text/plain",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "accepted",
+                "reason": "accepted",
+                "files": [
+                    {
+                        "filename": "memory.txt",
+                        "status": "accepted",
+                        "class": "text",
+                        "warnings": [],
+                    }
+                ],
+            }
+        [(_typed_text, plan)] = attachment_submitter.calls
+        assert [item.filename for item in plan.items] == ["memory.txt"]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_rejects_attachment_when_turn_has_no_content() -> (
+    None
+):
+    attachment_submitter = _FakeAttachmentSubmitter(
+        AttachmentSubmissionReason.NO_ACCEPTED_CONTENT
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field(
+            "files",
+            b"ignored",
+            filename="manual.pdf",
+            content_type="application/pdf",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "rejected",
+                "reason": "no_accepted_content",
+                "files": [
+                    {
+                        "filename": "manual.pdf",
+                        "status": "rejected",
+                        "class": None,
+                        "warnings": [],
+                        "reason": (
+                            "manual.pdf: unsupported file type (.pdf). Supported: "
+                            "csv, jpeg, jpg, json, log, md, mp3, png, txt, wav."
+                        ),
+                    }
+                ],
+            }
+        assert len(attachment_submitter.calls) == 1
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_rejects_oversize_attachment_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import jarvis.ui.transport as transport_module
+
+    monkeypatch.setattr(transport_module, "MAX_TOTAL_UPLOAD_BYTES_PER_TURN", 8)
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field(
+            "files",
+            b"\x89PNG\r\n\x1a\nextra",
+            filename="photo.png",
+            content_type="image/png",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 413
+            assert await response.json() == {
+                "status": "rejected",
+                "reason": "request_too_large",
+                "actual_bytes": 13,
+                "max_bytes": 8,
+                "files": [],
+            }
+        assert attachment_submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_rejects_files_over_attachment_count_limit() -> (
+    None
+):
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        for index in range(5):
+            form.add_field(
+                "files",
+                b"\x89PNG\r\n\x1a\nimage-bytes",
+                filename=f"photo-{index}.png",
+                content_type="image/png",
+            )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            payload = await response.json()
+            assert payload["status"] == "accepted"
+            assert [file["status"] for file in payload["files"]] == [
+                "accepted",
+                "accepted",
+                "accepted",
+                "accepted",
+                "rejected",
+            ]
+            assert payload["files"][-1] == {
+                "filename": "photo-4.png",
+                "status": "rejected",
+                "class": None,
+                "warnings": [],
+                "reason": "photo-4.png: turn already has the maximum of 4 attachments.",
+            }
+        [(_typed_text, plan)] = attachment_submitter.calls
+        assert [item.filename for item in plan.items] == [
+            "photo-0.png",
+            "photo-1.png",
+            "photo-2.png",
+            "photo-3.png",
+        ]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_does_not_count_typed_text_against_file_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import jarvis.ui.transport as transport_module
+
+    monkeypatch.setattr(transport_module, "MAX_TOTAL_UPLOAD_BYTES_PER_TURN", 8)
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("text", "typed text is not an attachment byte budget")
+        form.add_field(
+            "files",
+            b"\x89PNG\r\n\x1a\n",
+            filename="photo.png",
+            content_type="image/png",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            assert (await response.json())["status"] == "accepted"
+        [(typed_text, _plan)] = attachment_submitter.calls
+        assert typed_text == "typed text is not an attachment byte budget"
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_maps_outer_request_size_limit_to_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import jarvis.ui.transport as transport_module
+
+    monkeypatch.setattr(transport_module, "MAX_JOURNAL_UPLOAD_REQUEST_BYTES", 8)
+    submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_text_submitter=submitter,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                json={"text": "this JSON request body exceeds eight bytes"},
+            )
+            payload = await response.json()
+            assert response.status == 413
+            assert payload["status"] == "rejected"
+            assert payload["reason"] == "request_too_large"
+            assert payload["actual_bytes"] > 8
+            assert payload["max_bytes"] == 8
+            assert payload["files"] == []
+        assert submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_keeps_text_only_multipart_response_shape() -> (
+    None
+):
+    submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_text_submitter=submitter,
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("text", "typed only", content_type="text/plain")
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "accepted",
+                "reason": "accepted",
+                "files": [],
+            }
+        assert submitter.calls == ["typed only"]
+        assert attachment_submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_reuses_auth_for_attachment_upload() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field(
+            "files",
+            b"\x89PNG\r\n\x1a\nimage-bytes",
+            filename="photo.png",
+            content_type="image/png",
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input",
+                data=form,
+            )
+            assert response.status == 401
+        assert attachment_submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_journal_new_context_endpoint_maps_success_and_busy() -> None:
     for result, expected_status, expected_payload in [
         (
@@ -1592,6 +1986,7 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
     (media_dir / "clip.wav").write_bytes(b"RIFF demo")
     state = UiStateStore(visibility_mode=VisibilityMode.HIDDEN)
     submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
     fork_handler = _FakeJournalForkHandler(
         ForkSessionResult(ForkSessionReason.ACCEPTED)
     )
@@ -1603,6 +1998,7 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
         journal_store=store,
         journal_search_index=JournalSearchIndex(store, tmp_path),
         journal_text_submitter=submitter,
+        journal_attachment_submitter=attachment_submitter,
         journal_fork_handler=fork_handler,
     )
     info = await server.start()
@@ -1649,6 +2045,20 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
             assert hidden_input.status == 200
             assert await hidden_input.json() == {"status": "hidden"}
             assert submitter.calls == []
+            hidden_form = aiohttp.FormData()
+            hidden_form.add_field(
+                "files",
+                b"\x89PNG\r\n\x1a\nimage-bytes",
+                filename="photo.png",
+                content_type="image/png",
+            )
+            hidden_attachment_input = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=hidden_form,
+            )
+            assert hidden_attachment_input.status == 200
+            assert await hidden_attachment_input.json() == {"status": "hidden"}
+            assert attachment_submitter.calls == []
             hidden_fork = await session.post(
                 f"http://127.0.0.1:{info.port}/api/journal/sessions/"
                 f"{event.session_id}/fork?token=valid-token"

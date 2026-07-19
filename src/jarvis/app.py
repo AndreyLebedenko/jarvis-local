@@ -25,6 +25,8 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.lifecycle import (
     VOICE_PLACEHOLDER_TEXT,
+    AttachmentSubmissionReason,
+    AttachmentSubmissionResult,
     BackendRequestFailed,
     ModelRequestInput,
     ModelRequestStarted,
@@ -334,7 +336,7 @@ class Orchestrator:
 
     async def on_attachment_submission(
         self, typed_text: str, plan: AttachmentPlan
-    ) -> None:
+    ) -> AttachmentSubmissionResult:
         """Wires an already-validated attachment plan (task-v1.6.0-2's
         plan_attachments(), handed in by the future Journal input dock
         transport - task-v1.6.0-7) into the normal turn lifecycle. Only
@@ -357,7 +359,7 @@ class Orchestrator:
             logger.info(
                 "Ignoring attachment submission: previous request still in flight"
             )
-            return
+            return AttachmentSubmissionResult(AttachmentSubmissionReason.BUSY)
 
         media: list[str] = list(compose_turn_images(plan))
         inputs: list[ModelRequestInput] = [
@@ -403,6 +405,11 @@ class Orchestrator:
                     ui_message=reason,
                 )
 
+        if not history_text.strip() and not media and not inputs:
+            return AttachmentSubmissionResult(
+                AttachmentSubmissionReason.NO_ACCEPTED_CONTENT
+            )
+
         await self._start_turn(
             history_text,
             media if media else None,
@@ -412,6 +419,7 @@ class Orchestrator:
             voice_wav_bytes=None,
             screenshot_png_bytes=None,
         )
+        return AttachmentSubmissionResult(AttachmentSubmissionReason.ACCEPTED)
 
     async def _start_turn(
         self,
@@ -1118,6 +1126,7 @@ def run_with_status_console(
         journal_store=app.journal_store,
         journal_search_index=app.journal_search_index,
         journal_text_submitter=app.orchestrator.submit_text_input,
+        journal_attachment_submitter=app.orchestrator.on_attachment_submission,
         journal_new_context_handler=app.orchestrator.start_new_context,
         journal_fork_handler=app.orchestrator.fork_from_journal_session,
         journal_fork_seed_max_chars=settings.memory.fork_seed_max_chars,

@@ -2220,6 +2220,46 @@ surface while preserving the append-only journal invariant.
   all new work is local files plus the existing authenticated local transport,
   with no new network capability.
 
+## Architecture v1.6.0 (file attachments)
+
+See [tasks/story-v1.6.0-file-attachments.md](tasks/story-v1.6.0-file-attachments.md).
+File attachments extend the Journal input dock's local turn-submission surface;
+they do not add a second chat surface, hotkey, cloud upload path, or `file://`
+access.
+
+- `POST /api/journal/input` keeps the v1.5.2 JSON body contract for typed
+  text and additionally accepts `multipart/form-data`. Multipart requests use a
+  `text` field for optional typed text and file parts for uploaded attachments.
+  Text-only multipart requests fall back to the same text-input submitter and
+  return the same accepted/rejected result shape with `files: []`.
+- The endpoint is local and token-authenticated like the rest of the Status
+  Console transport. Hidden mode is enforced before parsing the request body,
+  so hidden typed text and hidden attachment bytes cannot reach the attachment
+  planner or orchestrator.
+- Transport owns only the streaming guards that must happen before file bytes
+  are retained in request state: total attachment bytes and attachment part
+  count. File bytes count against `MAX_TOTAL_UPLOAD_BYTES_PER_TURN`; the
+  multipart `text` field does not. Per-class limits, supported formats,
+  text-file truncation, audio probing, and human-readable rejection reasons
+  remain the attachment planner's contract.
+- Uploaded filenames are treated as untrusted metadata. The transport reduces
+  them to basenames before constructing `AttachmentUpload`; the planner and
+  orchestrator never receive client directory paths.
+- Multipart responses return final turn state at top level:
+  `status: accepted|rejected` and `reason`. `files` is always present on the
+  multipart path and contains one result per uploaded file with
+  `status: accepted|warning|rejected`, `filename`, `class`, `warnings`, and a
+  rejection `reason` when applicable. Transport-level count rejections use the
+  same human-readable sentence style as planner rejections.
+- Oversize request paths for `/api/journal/input` return JSON `413`:
+  `status: rejected`, `reason: request_too_large`, `actual_bytes`,
+  `max_bytes`, and `files: []`. The outer aiohttp request-size guard and the
+  streaming attachment-byte guard are both mapped to this JSON shape.
+- The orchestrator attachment entry point returns structured
+  `accepted`, `busy`, or `no_accepted_content` results. The transport maps that
+  result to HTTP response state and does not inspect the orchestrator's busy
+  flag directly.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

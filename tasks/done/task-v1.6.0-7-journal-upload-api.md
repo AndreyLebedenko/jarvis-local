@@ -1,6 +1,6 @@
 # Task v1.6.0-7: Journal upload API
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.0-file-attachments.md`
 **Depends on:** task-v1.6.0-2, task-v1.6.0-6; v1.5.2 text input endpoint
 must exist.
@@ -45,11 +45,25 @@ attachment turn request for the orchestrator.
 
 ## Acceptance criteria
 
-- [ ] Transport tests cover authorized submission, missing/invalid auth,
+- [x] Transport tests cover authorized submission, missing/invalid auth,
       Hidden rejection, oversize request rejection, unsupported file
       response, and a successful mixed attachment request.
-- [ ] Tests prove uploaded filenames cannot become filesystem traversal
+- [x] Tests prove uploaded filenames cannot become filesystem traversal
       paths.
-- [ ] No browser UI behavior changes yet.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] No browser UI behavior changes yet.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Result
+
+- `POST /api/journal/input` keeps the v1.5.2 JSON typed-text contract and also
+  accepts `multipart/form-data` for the same local authenticated input surface.
+- Hidden mode and token validation run before request body parsing, so hidden
+  attachment content cannot reach the planner or orchestrator.
+- Multipart upload bytes are streamed through transport guards before they are
+  stored in long-lived request state. File bytes count against the attachment
+  byte budget; the typed text field does not.
+- Client-provided filenames are reduced to safe basenames before planner input.
+- Transport returns structured final turn state plus per-file accepted,
+  warning, or rejected results. Oversize request paths return JSON 413 rather
+  than the default aiohttp HTML body.
 

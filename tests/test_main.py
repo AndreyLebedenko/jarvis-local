@@ -58,6 +58,7 @@ from jarvis.core.config import (
     VadSettings,
 )
 from jarvis.core.lifecycle import (
+    AttachmentSubmissionReason,
     ModelRequestInput,
     ModelRequestStarted,
     NewContextReason,
@@ -691,8 +692,9 @@ async def test_on_attachment_submission_sends_composed_text_and_image_media():
         items=(_image_plan_item("photo.png"), _text_plan_item("notes.txt", "hello"))
     )
 
-    await orchestrator.on_attachment_submission("check these", plan)
+    result = await orchestrator.on_attachment_submission("check these", plan)
 
+    assert result.reason is AttachmentSubmissionReason.ACCEPTED
     assert sound_cues.played == ["thinking"]
     [(messages, media)] = backend.calls
     assert messages[-1] == {
@@ -828,8 +830,9 @@ async def test_attachment_submission_is_ignored_while_busy():
         ScreenshotCaptured(png_bytes=b"png", mode="full", width=1, height=1)
     )
     plan = AttachmentPlan(items=(_text_plan_item("notes.txt"),))
-    await orchestrator.on_attachment_submission("ignored while busy", plan)
+    result = await orchestrator.on_attachment_submission("ignored while busy", plan)
 
+    assert result.reason is AttachmentSubmissionReason.BUSY
     assert len(backend.calls) == 1  # the attachment submission was ignored
     assert sound_cues.played == ["thinking"]  # only the in-flight turn's cue
     assert journal_recorder.user_texts == []  # no user event was journaled
@@ -844,6 +847,26 @@ async def test_attachment_submission_is_ignored_while_busy():
         UtteranceChunk(wav_bytes=b"c", start_seconds=0, end_seconds=1)
     )
     assert len(backend.calls[-1][1]) == 2  # audio + the surviving screenshot
+
+
+async def test_attachment_submission_rejects_plan_with_no_turn_content():
+    orchestrator, backend, sound_cues = _orchestrator()
+    plan = AttachmentPlan(
+        items=(
+            AttachmentPlanItem(
+                filename="manual.pdf",
+                attachment_class=None,
+                accepted=False,
+                rejection_reason="manual.pdf: unsupported file type.",
+            ),
+        )
+    )
+
+    result = await orchestrator.on_attachment_submission("", plan)
+
+    assert result.reason is AttachmentSubmissionReason.NO_ACCEPTED_CONTENT
+    assert backend.calls == []
+    assert sound_cues.played == []
 
 
 async def test_attachment_submission_backend_failure_plays_error_and_clears_busy():
@@ -1915,6 +1938,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
         orchestrator=types.SimpleNamespace(
             submit_text_input=object(),
+            on_attachment_submission=object(),
             start_new_context=object(),
             fork_from_journal_session=object(),
         ),
