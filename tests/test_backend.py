@@ -1,7 +1,10 @@
 import base64
+import io
 import json
 
 import httpx
+import numpy as np
+import soundfile as sf
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
@@ -12,8 +15,13 @@ from jarvis.dialog.backend import (
     ResponseToken,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel
+from jarvis.inputs.attachment_audio import (
+    compose_audio_media,
+    normalize_audio_attachment,
+)
 from jarvis.inputs.attachments import (
     AttachmentUpload,
+    PendingAudioMedia,
     compose_turn_images,
     plan_attachments,
 )
@@ -65,6 +73,37 @@ def test_payload_places_image_attachments_under_images_of_the_last_message():
         assert "images" not in message
     for forbidden in ("images", "attachments", "image"):
         assert forbidden not in payload
+
+
+def test_payload_places_normalized_audio_clips_under_images_of_the_last_message():
+    # Regression pin for task-v1.6.0-5: uploaded audio, normalized and
+    # chunked, travels the same verified path as microphone audio -
+    # messages[-1].images - and no dedicated audio field appears anywhere.
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+    buffer = io.BytesIO()
+    sf.write(
+        buffer,
+        np.zeros(16000 * 65, dtype=np.float32),
+        16000,
+        format="WAV",
+        subtype="PCM_16",
+    )
+    pending = PendingAudioMedia(
+        data=buffer.getvalue(), content_type="audio/wav", duration_seconds=65.0
+    )
+    normalized = normalize_audio_attachment("long.wav", pending)
+    media = compose_audio_media(normalized)
+
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "what is said in this recording?"}],
+        images_b64=media,
+    )
+
+    assert payload["messages"][-1]["images"] == list(media)
+    assert len(payload["messages"][-1]["images"]) == 3
+    assert "audio" not in payload
+    for message in payload["messages"]:
+        assert "audio" not in message
 
 
 def test_payload_without_media_has_no_images_key():
