@@ -120,7 +120,11 @@ Boundary:
 - No re-layout of the feed: the input dock and audio tiles were reserved
   for exactly these extensions.
 
-Story/task readiness: needs a story card before implementation.
+Story/task readiness: story card exists as
+`tasks/story-v1.5.2-journal-ux-pack.md` with task cards
+`tasks/task-v1.5.2-1..8-*.md` (created 2026-07-19 to unblock
+task-v1.6.0-7; implemented on branches from current main, not from the
+v1.5.1 tag - owner decision 2026-07-19).
 
 ## v1.5.3 - Memory layer A: session fork and curated memory files
 
@@ -137,8 +141,11 @@ Scope:
   metadata. Fork, not in-place continuation (cross-cutting rule 6):
   the source log is never appended to, context size stays controlled,
   and the seed is honest about being text-only. Time gaps between the
-  source session and now are presented through the existing time-context
-  mechanism.
+  source session and now are made explicit to the model (revised
+  2026-07-19 at story review: the existing time-context mechanism
+  renders only the current time, so the gap is carried by a
+  deterministic provenance seed line in the fork - see
+  `tasks/story-v1.5.3-memory-layer-a.md`).
 - **memory.md** - a curated file of durable facts (user preferences,
   ongoing projects, standing context) injected into the system prompt at
   session start. Size-capped; readable and editable in the UI.
@@ -164,8 +171,10 @@ Boundary:
   model-facing history recorded for them (placeholder or transcript when
   one exists later). Do not block the fork on STT.
 
-Story/task readiness: needs a story card; the fork design above records
-the owner's decisions from the 2026-07-18 planning dialog.
+Story/task readiness: story card exists as
+`tasks/story-v1.5.3-memory-layer-a.md` with task cards
+`tasks/task-v1.5.3-1..7-*.md` (created 2026-07-19); the fork design
+above records the owner's decisions from the 2026-07-18 planning dialog.
 
 ## v1.6.0 - File attachments via the journal chat surface
 
