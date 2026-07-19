@@ -11,6 +11,7 @@ from dataclasses import fields
 import pytest
 
 from jarvis.core.config import TTS_ROUTE_TYPES
+from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.ui.status_console import UI_DIR
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
@@ -79,6 +80,21 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
         }
     )
     assert used <= keys
+
+
+def test_every_model_request_input_has_a_last_request_label():
+    """app.js's applyLastModelRequest() builds its lookup key dynamically
+    (uiString("last_request_" + item.kind)), so
+    test_every_uistring_lookup_key_exists_in_the_dictionary above cannot
+    statically resolve it and excludes the "last_request_" prefix instead.
+    This closes that gap from the Python side: every ModelRequestInput
+    value (core/lifecycle.py) that can reach ModelRequestStarted.inputs
+    must have a matching catalog entry, or the first live turn of that
+    kind throws inside uiString() and breaks that delta update."""
+    keys = _strings_js_keys()["en"]
+    expected = {f"last_request_{member.value}" for member in ModelRequestInput}
+
+    assert expected <= keys
 
 
 def test_every_projected_tts_field_has_a_localized_label():

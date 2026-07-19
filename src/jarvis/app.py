@@ -45,6 +45,16 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
+from jarvis.inputs.attachment_audio import (
+    compose_audio_cue,
+    compose_audio_media,
+    normalize_audio_attachment,
+)
+from jarvis.inputs.attachments import (
+    AttachmentPlan,
+    compose_turn_images,
+    compose_turn_text,
+)
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -203,6 +213,86 @@ class Orchestrator:
             voice_wav_bytes=None,
         )
 
+    async def on_attachment_submission(
+        self, typed_text: str, plan: AttachmentPlan
+    ) -> None:
+        """Wires an already-validated attachment plan (task-v1.6.0-2's
+        plan_attachments(), handed in by the future Journal input dock
+        transport - task-v1.6.0-7) into the normal turn lifecycle. Only
+        accepted plan items contribute text/media; the planner already
+        reported rejections to its caller, so there is nothing further to
+        surface for those here.
+
+        Audio is the one class planning does not fully resolve: it only
+        header-probes duration (PendingAudioMedia), so the real decode/
+        resample/chunk into model-safe clips happens here via
+        normalize_audio_attachment() - which can itself reject audio that
+        passed the header probe (e.g. truncated data past a valid header).
+        Per the story's never-silent stance, that rejection is reported
+        through the same SystemEvent/WARN channel every other recoverable
+        mid-turn issue uses, rather than silently dropping the file or
+        aborting the whole submission - typed text, images, and any other
+        accepted attachment still reach the model.
+        """
+        if self._busy:
+            logger.info(
+                "Ignoring attachment submission: previous request still in flight"
+            )
+            return
+
+        media: list[str] = list(compose_turn_images(plan))
+        inputs: list[ModelRequestInput] = [
+            ModelRequestInput.ATTACHMENT_IMAGE for _ in media
+        ]
+        if any(item.accepted and item.text is not None for item in plan.items):
+            inputs.append(ModelRequestInput.ATTACHMENT_TEXT)
+
+        history_text = compose_turn_text(typed_text, plan)
+        audio_duration_seconds: float | None = None
+        pending_audio_item = next(
+            (
+                item
+                for item in plan.items
+                if item.accepted and item.pending_audio is not None
+            ),
+            None,
+        )
+        if pending_audio_item is not None:
+            normalized = normalize_audio_attachment(
+                pending_audio_item.filename, pending_audio_item.pending_audio
+            )
+            if normalized.accepted:
+                media.extend(compose_audio_media(normalized))
+                audio_cue = compose_audio_cue(normalized)
+                if audio_cue is not None:
+                    history_text = (
+                        f"{history_text}\n\n{audio_cue}" if history_text else audio_cue
+                    )
+                audio_duration_seconds = normalized.duration_seconds
+                inputs.append(ModelRequestInput.ATTACHMENT_AUDIO)
+            elif self._bus is not None:
+                reason = (
+                    normalized.rejection_reason
+                    or f"{pending_audio_item.filename}: audio could not be processed."
+                )
+                await publish_system_event(
+                    self._bus,
+                    logger,
+                    source="ATTACHMENT",
+                    level=EventLevel.WARN,
+                    log_message=reason,
+                    ui_message=reason,
+                )
+
+        await self._start_turn(
+            history_text,
+            media if media else None,
+            TurnSource.ATTACHMENT,
+            inputs=tuple(inputs),
+            audio_duration_seconds=audio_duration_seconds,
+            voice_wav_bytes=None,
+        )
+
     async def _start_turn(
         self,
         history_text: str,
@@ -228,6 +318,15 @@ class Orchestrator:
                 self._journal_turn_started = True
             elif source is TurnSource.TEXT:
                 await self._journal_recorder.record_text_user(history_text)
+                self._journal_turn_started = True
+            elif source is TurnSource.ATTACHMENT:
+                # No media reference is recorded, matching record_text_user()'s
+                # existing text-only contract (only record_voice_user() ever
+                # writes a journal media file) - the journal-recording policy
+                # does not extend to attachment media.
+                await self._journal_recorder.record_text_user(
+                    history_text, source="attachment"
+                )
                 self._journal_turn_started = True
         if self._bus is not None:
             await self._bus.publish(TurnAccepted, TurnAccepted(source=source))

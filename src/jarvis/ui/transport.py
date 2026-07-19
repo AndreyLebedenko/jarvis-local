@@ -74,6 +74,15 @@ JOURNAL_MEDIA_TYPES = {
     ".jpeg": "image/jpeg",
 }
 
+# ModelRequestStarted.audio_duration_seconds is a single per-turn value that
+# applies whichever audio-bearing input produced it - the mic path's AUDIO
+# and the attachment path's ATTACHMENT_AUDIO (task-v1.6.0-6) are mutually
+# exclusive within one turn, so there is never an ambiguity about which one
+# the duration belongs to.
+_AUDIO_DURATION_INPUTS = frozenset(
+    {ModelRequestInput.AUDIO, ModelRequestInput.ATTACHMENT_AUDIO}
+)
+
 JSONScalar = str | int | float | bool | None
 JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 JsonObject = dict[str, JSONValue]
@@ -594,7 +603,7 @@ class UiTransportServer:
                     kind=input_kind,
                     audio_duration_seconds=(
                         event.audio_duration_seconds
-                        if input_kind is ModelRequestInput.AUDIO
+                        if input_kind in _AUDIO_DURATION_INPUTS
                         else None
                     ),
                 )

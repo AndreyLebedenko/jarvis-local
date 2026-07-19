@@ -64,11 +64,14 @@ async def test_turn_source_selects_the_thinking_substatus():
     await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.VOICE))
     await bus.publish(TurnCompleted, TurnCompleted())
     await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.TEXT))
+    await bus.publish(TurnCompleted, TurnCompleted())
+    await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.ATTACHMENT))
 
     thinking = [e for e in recorder.events if e.state is RuntimeState.THINKING]
     assert [e.substatus_key for e in thinking] == [
         "processing_voice",
         "processing_text",
+        "processing_attachment",
     ]
 
 
