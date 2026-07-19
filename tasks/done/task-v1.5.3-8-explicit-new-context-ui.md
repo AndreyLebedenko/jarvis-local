@@ -1,6 +1,6 @@
 # Task v1.5.3-8: Explicit new context UI
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** task-v1.5.3-7 human release verification.
 
@@ -54,11 +54,45 @@ after a reset or empty state.
 
 ## Acceptance criteria
 
-- [ ] A human can start a blank context from the UI without sending a
+- [x] A human can start a blank context from the UI without sending a
       message first.
-- [ ] The active context state is visible after creation.
-- [ ] Starting a blank context does not mutate any source Journal session.
-- [ ] Fork/Continue remains distinct from blank context creation.
-- [ ] Unsaved memory edits are not silently discarded.
-- [ ] Hidden mode behavior is covered.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] The active context state is visible after creation.
+- [x] Starting a blank context does not mutate any source Journal session.
+- [x] Fork/Continue remains distinct from blank context creation.
+- [x] Unsaved memory edits are not silently discarded.
+- [x] Hidden mode behavior is covered.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Human-run verification checklist
+
+Run from the repository root after automated checks are green:
+
+```powershell
+python -m jarvis --status-console
+```
+
+Manual pass:
+
+- Open the Journal view and confirm `New context` / `Новый контекст` is
+  visible beside the session controls.
+- With no active context, type a Journal message and confirm the UI asks to
+  start a new context first, keeping the typed text.
+- Click `New context`, confirm if prompted, and verify a new Journal session is
+  selected before sending any message.
+- Confirm the selected new session contains a system/context provenance row and
+  is titled `New context` in the session list.
+- Send a typed message and confirm it appends to that new session.
+- Start another new context and confirm the previous session log is not
+  mutated.
+- Switch to Hidden and confirm the control is suppressed with the Journal
+  surface and the endpoint returns Hidden behavior.
+
+Record the human result here before moving the task card to `tasks/done/`.
+
+## Human verification result
+
+Executed by the human on 2026-07-19.
+
+- Full checklist passed.
+- Explicit `New context` / `Новый контекст` behavior works normally.
+- The Journal no longer relies on implicit typed-input context creation.

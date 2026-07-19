@@ -60,6 +60,7 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import (
     ModelRequestInput,
     ModelRequestStarted,
+    NewContextReason,
     TextSubmissionReason,
     TurnAccepted,
     TurnSource,
@@ -1064,6 +1065,57 @@ async def test_fork_from_journal_session_reports_oversize_turn():
     assert result.max_chars == 3
 
 
+async def test_start_new_context_clears_history_and_records_blank_session(
+    tmp_path,
+):
+    prompts = ["base v1", "base v2"]
+
+    def next_prompt() -> str:
+        return prompts.pop(0)
+
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(
+        store, clock=lambda: datetime.fromisoformat("2026-07-19T10:00:00+01:00")
+    )
+    history = ConversationHistory()
+    history.add("user", "old context")
+    backend = _FakeBackend()
+    orchestrator = Orchestrator(
+        backend,
+        history,
+        _FakeSoundCues(),
+        journal_recorder=recorder,
+        system_prompt_provider=next_prompt,
+    )
+
+    result = await orchestrator.start_new_context()
+
+    assert result.accepted
+    assert result.session_id == recorder.session_id
+    assert history.as_messages() == []
+    replay = store.read_session(result.session_id)
+    [event] = replay.events
+    assert event.role == "system"
+    assert event.source == "context"
+    assert event.text == main_module._new_context_provenance_line()
+    assert event.metadata == {"kind": "new_context"}
+
+    await orchestrator.submit_text_input("after reset")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base v2"}
+
+
+async def test_start_new_context_rejects_busy_without_changing_history():
+    history = ConversationHistory()
+    history.add("user", "existing")
+    orchestrator = Orchestrator(_FakeBackend(), history, _FakeSoundCues())
+    orchestrator._busy = True
+
+    result = await orchestrator.start_new_context()
+
+    assert result.reason is NewContextReason.BUSY
+    assert history.as_messages() == [{"role": "user", "content": "existing"}]
+
+
 async def test_system_prompt_provider_is_sampled_on_session_start_only():
     prompts = ["base v1", "base v2", "base v3"]
 
@@ -1858,6 +1910,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
         orchestrator=types.SimpleNamespace(
             submit_text_input=object(),
+            start_new_context=object(),
             fork_from_journal_session=object(),
         ),
         journal_recorder=types.SimpleNamespace(session_id=None),

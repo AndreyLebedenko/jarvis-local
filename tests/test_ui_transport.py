@@ -15,6 +15,8 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import (
     ModelRequestInput,
     ModelRequestStarted,
+    NewContextReason,
+    NewContextResult,
     TextSubmissionReason,
     TextSubmissionResult,
 )
@@ -142,6 +144,16 @@ class _FakeJournalForkHandler:
                 "seed_budget_chars": seed_budget_chars,
             }
         )
+        return self.result
+
+
+class _FakeNewContextHandler:
+    def __init__(self, result: NewContextResult) -> None:
+        self.result = result
+        self.calls = 0
+
+    async def __call__(self) -> NewContextResult:
+        self.calls += 1
         return self.result
 
 
@@ -1059,6 +1071,79 @@ async def test_journal_input_endpoint_reuses_auth_and_rejects_bad_payload() -> N
             assert missing_token.status == 401
             assert bad_payload.status == 400
             assert submitter.calls == []
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_new_context_endpoint_maps_success_and_busy() -> None:
+    for result, expected_status, expected_payload in [
+        (
+            NewContextResult(
+                NewContextReason.ACCEPTED,
+                session_id="20260719-100000-ab12",
+                provenance_text="New blank context started by user.",
+            ),
+            200,
+            {
+                "status": "ok",
+                "session_id": "20260719-100000-ab12",
+                "provenance": "New blank context started by user.",
+            },
+        ),
+        (
+            NewContextResult(NewContextReason.BUSY),
+            409,
+            {"status": "rejected", "reason": "busy"},
+        ),
+    ]:
+        handler = _FakeNewContextHandler(result)
+        server = UiTransportServer(
+            EventBus(),
+            _FakeControlApi(),
+            token_factory=lambda: "valid-token",
+            journal_new_context_handler=handler,
+        )
+        info = await server.start()
+        try:
+            async with aiohttp.ClientSession() as session:
+                response = await session.post(
+                    f"http://127.0.0.1:{info.port}/api/journal/context/new"
+                    "?token=valid-token"
+                )
+                assert response.status == expected_status
+                assert await response.json() == expected_payload
+                assert handler.calls == 1
+        finally:
+            await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_new_context_endpoint_is_suppressed_while_hidden() -> None:
+    handler = _FakeNewContextHandler(
+        NewContextResult(
+            NewContextReason.ACCEPTED,
+            session_id="20260719-100000-ab12",
+            provenance_text="New blank context started by user.",
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+        journal_new_context_handler=handler,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/context/new"
+                "?token=valid-token"
+            )
+            assert response.status == 200
+            assert await response.json() == {"status": "hidden"}
+            assert handler.calls == 0
     finally:
         await server.stop()
 

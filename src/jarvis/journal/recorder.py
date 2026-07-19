@@ -46,6 +46,7 @@ class JournalRecorder:
         if not self._enabled:
             return
         timestamp = self._now()
+        session_id = self._session(timestamp)
         media_name = self._next_media_name(timestamp, ".wav")
         screenshot_name = (
             self._next_media_name(timestamp, ".png")
@@ -54,6 +55,7 @@ class JournalRecorder:
         )
         self._schedule(
             self._write_voice_user(
+                session_id=session_id,
                 timestamp=timestamp,
                 media_name=media_name,
                 wav_bytes=bytes(wav_bytes),
@@ -70,8 +72,10 @@ class JournalRecorder:
         if not self._enabled:
             return
         timestamp = self._now()
+        session_id = self._session(timestamp)
         self._schedule(
             self._append_event(
+                session_id=session_id,
                 timestamp=timestamp,
                 source=source,
                 role="user",
@@ -84,8 +88,10 @@ class JournalRecorder:
         if not self._enabled:
             return
         timestamp = self._now()
+        session_id = self._session(timestamp)
         self._schedule(
             self._append_event(
+                session_id=session_id,
                 timestamp=timestamp,
                 source="assistant",
                 role="assistant",
@@ -108,6 +114,7 @@ class JournalRecorder:
         self._media_counter = 0
         self._schedule(
             self._append_event(
+                session_id=self._session_id,
                 timestamp=timestamp,
                 source="fork",
                 role="system",
@@ -122,6 +129,23 @@ class JournalRecorder:
                     },
                 },
             )
+        )
+        return self._session_id
+
+    async def start_blank_session(self, *, provenance_text: str) -> str | None:
+        if not self._enabled:
+            return None
+        timestamp = self._now()
+        self._session_id = new_session_id(timestamp)
+        self._media_counter = 0
+        await self._append_event(
+            session_id=self._session_id,
+            timestamp=timestamp,
+            source="context",
+            role="system",
+            text=provenance_text,
+            media=(),
+            metadata={"kind": "new_context"},
         )
         return self._session_id
 
@@ -168,13 +192,13 @@ class JournalRecorder:
     async def _write_voice_user(
         self,
         *,
+        session_id: str,
         timestamp: datetime,
         media_name: str,
         wav_bytes: bytes,
         screenshot_name: str | None,
         screenshot_png_bytes: bytes | None,
     ) -> None:
-        session_id = self._session(timestamp)
         await asyncio.to_thread(
             self._store.write_media,
             session_id=session_id,
@@ -191,6 +215,7 @@ class JournalRecorder:
             )
             media.append(screenshot_name)
         await self._append_event(
+            session_id=session_id,
             timestamp=timestamp,
             source="voice",
             role="user",
@@ -201,6 +226,7 @@ class JournalRecorder:
     async def _append_event(
         self,
         *,
+        session_id: str,
         timestamp: datetime,
         source: str,
         role: str,
@@ -209,7 +235,7 @@ class JournalRecorder:
         metadata: dict[str, JSONValue] | None = None,
     ) -> None:
         event = JournalEvent(
-            session_id=self._session(timestamp),
+            session_id=session_id,
             timestamp=timestamp.isoformat(),
             source=source,
             role=role,

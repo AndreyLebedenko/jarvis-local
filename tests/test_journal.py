@@ -427,6 +427,57 @@ async def test_recorder_writes_a_custom_source_label(tmp_path: Path) -> None:
     )
 
 
+async def test_recorder_starts_blank_session_with_context_provenance(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 19, 10, 0, 0, tzinfo=UTC)),
+    )
+
+    session_id = await recorder.start_blank_session(
+        provenance_text="New blank context started by user."
+    )
+
+    assert session_id == recorder.session_id
+    assert session_id is not None
+    replay = JournalStore(tmp_path).read_session(session_id)
+    [event] = replay.events
+    assert (event.role, event.source, event.text, event.media) == (
+        "system",
+        "context",
+        "New blank context started by user.",
+        (),
+    )
+    assert event.metadata == {"kind": "new_context"}
+
+
+async def test_recorder_pending_event_keeps_the_session_it_was_scheduled_for(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(
+            datetime(2026, 7, 19, 10, 0, 0, tzinfo=UTC),
+            datetime(2026, 7, 19, 10, 0, 1, tzinfo=UTC),
+        ),
+    )
+
+    await recorder.record_text_user("old session turn")
+    old_session_id = recorder.session_id
+    new_session_id = await recorder.start_blank_session(
+        provenance_text="New blank context started by user."
+    )
+    await recorder.wait_for_pending()
+
+    assert old_session_id is not None
+    assert new_session_id is not None
+    old_replay = JournalStore(tmp_path).read_session(old_session_id)
+    new_replay = JournalStore(tmp_path).read_session(new_session_id)
+    assert [event.text for event in old_replay.events] == ["old session turn"]
+    assert [event.source for event in new_replay.events] == ["context"]
+
+
 async def test_recorder_write_failure_is_logged_and_not_raised(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

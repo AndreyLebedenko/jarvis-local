@@ -1,6 +1,6 @@
 # Story v1.5.3: Memory layer A - session fork and curated memory files
 
-**Status:** In progress; tasks 1-7 implemented and verified, task 8 pending.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.5.3 section; fork design
 records the owner's decisions from the 2026-07-18 planning dialog).
 **Created:** 2026-07-19. Owner decision (2026-07-19): implemented on
@@ -86,28 +86,28 @@ fully user-auditable.
   (view/edit) in the Journal view.
 - `tasks/done/task-v1.5.3-7-docs-and-release-verification.md` - PROJECT.md,
   config docs, human-run checklist.
-- `tasks/task-v1.5.3-8-explicit-new-context-ui.md` - follow-up from
+- `tasks/done/task-v1.5.3-8-explicit-new-context-ui.md` - follow-up from
   release verification: make blank context creation an explicit UI action
   rather than an implicit side effect of the next input.
 
 ## Acceptance criteria
 
-- [ ] From the Journal view the user can continue a past session; the
+- [x] From the Journal view the user can continue a past session; the
       new session starts with a text-only verbatim tail seed within the
       configured budget and records `continued_from` provenance.
-- [ ] The source session's log is byte-identical after the fork.
-- [ ] Voice turns seed from recorded history text without transcripts.
-- [ ] memory.md and self.md content is injected at session start,
+- [x] The source session's log is byte-identical after the fork.
+- [x] Voice turns seed from recorded history text without transcripts.
+- [x] memory.md and self.md content is injected at session start,
       size-capped, and both files are viewable and editable from the
       UI; edits apply from the next session start (or a documented
       explicit reload action).
-- [ ] PROJECT.md's journal-context statement is revised in the same
+- [x] PROJECT.md's journal-context statement is revised in the same
       change as the fork implementation.
-- [ ] Hidden mode suppresses fork and memory surfaces.
-- [ ] Blank context creation is an explicit, visible user action; the
+- [x] Hidden mode suppresses fork and memory surfaces.
+- [x] Blank context creation is an explicit, visible user action; the
       UI does not rely on implicit "next input creates a new context"
       semantics for a state-changing conversation boundary.
-- [ ] `python -m pytest` and Ruff checks are green; UI verification is
+- [x] `python -m pytest` and Ruff checks are green; UI verification is
       a prepared human-run handoff.
 
 ## Stop conditions

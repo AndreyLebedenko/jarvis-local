@@ -28,6 +28,7 @@ JOURNAL_STRING_KEYS = (
     "journal_source_dock",
     "journal_source_assistant",
     "journal_source_fork",
+    "journal_source_context",
     "journal_search_label",
     "journal_search_placeholder",
     "journal_search_date_from",
@@ -47,6 +48,13 @@ JOURNAL_STRING_KEYS = (
     "journal_copy_failed",
     "journal_image_missing",
     "journal_usage_total",
+    "journal_new_context",
+    "journal_new_context_confirm",
+    "journal_new_context_ready",
+    "journal_new_context_required",
+    "journal_new_context_busy",
+    "journal_new_context_hidden",
+    "journal_new_context_failed",
     "journal_memory_open",
     "journal_memory_close",
     "journal_memory_title",
@@ -285,6 +293,44 @@ def test_journal_continue_errors_are_localized():
     assert 'uiString("journal_fork_failed")' in body
 
 
+def test_journal_new_context_is_an_explicit_journal_action():
+    assert 'id="journalNewContextButton"' in INDEX_HTML
+    assert 'onclick="startNewJournalContext()"' in INDEX_HTML
+    assert 'data-i18n="journal_new_context"' in INDEX_HTML
+    body = APP_JS.split("async function startNewJournalContext(")[1].split("\n}")[0]
+    assert '"/api/journal/context/new"' in body
+    assert 'method: "POST"' in body
+    assert "_confirmStartNewJournalContext()" in body
+    assert "_journalSelectedSessionId = payload.session_id || null;" in body
+    assert "selectJournalSession(payload.session_id);" in body
+    assert 'uiString("journal_new_context_ready")' in body
+
+
+def test_journal_new_context_is_not_the_fork_continue_action():
+    new_context_body = APP_JS.split("async function startNewJournalContext(")[1].split(
+        "\n}"
+    )[0]
+    continue_body = APP_JS.split("async function continueJournalSession(")[1].split(
+        "\n}"
+    )[0]
+    assert "/api/journal/context/new" in new_context_body
+    assert "/fork" not in new_context_body
+    assert "/fork" in continue_body
+    assert "/api/journal/context/new" not in continue_body
+
+
+def test_journal_new_context_errors_are_localized_and_hidden_aware():
+    body = APP_JS.split("function _journalNewContextErrorMessage(")[1].split("\n}")[0]
+    assert 'payload.status === "hidden"' in body
+    assert 'payload.reason === "busy"' in body
+    assert 'uiString("journal_new_context_failed")' in body
+    start_body = APP_JS.split("async function startNewJournalContext(")[1].split("\n}")[
+        0
+    ]
+    assert "_isHiddenActive()" in start_body
+    assert 'uiString("journal_new_context_hidden")' in start_body
+
+
 def test_journal_memory_panel_is_reachable_from_journal_view():
     assert 'id="journalMemoryToggle"' in INDEX_HTML
     assert 'onclick="toggleJournalMemoryPanel()"' in INDEX_HTML
@@ -361,6 +407,12 @@ def test_journal_input_posts_json_and_preserves_text_on_rejection():
     assert 'payload.status === "accepted"' in body
     assert "journal_input_busy" in APP_JS
     assert "journal_input_over_limit" in APP_JS
+
+
+def test_journal_input_requires_an_explicit_active_context():
+    body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
+    assert "_journalActiveSessionId === null" in body
+    assert 'uiString("journal_new_context_required")' in body
 
 
 def test_journal_input_enter_and_shift_enter_contract_is_present():

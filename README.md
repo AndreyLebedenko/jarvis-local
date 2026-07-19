@@ -66,10 +66,11 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   Jarvis, answer copy controls, local audio playback, screenshot thumbnails,
   live feed updates, assistant-answer search, date filtering, disk-usage
   display, manual per-session deletion, session fork ("continue this
-  conversation"), editable `memory.md`/`self.md` curated memory files, and
-  Hidden-mode privacy enforcement. Journal media and memory files are served
-  through the authenticated local transport; search is exact/prefix matching
-  for Russian text.
+  conversation"), explicit blank-context creation, editable
+  `memory.md`/`self.md` curated memory files, and Hidden-mode privacy
+  enforcement. Journal media and memory files are served through the
+  authenticated local transport; search is exact/prefix matching for Russian
+  text.
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
 - Async event-bus architecture with isolated modules.

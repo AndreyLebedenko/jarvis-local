@@ -28,6 +28,8 @@ from jarvis.core.lifecycle import (
     BackendRequestFailed,
     ModelRequestInput,
     ModelRequestStarted,
+    NewContextReason,
+    NewContextResult,
     TextSubmissionReason,
     TextSubmissionResult,
     TurnAccepted,
@@ -185,6 +187,22 @@ class Orchestrator:
     def clear(self) -> None:
         self._history.clear()
         self._system_prompt = self._system_prompt_provider()
+
+    async def start_new_context(self) -> NewContextResult:
+        if self._busy:
+            return NewContextResult(NewContextReason.BUSY)
+        self.clear()
+        provenance_text = _new_context_provenance_line()
+        new_session_id = None
+        if self._journal_recorder is not None:
+            new_session_id = await self._journal_recorder.start_blank_session(
+                provenance_text=provenance_text
+            )
+        return NewContextResult(
+            NewContextReason.ACCEPTED,
+            session_id=new_session_id,
+            provenance_text=provenance_text,
+        )
 
     async def on_screenshot(self, event: ScreenshotCaptured) -> None:
         self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
@@ -563,6 +581,10 @@ def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
         "Исходная сессия завершилась: "
         f"{format_time_context(source_end.timestamp())}."
     )
+
+
+def _new_context_provenance_line() -> str:
+    return "New blank context started by user."
 
 
 def build_app(
@@ -1096,6 +1118,7 @@ def run_with_status_console(
         journal_store=app.journal_store,
         journal_search_index=app.journal_search_index,
         journal_text_submitter=app.orchestrator.submit_text_input,
+        journal_new_context_handler=app.orchestrator.start_new_context,
         journal_fork_handler=app.orchestrator.fork_from_journal_session,
         journal_fork_seed_max_chars=settings.memory.fork_seed_max_chars,
         journal_active_session_id=(

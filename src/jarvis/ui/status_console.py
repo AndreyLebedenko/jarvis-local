@@ -64,6 +64,7 @@ UI_DIR = Path(__file__).resolve().parent / "status_console_ui"
 INDEX_HTML = UI_DIR / "index.html"
 TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
 VOICE_ONLY_SESSION_TITLE = "Voice turn"
+NEW_CONTEXT_SESSION_TITLE = "New context"
 
 
 def runtime_state_payload(
@@ -188,6 +189,8 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
 
 def _journal_session_title(session_id: str, store: JournalStore) -> str:
     for event in store.read_session(session_id).events:
+        if event.source == "context" and event.metadata.get("kind") == "new_context":
+            return NEW_CONTEXT_SESSION_TITLE
         if event.role == "user" and event.text.strip():
             return event.text.strip()
     return VOICE_ONLY_SESSION_TITLE

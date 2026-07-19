@@ -37,6 +37,11 @@ class TextSubmissionReason(Enum):
     OVER_LIMIT = "over_limit"
 
 
+class NewContextReason(Enum):
+    ACCEPTED = "accepted"
+    BUSY = "busy"
+
+
 @dataclass(frozen=True)
 class TextSubmissionResult:
     reason: TextSubmissionReason
@@ -45,6 +50,17 @@ class TextSubmissionResult:
     @property
     def accepted(self) -> bool:
         return self.reason is TextSubmissionReason.ACCEPTED
+
+
+@dataclass(frozen=True)
+class NewContextResult:
+    reason: NewContextReason
+    session_id: str | None = None
+    provenance_text: str | None = None
+
+    @property
+    def accepted(self) -> bool:
+        return self.reason is NewContextReason.ACCEPTED
 
 
 @dataclass(frozen=True)

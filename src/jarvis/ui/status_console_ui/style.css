@@ -498,12 +498,15 @@ html[data-view="journal"] .journal {
   color: var(--text-faint);
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
-.journal-memory-toggle {
+.journal-memory-toggle,
+.journal-new-context {
   height: 28px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel-2); color: var(--text-dim); cursor: pointer;
   font: 11px "Consolas", "Cascadia Mono", monospace;
 }
-.journal-memory-toggle:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-memory-toggle:hover,
+.journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
 .journal-session {
   display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 3px 8px; text-align: left;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;

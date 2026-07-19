@@ -2181,15 +2181,22 @@ surface while preserving the append-only journal invariant.
   `source="fork"` provenance event with `metadata.continued_from` and the seed
   drop report. Seeded user/assistant turns are not replayed aloud and are not
   re-recorded as fresh journal events.
+- Blank context creation is also explicit. `POST /api/journal/context/new`
+  clears the live model-facing history, resamples the session-start system
+  prompt/memory snapshot, and creates a new journal-visible session
+  immediately with one `role="system"`, `source="context"` provenance event
+  carrying `metadata.kind = "new_context"`. The next typed/voice turn appends
+  to that session; no source journal session is mutated.
 - `memory/self.md` and `memory/memory.md` are local UTF-8 curated files by
   default, configurable through `[memory].root`, `self_file`, `memory_file`,
   `self_max_chars`, and `memory_max_chars`. Missing or empty files inject
   nothing. Over-cap files are truncated for prompt injection only with a
   warning; the disk file is not modified by loading.
 - System prompt composition is sampled at session start: process start,
-  context reset, and fork. The base `[prompts].system` comes first, then
-  `self.md`, then `memory.md`, each inside fixed delimiters. Mid-session edits
-  do not affect the live session until the next session start.
+  explicit blank context creation, context reset, and fork. The base
+  `[prompts].system` comes first, then `self.md`, then `memory.md`, each
+  inside fixed delimiters. Mid-session edits do not affect the live session
+  until the next session start.
 - The Journal view exposes both files through fixed-id authenticated
   `GET`/`PUT /api/memory/files/{self|memory}` endpoints and a plain-text
   memory panel. Writes are explicit, exact, cap-checked, and atomic

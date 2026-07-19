@@ -27,6 +27,8 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import (
     ModelRequestInput,
     ModelRequestStarted,
+    NewContextReason,
+    NewContextResult,
     TextSubmissionReason,
     TextSubmissionResult,
 )
@@ -272,6 +274,10 @@ class TextInputSubmitter(Protocol):
     async def __call__(self, text: str) -> TextSubmissionResult: ...
 
 
+class NewContextHandler(Protocol):
+    async def __call__(self) -> NewContextResult: ...
+
+
 class JournalForkHandler(Protocol):
     async def __call__(
         self,
@@ -474,6 +480,7 @@ class UiTransportServer:
         journal_store: JournalStore | None = None,
         journal_search_index: JournalSearchIndex | None = None,
         journal_text_submitter: TextInputSubmitter | None = None,
+        journal_new_context_handler: NewContextHandler | None = None,
         journal_fork_handler: JournalForkHandler | None = None,
         journal_fork_seed_max_chars: int = 12000,
         journal_active_session_id: Callable[[], str | None] | None = None,
@@ -490,6 +497,7 @@ class UiTransportServer:
         self._journal_store = journal_store
         self._journal_search_index = journal_search_index
         self._journal_text_submitter = journal_text_submitter
+        self._journal_new_context_handler = journal_new_context_handler
         self._journal_fork_handler = journal_fork_handler
         self._journal_fork_seed_max_chars = journal_fork_seed_max_chars
         self._journal_active_session_id = journal_active_session_id or (lambda: None)
@@ -525,6 +533,9 @@ class UiTransportServer:
         app.router.add_get("/ws", self._websocket_handler)
         app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
         app.router.add_post("/api/journal/input", self._journal_input_handler)
+        app.router.add_post(
+            "/api/journal/context/new", self._journal_new_context_handler_http
+        )
         app.router.add_post(
             "/api/journal/sessions/{session_id}/fork",
             self._journal_fork_handler_http,
@@ -724,6 +735,17 @@ class UiTransportServer:
             raise web.HTTPBadRequest(text="request body requires string text")
         result = await self._journal_text_submitter(payload["text"])
         return web.json_response(self._text_submission_payload(result))
+
+    async def _journal_new_context_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_new_context_handler is None:
+            raise web.HTTPServiceUnavailable(text="new context not available")
+        result = await self._journal_new_context_handler()
+        return self._journal_new_context_response(result)
 
     async def _journal_fork_handler_http(self, request: web.Request) -> web.Response:
         self._require_http_token(request)
@@ -979,6 +1001,22 @@ class UiTransportServer:
                 status=409,
             )
         raise RuntimeError(f"unsupported fork result reason: {result.reason}")
+
+    @staticmethod
+    def _journal_new_context_response(result: NewContextResult) -> web.Response:
+        if result.reason is NewContextReason.ACCEPTED:
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "session_id": result.session_id,
+                    "provenance": result.provenance_text,
+                }
+            )
+        if result.reason is NewContextReason.BUSY:
+            return web.json_response(
+                {"status": "rejected", "reason": "busy"}, status=409
+            )
+        raise RuntimeError(f"unsupported new context result reason: {result.reason}")
 
     async def _rebuild_journal_index(self) -> None:
         if self._journal_search_index is None:

@@ -675,6 +675,7 @@ let _journalActiveSessionId = null;
 let _journalInputInFlight = false;
 let _journalSelectPendingInputSession = false;
 let _journalForkInFlightSessionId = null;
+let _journalNewContextInFlight = false;
 const _MEMORY_FILE_IDS = ["self", "memory"];
 const _MEMORY_FILE_TITLE_KEYS = {
   self: "journal_memory_self_title",
@@ -735,7 +736,9 @@ function _clearJournalContent() {
   _journalActiveSessionId = null;
   _journalSelectPendingInputSession = false;
   _journalForkInFlightSessionId = null;
+  _journalNewContextInFlight = false;
   _clearJournalMemoryPanel();
+  _updateJournalNewContextButton();
   _setJournalInputStatus("");
   document.getElementById("journalSessionList").replaceChildren();
   document.getElementById("journalUsageTotal").textContent = "";
@@ -753,6 +756,12 @@ function _showJournalNoSelection() {
 function _confirmDiscardJournalMemoryChanges() {
   if (!_journalMemoryHasUnsavedChanges()) return true;
   return window.confirm(uiString("journal_memory_discard_confirm"));
+}
+
+function _confirmStartNewJournalContext() {
+  if (!_confirmDiscardJournalMemoryChanges()) return false;
+  if (_journalActiveSessionId === null) return true;
+  return window.confirm(uiString("journal_new_context_confirm"));
 }
 
 function _journalMemoryHasUnsavedChanges() {
@@ -949,6 +958,55 @@ function _journalMemorySaveError(payload) {
   return uiString("journal_memory_save_failed");
 }
 
+async function startNewJournalContext() {
+  if (_journalNewContextInFlight) {
+    _setJournalInputStatus(uiString("journal_input_busy"));
+    return;
+  }
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_new_context_hidden"));
+    return;
+  }
+  if (!_confirmStartNewJournalContext()) return;
+  const url = _journalUrl("/api/journal/context/new");
+  if (url === null) {
+    _setJournalInputStatus(uiString("transport_no_token"));
+    return;
+  }
+  _journalNewContextInFlight = true;
+  _updateJournalNewContextButton();
+  try {
+    const response = await fetch(url, { method: "POST" });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      _journalSelectedSessionId = payload.session_id || null;
+      _journalActiveSessionId = payload.session_id || null;
+      _setJournalInputStatus(uiString("journal_new_context_ready"));
+      await refreshJournalSessions();
+      if (payload.session_id) selectJournalSession(payload.session_id);
+      return;
+    }
+    _setJournalInputStatus(_journalNewContextErrorMessage(payload));
+  } catch (error) {
+    console.error("Journal new context failed:", error);
+    _setJournalInputStatus(uiString("journal_new_context_failed"));
+  } finally {
+    _journalNewContextInFlight = false;
+    _updateJournalNewContextButton();
+  }
+}
+
+function _updateJournalNewContextButton() {
+  const button = document.getElementById("journalNewContextButton");
+  if (button) button.disabled = _journalNewContextInFlight;
+}
+
+function _journalNewContextErrorMessage(payload) {
+  if (payload.status === "hidden") return uiString("journal_new_context_hidden");
+  if (payload.reason === "busy") return uiString("journal_new_context_busy");
+  return uiString("journal_new_context_failed");
+}
+
 async function submitJournalInput() {
   if (_journalInputInFlight) {
     _setJournalInputStatus(uiString("journal_input_busy"));
@@ -956,6 +1014,10 @@ async function submitJournalInput() {
   }
   if (_isHiddenActive()) {
     _setJournalInputStatus(uiString("journal_input_hidden"));
+    return;
+  }
+  if (_journalActiveSessionId === null) {
+    _setJournalInputStatus(uiString("journal_new_context_required"));
     return;
   }
   const input = document.getElementById("journalTextInput");
