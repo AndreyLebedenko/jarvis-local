@@ -22,6 +22,7 @@ import enum
 from dataclasses import dataclass
 
 from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.journal.events import JSONValue
 
 
 class RuntimeState(enum.Enum):
@@ -120,6 +121,7 @@ class JournalEventPayload:
     text: str
     media: tuple[JournalMediaItem, ...]
     transcript: str | None
+    metadata: dict[str, JSONValue]
 
 
 @dataclass(frozen=True)

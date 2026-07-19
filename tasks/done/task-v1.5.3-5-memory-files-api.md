@@ -1,6 +1,6 @@
 # Task v1.5.3-5: Memory files API
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** task-v1.5.3-4 (files, caps, config).
 

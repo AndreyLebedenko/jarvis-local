@@ -1,6 +1,6 @@
 # Task v1.5.3-2: Fork orchestration and transport
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** task-v1.5.3-1 (seed builder).
 

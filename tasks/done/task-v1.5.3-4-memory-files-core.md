@@ -1,6 +1,6 @@
 # Task v1.5.3-4: Memory files core
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** nothing in this story; independent of tasks 1-3.
 

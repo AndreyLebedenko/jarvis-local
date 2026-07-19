@@ -2092,8 +2092,13 @@ conversation history. It is not fed back into model context.
   they are never embedded in JSONL.
 - `JournalRecorder` queues writes away from the turn-critical path. The
   journal store and its SQLite FTS5 index are rebuildable from the raw logs.
-  The index covers assistant answers only; user turns and future transcripts
-  are not searchable in v1.5.0.
+  The index covers assistant answers only; user turns, system provenance
+  events, and future transcripts are not searchable in v1.5.0.
+- The journal is not passively fed back into model context. The explicit
+  exception introduced by v1.5.3 is user-initiated session fork: Jarvis starts
+  a new session with a verbatim, text-only tail seed from the selected source
+  session, plus deterministic provenance. The source journal log is not
+  appended to or rewritten.
 - Search accepts an answer query and an optional date range. Russian search is
   exact/prefix matching only because SQLite FTS5 has no Russian stemming;
   morphology and semantic search remain later work.
@@ -2154,6 +2159,46 @@ the journal's append-only normal-operation contract remains intact.
 - Privacy and locality boundaries are unchanged: every new endpoint uses the
   existing token-authenticated local transport and returns `hidden` while
   Hidden is active. No new network capability is added.
+
+## Architecture v1.5.3 (Memory layer A)
+
+See [tasks/story-v1.5.3-memory-layer-a.md](tasks/story-v1.5.3-memory-layer-a.md).
+The Journal view now provides the first explicit memory-across-sessions
+surface while preserving the append-only journal invariant.
+
+- Session continuation is a fork, not in-place continuation. `POST
+  /api/journal/sessions/{session_id}/fork` validates the selected source
+  session through the authenticated local transport, rejects Hidden/busy/
+  unknown/oversize cases structurally, clears the live model-facing history,
+  and seeds a new session from the selected source session's verbatim text-only
+  tail. Oldest turns are dropped first to fit `[memory].fork_seed_max_chars`;
+  no turn is split, summarized, or generated.
+- The fork prepends one deterministic system history line stating that this
+  session continues an earlier conversation and giving the source session's end
+  timestamp in the same weekday + ISO 8601 format as the current-turn time
+  context. The source session log is never appended to or rewritten.
+- The new journal session records exactly one `role="system"`,
+  `source="fork"` provenance event with `metadata.continued_from` and the seed
+  drop report. Seeded user/assistant turns are not replayed aloud and are not
+  re-recorded as fresh journal events.
+- `memory/self.md` and `memory/memory.md` are local UTF-8 curated files by
+  default, configurable through `[memory].root`, `self_file`, `memory_file`,
+  `self_max_chars`, and `memory_max_chars`. Missing or empty files inject
+  nothing. Over-cap files are truncated for prompt injection only with a
+  warning; the disk file is not modified by loading.
+- System prompt composition is sampled at session start: process start,
+  context reset, and fork. The base `[prompts].system` comes first, then
+  `self.md`, then `memory.md`, each inside fixed delimiters. Mid-session edits
+  do not affect the live session until the next session start.
+- The Journal view exposes both files through fixed-id authenticated
+  `GET`/`PUT /api/memory/files/{self|memory}` endpoints and a plain-text
+  memory panel. Writes are explicit, exact, cap-checked, and atomic
+  temp-file-plus-replace operations; the API never accepts arbitrary paths and
+  never silently writes truncated content.
+- Hidden mode suppresses fork and memory-file surfaces in the transport and
+  clears memory editor DOM content in the UI. Runtime locality is unchanged:
+  all new work is local files plus the existing authenticated local transport,
+  with no new network capability.
 
 ## Project verification contract (v1.2.2)
 

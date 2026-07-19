@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import re
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 _SESSION_ID_PATTERN = re.compile(r"\A\d{8}-\d{6}-[A-Za-z0-9_-]+\Z")
-_VALID_ROLES = frozenset({"user", "assistant"})
+_VALID_ROLES = frozenset({"user", "assistant", "system"})
+
+JSONScalar = str | int | float | bool | None
+JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,7 @@ class JournalEvent:
     text: str
     media: tuple[str, ...]
     transcript: str | None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not _SESSION_ID_PATTERN.fullmatch(self.session_id):
@@ -28,11 +32,13 @@ class JournalEvent:
         if not self.source:
             raise ValueError("source must not be empty")
         if self.role not in _VALID_ROLES:
-            raise ValueError("role must be 'user' or 'assistant'")
+            raise ValueError("role must be 'user', 'assistant', or 'system'")
         parse_journal_timestamp(self.timestamp)
         object.__setattr__(self, "media", tuple(self.media))
         for path in self.media:
             _validate_media_path(path)
+        _validate_metadata(self.metadata)
+        object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_json_line(self) -> str:
         payload = {
@@ -43,6 +49,7 @@ class JournalEvent:
             "text": self.text,
             "media": list(self.media),
             "transcript": self.transcript,
+            "metadata": self.metadata,
         }
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
 
@@ -59,6 +66,7 @@ class JournalEvent:
             text=_require_str(payload, "text"),
             media=_require_str_list(payload, "media"),
             transcript=_require_optional_str(payload, "transcript"),
+            metadata=_require_metadata(payload),
         )
 
 
@@ -93,6 +101,26 @@ def _validate_media_path(value: str) -> None:
         raise ValueError("media paths must stay inside the session directory")
 
 
+def _validate_metadata(value: dict[str, JSONValue]) -> None:
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+        raise ValueError("metadata must be a JSON object")
+    for item in value.values():
+        _validate_json_value(item)
+
+
+def _validate_json_value(value: JSONValue) -> None:
+    if value is None or isinstance(value, str | int | float | bool):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_json_value(item)
+        return
+    if isinstance(value, dict):
+        _validate_metadata(value)
+        return
+    raise ValueError("metadata must contain only JSON values")
+
+
 def _require_str(payload: dict[str, Any], field: str) -> str:
     value = payload.get(field)
     if not isinstance(value, str):
@@ -105,6 +133,15 @@ def _require_optional_str(payload: dict[str, Any], field: str) -> str | None:
     if value is not None and not isinstance(value, str):
         raise ValueError(f"{field} must be a string or null")
     return value
+
+
+def _require_metadata(payload: dict[str, Any]) -> dict[str, JSONValue]:
+    value = payload.get("metadata", {})
+    if not isinstance(value, dict):
+        raise ValueError("metadata must be a JSON object")
+    metadata = dict(value)
+    _validate_metadata(metadata)
+    return metadata
 
 
 def _require_str_list(payload: dict[str, Any], field: str) -> list[str]:

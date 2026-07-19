@@ -498,6 +498,12 @@ html[data-view="journal"] .journal {
   color: var(--text-faint);
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
+.journal-memory-toggle {
+  height: 28px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer;
+  font: 11px "Consolas", "Cascadia Mono", monospace;
+}
+.journal-memory-toggle:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .journal-session {
   display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 3px 8px; text-align: left;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
@@ -518,16 +524,80 @@ html[data-view="journal"] .journal {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
   color: var(--text-faint);
 }
-.journal-session-delete {
+.journal-session-actions {
   grid-row: 1 / span 3; grid-column: 2; align-self: center;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.journal-session-delete,
+.journal-session-continue {
   width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--panel); color: var(--text-faint); cursor: pointer;
 }
+.journal-session-continue:hover { border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint); }
 .journal-session-delete:hover { border-color: var(--red-dim); color: var(--red); background: var(--red-tint); }
-.journal-session-delete:disabled { opacity: 0.35; cursor: not-allowed; }
-.journal-session-delete:disabled:hover { border-color: var(--border); color: var(--text-faint); background: var(--panel); }
+.journal-session-delete:disabled,
+.journal-session-continue:disabled { opacity: 0.35; cursor: not-allowed; }
+.journal-session-delete:disabled:hover,
+.journal-session-continue:disabled:hover { border-color: var(--border); color: var(--text-faint); background: var(--panel); }
 
 .journal-feed-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.journal-memory-panel {
+  border-bottom: 1px solid var(--border); background: var(--panel);
+  padding: 12px 22px; display: flex; flex-direction: column; gap: 10px;
+}
+.journal-memory-panel[hidden] { display: none; }
+.journal-memory-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.journal-memory-header h2 {
+  margin: 0 0 4px; color: var(--text-dim);
+  font: 11px "Consolas", "Cascadia Mono", monospace;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.journal-memory-header p {
+  margin: 0; color: var(--text-faint); font-size: 11.5px;
+}
+.journal-memory-header button,
+.journal-memory-footer button {
+  height: 28px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-size: 11px;
+}
+.journal-memory-header button:hover,
+.journal-memory-footer button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-memory-footer button:disabled { opacity: 0.4; cursor: not-allowed; }
+.journal-memory-files {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+}
+.journal-memory-file {
+  display: flex; flex-direction: column; min-width: 0; gap: 7px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+  padding: 10px;
+}
+.journal-memory-file.dirty { border-color: var(--amber-dim); }
+.journal-memory-file.over-limit { border-color: var(--red-dim); }
+.journal-memory-file-header h3 {
+  margin: 0 0 3px; font-size: 12px; color: var(--text);
+}
+.journal-memory-file-header p {
+  margin: 0; font-size: 11px; color: var(--text-faint);
+}
+.journal-memory-file textarea {
+  width: 100%; min-width: 0; resize: vertical; color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
+  padding: 8px; font: 12px "Consolas", "Cascadia Mono", monospace;
+}
+.journal-memory-file textarea:focus { outline: none; border-color: var(--cyan-dim); }
+.journal-memory-footer {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 8px;
+  font: 10.5px "Consolas", "Cascadia Mono", monospace;
+}
+.journal-memory-counter { color: var(--text-faint); }
+.journal-memory-status { color: var(--amber); overflow-wrap: anywhere; }
+.journal-memory-file.over-limit .journal-memory-status { color: var(--red); }
+@media (max-width: 760px) {
+  .journal-memory-files { grid-template-columns: 1fr; }
+}
 .journal-search {
   display: flex; align-items: end; gap: 9px; padding: 12px 22px;
   border-bottom: 1px solid var(--border); background: var(--panel);
@@ -575,6 +645,10 @@ html[data-view="journal"] .journal {
   align-self: flex-end; border-color: var(--cyan-dim); background: var(--cyan-tint);
 }
 .journal-msg[data-role="assistant"] { align-self: flex-start; }
+.journal-msg[data-role="system"] {
+  align-self: center; max-width: min(88%, 720px);
+  border-color: var(--amber-dim); background: var(--amber-tint);
+}
 .journal-msg-meta {
   display: flex; gap: 8px; align-items: baseline;
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9.5px;
@@ -594,6 +668,10 @@ html[data-view="journal"] .journal {
 .journal-msg-text {
   font-size: 12.5px; color: var(--text); overflow-wrap: anywhere;
   white-space: pre-wrap; user-select: text;
+}
+.journal-provenance-detail {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace;
+  color: var(--amber); overflow-wrap: anywhere;
 }
 .journal-image-tile {
   border: 1px solid var(--border); border-radius: 7px; background: var(--panel);

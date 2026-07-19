@@ -1,6 +1,6 @@
 # Task v1.5.3-6: Memory files UI
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** task-v1.5.3-5 (read/write API).
 

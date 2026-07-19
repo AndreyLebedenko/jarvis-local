@@ -133,6 +133,22 @@ max_chars = 20000
 enabled = true
 root = "journal"
 
+[memory]
+# Local curated memory directory. By default this sits beside the default
+# journal/ directory. Files are UTF-8 Markdown edited by the user; Jarvis only
+# reads them in v1.5.3.
+root = "memory"
+self_file = "self.md"
+memory_file = "memory.md"
+# Per-file injection caps. Over-cap files are truncated only for prompt
+# injection, with a warning; the files on disk are never rewritten by loading.
+self_max_chars = 8000
+memory_max_chars = 8000
+# Session fork seed budget, in characters. A fork keeps a verbatim text-only
+# tail of the source session, dropping oldest turns first and never splitting
+# a turn. 12000 chars is roughly 3000 tokens at the project planning estimate.
+fork_seed_max_chars = 12000
+
 [sound_cues]
 listening = "sounds/listening.wav"
 thinking = "sounds/thinking.wav"

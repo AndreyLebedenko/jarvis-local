@@ -8,6 +8,7 @@ import threading
 import time
 import types
 from collections.abc import Callable
+from datetime import datetime
 
 import httpx
 import numpy as np
@@ -47,6 +48,7 @@ from jarvis.core.config import (
     JournalSettings,
     McpServerSettings,
     McpSettings,
+    MemorySettings,
     MicrophoneSettings,
     PiperTtsSettings,
     PromptSettings,
@@ -87,7 +89,8 @@ from jarvis.inputs.attachments import (
 )
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
-from jarvis.journal import JournalStore
+from jarvis.journal import JournalEvent, JournalRecorder, JournalStore
+from jarvis.journal.fork import ForkSessionReason
 from jarvis.tools.host import McpModuleStatus, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
@@ -234,6 +237,8 @@ class _FakeJournalRecorder:
         self.user_texts: list[str] = []
         self.user_text_sources: list[str] = []
         self.assistant_texts: list[str] = []
+        self.forks: list[tuple[str, str]] = []
+        self.session_id = "20260719-100000-fake"
 
     async def record_voice_user(
         self, wav_bytes: bytes, *, screenshot_png_bytes: bytes | None = None
@@ -247,6 +252,13 @@ class _FakeJournalRecorder:
 
     async def record_assistant(self, text: str) -> None:
         self.assistant_texts.append(text)
+
+    async def start_fork_session(
+        self, *, source_session_id, provenance_text, seed_drop_report
+    ) -> str:
+        del seed_drop_report
+        self.forks.append((source_session_id, provenance_text))
+        return self.session_id
 
 
 async def test_accepted_voice_request_reports_its_exact_media_composition():
@@ -926,6 +938,160 @@ async def test_journal_recorder_ignores_completion_without_accepted_user_turn():
     assert journal_recorder.voice_wavs == []
     assert journal_recorder.user_texts == []
     assert journal_recorder.assistant_texts == []
+
+
+async def test_fork_from_journal_session_seeds_history_and_records_provenance(
+    tmp_path,
+):
+    store = JournalStore(tmp_path)
+    source_session_id = "20260718-150000-ab12"
+    source_end_timestamp = "2026-07-18T15:01:00+01:00"
+    store.append(
+        JournalEvent(
+            session_id=source_session_id,
+            timestamp="2026-07-18T15:00:00+01:00",
+            source="dock",
+            role="user",
+            text="remember the relay",
+            media=[],
+            transcript=None,
+        )
+    )
+    store.append(
+        JournalEvent(
+            session_id=source_session_id,
+            timestamp=source_end_timestamp,
+            source="assistant",
+            role="assistant",
+            text="The relay is stable.",
+            media=[],
+            transcript=None,
+        )
+    )
+    source_log = tmp_path / source_session_id / "events.jsonl"
+    source_bytes_before = source_log.read_bytes()
+    history = ConversationHistory()
+    recorder = JournalRecorder(
+        store, clock=lambda: datetime.fromisoformat("2026-07-19T10:00:00+01:00")
+    )
+    orchestrator = Orchestrator(
+        _FakeBackend(), history, _FakeSoundCues(), journal_recorder=recorder
+    )
+
+    result = await orchestrator.fork_from_journal_session(
+        source_session_id=source_session_id,
+        replay=store.read_session(source_session_id),
+        source_end_timestamp=source_end_timestamp,
+        seed_budget_chars=1000,
+    )
+    await recorder.wait_for_pending()
+
+    assert result.accepted
+    assert result.new_session_id is not None
+    assert source_log.read_bytes() == source_bytes_before
+    expected_provenance = main_module._fork_provenance_seed_line(source_end_timestamp)
+    assert history.as_messages() == [
+        {"role": "system", "content": expected_provenance},
+        {"role": "user", "content": "remember the relay"},
+        {"role": "assistant", "content": "The relay is stable."},
+    ]
+    fork_events = store.read_session(result.new_session_id).events
+    assert len(fork_events) == 1
+    assert fork_events[0].role == "system"
+    assert fork_events[0].source == "fork"
+    assert fork_events[0].text == expected_provenance
+    assert fork_events[0].metadata == {
+        "continued_from": source_session_id,
+        "seed": {"dropped_turns": 0, "skipped_events": 0, "truncated": False},
+    }
+
+
+async def test_fork_from_journal_session_rejects_busy_without_changing_history():
+    history = ConversationHistory()
+    history.add("user", "existing")
+    orchestrator = Orchestrator(_FakeBackend(), history, _FakeSoundCues())
+    orchestrator._busy = True
+
+    result = await orchestrator.fork_from_journal_session(
+        source_session_id="20260718-150000-ab12",
+        replay=main_module.JournalReplay(
+            events=[
+                JournalEvent(
+                    session_id="20260718-150000-ab12",
+                    timestamp="2026-07-18T15:00:00+01:00",
+                    source="dock",
+                    role="user",
+                    text="new seed",
+                    media=[],
+                    transcript=None,
+                )
+            ],
+            corrupt_lines=0,
+        ),
+        source_end_timestamp="2026-07-18T15:00:00+01:00",
+        seed_budget_chars=1000,
+    )
+
+    assert result.reason is ForkSessionReason.BUSY
+    assert history.as_messages() == [{"role": "user", "content": "existing"}]
+
+
+async def test_fork_from_journal_session_reports_oversize_turn():
+    orchestrator = Orchestrator(_FakeBackend(), ConversationHistory(), _FakeSoundCues())
+
+    result = await orchestrator.fork_from_journal_session(
+        source_session_id="20260718-150000-ab12",
+        replay=main_module.JournalReplay(
+            events=[
+                JournalEvent(
+                    session_id="20260718-150000-ab12",
+                    timestamp="2026-07-18T15:00:00+01:00",
+                    source="dock",
+                    role="user",
+                    text="too long",
+                    media=[],
+                    transcript=None,
+                )
+            ],
+            corrupt_lines=0,
+        ),
+        source_end_timestamp="2026-07-18T15:00:00+01:00",
+        seed_budget_chars=3,
+    )
+
+    assert result.reason is ForkSessionReason.OVERSIZE_TURN
+    assert result.oversize_turn_chars == len("too long")
+    assert result.max_chars == 3
+
+
+async def test_system_prompt_provider_is_sampled_on_session_start_only():
+    prompts = ["base v1", "base v2", "base v3"]
+
+    def next_prompt() -> str:
+        return prompts.pop(0)
+
+    backend = _FakeBackend()
+    history = ConversationHistory()
+    orchestrator = Orchestrator(
+        backend,
+        history,
+        _FakeSoundCues(),
+        system_prompt_provider=next_prompt,
+    )
+
+    await orchestrator.submit_text_input("first")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base v1"}
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    await orchestrator.submit_text_input("second while same session")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base v1"}
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    orchestrator.clear()
+    await orchestrator.submit_text_input("after reset")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base v2"}
 
 
 async def test_busy_utterance_is_ignored_until_previous_turn_completes():
@@ -1690,10 +1856,14 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
-        orchestrator=types.SimpleNamespace(submit_text_input=object()),
+        orchestrator=types.SimpleNamespace(
+            submit_text_input=object(),
+            fork_from_journal_session=object(),
+        ),
         journal_recorder=types.SimpleNamespace(session_id=None),
         journal_store=journal_store,
         journal_search_index=journal_search_index,
+        memory_file_repository=object(),
     )
 
     class _FakeTransportServer:
@@ -2299,10 +2469,13 @@ def test_build_app_shares_one_playback_lock_between_tts_and_sound_cues():
     assert app.tts_output._playback_lock is app.sound_cues._playback_lock
 
 
-def test_build_app_wires_the_configured_system_prompt_into_the_orchestrator():
+def test_build_app_wires_the_configured_system_prompt_into_the_orchestrator(tmp_path):
     """task-v1.2.12: build_app() must bind settings.prompts.system, not the
     built-in default, so a config-file prompt actually reaches every turn."""
-    settings = Settings(prompts=PromptSettings(system="You are Jarvis.", warmup="Hi"))
+    settings = Settings(
+        prompts=PromptSettings(system="You are Jarvis.", warmup="Hi"),
+        memory=MemorySettings(root=str(tmp_path / "memory")),
+    )
 
     app = build_app(settings, backend=_FakeBackend())
 

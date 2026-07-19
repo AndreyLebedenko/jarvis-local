@@ -10,6 +10,8 @@ the engine is doing.
 from dataclasses import dataclass
 from enum import Enum
 
+VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
+
 
 class TurnSource(Enum):
     VOICE = "voice"

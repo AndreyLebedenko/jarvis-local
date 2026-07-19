@@ -24,6 +24,7 @@ from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PromptSettings, Settings, load_settings
 from jarvis.core.lifecycle import (
+    VOICE_PLACEHOLDER_TEXT,
     BackendRequestFailed,
     ModelRequestInput,
     ModelRequestStarted,
@@ -62,9 +63,21 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
+from jarvis.journal.events import parse_journal_timestamp
+from jarvis.journal.fork import (
+    ForkSeedOversizeTurnError,
+    ForkSessionReason,
+    ForkSessionResult,
+    build_fork_seed,
+)
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.search import JournalSearchIndex
-from jarvis.journal.store import JournalStore
+from jarvis.journal.store import JournalReplay, JournalStore
+from jarvis.memory.files import (
+    MemoryFileLoader,
+    MemoryFileRepository,
+    build_memory_file_specs,
+)
 from jarvis.tools.host import McpHost, McpModuleStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
@@ -126,7 +139,6 @@ class ConversationHistory:
         self._turns = []
 
 
-VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
 DEFAULT_TEXT_INPUT_MAX_CHARS = 20000
 
 
@@ -145,11 +157,13 @@ class Orchestrator:
         journal_recorder: JournalRecorder | None = None,
         clock: Callable[[], float] | None = None,
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
+        system_prompt_provider: Callable[[], str] | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
         self._sound_cues = sound_cues
-        self._system_prompt = system_prompt
+        self._system_prompt_provider = system_prompt_provider or (lambda: system_prompt)
+        self._system_prompt = self._system_prompt_provider()
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
         self._bus = bus
@@ -167,6 +181,10 @@ class Orchestrator:
     @property
     def is_busy(self) -> bool:
         return self._busy
+
+    def clear(self) -> None:
+        self._history.clear()
+        self._system_prompt = self._system_prompt_provider()
 
     async def on_screenshot(self, event: ScreenshotCaptured) -> None:
         self._pending_screenshot_b64 = base64.b64encode(event.png_bytes).decode()
@@ -254,6 +272,46 @@ class Orchestrator:
         )
         return TextSubmissionResult(
             TextSubmissionReason.ACCEPTED, self._text_input_max_chars
+        )
+
+    async def fork_from_journal_session(
+        self,
+        *,
+        source_session_id: str,
+        replay: JournalReplay,
+        source_end_timestamp: str,
+        seed_budget_chars: int,
+    ) -> ForkSessionResult:
+        if self._busy:
+            return ForkSessionResult(ForkSessionReason.BUSY)
+        try:
+            seed = build_fork_seed(replay, seed_budget_chars)
+        except ForkSeedOversizeTurnError as error:
+            return ForkSessionResult(
+                ForkSessionReason.OVERSIZE_TURN,
+                oversize_turn_chars=error.turn_chars,
+                max_chars=error.budget_chars,
+            )
+
+        provenance_text = _fork_provenance_seed_line(source_end_timestamp)
+        self.clear()
+        self._history.add("system", provenance_text)
+        for turn in seed.turns:
+            self._history.add(turn.role, turn.text)
+
+        new_session_id = None
+        if self._journal_recorder is not None:
+            new_session_id = await self._journal_recorder.start_fork_session(
+                source_session_id=source_session_id,
+                provenance_text=provenance_text,
+                seed_drop_report=seed.drop_report,
+            )
+        return ForkSessionResult(
+            ForkSessionReason.ACCEPTED,
+            new_session_id=new_session_id,
+            drop_report=seed.drop_report,
+            provenance_text=provenance_text,
+            max_chars=seed_budget_chars,
         )
 
     async def on_attachment_submission(
@@ -486,6 +544,7 @@ class App:
     journal_store: JournalStore | None = None
     journal_search_index: JournalSearchIndex | None = None
     journal_recorder: JournalRecorder | None = None
+    memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
     # and structurally inert (status OFF, no clients) until enable() is
@@ -495,6 +554,15 @@ class App:
     # construct App(...) directly without build_app() and do not care
     # about MCP, matching visibility_mode/history's own pattern above.
     mcp_host: McpHost | None = None
+
+
+def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
+    source_end = parse_journal_timestamp(source_end_timestamp)
+    return (
+        "Эта сессия продолжает более ранний разговор. "
+        "Исходная сессия завершилась: "
+        f"{format_time_context(source_end.timestamp())}."
+    )
 
 
 def build_app(
@@ -528,6 +596,9 @@ def build_app(
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
+    memory_file_specs = build_memory_file_specs(settings.memory)
+    memory_loader = MemoryFileLoader(memory_file_specs, logger=logger)
+    memory_file_repository = MemoryFileRepository(memory_file_specs)
     thinking_mode = ReasoningLevelState(bus)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
@@ -555,12 +626,14 @@ def build_app(
         dialog_backend,
         history,
         sound_cues,
-        system_prompt=settings.prompts.system,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
         bus=bus,
         journal_recorder=journal_recorder,
         text_input_max_chars=settings.clipboard.max_chars,
+        system_prompt_provider=(
+            lambda: memory_loader.compose_system_prompt(settings.prompts.system)
+        ),
     )
     return App(
         bus=bus,
@@ -576,6 +649,7 @@ def build_app(
         journal_store=journal_store,
         journal_search_index=journal_search_index,
         journal_recorder=journal_recorder,
+        memory_file_repository=memory_file_repository,
         settings=settings,
         mcp_host=mcp_host,
     )
@@ -638,7 +712,7 @@ def create_live_status_console(
         raise RuntimeError("live Status Console requires an App created by build_app()")
     api = StatusConsoleApi(
         thinking_mode=app.thinking_mode,
-        history=app.history,
+        history=app.orchestrator,
         bus=app.bus,
         logger=logger,
         visibility_mode=app.visibility_mode,
@@ -1022,11 +1096,14 @@ def run_with_status_console(
         journal_store=app.journal_store,
         journal_search_index=app.journal_search_index,
         journal_text_submitter=app.orchestrator.submit_text_input,
+        journal_fork_handler=app.orchestrator.fork_from_journal_session,
+        journal_fork_seed_max_chars=settings.memory.fork_seed_max_chars,
         journal_active_session_id=(
             lambda: app.journal_recorder.session_id
             if app.journal_recorder is not None
             else None
         ),
+        memory_file_repository=app.memory_file_repository,
     )
     live_console.create_windows()
 

@@ -152,10 +152,21 @@
   <aside class="journal-sessions" aria-labelledby="journalSessionsHeading">
     <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
     <div class="journal-usage" id="journalUsageTotal"></div>
+    <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
     <div id="journalSessionList"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
   <section class="journal-feed-pane">
+    <section class="journal-memory-panel" id="journalMemoryPanel" hidden aria-labelledby="journalMemoryHeading">
+      <div class="journal-memory-header">
+        <div>
+          <h2 id="journalMemoryHeading" data-i18n="journal_memory_title">Memory</h2>
+          <p data-i18n="journal_memory_note">Changes apply from the next session start.</p>
+        </div>
+        <button type="button" data-i18n="journal_memory_close" onclick="toggleJournalMemoryPanel()">Close</button>
+      </div>
+      <div class="journal-memory-files" id="journalMemoryFiles"></div>
+    </section>
     <form class="journal-search" id="journalSearch" onsubmit="return false">
       <label class="journal-search-query" for="journalSearchQuery">
         <span data-i18n="journal_search_label">Search Jarvis answers</span>

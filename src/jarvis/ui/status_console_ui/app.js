@@ -674,6 +674,18 @@ let _journalUsageBySession = new Map();
 let _journalActiveSessionId = null;
 let _journalInputInFlight = false;
 let _journalSelectPendingInputSession = false;
+let _journalForkInFlightSessionId = null;
+const _MEMORY_FILE_IDS = ["self", "memory"];
+const _MEMORY_FILE_TITLE_KEYS = {
+  self: "journal_memory_self_title",
+  memory: "journal_memory_memory_title",
+};
+const _MEMORY_FILE_DESCRIPTION_KEYS = {
+  self: "journal_memory_self_description",
+  memory: "journal_memory_memory_description",
+};
+let _journalMemoryOpen = false;
+let _journalMemoryFiles = new Map();
 
 function _isJournalActive() {
   return document.documentElement.getAttribute("data-view") === "journal";
@@ -684,6 +696,11 @@ function _isHiddenActive() {
 }
 
 function setActiveView(view) {
+  if (
+    document.documentElement.getAttribute("data-view") === "journal" &&
+    view !== "journal" &&
+    !_confirmDiscardJournalMemoryChanges()
+  ) return;
   // Pure UI navigation - unlike the engine-confirmed controls above,
   // there is no engine state to wait for, so this applies immediately.
   document.documentElement.setAttribute("data-view", view);
@@ -717,6 +734,8 @@ function _clearJournalContent() {
   _journalUsageBySession = new Map();
   _journalActiveSessionId = null;
   _journalSelectPendingInputSession = false;
+  _journalForkInFlightSessionId = null;
+  _clearJournalMemoryPanel();
   _setJournalInputStatus("");
   document.getElementById("journalSessionList").replaceChildren();
   document.getElementById("journalUsageTotal").textContent = "";
@@ -729,6 +748,205 @@ function _showJournalNoSelection() {
   const empty = document.getElementById("journalFeedEmpty");
   empty.hidden = false;
   empty.textContent = uiString("journal_no_selection");
+}
+
+function _confirmDiscardJournalMemoryChanges() {
+  if (!_journalMemoryHasUnsavedChanges()) return true;
+  return window.confirm(uiString("journal_memory_discard_confirm"));
+}
+
+function _journalMemoryHasUnsavedChanges() {
+  for (const state of _journalMemoryFiles.values()) {
+    if (state.content !== state.savedContent) return true;
+  }
+  return false;
+}
+
+async function toggleJournalMemoryPanel() {
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_memory_hidden"));
+    return;
+  }
+  if (_journalMemoryOpen && !_confirmDiscardJournalMemoryChanges()) return;
+  _journalMemoryOpen = !_journalMemoryOpen;
+  document.getElementById("journalMemoryPanel").hidden = !_journalMemoryOpen;
+  document.getElementById("journalMemoryToggle").textContent = uiString(
+    _journalMemoryOpen ? "journal_memory_close" : "journal_memory_open");
+  if (_journalMemoryOpen) await loadJournalMemoryFiles();
+}
+
+function _clearJournalMemoryPanel() {
+  _journalMemoryOpen = false;
+  _journalMemoryFiles = new Map();
+  const panel = document.getElementById("journalMemoryPanel");
+  if (panel) panel.hidden = true;
+  const toggle = document.getElementById("journalMemoryToggle");
+  if (toggle) toggle.textContent = uiString("journal_memory_open");
+  const files = document.getElementById("journalMemoryFiles");
+  if (files) files.replaceChildren();
+}
+
+async function loadJournalMemoryFiles() {
+  const loaded = new Map();
+  for (const fileId of _MEMORY_FILE_IDS) {
+    const payload = await _fetchJournalJson("/api/memory/files/" + fileId);
+    if (!payload) {
+      _setJournalInputStatus(uiString("journal_memory_load_failed"));
+      return;
+    }
+    loaded.set(fileId, {
+      fileId,
+      content: payload.content || "",
+      savedContent: payload.content || "",
+      maxChars: payload.max_chars || 0,
+      status: "",
+      saving: false,
+    });
+  }
+  _journalMemoryFiles = loaded;
+  _renderJournalMemoryFiles();
+}
+
+function _renderJournalMemoryFiles() {
+  const container = document.getElementById("journalMemoryFiles");
+  container.replaceChildren();
+  for (const fileId of _MEMORY_FILE_IDS) {
+    container.appendChild(_journalMemoryFileElement(fileId));
+  }
+}
+
+function _journalMemoryFileElement(fileId) {
+  const state = _journalMemoryFiles.get(fileId);
+  const section = document.createElement("section");
+  section.className = "journal-memory-file";
+  section.dataset.fileId = fileId;
+
+  const header = document.createElement("div");
+  header.className = "journal-memory-file-header";
+  const title = document.createElement("h3");
+  title.textContent = uiString(_MEMORY_FILE_TITLE_KEYS[fileId]);
+  const description = document.createElement("p");
+  description.textContent = uiString(_MEMORY_FILE_DESCRIPTION_KEYS[fileId]);
+  header.append(title, description);
+
+  const textarea = document.createElement("textarea");
+  textarea.value = state.content;
+  textarea.rows = 7;
+  textarea.addEventListener("input", () => onJournalMemoryInput(fileId, textarea.value));
+
+  const footer = document.createElement("div");
+  footer.className = "journal-memory-footer";
+  const counter = document.createElement("span");
+  counter.className = "journal-memory-counter";
+  counter.textContent = _journalMemoryCounterText(state);
+  const status = document.createElement("span");
+  status.className = "journal-memory-status";
+  status.textContent = state.status;
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = uiString("journal_memory_save");
+  save.disabled = !_journalMemoryCanSave(state);
+  save.addEventListener("click", () => saveJournalMemoryFile(fileId));
+  footer.append(counter, status, save);
+
+  section.classList.toggle("dirty", state.content !== state.savedContent);
+  section.classList.toggle("over-limit", state.content.length > state.maxChars);
+  section.append(header, textarea, footer);
+  return section;
+}
+
+function onJournalMemoryInput(fileId, content) {
+  const state = _journalMemoryFiles.get(fileId);
+  if (!state) return;
+  _journalMemoryFiles.set(fileId, { ...state, content, status: "" });
+  _refreshJournalMemoryFileState(fileId);
+}
+
+function _refreshJournalMemoryFileState(fileId) {
+  const state = _journalMemoryFiles.get(fileId);
+  const section = document.querySelector(
+    '#journalMemoryFiles .journal-memory-file[data-file-id="' + fileId + '"]');
+  if (!state || !section) return;
+  section.classList.toggle("dirty", state.content !== state.savedContent);
+  section.classList.toggle("over-limit", state.content.length > state.maxChars);
+  const counter = section.querySelector(".journal-memory-counter");
+  if (counter) counter.textContent = _journalMemoryCounterText(state);
+  const status = section.querySelector(".journal-memory-status");
+  if (status) status.textContent = state.status;
+  const save = section.querySelector(".journal-memory-footer button");
+  if (save) save.disabled = !_journalMemoryCanSave(state);
+}
+
+function _journalMemoryCounterText(state) {
+  return uiString("journal_memory_counter")
+    .replace("{chars}", String(state.content.length))
+    .replace("{max}", String(state.maxChars));
+}
+
+function _journalMemoryCanSave(state) {
+  return (
+    !state.saving &&
+    state.content !== state.savedContent &&
+    state.content.length <= state.maxChars
+  );
+}
+
+async function saveJournalMemoryFile(fileId) {
+  const state = _journalMemoryFiles.get(fileId);
+  if (!state) return;
+  if (state.content.length > state.maxChars) {
+    _journalMemoryFiles.set(fileId, {
+      ...state,
+      status: uiString("journal_memory_over_limit"),
+    });
+    _renderJournalMemoryFiles();
+    return;
+  }
+  const url = _journalUrl("/api/memory/files/" + fileId);
+  if (url === null) {
+    _setJournalInputStatus(uiString("transport_no_token"));
+    return;
+  }
+  _journalMemoryFiles.set(fileId, { ...state, saving: true, status: "" });
+  _renderJournalMemoryFiles();
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: state.content }),
+    });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      _journalMemoryFiles.set(fileId, {
+        ...state,
+        content: payload.content || "",
+        savedContent: payload.content || "",
+        maxChars: payload.max_chars || state.maxChars,
+        saving: false,
+        status: uiString("journal_memory_saved"),
+      });
+    } else {
+      _journalMemoryFiles.set(fileId, {
+        ...state,
+        saving: false,
+        status: _journalMemorySaveError(payload),
+      });
+    }
+  } catch (error) {
+    console.error("Journal memory save failed:", error);
+    _journalMemoryFiles.set(fileId, {
+      ...state,
+      saving: false,
+      status: uiString("journal_memory_save_failed"),
+    });
+  }
+  _renderJournalMemoryFiles();
+}
+
+function _journalMemorySaveError(payload) {
+  if (payload.status === "hidden") return uiString("journal_memory_hidden");
+  if (payload.reason === "over_limit") return uiString("journal_memory_over_limit");
+  return uiString("journal_memory_save_failed");
 }
 
 async function submitJournalInput() {
@@ -898,12 +1116,78 @@ function _journalSessionElement(session) {
     deleteJournalSession(session.id);
   });
 
-  row.append(when, title, size, deleteButton);
+  const continueButton = document.createElement("button");
+  continueButton.type = "button";
+  continueButton.className = "journal-session-continue";
+  continueButton.textContent = "↪";
+  continueButton.title = uiString("journal_session_continue");
+  continueButton.disabled =
+    session.id === _journalActiveSessionId ||
+    session.id === _journalForkInFlightSessionId;
+  continueButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    continueJournalSession(session.id);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "journal-session-actions";
+  if (session.id !== _journalActiveSessionId) actions.appendChild(continueButton);
+  actions.appendChild(deleteButton);
+
+  row.append(when, title, size, actions);
   row.addEventListener("click", () => selectJournalSession(session.id));
   row.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") selectJournalSession(session.id);
   });
   return row;
+}
+
+async function continueJournalSession(sessionId) {
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_fork_hidden"));
+    return;
+  }
+  if (_journalForkInFlightSessionId !== null) {
+    _setJournalInputStatus(uiString("journal_input_busy"));
+    return;
+  }
+  const url = _journalUrl(
+    "/api/journal/sessions/" + encodeURIComponent(sessionId) + "/fork");
+  if (url === null) {
+    _setJournalInputStatus(uiString("transport_no_token"));
+    return;
+  }
+  _journalForkInFlightSessionId = sessionId;
+  refreshJournalSessions();
+  try {
+    const response = await fetch(url, { method: "POST" });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      _setJournalInputStatus(uiString("journal_fork_started"));
+      _journalSelectedSessionId = payload.session_id;
+      await refreshJournalSessions();
+      selectJournalSession(payload.session_id);
+      return;
+    }
+    _setJournalInputStatus(_journalForkErrorMessage(payload));
+  } catch (error) {
+    console.error("Journal fork failed:", error);
+    _setJournalInputStatus(uiString("journal_fork_failed"));
+  } finally {
+    _journalForkInFlightSessionId = null;
+    refreshJournalSessions();
+  }
+}
+
+function _journalForkErrorMessage(payload) {
+  if (payload.status === "hidden") return uiString("journal_fork_hidden");
+  if (payload.reason === "busy") return uiString("journal_fork_busy");
+  if (payload.reason === "unknown_session") return uiString("journal_fork_unknown");
+  if (payload.reason === "oversize_turn") {
+    return uiString("journal_fork_oversize").replace(
+      "{max}", String(payload.max_chars));
+  }
+  return uiString("journal_fork_failed");
 }
 
 async function deleteJournalSession(sessionId) {
@@ -1313,7 +1597,22 @@ function _journalEventElement(event, position = null) {
     text.textContent = event.text;
     message.appendChild(text);
   }
+  const provenanceDetail = _journalProvenanceDetail(event);
+  if (provenanceDetail !== null) message.appendChild(provenanceDetail);
   return message;
+}
+
+function _journalProvenanceDetail(event) {
+  if (event.source !== "fork" || !event.metadata || !event.metadata.seed) {
+    return null;
+  }
+  const seed = event.metadata.seed;
+  if (!seed.truncated && !seed.dropped_turns) return null;
+  const detail = document.createElement("div");
+  detail.className = "journal-provenance-detail";
+  detail.textContent = uiString("journal_fork_truncated").replace(
+    "{count}", String(seed.dropped_turns || 0));
+  return detail;
 }
 
 function _journalSourceLabel(source) {
@@ -1517,6 +1816,11 @@ function _formatJournalBytes(bytes) {
 }
 
 if (typeof startUiTransport === "function") {
+  window.addEventListener("beforeunload", (event) => {
+    if (!_journalMemoryHasUnsavedChanges()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
   startUiTransport("status-console", ["state", "control", "config"], {
     onSnapshot: _applyStateSnapshot,
     onDelta: _applyStateDelta,

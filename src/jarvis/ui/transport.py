@@ -32,8 +32,15 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.journal.events import JournalEvent, JournalEventAppended
+from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
 from jarvis.journal.search import JournalSearchIndex
-from jarvis.journal.store import JournalStore
+from jarvis.journal.store import JournalReplay, JournalStore
+from jarvis.memory.files import (
+    MemoryFileId,
+    MemoryFileOverCapError,
+    MemoryFileRead,
+    MemoryFileRepository,
+)
 from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
     DataLocality,
@@ -265,6 +272,17 @@ class TextInputSubmitter(Protocol):
     async def __call__(self, text: str) -> TextSubmissionResult: ...
 
 
+class JournalForkHandler(Protocol):
+    async def __call__(
+        self,
+        *,
+        source_session_id: str,
+        replay: JournalReplay,
+        source_end_timestamp: str,
+        seed_budget_chars: int,
+    ) -> ForkSessionResult: ...
+
+
 class UiStateStore:
     """Owns the JSON state projection shared by all UI clients."""
 
@@ -456,7 +474,10 @@ class UiTransportServer:
         journal_store: JournalStore | None = None,
         journal_search_index: JournalSearchIndex | None = None,
         journal_text_submitter: TextInputSubmitter | None = None,
+        journal_fork_handler: JournalForkHandler | None = None,
+        journal_fork_seed_max_chars: int = 12000,
         journal_active_session_id: Callable[[], str | None] | None = None,
+        memory_file_repository: MemoryFileRepository | None = None,
     ) -> None:
         self._bus = bus
         self._control_api = control_api
@@ -469,7 +490,10 @@ class UiTransportServer:
         self._journal_store = journal_store
         self._journal_search_index = journal_search_index
         self._journal_text_submitter = journal_text_submitter
+        self._journal_fork_handler = journal_fork_handler
+        self._journal_fork_seed_max_chars = journal_fork_seed_max_chars
         self._journal_active_session_id = journal_active_session_id or (lambda: None)
+        self._memory_file_repository = memory_file_repository
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
         self._runner: web.AppRunner | None = None
@@ -501,6 +525,10 @@ class UiTransportServer:
         app.router.add_get("/ws", self._websocket_handler)
         app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
         app.router.add_post("/api/journal/input", self._journal_input_handler)
+        app.router.add_post(
+            "/api/journal/sessions/{session_id}/fork",
+            self._journal_fork_handler_http,
+        )
         app.router.add_get("/api/journal/usage", self._journal_usage_handler)
         app.router.add_get(
             "/api/journal/sessions/{session_id}", self._journal_feed_handler
@@ -513,6 +541,8 @@ class UiTransportServer:
             "/api/journal/media/{session_id}/{media_path:.*}",
             self._journal_media_handler,
         )
+        app.router.add_get("/api/memory/files/{file_id}", self._memory_file_get_handler)
+        app.router.add_put("/api/memory/files/{file_id}", self._memory_file_put_handler)
         app.router.add_get("/", self._index_handler)
         app.router.add_static("/", self._ui_dir, show_index=False)
         self._runner = web.AppRunner(app)
@@ -695,6 +725,35 @@ class UiTransportServer:
         result = await self._journal_text_submitter(payload["text"])
         return web.json_response(self._text_submission_payload(result))
 
+    async def _journal_fork_handler_http(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_store is None or self._journal_fork_handler is None:
+            return web.json_response(
+                {"status": "rejected", "reason": "unknown_session"}, status=404
+            )
+        source_session_id = request.match_info["session_id"]
+        summaries = {
+            summary.session_id: summary
+            for summary in await asyncio.to_thread(self._journal_store.list_sessions)
+        }
+        summary = summaries.get(source_session_id)
+        if summary is None:
+            return web.json_response(
+                {"status": "rejected", "reason": "unknown_session"}, status=404
+            )
+        replay = await asyncio.to_thread(
+            self._journal_store.read_session, source_session_id
+        )
+        result = await self._journal_fork_handler(
+            source_session_id=source_session_id,
+            replay=replay,
+            source_end_timestamp=summary.last_timestamp,
+            seed_budget_chars=self._journal_fork_seed_max_chars,
+        )
+        return self._journal_fork_response(source_session_id, result)
+
     async def _journal_usage_handler(self, request: web.Request) -> web.Response:
         self._require_http_token(request)
         if self._is_hidden():
@@ -800,6 +859,45 @@ class UiTransportServer:
         content_type = JOURNAL_MEDIA_TYPES[media_path.suffix.casefold()]
         return web.FileResponse(media_path, headers={"Content-Type": content_type})
 
+    async def _memory_file_get_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._memory_file_repository is None:
+            raise web.HTTPServiceUnavailable(text="memory files not available")
+        file_id = self._parse_memory_file_id(request)
+        read = await asyncio.to_thread(self._memory_file_repository.read, file_id)
+        return web.json_response(self._memory_file_payload(read))
+
+    async def _memory_file_put_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._memory_file_repository is None:
+            raise web.HTTPServiceUnavailable(text="memory files not available")
+        file_id = self._parse_memory_file_id(request)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
+            raise web.HTTPBadRequest(text="request body requires string content")
+        try:
+            read = await asyncio.to_thread(
+                self._memory_file_repository.write, file_id, payload["content"]
+            )
+        except MemoryFileOverCapError as error:
+            return web.json_response(
+                {
+                    "status": "rejected",
+                    "reason": "over_limit",
+                    "chars": error.chars,
+                    "max_chars": error.max_chars,
+                },
+                status=413,
+            )
+        return web.json_response(self._memory_file_payload(read))
+
     def _require_http_token(self, request: web.Request) -> None:
         if not token_matches(self.token, request.query.get("token")):
             raise web.HTTPUnauthorized(text="invalid UI transport token")
@@ -812,6 +910,29 @@ class UiTransportServer:
         return web.json_response({"status": "hidden"})
 
     @staticmethod
+    def _memory_file_payload(read: MemoryFileRead) -> JsonObject:
+        return {
+            "status": "ok",
+            "file": read.file_id.value,
+            "content": read.content,
+            "chars": read.chars,
+            "max_chars": read.max_chars,
+        }
+
+    @staticmethod
+    def _parse_memory_file_id(request: web.Request) -> MemoryFileId:
+        try:
+            return MemoryFileId(request.match_info["file_id"])
+        except ValueError:
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {"status": "rejected", "reason": "invalid_file"},
+                    separators=(",", ":"),
+                ),
+                content_type="application/json",
+            ) from None
+
+    @staticmethod
     def _text_submission_payload(result: TextSubmissionResult) -> JsonObject:
         if result.reason is TextSubmissionReason.ACCEPTED:
             return {"status": "accepted", "reason": result.reason.value}
@@ -820,6 +941,44 @@ class UiTransportServer:
             "reason": result.reason.value,
             "max_chars": result.max_chars,
         }
+
+    @staticmethod
+    def _journal_fork_response(
+        source_session_id: str, result: ForkSessionResult
+    ) -> web.Response:
+        if result.reason is ForkSessionReason.ACCEPTED:
+            seed = result.drop_report
+            if seed is None:
+                raise RuntimeError("accepted fork result requires a seed report")
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "session_id": result.new_session_id,
+                    "continued_from": source_session_id,
+                    "provenance": result.provenance_text,
+                    "seed": {
+                        "dropped_turns": seed.dropped_turns,
+                        "skipped_events": seed.skipped_events,
+                        "truncated": seed.truncated,
+                        "max_chars": result.max_chars,
+                    },
+                }
+            )
+        if result.reason is ForkSessionReason.BUSY:
+            return web.json_response(
+                {"status": "rejected", "reason": "busy"}, status=409
+            )
+        if result.reason is ForkSessionReason.OVERSIZE_TURN:
+            return web.json_response(
+                {
+                    "status": "rejected",
+                    "reason": "oversize_turn",
+                    "turn_chars": result.oversize_turn_chars,
+                    "max_chars": result.max_chars,
+                },
+                status=409,
+            )
+        raise RuntimeError(f"unsupported fork result reason: {result.reason}")
 
     async def _rebuild_journal_index(self) -> None:
         if self._journal_search_index is None:

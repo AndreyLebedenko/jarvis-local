@@ -359,6 +359,22 @@ class JournalSettings:
     root: str = "journal"
 
 
+@dataclass(frozen=True)
+class MemorySettings:
+    root: str = "memory"
+    self_file: str = "self.md"
+    memory_file: str = "memory.md"
+    self_max_chars: int = field(
+        default=8000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    memory_max_chars: int = field(
+        default=8000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    fork_seed_max_chars: int = field(
+        default=12000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+
+
 # Dialog-prompt defaults (task-v1.2.12-external-prompt-config.md). These are
 # runtime dialog data sent to the model, not UI text - deliberately not part
 # of ui_text.py's UI catalog and not governed by [ui].language. Russian
@@ -417,6 +433,7 @@ class Settings:
     prompts: PromptSettings = field(default_factory=PromptSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
+    memory: MemorySettings = field(default_factory=MemorySettings)
 
 
 _SECTIONS: dict[str, type] = {
@@ -432,6 +449,7 @@ _SECTIONS: dict[str, type] = {
     "prompts": PromptSettings,
     "mcp": McpSettings,
     "journal": JournalSettings,
+    "memory": MemorySettings,
 }
 
 SUPPORTED_UI_LANGUAGES = ("en", "ru")
@@ -477,6 +495,8 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         return _build_prompts_section(section_name, raw)
     if cls is McpSettings:
         return _build_mcp_section(section_name, raw)
+    if cls is MemorySettings:
+        return _build_memory_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -524,6 +544,29 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
                 f"[{section_name}].{name} must be a non-empty string; an empty "
                 "prompt is almost certainly a config mistake"
             )
+    return settings
+
+
+def _build_memory_section(section_name: str, raw: dict[str, Any]) -> "MemorySettings":
+    settings = _build_plain_section(section_name, MemorySettings, raw)
+    for name in ("self_max_chars", "memory_max_chars", "fork_seed_max_chars"):
+        value = getattr(settings, name)
+        if value <= 0:
+            raise ConfigError(
+                f"[{section_name}].{name} must be a positive int, got {value!r}"
+            )
+    for name in ("root", "self_file", "memory_file"):
+        value = getattr(settings, name)
+        if not value.strip():
+            raise ConfigError(f"[{section_name}].{name} must be a non-empty string")
+        if Path(value).is_absolute() and name != "root":
+            raise ConfigError(f"[{section_name}].{name} must be relative")
+        if ".." in Path(value).parts and name != "root":
+            raise ConfigError(f"[{section_name}].{name} must stay inside root")
+    if settings.self_file == settings.memory_file:
+        raise ConfigError(
+            f"[{section_name}].self_file and memory_file must be different"
+        )
     return settings
 
 

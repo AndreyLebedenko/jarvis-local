@@ -27,6 +27,7 @@ JOURNAL_STRING_KEYS = (
     "journal_source_text",
     "journal_source_dock",
     "journal_source_assistant",
+    "journal_source_fork",
     "journal_search_label",
     "journal_search_placeholder",
     "journal_search_date_from",
@@ -46,12 +47,36 @@ JOURNAL_STRING_KEYS = (
     "journal_copy_failed",
     "journal_image_missing",
     "journal_usage_total",
+    "journal_memory_open",
+    "journal_memory_close",
+    "journal_memory_title",
+    "journal_memory_note",
+    "journal_memory_self_title",
+    "journal_memory_self_description",
+    "journal_memory_memory_title",
+    "journal_memory_memory_description",
+    "journal_memory_save",
+    "journal_memory_saved",
+    "journal_memory_counter",
+    "journal_memory_over_limit",
+    "journal_memory_hidden",
+    "journal_memory_load_failed",
+    "journal_memory_save_failed",
+    "journal_memory_discard_confirm",
     "journal_session_delete",
+    "journal_session_continue",
     "journal_session_active",
     "journal_delete_confirm",
     "journal_delete_failed",
     "journal_delete_active",
     "journal_delete_not_found",
+    "journal_fork_started",
+    "journal_fork_busy",
+    "journal_fork_hidden",
+    "journal_fork_unknown",
+    "journal_fork_oversize",
+    "journal_fork_failed",
+    "journal_fork_truncated",
 )
 
 
@@ -162,6 +187,7 @@ def test_hidden_placeholder_logic_present():
     assert 'id="journalHiddenPlaceholder"' in INDEX_HTML
     assert "_onJournalVisibilityChanged(payload.mode)" in APP_JS
     assert "_clearJournalContent()" in APP_JS
+    assert "_clearJournalMemoryPanel();" in APP_JS
 
 
 def test_stale_journal_responses_cannot_repopulate_hidden_dom():
@@ -237,6 +263,87 @@ def test_journal_rendering_reads_labels_through_ui_strings():
     assert 'uiString("journal_empty_feed")' in APP_JS
     assert 'uiString("journal_no_selection")' in APP_JS
     assert '"journal_source_" + source' in APP_JS
+
+
+def test_journal_continue_posts_to_the_session_fork_endpoint():
+    session_body = APP_JS.split("function _journalSessionElement(")[1].split("\n}")[0]
+    assert "continueJournalSession(session.id)" in session_body
+    assert "session.id !== _journalActiveSessionId" in session_body
+    body = APP_JS.split("async function continueJournalSession(")[1].split("\n}")[0]
+    assert '"/api/journal/sessions/" + encodeURIComponent(sessionId) + "/fork"' in body
+    assert 'method: "POST"' in body
+    assert 'payload.status === "ok"' in body
+    assert "selectJournalSession(payload.session_id);" in body
+
+
+def test_journal_continue_errors_are_localized():
+    body = APP_JS.split("function _journalForkErrorMessage(")[1].split("\n}")[0]
+    assert 'payload.status === "hidden"' in body
+    assert 'payload.reason === "busy"' in body
+    assert 'payload.reason === "unknown_session"' in body
+    assert 'payload.reason === "oversize_turn"' in body
+    assert 'uiString("journal_fork_failed")' in body
+
+
+def test_journal_memory_panel_is_reachable_from_journal_view():
+    assert 'id="journalMemoryToggle"' in INDEX_HTML
+    assert 'onclick="toggleJournalMemoryPanel()"' in INDEX_HTML
+    assert 'id="journalMemoryPanel"' in INDEX_HTML
+    assert 'data-i18n="journal_memory_note"' in INDEX_HTML
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert ".journal-memory-panel[hidden] { display: none; }" in compact
+
+
+def test_journal_memory_panel_loads_and_saves_fixed_file_ids():
+    assert 'const _MEMORY_FILE_IDS = ["self", "memory"];' in APP_JS
+    load_body = APP_JS.split("async function loadJournalMemoryFiles(")[1].split("\n}")[
+        0
+    ]
+    save_body = APP_JS.split("async function saveJournalMemoryFile(")[1].split("\n}")[0]
+    assert '"/api/memory/files/" + fileId' in load_body
+    assert '"/api/memory/files/" + fileId' in save_body
+    assert 'method: "PUT"' in save_body
+    assert "JSON.stringify({ content: state.content })" in save_body
+
+
+def test_journal_memory_client_blocks_over_cap_and_preserves_text_on_rejection():
+    can_save = APP_JS.split("function _journalMemoryCanSave(")[1].split("\n}")[0]
+    assert "state.content.length <= state.maxChars" in can_save
+    save_body = APP_JS.split("async function saveJournalMemoryFile(")[1].split("\n}")[0]
+    assert "state.content.length > state.maxChars" in save_body
+    assert 'payload.reason === "over_limit"' in APP_JS
+    assert "savedContent: payload.content" in save_body
+
+
+def test_journal_memory_typing_updates_existing_dom_without_rerendering_textarea():
+    input_body = APP_JS.split("function onJournalMemoryInput(")[1].split("\n}")[0]
+    assert "_refreshJournalMemoryFileState(fileId);" in input_body
+    assert "_renderJournalMemoryFiles();" not in input_body
+    refresh_body = APP_JS.split("function _refreshJournalMemoryFileState(")[1].split(
+        "\n}"
+    )[0]
+    assert ".journal-memory-counter" in refresh_body
+    assert ".journal-memory-status" in refresh_body
+    assert ".journal-memory-footer button" in refresh_body
+    assert "save.disabled = !_journalMemoryCanSave(state);" in refresh_body
+    assert "replaceChildren" not in refresh_body
+
+
+def test_journal_memory_unsaved_changes_guard_navigation_and_unload():
+    assert "_confirmDiscardJournalMemoryChanges()" in APP_JS
+    assert "journal_memory_discard_confirm" in APP_JS
+    assert 'window.addEventListener("beforeunload"' in APP_JS
+    body = APP_JS.split("function setActiveView(")[1].split("\n}")[0]
+    assert 'view !== "journal"' in body
+    assert "_confirmDiscardJournalMemoryChanges()" in body
+
+
+def test_journal_fork_provenance_detail_uses_text_content():
+    body = APP_JS.split("function _journalProvenanceDetail(")[1].split("\n}")[0]
+    assert 'event.source !== "fork"' in body
+    assert 'uiString("journal_fork_truncated")' in body
+    assert "detail.textContent" in body
+    assert "innerHTML" not in body
 
 
 def test_journal_view_has_no_context_menu():

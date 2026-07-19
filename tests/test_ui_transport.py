@@ -7,6 +7,7 @@ import pytest
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DataBoundary,
+    MemorySettings,
     PiperTtsSettings,
     SileroTtsSettings,
     VadSettings,
@@ -24,6 +25,16 @@ from jarvis.journal import (
     JournalRecorder,
     JournalSearchIndex,
     JournalStore,
+)
+from jarvis.journal.fork import (
+    ForkSeedDropReport,
+    ForkSessionReason,
+    ForkSessionResult,
+)
+from jarvis.memory.files import (
+    MemoryFileId,
+    MemoryFileRepository,
+    build_memory_file_specs,
 )
 from jarvis.tools.interception import ToolCallStarted
 from jarvis.ui.contract import (
@@ -108,6 +119,30 @@ class _FakeTextSubmitter:
     async def __call__(self, text: str) -> TextSubmissionResult:
         self.calls.append(text)
         return TextSubmissionResult(self.reason, max_chars=20)
+
+
+class _FakeJournalForkHandler:
+    def __init__(self, result: ForkSessionResult) -> None:
+        self.result = result
+        self.calls = []
+
+    async def __call__(
+        self,
+        *,
+        source_session_id,
+        replay,
+        source_end_timestamp,
+        seed_budget_chars,
+    ) -> ForkSessionResult:
+        self.calls.append(
+            {
+                "source_session_id": source_session_id,
+                "replay": replay,
+                "source_end_timestamp": source_end_timestamp,
+                "seed_budget_chars": seed_budget_chars,
+            }
+        )
+        return self.result
 
 
 def test_protocol_message_round_trips_with_channel_and_payload():
@@ -1029,6 +1064,165 @@ async def test_journal_input_endpoint_reuses_auth_and_rejects_bad_payload() -> N
 
 
 @pytest.mark.asyncio
+async def test_journal_fork_endpoint_reads_source_and_maps_success(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    source_session_id = "20260718-150000-ab12"
+    store.append(
+        _journal_event(
+            session_id=source_session_id,
+            timestamp="2026-07-18T15:00:00+01:00",
+            source="dock",
+            role="user",
+            text="source turn",
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=source_session_id,
+            timestamp="2026-07-18T15:01:00+01:00",
+            source="assistant",
+            role="assistant",
+            text="source answer",
+        )
+    )
+    fork_handler = _FakeJournalForkHandler(
+        ForkSessionResult(
+            ForkSessionReason.ACCEPTED,
+            new_session_id="20260719-100000-cd34",
+            drop_report=ForkSeedDropReport(
+                dropped_turns=1, skipped_events=0, truncated=True
+            ),
+            provenance_text="continued",
+            max_chars=25,
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_fork_handler=fork_handler,
+        journal_fork_seed_max_chars=25,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{source_session_id}/fork?token=valid-token"
+            )
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "ok",
+                "session_id": "20260719-100000-cd34",
+                "continued_from": source_session_id,
+                "provenance": "continued",
+                "seed": {
+                    "dropped_turns": 1,
+                    "skipped_events": 0,
+                    "truncated": True,
+                    "max_chars": 25,
+                },
+            }
+            assert len(fork_handler.calls) == 1
+            assert fork_handler.calls[0]["source_session_id"] == source_session_id
+            assert fork_handler.calls[0]["source_end_timestamp"] == (
+                "2026-07-18T15:01:00+01:00"
+            )
+            assert fork_handler.calls[0]["seed_budget_chars"] == 25
+            assert [event.text for event in fork_handler.calls[0]["replay"].events] == [
+                "source turn",
+                "source answer",
+            ]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_fork_endpoint_maps_rejections_and_unknown_session(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    source_session_id = "20260718-150000-ab12"
+    store.append(
+        _journal_event(
+            session_id=source_session_id,
+            timestamp="2026-07-18T15:00:00+01:00",
+            source="dock",
+            role="user",
+            text="source turn",
+        )
+    )
+    for result, expected_status, expected_payload in [
+        (
+            ForkSessionResult(ForkSessionReason.BUSY),
+            409,
+            {"status": "rejected", "reason": "busy"},
+        ),
+        (
+            ForkSessionResult(
+                ForkSessionReason.OVERSIZE_TURN,
+                oversize_turn_chars=200,
+                max_chars=25,
+            ),
+            409,
+            {
+                "status": "rejected",
+                "reason": "oversize_turn",
+                "turn_chars": 200,
+                "max_chars": 25,
+            },
+        ),
+    ]:
+        fork_handler = _FakeJournalForkHandler(result)
+        server = UiTransportServer(
+            EventBus(),
+            _FakeControlApi(),
+            token_factory=lambda: "valid-token",
+            journal_store=store,
+            journal_fork_handler=fork_handler,
+            journal_fork_seed_max_chars=25,
+        )
+        info = await server.start()
+        try:
+            async with aiohttp.ClientSession() as session:
+                response = await session.post(
+                    f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                    f"{source_session_id}/fork?token=valid-token"
+                )
+                assert response.status == expected_status
+                assert await response.json() == expected_payload
+        finally:
+            await server.stop()
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_fork_handler=_FakeJournalForkHandler(
+            ForkSessionResult(ForkSessionReason.ACCEPTED)
+        ),
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                "20260718-150000-missing/fork?token=valid-token"
+            )
+            assert response.status == 404
+            assert await response.json() == {
+                "status": "rejected",
+                "reason": "unknown_session",
+            }
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_journal_usage_and_delete_api_keep_search_consistent(
     tmp_path: Path,
 ) -> None:
@@ -1115,6 +1309,131 @@ async def test_journal_usage_and_delete_api_keep_search_consistent(
 
 
 @pytest.mark.asyncio
+async def test_memory_file_api_reads_missing_and_round_trips_utf8(
+    tmp_path: Path,
+) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(
+            MemorySettings(root=str(tmp_path), memory_max_chars=100)
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        memory_file_repository=repository,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            missing = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/memory/files/memory"
+                "?token=valid-token",
+            )
+            assert missing == {
+                "status": "ok",
+                "file": "memory",
+                "content": "",
+                "chars": 0,
+                "max_chars": 100,
+            }
+
+            written_response = await session.put(
+                f"http://127.0.0.1:{info.port}/api/memory/files/memory"
+                "?token=valid-token",
+                json={"content": "Память: локально."},
+            )
+            assert written_response.status == 200
+            written = await written_response.json()
+            assert written["content"] == "Память: локально."
+            assert written["chars"] == len("Память: локально.")
+
+            reread = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/memory/files/memory"
+                "?token=valid-token",
+            )
+            assert reread == written
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_memory_file_api_auth_hidden_over_cap_and_invalid_identifier(
+    tmp_path: Path,
+) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path), memory_max_chars=3))
+    )
+    hidden_server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+        memory_file_repository=repository,
+    )
+    hidden_info = await hidden_server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            hidden_get = await _get_json(
+                session,
+                f"http://127.0.0.1:{hidden_info.port}/api/memory/files/memory"
+                "?token=valid-token",
+            )
+            assert hidden_get == {"status": "hidden"}
+            hidden_put = await session.put(
+                f"http://127.0.0.1:{hidden_info.port}/api/memory/files/memory"
+                "?token=valid-token",
+                json={"content": "new"},
+            )
+            assert hidden_put.status == 200
+            assert await hidden_put.json() == {"status": "hidden"}
+    finally:
+        await hidden_server.stop()
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        memory_file_repository=repository,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            missing_token = await session.get(
+                f"http://127.0.0.1:{info.port}/api/memory/files/memory"
+            )
+            assert missing_token.status == 401
+
+            invalid = await session.get(
+                f"http://127.0.0.1:{info.port}/api/memory/files/..%2Fsecret"
+                "?token=valid-token",
+            )
+            assert invalid.status == 400
+            assert await invalid.json() == {
+                "status": "rejected",
+                "reason": "invalid_file",
+            }
+
+            bad_payload = await session.put(
+                f"http://127.0.0.1:{info.port}/api/memory/files/memory"
+                "?token=valid-token",
+                json={"content": "abcd"},
+            )
+            assert bad_payload.status == 413
+            assert await bad_payload.json() == {
+                "status": "rejected",
+                "reason": "over_limit",
+                "chars": 4,
+                "max_chars": 3,
+            }
+            assert repository.read(MemoryFileId.MEMORY).content == ""
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
     tmp_path: Path,
 ) -> None:
@@ -1133,6 +1452,9 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
     (media_dir / "clip.wav").write_bytes(b"RIFF demo")
     state = UiStateStore(visibility_mode=VisibilityMode.HIDDEN)
     submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    fork_handler = _FakeJournalForkHandler(
+        ForkSessionResult(ForkSessionReason.ACCEPTED)
+    )
     server = UiTransportServer(
         bus,
         _FakeControlApi(),
@@ -1141,6 +1463,7 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
         journal_store=store,
         journal_search_index=JournalSearchIndex(store, tmp_path),
         journal_text_submitter=submitter,
+        journal_fork_handler=fork_handler,
     )
     info = await server.start()
     try:
@@ -1186,6 +1509,13 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
             assert hidden_input.status == 200
             assert await hidden_input.json() == {"status": "hidden"}
             assert submitter.calls == []
+            hidden_fork = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/"
+                f"{event.session_id}/fork?token=valid-token"
+            )
+            assert hidden_fork.status == 200
+            assert await hidden_fork.json() == {"status": "hidden"}
+            assert fork_handler.calls == []
             hidden_delete = await session.delete(
                 f"http://127.0.0.1:{info.port}/api/journal/sessions/"
                 f"{event.session_id}?token=valid-token"

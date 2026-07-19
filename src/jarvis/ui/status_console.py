@@ -150,6 +150,7 @@ def journal_event_payload(
             for path in event.media
         ),
         transcript=event.transcript,
+        metadata=event.metadata,
     )
     return {
         "session_id": payload.session_id,
@@ -159,6 +160,7 @@ def journal_event_payload(
         "text": payload.text,
         "media": [asdict(item) for item in payload.media],
         "transcript": payload.transcript,
+        "metadata": payload.metadata,
     }
 
 

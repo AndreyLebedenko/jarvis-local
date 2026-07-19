@@ -16,6 +16,7 @@ from jarvis.core.config import (
     McpServerSettings,
     McpSettings,
     McpToolAdapterSettings,
+    MemorySettings,
     MicrophoneSettings,
     PiperTtsSettings,
     Settings,
@@ -88,6 +89,35 @@ def test_journal_settings_parse_from_config(tmp_path):
     settings = load_settings(config_path)
 
     assert settings.journal == JournalSettings(enabled=False, root=".local/journal")
+
+
+def test_memory_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [memory]
+        fork_seed_max_chars = 4096
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.memory == MemorySettings(fork_seed_max_chars=4096)
+
+
+def test_memory_fork_seed_budget_must_be_positive(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [memory]
+        fork_seed_max_chars = 0
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="fork_seed_max_chars"):
+        load_settings(config_path)
 
 
 def test_valid_config_file_parses_expected_values(tmp_path):

@@ -6,7 +6,13 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from jarvis.core.bus import EventBus
-from jarvis.journal.events import JournalEvent, JournalEventAppended, new_session_id
+from jarvis.journal.events import (
+    JournalEvent,
+    JournalEventAppended,
+    JSONValue,
+    new_session_id,
+)
+from jarvis.journal.fork import ForkSeedDropReport
 from jarvis.journal.store import JournalStore
 
 
@@ -87,6 +93,37 @@ class JournalRecorder:
                 media=(),
             )
         )
+
+    async def start_fork_session(
+        self,
+        *,
+        source_session_id: str,
+        provenance_text: str,
+        seed_drop_report: ForkSeedDropReport,
+    ) -> str | None:
+        if not self._enabled:
+            return None
+        timestamp = self._now()
+        self._session_id = new_session_id(timestamp)
+        self._media_counter = 0
+        self._schedule(
+            self._append_event(
+                timestamp=timestamp,
+                source="fork",
+                role="system",
+                text=provenance_text,
+                media=(),
+                metadata={
+                    "continued_from": source_session_id,
+                    "seed": {
+                        "dropped_turns": seed_drop_report.dropped_turns,
+                        "skipped_events": seed_drop_report.skipped_events,
+                        "truncated": seed_drop_report.truncated,
+                    },
+                },
+            )
+        )
+        return self._session_id
 
     async def wait_for_pending(self) -> None:
         while self._tasks:
@@ -169,6 +206,7 @@ class JournalRecorder:
         role: str,
         text: str,
         media: tuple[str, ...],
+        metadata: dict[str, JSONValue] | None = None,
     ) -> None:
         event = JournalEvent(
             session_id=self._session(timestamp),
@@ -178,6 +216,7 @@ class JournalRecorder:
             text=text,
             media=media,
             transcript=None,
+            metadata=metadata or {},
         )
         await asyncio.to_thread(self._store.append, event)
         if self._bus is not None:

@@ -166,6 +166,17 @@ def test_assistant_copy_button_copies_recorded_text():
     assert 'uiString("journal_copy_done")' in copy_body
 
 
+def test_system_provenance_events_render_as_fork_markers():
+    body = _function_body("_journalEventElement")
+    assert "_journalProvenanceDetail(event)" in body
+    detail_body = _function_body("_journalProvenanceDetail")
+    assert 'event.source !== "fork"' in detail_body
+    assert "event.metadata.seed" in detail_body
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert '.journal-msg[data-role="system"] {' in compact
+    assert ".journal-provenance-detail {" in compact
+
+
 def test_usage_and_delete_controls_are_wired_to_session_list():
     assert '_fetchJournalJson("/api/journal/usage")' in APP_JS
     assert "journalUsageTotal" in APP_JS

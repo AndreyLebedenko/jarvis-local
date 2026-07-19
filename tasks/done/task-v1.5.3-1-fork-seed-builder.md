@@ -1,6 +1,6 @@
 # Task v1.5.3-1: Fork seed builder
 
-**Status:** Backlog.
+**Status:** Completed.
 **Story:** `tasks/story-v1.5.3-memory-layer-a.md`
 **Depends on:** nothing new; pure logic over existing journal replay.
 

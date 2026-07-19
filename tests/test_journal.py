@@ -72,10 +72,42 @@ def test_journal_event_rejects_unknown_role() -> None:
             session_id="20260716-153000-ab12",
             timestamp="2026-07-16T15:30:00+01:00",
             source="tool",
-            role="system",
+            role="tool",
             text="hello",
             media=[],
             transcript=None,
+        )
+
+
+def test_journal_event_accepts_system_provenance_metadata() -> None:
+    event = JournalEvent(
+        session_id="20260716-153000-ab12",
+        timestamp="2026-07-16T15:30:00+01:00",
+        source="fork",
+        role="system",
+        text="continued",
+        media=[],
+        transcript=None,
+        metadata={
+            "continued_from": "20260715-153000-cd34",
+            "seed": {"dropped_turns": 2, "truncated": True},
+        },
+    )
+
+    assert JournalEvent.from_json_line(event.to_json_line()) == event
+
+
+def test_journal_event_rejects_non_json_metadata() -> None:
+    with pytest.raises(ValueError, match="metadata"):
+        JournalEvent(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            source="fork",
+            role="system",
+            text="continued",
+            media=[],
+            transcript=None,
+            metadata={"bad": object()},
         )
 
 
