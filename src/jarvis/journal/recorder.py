@@ -112,23 +112,21 @@ class JournalRecorder:
         timestamp = self._now()
         self._session_id = new_session_id(timestamp)
         self._media_counter = 0
-        self._schedule(
-            self._append_event(
-                session_id=self._session_id,
-                timestamp=timestamp,
-                source="fork",
-                role="system",
-                text=provenance_text,
-                media=(),
-                metadata={
-                    "continued_from": source_session_id,
-                    "seed": {
-                        "dropped_turns": seed_drop_report.dropped_turns,
-                        "skipped_events": seed_drop_report.skipped_events,
-                        "truncated": seed_drop_report.truncated,
-                    },
+        await self._append_event(
+            session_id=self._session_id,
+            timestamp=timestamp,
+            source="fork",
+            role="system",
+            text=provenance_text,
+            media=(),
+            metadata={
+                "continued_from": source_session_id,
+                "seed": {
+                    "dropped_turns": seed_drop_report.dropped_turns,
+                    "skipped_events": seed_drop_report.skipped_events,
+                    "truncated": seed_drop_report.truncated,
                 },
-            )
+            },
         )
         return self._session_id
 

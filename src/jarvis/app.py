@@ -584,7 +584,7 @@ def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
 
 
 def _new_context_provenance_line() -> str:
-    return "New blank context started by user."
+    return "Новый пустой контекст создан пользователем."
 
 
 def build_app(

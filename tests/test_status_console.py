@@ -85,7 +85,7 @@ def test_blank_context_session_title_is_not_voice_fallback(tmp_path):
             timestamp="2026-07-19T10:00:00+01:00",
             source="context",
             role="system",
-            text="New blank context started by user.",
+            text="Новый пустой контекст создан пользователем.",
             media=[],
             transcript=None,
             metadata={"kind": "new_context"},

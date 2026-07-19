@@ -67,23 +67,23 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
         else:
             seedable_turns.append(turn)
 
-    for turn in seedable_turns:
-        turn_chars = len(turn.text)
-        if turn_chars > budget_chars:
-            raise ForkSeedOversizeTurnError(turn_chars, budget_chars)
+    if seedable_turns:
+        latest_turn_chars = len(seedable_turns[-1].text)
+        if latest_turn_chars > budget_chars:
+            raise ForkSeedOversizeTurnError(latest_turn_chars, budget_chars)
 
-    selected_reversed: list[ForkSeedTurn] = []
+    selected_start = len(seedable_turns)
     selected_chars = 0
-    dropped_turns = 0
-    for turn in reversed(seedable_turns):
+    for index in range(len(seedable_turns) - 1, -1, -1):
+        turn = seedable_turns[index]
         turn_chars = len(turn.text)
         if selected_chars + turn_chars > budget_chars:
-            dropped_turns += 1
-            continue
-        selected_reversed.append(turn)
+            break
+        selected_start = index
         selected_chars += turn_chars
 
-    selected = tuple(reversed(selected_reversed))
+    selected = tuple(seedable_turns[selected_start:])
+    dropped_turns = selected_start
     return ForkSeedResult(
         turns=selected,
         drop_report=ForkSeedDropReport(
@@ -95,6 +95,8 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
 
 
 def _seed_turn(event: JournalEvent) -> ForkSeedTurn | None:
+    if event.source == "context":
+        return None
     text = _model_facing_text(event)
     if text == "":
         return None

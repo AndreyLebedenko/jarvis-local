@@ -2172,7 +2172,10 @@ surface while preserving the append-only journal invariant.
   unknown/oversize cases structurally, clears the live model-facing history,
   and seeds a new session from the selected source session's verbatim text-only
   tail. Oldest turns are dropped first to fit `[memory].fork_seed_max_chars`;
-  no turn is split, summarized, or generated.
+  once a turn no longer fits, every older turn is dropped too, so the seed is
+  never a middle-holed selection. A fork is rejected for oversize only when the
+  newest seedable turn itself exceeds the budget. No turn is split,
+  summarized, or generated.
 - The fork prepends one deterministic system history line stating that this
   session continues an earlier conversation and giving the source session's end
   timestamp in the same weekday + ISO 8601 format as the current-turn time
@@ -2181,6 +2184,10 @@ surface while preserving the append-only journal invariant.
   `source="fork"` provenance event with `metadata.continued_from` and the seed
   drop report. Seeded user/assistant turns are not replayed aloud and are not
   re-recorded as fresh journal events.
+- When forking a session that already contains provenance, `source="fork"`
+  system events are retained as part of the seed chain, but
+  `source="context"` blank-context markers are skipped because they only
+  describe the UI boundary and do not carry source conversation content.
 - Blank context creation is also explicit. `POST /api/journal/context/new`
   clears the live model-facing history, resamples the session-start system
   prompt/memory snapshot, and creates a new journal-visible session

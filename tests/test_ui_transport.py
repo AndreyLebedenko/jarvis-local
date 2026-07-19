@@ -1082,13 +1082,13 @@ async def test_journal_new_context_endpoint_maps_success_and_busy() -> None:
             NewContextResult(
                 NewContextReason.ACCEPTED,
                 session_id="20260719-100000-ab12",
-                provenance_text="New blank context started by user.",
+                provenance_text="Новый пустой контекст создан пользователем.",
             ),
             200,
             {
                 "status": "ok",
                 "session_id": "20260719-100000-ab12",
-                "provenance": "New blank context started by user.",
+                "provenance": "Новый пустой контекст создан пользователем.",
             },
         ),
         (
@@ -1124,7 +1124,7 @@ async def test_journal_new_context_endpoint_is_suppressed_while_hidden() -> None
         NewContextResult(
             NewContextReason.ACCEPTED,
             session_id="20260719-100000-ab12",
-            provenance_text="New blank context started by user.",
+            provenance_text="Новый пустой контекст создан пользователем.",
         )
     )
     server = UiTransportServer(

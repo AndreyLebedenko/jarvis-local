@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from jarvis.journal import JournalEvent, JournalRecorder, JournalStore, new_session_id
+from jarvis.journal.fork import ForkSeedDropReport
 
 
 def test_journal_event_json_line_round_trip_is_lossless_utf8_and_single_line() -> None:
@@ -436,7 +437,7 @@ async def test_recorder_starts_blank_session_with_context_provenance(
     )
 
     session_id = await recorder.start_blank_session(
-        provenance_text="New blank context started by user."
+        provenance_text="Новый пустой контекст создан пользователем."
     )
 
     assert session_id == recorder.session_id
@@ -446,10 +447,39 @@ async def test_recorder_starts_blank_session_with_context_provenance(
     assert (event.role, event.source, event.text, event.media) == (
         "system",
         "context",
-        "New blank context started by user.",
+        "Новый пустой контекст создан пользователем.",
         (),
     )
     assert event.metadata == {"kind": "new_context"}
+
+
+async def test_recorder_start_fork_session_writes_provenance_before_return(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(
+        store,
+        clock=_fixed_clock(datetime(2026, 7, 19, 10, 0, 0, tzinfo=UTC)),
+    )
+
+    session_id = await recorder.start_fork_session(
+        source_session_id="20260718-100000-ab12",
+        provenance_text="continued from earlier",
+        seed_drop_report=ForkSeedDropReport(
+            dropped_turns=0, skipped_events=0, truncated=False
+        ),
+    )
+
+    assert session_id is not None
+    replay = store.read_session(session_id)
+    [event] = replay.events
+    assert event.source == "fork"
+    assert event.role == "system"
+    assert event.text == "continued from earlier"
+    assert event.metadata == {
+        "continued_from": "20260718-100000-ab12",
+        "seed": {"dropped_turns": 0, "skipped_events": 0, "truncated": False},
+    }
 
 
 async def test_recorder_pending_event_keeps_the_session_it_was_scheduled_for(
@@ -466,7 +496,7 @@ async def test_recorder_pending_event_keeps_the_session_it_was_scheduled_for(
     await recorder.record_text_user("old session turn")
     old_session_id = recorder.session_id
     new_session_id = await recorder.start_blank_session(
-        provenance_text="New blank context started by user."
+        provenance_text="Новый пустой контекст создан пользователем."
     )
     await recorder.wait_for_pending()
 
