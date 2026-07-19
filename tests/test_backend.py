@@ -12,6 +12,11 @@ from jarvis.dialog.backend import (
     ResponseToken,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel
+from jarvis.inputs.attachments import (
+    AttachmentUpload,
+    compose_turn_images,
+    plan_attachments,
+)
 
 
 def _fake_audio_b64() -> str:
@@ -31,6 +36,35 @@ def test_payload_places_media_under_images_never_under_audio():
     assert "audio" not in payload
     for message in payload["messages"]:
         assert "audio" not in message
+
+
+def test_payload_places_image_attachments_under_images_of_the_last_message():
+    # Regression pin for task-v1.6.0-4: an uploaded image travels the same
+    # verified path as audio and screenshots - messages[-1].images - and no
+    # dedicated attachment/image field appears anywhere in the payload.
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
+    upload = AttachmentUpload(
+        filename="photo.png",
+        content_type="image/png",
+        data=b"\x89PNG\r\n\x1a\n" + b"x" * 32,
+    )
+    plan = plan_attachments([upload])
+    images = compose_turn_images(plan)
+
+    payload = backend.build_payload(
+        messages=[
+            {"role": "user", "content": "earlier turn"},
+            {"role": "assistant", "content": "earlier answer"},
+            {"role": "user", "content": "describe this image"},
+        ],
+        images_b64=images,
+    )
+
+    assert payload["messages"][-1]["images"] == [base64.b64encode(upload.data).decode()]
+    for message in payload["messages"][:-1]:
+        assert "images" not in message
+    for forbidden in ("images", "attachments", "image"):
+        assert forbidden not in payload
 
 
 def test_payload_without_media_has_no_images_key():

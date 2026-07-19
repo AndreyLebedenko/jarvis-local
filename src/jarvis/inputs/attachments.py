@@ -54,6 +54,7 @@ MAX_TOTAL_UPLOAD_BYTES_PER_TURN = 40 * 1024 * 1024
 # ASCII, not Russian, per CLAUDE.md's ASCII-preference rule - these strings
 # reach the model prompt (text) or the journal/UI (all of them) verbatim.
 TEXT_TRUNCATION_MARKER_TEMPLATE = "[{filename} truncated to {max_chars} characters]"
+IMAGE_CUE_TEMPLATE = "[Attached image: {filename}]"
 
 
 class AttachmentClass(Enum):
@@ -119,6 +120,17 @@ _MAX_FILES_PER_TURN_BY_CLASS: dict[AttachmentClass, int] = {
 }
 
 _GENERIC_CONTENT_TYPES = frozenset({"", "application/octet-stream"})
+
+# The image analog of the audio path's soundfile.info() header probe: a
+# cheap deterministic check on the leading bytes, not a full decode (which
+# would need Pillow - a new dependency this iteration does not justify).
+# Class-level like the MIME check above: a .png holding valid JPEG bytes is
+# accepted, because the model receives the bytes, not the filename, and
+# either signature is a format the images payload verifiably supports.
+# What this catches is a genuinely wrong file behind an image extension.
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_JPEG_SIGNATURE = b"\xff\xd8\xff"
+_IMAGE_SIGNATURES = (_PNG_SIGNATURE, _JPEG_SIGNATURE)
 
 
 @dataclass(frozen=True)
@@ -316,6 +328,12 @@ def _plan_text(filename: str, data: bytes) -> AttachmentPlanItem:
 
 
 def _plan_image(filename: str, data: bytes) -> AttachmentPlanItem:
+    if not any(data.startswith(signature) for signature in _IMAGE_SIGNATURES):
+        return _rejected(
+            filename,
+            AttachmentClass.IMAGE,
+            f"{filename}: file content is not a valid PNG or JPEG image.",
+        )
     return AttachmentPlanItem(
         filename=filename,
         attachment_class=AttachmentClass.IMAGE,
@@ -421,16 +439,37 @@ def compose_turn_text(typed_text: str, plan: AttachmentPlan) -> str:
     """Joins the Journal input dock's typed message with any accepted text
     attachments (task-v1.6.0-3), typed text always leading so the model
     reads the user's own words before any attached document - it is not
-    lost or buried among file content. Only TEXT-class items carry a
-    `text` part; image/audio items reach the model through `images`
-    instead, so they contribute nothing here. Each text part already
-    carries its own filename delimiters and truncation marker
-    (`_wrap_text`/`_plan_text` above), so this is a plain join, not
-    another layer of wrapping."""
-    text_parts = [
-        item.text.content
-        for item in plan.items
-        if item.accepted and item.text is not None
-    ]
-    parts = [typed_text, *text_parts] if typed_text else text_parts
+    lost or buried among file content. Each text part already carries its
+    own filename delimiters and truncation marker (`_wrap_text`/
+    `_plan_text` above), so this is a plain join, not another layer of
+    wrapping.
+
+    An accepted image contributes only a short cue naming the file
+    (task-v1.6.0-4): the binary reaches the model through the `images`
+    payload (`compose_turn_images`), never through text, but without the
+    cue the model would see nameless media it cannot connect to the user's
+    words. Audio items contribute nothing here yet; their clip
+    representation is task-v1.6.0-5's job. Attachment parts keep plan
+    order, which is upload order."""
+    parts = [typed_text] if typed_text else []
+    for item in plan.items:
+        if not item.accepted:
+            continue
+        if item.text is not None:
+            parts.append(item.text.content)
+        elif item.image is not None:
+            parts.append(IMAGE_CUE_TEMPLATE.format(filename=item.filename))
     return "\n\n".join(parts)
+
+
+def compose_turn_images(plan: AttachmentPlan) -> tuple[str, ...]:
+    """Accepted image attachments as base64 strings in plan (upload)
+    order - the exact representation the screenshot path already feeds to
+    the current turn's media list, so orchestration (task-v1.6.0-6) can
+    concatenate both without conversion. Current-turn only by story
+    contract: nothing here enters ConversationHistory."""
+    return tuple(
+        item.image.base64_data
+        for item in plan.items
+        if item.accepted and item.image is not None
+    )

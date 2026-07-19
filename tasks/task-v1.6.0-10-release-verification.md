@@ -33,7 +33,10 @@ documentation updates, and story cleanup.
   `python -m ruff check .`, and `python -m pytest`.
 - Prepare a human-run manual check script or exact command sequence for:
   text attachment, image attachment, uploaded audio attachment, unsupported
-  format, text truncation, audio chunking, and Hidden mode.
+  format, text truncation, audio chunking, and Hidden mode. The image check
+  must include a real `.jpg`, not only PNG: the live-verified `images`
+  precedent (screenshot path) covers PNG only, so JPEG-through-`images` is
+  not yet a verified fact (agreed at task-v1.6.0-4 review, 2026-07-19).
 - Update `PROJECT.md` with the final v1.6.0 architecture summary and any
   verified uploaded-audio facts.
 - Update user-facing docs/screenshots if they enumerate Journal input
