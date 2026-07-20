@@ -10,14 +10,13 @@ sensor module decision 2026-07-18).
 ## User-facing goal
 
 Jarvis's first on-command sense: "look at the camera" makes Jarvis
-capture a static image from a local USB camera or the LAN camera
-(TP-Link Tapo C230 via RTSP) through its own tool call and answer
-questions about what it sees.
+capture a static image from a local USB camera or the later LAN camera
+through its own tool call and answer questions about what it sees.
 
 ## Boundaries
 
 - Static frames only; no video streams, motion detection, or recording.
-- No cloud APIs of any kind; the Tapo cloud is never contacted. RTSP
+- No cloud APIs of any kind; the camera cloud is never contacted. RTSP
   goes directly to the camera on the LAN.
 - Native sensor module, not an MCP server (owner decision, 2026-07-18):
   the camera is privacy-sensitive like the microphone and gets a module
@@ -36,8 +35,9 @@ questions about what it sees.
 ## Design decisions (proposed here, confirmed by card approval)
 
 - **Spike is a hard gate** (precedent: v1.3.1/v1.4.0 spikes): a
-  human-run check script grabs a frame from the USB camera and from the
-  Tapo C230, sends each through the verified `images` path, and
+  human-run check script grabs a frame from the Logitech C920 USB camera
+  and, when available, the Imou Dual Lens over local RTSP, sends each
+  through the verified `images` path, and
   `PROJECT.md` records answer quality, capture latency, and RTSP
   connect behavior before any module code is written. The spike also
   settles the capture dependency (OpenCV is the expected candidate for
@@ -65,9 +65,19 @@ questions about what it sees.
   LAN). Each source carries its own data boundary; a capture from the
   LAN source is audited as `lan`.
 
+## Candidate hardware for the spike
+
+- Immediate USB source: Logitech C920.
+- Later LAN source: Imou Dual Lens, ASIN B0FBG3RPZ8, 5 GHz Wi-Fi.
+  The owner-supplied initial research says the camera is expected to
+  expose Dahua-style local RTSP streams on port 554, with one channel
+  per lens, and ONVIF discovery/control. This is not yet a verified
+  project fact; task 1 must treat the RTSP URL as a human-supplied
+  local argument and record real behavior only after the hardware run.
+
 ## Scope (ordered task cards)
 
-- `tasks/task-v1.6.2-1-camera-spike.md` - human-run spike, hard gate;
+- `tasks/done/task-v1.6.2-1-camera-spike.md` - human-run spike, hard gate;
   verified facts into `PROJECT.md`.
 - `tasks/task-v1.6.2-2-capture-core.md` - capture module (USB + RTSP
   frame grab), config, pure logic tests.
@@ -81,9 +91,10 @@ questions about what it sees.
 
 ## Acceptance criteria
 
-- [ ] Spike facts (answer quality, capture latency, RTSP connect
-      behavior, dependency decision) are recorded in `PROJECT.md`
-      before module implementation starts.
+- [ ] Spike facts (answer quality, capture latency, dependency
+      decision, and RTSP connect behavior when that hardware is
+      available) are recorded in `PROJECT.md` before module
+      implementation starts.
 - [ ] "Look at the camera" as a voice request produces a model-initiated
       tool call that captures a frame and answers about its content,
       with the image entering only the current turn's media.

@@ -85,6 +85,34 @@ system is intended to grow.
 - Screenshot OCR: use high visual token budget (1120) for screen text; if
   small fonts garble, use region-select capture at full resolution rather
   than raising the budget.
+- **Initial camera spike, Logitech C920 USB, 2026-07-20:**
+  `python -m manual.manual_check_camera_spike --usb-index 0 --label c920`
+  captured a 640x480 frame successfully and sent it through the existing
+  `/api/chat` `images` path to local Ollama `gemma4:12b-it-qat`.
+  Capture latency was not acceptable yet: `open_seconds = 9.628`,
+  `open_to_frame_seconds = 10.084`. Model answer quality was good for
+  general scene description (accurately described the person, phone,
+  headphones, sofa, wall art, lamp/equipment, and bottle) and partially
+  useful for visible text (identified likely shirt text "LIFE" but smaller
+  text was indistinct). Object counting was not reliable: the answer
+  overcounted several categories while correctly expressing high
+  uncertainty. Decision: USB camera quality is promising enough to continue
+  the spike, but the default OpenCV backend latency is a blocker for in-turn
+  UX until a backend-specific rerun (for example DirectShow) proves faster.
+  Follow-up run
+  `python -m manual.manual_check_camera_spike --usb-index 0 --label c920-1080p --opencv-backend dshow --frame-width 1920 --frame-height 1080 --fourcc MJPG`
+  requested and received a 1920x1080 frame through DirectShow/MJPG.
+  Capture latency improved to `open_seconds = 2.636`,
+  `open_to_frame_seconds = 3.254`; model probe wall times were 7.82 s
+  for scene description, 0.90 s for OCR, and 1.94 s for counting.
+  Image quality was materially better: the model read "Hard Rock CAFE"
+  correctly from the shirt and produced a more accurate room description.
+  Counting remained weak: it returned only three prominent items, included
+  odd bounding-box-like coordinates, and missed obvious objects. Decision:
+  the USB C920 path is a go for task 2 using DirectShow + MJPG + requested
+  1920x1080 as the first Windows target. General scene description and OCR
+  are useful; precise object counting is not a v1.6.2 guarantee. The Imou
+  RTSP path remains pending until that hardware is available.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process
