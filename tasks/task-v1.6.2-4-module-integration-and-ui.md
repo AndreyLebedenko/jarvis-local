@@ -4,6 +4,10 @@
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task-v1.6.2-3 (camera tool).
 
+**Sprint scope update (2026-07-20):** applies to the USB sensor only. The
+existing Control Center per-tool switch is the camera privacy toggle; it is
+never model-delegable.
+
 ## Summary
 
 Make the camera a proper privacy-sensitive sensor module with parity to

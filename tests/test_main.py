@@ -1770,6 +1770,13 @@ def test_live_status_console_closes_all_surfaces():
 def _builtin_tool_payloads() -> list[dict[str, object]]:
     return [
         {
+            "name": "capture_camera_image",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": False,
+            "available": True,
+        },
+        {
             "name": "remember",
             "provider": "builtin",
             "provider_kind": "builtin",
@@ -2623,7 +2630,7 @@ def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False
     tools = {tool.name: tool for tool in app.mcp_host.registry.all()}
-    assert set(tools) == {"set_reasoning_level", "remember"}
+    assert set(tools) == {"set_reasoning_level", "remember", "capture_camera_image"}
     assert {tool.provider_kind for tool in tools.values()} == {"builtin"}
 
 

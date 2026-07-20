@@ -7,7 +7,7 @@ import concurrent.futures
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from jarvis.audio.input import (
@@ -67,6 +67,7 @@ from jarvis.inputs.attachments import (
     compose_turn_images,
     compose_turn_text,
 )
+from jarvis.inputs.camera import CameraCapture, CameraState
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -87,7 +88,7 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
-from jarvis.tools.builtin import BuiltinToolProvider
+from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
 from jarvis.tools.host import McpHost, McpModuleStatusChanged
 from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.contract import (
@@ -587,6 +588,7 @@ class App:
     # construct App(...) directly without build_app() and do not care
     # about MCP, matching visibility_mode/history's own pattern above.
     mcp_host: McpHost | None = None
+    camera_state: CameraState = field(default_factory=CameraState)
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -632,6 +634,8 @@ def build_app(
         bus=bus,
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
+    camera_state = CameraState(settings.camera.enabled)
+    camera_capture = CameraCapture(settings.camera, camera_state)
     sound_cues = SoundCuePlayer(settings.sound_cues, playback_lock=playback_lock)
     memory_file_specs = build_memory_file_specs(settings.memory)
     memory_loader = MemoryFileLoader(memory_file_specs, logger=logger)
@@ -641,8 +645,11 @@ def build_app(
     builtin_tool_provider = BuiltinToolProvider(
         thinking_mode=thinking_mode,
         memory_file_repository=memory_file_repository,
+        camera_capture=camera_capture,
+        on_camera_capture=lambda: sound_cues.play("camera_capture"),
     )
     builtin_tool_provider.register_tools(tool_registry)
+    tool_registry.set_tool_enabled(CAMERA_TOOL_NAME, settings.camera.enabled)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
     journal_store = JournalStore(Path(settings.journal.root))
@@ -701,6 +708,7 @@ def build_app(
         memory_file_repository=memory_file_repository,
         settings=settings,
         mcp_host=mcp_host,
+        camera_state=camera_state,
     )
 
 
@@ -767,6 +775,7 @@ def create_live_status_console(
         visibility_mode=app.visibility_mode,
         settings=app.settings,
         mcp_host=app.mcp_host,
+        camera_state=app.camera_state,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None

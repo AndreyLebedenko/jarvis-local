@@ -87,6 +87,7 @@ class ToolDispatchResult:
     content: object | None = None
     structured_content: JSONObject | None = None
     error: str | None = None
+    images_b64: tuple[str, ...] = ()
 
 
 def summarize_outbound(provider: str, tool_name: str, arguments: ToolArguments) -> str:
@@ -339,6 +340,7 @@ class ToolDispatcher:
                 error=None if ok else "tool reported an error",
                 content=result.content,
                 structured_content=result.structured_content,
+                images_b64=result.images_b64,
                 data_boundary=tool.data_boundary,
                 level=EventLevel.INFO if ok else EventLevel.WARN,
                 log_message=(
@@ -419,6 +421,7 @@ class ToolDispatcher:
         log_message: str,
         ui_key: str,
         ui_args: dict[str, str | int | float],
+        images_b64: tuple[str, ...] = (),
     ) -> ToolDispatchResult:
         await self._bus.publish(
             ToolCallFinished,
@@ -448,4 +451,5 @@ class ToolDispatcher:
             content=content,
             structured_content=structured_content,
             error=error,
+            images_b64=images_b64,
         )

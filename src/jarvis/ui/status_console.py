@@ -24,9 +24,11 @@ from jarvis.core.config import (
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.inputs.camera import CameraState
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
+from jarvis.tools.builtin import CAMERA_TOOL_NAME
 from jarvis.tools.host import McpModuleStatus
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.config_selection import (
@@ -463,6 +465,7 @@ class StatusConsoleApi:
         model_options_source: ModelOptionsSource | None = None,
         microphone_options_source: MicrophoneOptionsSource | None = None,
         mcp_host: McpControl | None = None,
+        camera_state: CameraState | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -482,6 +485,7 @@ class StatusConsoleApi:
             microphone_options_source or _default_microphone_options_source
         )
         self._mcp_host = mcp_host
+        self._camera_state = camera_state
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -545,6 +549,8 @@ class StatusConsoleApi:
         self._schedule(self._set_mcp_enabled_async(enabled))
 
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
+        if name == CAMERA_TOOL_NAME and self._camera_state is not None:
+            self._camera_state.set_enabled(enabled)
         if self._mcp_host is None:
             return
         changed = self._mcp_host.set_tool_enabled(name, enabled)

@@ -1,7 +1,11 @@
-"""In-process builtin tools for delegated local control."""
+"""In-process builtin tools for delegated local control and sensors."""
+
+import base64
+from collections.abc import Awaitable, Callable
 
 from jarvis.core.config import BUILTIN_TOOL_PROVIDER_NAME, DataBoundary
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.inputs.camera import CameraCapture, CameraDisabledError, CameraError
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileOverCapError,
@@ -13,6 +17,7 @@ from jarvis.tools.results import ToolArguments, ToolCallResult
 
 _REASONING_TOOL_NAME = "set_reasoning_level"
 _MEMORY_TOOL_NAME = "remember"
+CAMERA_TOOL_NAME = "capture_camera_image"
 _NEXT_SESSION_NOTE = (
     "The new content enters Jarvis's system prompt at the next session start."
 )
@@ -24,9 +29,13 @@ class BuiltinToolProvider:
         *,
         thinking_mode: ReasoningLevelState,
         memory_file_repository: MemoryFileRepository,
+        camera_capture: CameraCapture | None = None,
+        on_camera_capture: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._thinking_mode = thinking_mode
         self._memory_file_repository = memory_file_repository
+        self._camera_capture = camera_capture
+        self._on_camera_capture = on_camera_capture
 
     def register_tools(self, registry: ToolRegistry) -> None:
         registry.set_provider_tools(BUILTIN_TOOL_PROVIDER_NAME, _builtin_tools())
@@ -36,9 +45,35 @@ class BuiltinToolProvider:
             return await self._set_reasoning_level(arguments)
         if name == _MEMORY_TOOL_NAME:
             return self._remember(arguments)
+        if name == CAMERA_TOOL_NAME:
+            return await self._capture_camera_image(arguments)
         return ToolCallResult(
             content=f"Unknown builtin tool: {name}",
             is_error=True,
+        )
+
+    async def _capture_camera_image(self, arguments: ToolArguments) -> ToolCallResult:
+        if arguments:
+            return ToolCallResult(
+                content="capture_camera_image takes no arguments", is_error=True
+            )
+        if self._camera_capture is None:
+            return ToolCallResult(content="Camera is not configured", is_error=True)
+        try:
+            frame = await self._camera_capture.capture()
+        except CameraDisabledError as exc:
+            return ToolCallResult(content=str(exc), is_error=True)
+        except CameraError as exc:
+            return ToolCallResult(content=str(exc), is_error=True)
+        if self._on_camera_capture is not None:
+            await self._on_camera_capture()
+        return ToolCallResult(
+            content="Captured one USB camera image for this turn.",
+            structured_content={
+                "source": frame.source,
+                "data_boundary": frame.data_boundary.value,
+            },
+            images_b64=(base64.b64encode(frame.jpeg_bytes).decode("ascii"),),
         )
 
     async def _set_reasoning_level(self, arguments: ToolArguments) -> ToolCallResult:
@@ -172,6 +207,17 @@ def _builtin_tools() -> list[RegisteredTool]:
                 "Use only when the user asks to change reasoning."
             ),
             schema=_reasoning_schema(),
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+        RegisteredTool(
+            name=CAMERA_TOOL_NAME,
+            description=(
+                "Capture one image from the local USB camera when the user asks "
+                "to look at it."
+            ),
+            schema={"type": "object", "properties": {}, "additionalProperties": False},
             provider=BUILTIN_TOOL_PROVIDER_NAME,
             provider_kind="builtin",
             data_boundary=DataBoundary.LOCAL,

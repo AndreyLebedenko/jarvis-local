@@ -4,6 +4,12 @@
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** tasks v1.6.2-1..4.
 
+**Sprint scope update (2026-07-20):** USB release documentation and human
+handoff only. RTSP credentials, LAN verification, and Imou documentation are
+deferred until their completed spike.
+
+**Prepared handoff:** `manual/camera-usb-release-handoff.md`.
+
 ## Summary
 
 Record the camera module and media-from-tool-result contracts in

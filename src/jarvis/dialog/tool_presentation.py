@@ -306,6 +306,19 @@ class ToolAwareDialog:
             result = await self._dispatcher.dispatch(call.name, call.arguments)
             calls_used += 1
             messages.append(self._presentation.result_message(result))
+            if result.images_b64:
+                current_user_message = next(
+                    (
+                        message
+                        for message in reversed(messages)
+                        if message.get("role") == "user"
+                    ),
+                    None,
+                )
+                if current_user_message is not None:
+                    current_images = current_user_message.setdefault("images", [])
+                    if isinstance(current_images, list):
+                        current_images.extend(result.images_b64)
             if not result.ok:
                 stop_reason = result.error or "Tool call failed."
                 for _ in calls[index + 1 :]:

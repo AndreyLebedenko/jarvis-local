@@ -110,6 +110,15 @@ sample_rate = 48000
 [capture]
 default_mode = "full"
 
+# Local USB camera only in v1.6.2's first release. It is off by default.
+[camera]
+enabled = false
+usb_device_index = 0
+frame_width = 1920
+frame_height = 1080
+fourcc = "MJPG"
+capture_timeout_seconds = 5.0
+
 [microphone]
 # "" means sounddevice's default input device. Also settable from the
 # live Status Console's configuration menu (Model/Microphone selectors) -

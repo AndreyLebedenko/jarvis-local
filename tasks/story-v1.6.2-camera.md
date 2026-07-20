@@ -7,6 +7,11 @@ module (roadmap boundary).
 sensor module decision 2026-07-18).
 **Created:** 2026-07-20.
 
+**Sprint scope update (2026-07-20):** this implementation sprint delivers
+USB capture only. Imou/RTSP is deferred until the camera is available and its
+hardware spike is complete. All references below to LAN capture describe that
+future continuation, not an acceptance criterion for this sprint.
+
 ## User-facing goal
 
 Jarvis's first on-command sense: "look at the camera" makes Jarvis

@@ -19,6 +19,7 @@ omegaconf>=2.3
 num2words>=0.5
 piper-tts>=1.4
 mss>=10.2
+opencv-python==4.11.0.86
 pyperclip>=1.11
 pywebview>=6.2
 pytest>=8.0

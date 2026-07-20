@@ -229,6 +229,43 @@ async def test_registry_with_only_disabled_tools_uses_legacy_path():
 
 
 @pytest.mark.asyncio
+async def test_tool_result_image_is_available_only_to_the_current_tool_follow_up():
+    backend = FakeBackend([_native_calls(("search_web", {})), _done("I can see it.")])
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool()),
+        FakeDispatcher(
+            [
+                ToolDispatchResult(
+                    ok=True,
+                    correlation_id="1",
+                    content="frame",
+                    images_b64=("aW1hZ2U=",),
+                )
+            ]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=2,
+    )
+
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "earlier request"},
+        {"role": "assistant", "content": "earlier answer"},
+        {"role": "user", "content": "look"},
+    ]
+
+    await dialog.chat(messages)
+
+    follow_up_messages = backend.raw_calls[1]["messages"]
+    assert follow_up_messages[3]["images"] == ["aW1hZ2U="]
+    assert "images" not in follow_up_messages[1]
+    assert "aW1hZ2U=" not in str(follow_up_messages[-1])
+    assert all("images" not in message for message in messages)
+
+
+@pytest.mark.asyncio
 async def test_native_tool_artifacts_do_not_reach_response_events():
     bus = EventBus()
     tokens: list[str] = []

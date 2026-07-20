@@ -12,3 +12,4 @@ class ToolCallResult:
     content: object
     is_error: bool = False
     structured_content: JSONObject | None = None
+    images_b64: tuple[str, ...] = ()

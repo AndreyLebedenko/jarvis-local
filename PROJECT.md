@@ -113,6 +113,14 @@ system is intended to grow.
   1920x1080 as the first Windows target. General scene description and OCR
   are useful; precise object counting is not a v1.6.2 guarantee. The Imou
   RTSP path remains pending until that hardware is available.
+- **Camera implementation scope, 2026-07-20:** v1.6.2's first implementation
+  sprint is USB-only. The camera is a local, off-by-default builtin sensor;
+  the Control Center's per-tool switch is its non-delegable privacy control.
+  `capture_camera_image` returns image media separately from its text result;
+  `ToolAwareDialog` attaches that media only to the current tool-loop turn,
+  never conversation history. Imou RTSP is deferred pending the hardware
+  spike. Tapo was rejected for hardware reasons and is not part of the
+  product; neither camera path contacts a cloud API.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process

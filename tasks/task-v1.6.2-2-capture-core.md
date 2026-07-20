@@ -4,6 +4,9 @@
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task-v1.6.2-1 spike outcome "go".
 
+**Sprint scope update (2026-07-20):** USB only. RTSP configuration, capture,
+timeouts, credential handling, and LAN boundary reporting are deferred.
+
 ## Summary
 
 The camera capture module: configured USB and RTSP sources, single-frame
