@@ -1,6 +1,6 @@
 # Attachment policy v1.6.0
 
-**Produced by:** `tasks/task-v1.6.0-1-attachment-policy-and-format-gate.md`.
+**Produced by:** `tasks/done/task-v1.6.0-1-attachment-policy-and-format-gate.md`.
 **Referenced by:** task-v1.6.0-2 through task-v1.6.0-8 (do not restate these
 numbers; link back here and update this file if a later task needs a
 change, recording the reason).

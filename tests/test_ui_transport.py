@@ -1127,7 +1127,12 @@ async def test_journal_input_endpoint_accepts_mixed_attachment_upload() -> None:
                 data=form,
             )
             assert response.status == 200
-            assert await response.json() == {
+            payload = await response.json()
+            assert [file["filename"] for file in payload["files"]] == [
+                "photo.png",
+                "manual.pdf",
+            ]
+            assert payload == {
                 "status": "accepted",
                 "reason": "accepted",
                 "files": [

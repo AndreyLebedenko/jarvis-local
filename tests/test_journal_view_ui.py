@@ -26,6 +26,7 @@ JOURNAL_STRING_KEYS = (
     "journal_source_voice",
     "journal_source_text",
     "journal_source_dock",
+    "journal_source_attachment",
     "journal_source_assistant",
     "journal_source_fork",
     "journal_source_context",
@@ -43,6 +44,18 @@ JOURNAL_STRING_KEYS = (
     "journal_input_over_limit",
     "journal_input_failed",
     "journal_input_sent",
+    "journal_attach",
+    "journal_attach_title",
+    "journal_drop_target",
+    "journal_attachment_pending",
+    "journal_attachment_remove",
+    "journal_attachment_status_accepted",
+    "journal_attachment_status_warning",
+    "journal_attachment_status_rejected",
+    "journal_attachment_class_audio",
+    "journal_attachment_class_image",
+    "journal_attachment_class_text",
+    "journal_attachment_class_unknown",
     "journal_copy_answer",
     "journal_copy_done",
     "journal_copy_failed",
@@ -178,6 +191,24 @@ def test_input_dock_has_textarea_and_send_action():
     assert 'onkeydown="onJournalInputKeyDown(event)"' in INDEX_HTML
 
 
+def test_input_dock_has_attachment_picker_and_drop_target():
+    parser = _parse_journal_view()
+    tags = {attrs.get("id"): tag for tag, attrs in parser.input_dock_tags}
+    assert tags["journalFileInput"] == "input"
+    assert tags["journalAttachButton"] == "button"
+    assert tags["journalDropTarget"] == "div"
+    assert tags["journalAttachmentList"] == "div"
+    assert 'type="file"' in INDEX_HTML
+    assert "multiple" in INDEX_HTML
+    assert 'onchange="onJournalFileInputChanged(event)"' in INDEX_HTML
+    assert 'onclick="openJournalFilePicker()"' in INDEX_HTML
+    assert 'ondragover="onJournalAttachmentDragOver(event)"' in INDEX_HTML
+    assert 'ondrop="onJournalAttachmentDrop(event)"' in INDEX_HTML
+    assert 'data-i18n="journal_attach"' in INDEX_HTML
+    assert 'data-i18n-title="journal_attach_title"' in INDEX_HTML
+    assert 'data-i18n="journal_drop_target"' in INDEX_HTML
+
+
 def test_hidden_placeholder_logic_present():
     """Hidden swaps the whole view for a generic placeholder: CSS does the
     swap, app.js drops fetched content and refetches on Open (defense in
@@ -196,6 +227,7 @@ def test_hidden_placeholder_logic_present():
     assert "_onJournalVisibilityChanged(payload.mode)" in APP_JS
     assert "_clearJournalContent()" in APP_JS
     assert "_clearJournalMemoryPanel();" in APP_JS
+    assert "_clearJournalAttachments();" in APP_JS
 
 
 def test_stale_journal_responses_cannot_repopulate_hidden_dom():
@@ -419,6 +451,135 @@ def test_journal_input_posts_json_and_preserves_text_on_rejection():
     assert 'payload.status === "accepted"' in body
     assert "journal_input_busy" in APP_JS
     assert "journal_input_over_limit" in APP_JS
+
+
+def test_journal_input_submits_text_and_files_as_multipart_form_data():
+    body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
+    assert "_journalPendingAttachmentFiles()" in body
+    assert "new FormData()" in body
+    assert 'body.append("text", text);' in body
+    assert 'body.append("files", file, file.name);' in body
+    assert "JSON.stringify({ text })" in body
+    assert "pendingFiles.length > 0" in body
+
+
+def test_journal_attachment_selection_renders_remove_controls():
+    add_body = APP_JS.split("function _addJournalAttachmentFiles(")[1].split("\n}")[0]
+    assert "_journalAttachmentEntries.push" in add_body
+    assert "_renderJournalAttachments();" in add_body
+    row_body = APP_JS.split("function _journalAttachmentElement(")[1].split("\n}")[0]
+    assert "journal-attachment-remove" in row_body
+    assert "removeJournalAttachment(index)" in row_body
+    assert 'uiString("journal_attachment_remove")' in row_body
+    assert "_formatJournalBytes(entry.file.size)" in row_body
+
+
+def test_journal_attachment_api_results_render_per_file_statuses():
+    render_body = APP_JS.split("function _renderJournalAttachments(")[1].split("\n}")[0]
+    assert "_journalAttachmentElement(entry, index)" in render_body
+    result_body = APP_JS.split("function _applyJournalAttachmentResults(")[1].split(
+        "\n}"
+    )[0]
+    assert "entry.result" in result_body
+    assert "payload.files" in result_body
+    row_body = APP_JS.split("function _journalAttachmentElement(")[1].split("\n}")[0]
+    assert '"journal_attachment_status_" + result.status' in row_body
+    assert "_journalAttachmentDetail(result)" in row_body
+    detail_body = APP_JS.split("function _journalAttachmentDetail(")[1].split("\n}")[0]
+    assert "result.reason" in detail_body
+    assert "result.warnings" in detail_body
+
+
+def test_document_level_file_drop_guard_blocks_browser_file_navigation():
+    assert "installJournalDocumentDropGuard();" in APP_JS
+    install_body = APP_JS.split("function installJournalDocumentDropGuard(")[1].split(
+        "\n}"
+    )[0]
+    assert (
+        'document.addEventListener("dragover", _guardJournalDocumentDrop);'
+        in install_body
+    )
+    assert (
+        'document.addEventListener("drop", _guardJournalDocumentDrop);' in install_body
+    )
+    guard_body = APP_JS.split("function _guardJournalDocumentDrop(")[1].split(
+        "function _addJournalAttachmentFiles("
+    )[0]
+    assert 'includes("Files")' in guard_body
+    assert "event.preventDefault();" in guard_body
+    assert "event.stopPropagation();" in guard_body
+    assert 'target.closest("#journalDropTarget")' in guard_body
+    assert "!_isHiddenActive()" in guard_body
+
+
+def test_drop_zone_stops_propagation_after_handling_files():
+    over_body = APP_JS.split("function onJournalAttachmentDragOver(")[1].split(
+        "function onJournalAttachmentDragLeave("
+    )[0]
+    drop_body = APP_JS.split("function onJournalAttachmentDrop(")[1].split(
+        "function installJournalDocumentDropGuard("
+    )[0]
+    assert "event.preventDefault();" in over_body
+    assert "event.stopPropagation();" in over_body
+    assert "event.preventDefault();" in drop_body
+    assert "event.stopPropagation();" in drop_body
+
+
+def test_empty_file_result_payload_keeps_pending_files_removable():
+    """A request-size rejection returns files: [] because the transport
+    aborts before per-file planning. The UI must leave selected files as
+    pending so the user can remove one and retry."""
+    result_body = APP_JS.split("function _applyJournalAttachmentResults(")[1].split(
+        "\n}"
+    )[0]
+    assert "if (files.length === 0) return;" in result_body
+    assert result_body.index("if (files.length === 0) return;") < result_body.index(
+        "_journalAttachmentEntries = _journalAttachmentEntries.map"
+    )
+
+
+def test_rejected_file_result_keeps_row_removable():
+    result_body = APP_JS.split("function _applyJournalAttachmentResults(")[1].split(
+        "\n}"
+    )[0]
+    assert 'files[index].status !== "rejected"' in result_body
+    row_body = APP_JS.split("function _journalAttachmentElement(")[1].split("\n}")[0]
+    assert "if (!entry.sent) {" in row_body
+
+
+def test_successful_attachment_submit_clears_completed_file_rows():
+    submit_body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
+    assert "_clearCompletedJournalAttachments();" in submit_body
+    assert submit_body.index(
+        "_clearCompletedJournalAttachments();"
+    ) > submit_body.index('payload.status === "accepted"')
+
+    clear_body = APP_JS.split("function _clearCompletedJournalAttachments(")[1].split(
+        "\n}"
+    )[0]
+    assert 'entry.result.status === "rejected"' in clear_body
+    assert "_renderJournalAttachments();" in clear_body
+
+
+def test_journal_hidden_clears_pending_attachments_and_blocks_file_submit():
+    clear_body = APP_JS.split("function _clearJournalAttachments(")[1].split("\n}")[0]
+    assert "_journalAttachmentEntries = [];" in clear_body
+    assert 'fileInput.value = "";' in clear_body
+    submit_body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
+    assert (
+        "_clearJournalAttachments();"
+        in submit_body.split('payload.status === "hidden"')[1]
+    )
+    attach_body = APP_JS.split("function openJournalFilePicker(")[1].split("\n}")[0]
+    assert "_isHiddenActive()" in attach_body
+    assert 'uiString("journal_input_hidden")' in attach_body
+
+
+def test_attachment_journal_events_select_the_new_session_like_dock_events():
+    helper = APP_JS.split("function _shouldSelectJournalInputSession(")[1].split("\n}")[
+        0
+    ]
+    assert 'payload.source === "dock" || payload.source === "attachment"' in helper
 
 
 def test_journal_input_requires_an_explicit_active_context():

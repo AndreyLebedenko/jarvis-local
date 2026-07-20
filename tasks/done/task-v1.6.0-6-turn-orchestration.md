@@ -1,7 +1,7 @@
 # Task v1.6.0-6: Attachment turn orchestration
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.6.0-file-attachments.md`
+**Story:** `tasks/done/story-v1.6.0-file-attachments.md`
 **Depends on:** task-v1.6.0-3, task-v1.6.0-4, task-v1.6.0-5.
 
 ## Summary
@@ -140,7 +140,7 @@ into `_start_turn()`'s existing `media_b64` parameter the same way voice/
 clipboard media does, it automatically inherits this guarantee.
 
 No browser upload controls or HTTP endpoints were added, per the task
-boundary; `tasks/task-v1.6.0-7-journal-upload-api.md` is the future caller of
+boundary; `tasks/done/task-v1.6.0-7-journal-upload-api.md` is the future caller of
 `on_attachment_submission()`. The one JS/UI touch is Review fix 2 below - a
 direct consequence of the new `ModelRequestInput` values reaching the
 already-shipped Status Console, not new attachment UI (still task-v1.6.0-8's
