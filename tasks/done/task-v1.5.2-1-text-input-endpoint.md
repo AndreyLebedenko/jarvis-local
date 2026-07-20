@@ -23,7 +23,7 @@ no UI changes in this task.
   attachment, busy-guard rejection).
 - `src/jarvis/journal/recorder.py`: `record_text_user(text, source=...)`
   already supports a source label.
-- `tasks/task-v1.6.0-7-journal-upload-api.md`: the future consumer of
+- `tasks/done/task-v1.6.0-7-journal-upload-api.md`: the future consumer of
   this submit path; do not preclude a multipart extension of the same
   route.
 

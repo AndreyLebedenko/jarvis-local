@@ -186,8 +186,12 @@
     <div class="journal-feed" id="journalFeed"></div>
     <div class="journal-empty" id="journalFeedEmpty" data-i18n="journal_no_selection">Select a session on the left</div>
     <form class="journal-input-dock" id="journalInputDock" onsubmit="submitJournalInput(); return false">
+      <input id="journalFileInput" type="file" multiple hidden onchange="onJournalFileInputChanged(event)">
+      <div class="journal-drop-target" id="journalDropTarget" data-i18n="journal_drop_target" ondragover="onJournalAttachmentDragOver(event)" ondragleave="onJournalAttachmentDragLeave(event)" ondrop="onJournalAttachmentDrop(event)">Drop files here</div>
+      <button type="button" id="journalAttachButton" data-i18n="journal_attach" data-i18n-title="journal_attach_title" title="Attach files" onclick="openJournalFilePicker()">Attach</button>
       <textarea id="journalTextInput" rows="1" data-i18n-placeholder="journal_input_placeholder" placeholder="Message Jarvis" onkeydown="onJournalInputKeyDown(event)"></textarea>
       <button type="submit" id="journalSendButton" data-i18n="journal_input_send">Send</button>
+      <div class="journal-attachment-list" id="journalAttachmentList"></div>
       <div class="journal-input-status" id="journalInputStatus"></div>
     </form>
   </section>

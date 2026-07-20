@@ -181,7 +181,7 @@ above records the owner's decisions from the 2026-07-18 planning dialog.
 Purpose: deliberate file input as a new turn source (existing story), now
 entered through the Journal view rather than a new hotkey.
 
-Scope: as defined in `tasks/story-v1.6.0-file-attachments.md`, with the
+Scope: as defined in `tasks/done/story-v1.6.0-file-attachments.md`, with the
 entry-point decision (2026-07-18): attachments are added from the Journal
 view's input dock (attach control and drag-and-drop), building on v1.5.2's
 text input. The turn-source contract, normalization, limits, and verified

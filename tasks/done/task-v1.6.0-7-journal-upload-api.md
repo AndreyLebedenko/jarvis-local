@@ -1,7 +1,7 @@
 # Task v1.6.0-7: Journal upload API
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.6.0-file-attachments.md`
+**Story:** `tasks/done/story-v1.6.0-file-attachments.md`
 **Depends on:** task-v1.6.0-2, task-v1.6.0-6; v1.5.2 text input endpoint
 must exist.
 

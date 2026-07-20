@@ -746,8 +746,17 @@ html[data-view="journal"] .journal {
 .journal-input-dock {
   min-height: 56px; flex-shrink: 0;
   border-top: 1px solid var(--border); background: var(--panel);
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px; padding: 9px 22px; align-items: end;
+}
+.journal-drop-target {
+  grid-column: 1 / -1;
+  min-height: 28px; display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border); border-radius: 7px; background: var(--panel-2);
+  color: var(--text-faint); font: 10.5px "Consolas", "Cascadia Mono", monospace;
+}
+.journal-drop-target.drag-over {
+  border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint);
 }
 .journal-input-dock textarea {
   min-height: 34px; max-height: 96px; resize: vertical;
@@ -761,6 +770,32 @@ html[data-view="journal"] .journal {
   cursor: pointer; font-size: 12px;
 }
 .journal-input-dock button:disabled { opacity: 0.45; cursor: not-allowed; }
+.journal-attachment-list {
+  grid-column: 1 / -1; display: flex; flex-direction: column; gap: 5px;
+}
+.journal-attachment {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+  align-items: center; min-height: 34px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+}
+.journal-attachment[data-status="accepted"] { border-color: var(--cyan-dim); }
+.journal-attachment[data-status="warning"] { border-color: var(--amber-dim); }
+.journal-attachment[data-status="rejected"] { border-color: var(--red-dim); }
+.journal-attachment-body { min-width: 0; }
+.journal-attachment-name {
+  color: var(--text); font-size: 11.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.journal-attachment-meta,
+.journal-attachment-detail {
+  color: var(--text-faint); font: 10px "Consolas", "Cascadia Mono", monospace;
+  overflow-wrap: anywhere;
+}
+.journal-attachment[data-status="rejected"] .journal-attachment-detail { color: var(--red); }
+.journal-attachment[data-status="warning"] .journal-attachment-detail { color: var(--amber); }
+.journal-attachment-remove {
+  width: 26px; padding: 0; font-family: "Consolas", "Cascadia Mono", monospace;
+}
 .journal-input-status {
   grid-column: 1 / -1; min-height: 14px;
   color: var(--text-faint); font: 10.5px "Consolas", "Cascadia Mono", monospace;
@@ -809,5 +844,6 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
   }
   .journal-search { flex-wrap: wrap; padding: 10px 16px; }
   .journal-search-query { flex-basis: 100%; }
+  .journal-input-dock { padding: 9px 16px; }
   html[data-view="journal"] body { height: 100vh; overflow: hidden; }
 }

@@ -1,6 +1,6 @@
 # Story v1.6.0: File attachments
 
-**Status:** Planned, task cards approved.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (entry-point decision,
 2026-07-18: attachments are added from the Journal view's input dock -
 attach control and drag-and-drop - building on the v1.5.2 text input;
@@ -70,27 +70,31 @@ same feature as realtime microphone listening.
 
 ## Acceptance Criteria Draft
 
-- [ ] A file attachment creates a distinct turn source.
-- [ ] Audio files are normalized/chunked before reaching the backend.
-- [ ] Image files reuse the current-turn media path.
-- [ ] Text files have explicit limits and visible truncation.
-- [ ] Unsupported formats fail clearly.
-- [ ] Payload construction follows verified Ollama media behavior.
-- [ ] Human-run checks verify real uploaded audio behavior before `PROJECT.md`
+- [x] A file attachment creates a distinct turn source.
+- [x] Audio files are normalized/chunked before reaching the backend.
+- [x] Image files reuse the current-turn media path.
+- [x] Text files have explicit limits and visible truncation.
+- [x] Unsupported formats fail clearly.
+- [x] Payload construction follows verified Ollama media behavior.
+- [x] Human-run checks verify real uploaded audio behavior before `PROJECT.md`
       records it as a fact.
+
+Human-run release verification passed on 2026-07-20. The human confirmed both
+positive and negative checks, including real uploaded audio behavior and audio
+size/duration control. `PROJECT.md` records the verified facts for v1.6.0.
 
 ## Task cards
 
-- `tasks/task-v1.6.0-1-attachment-policy-and-format-gate.md`
-- `tasks/task-v1.6.0-2-attachment-domain-plan.md`
-- `tasks/task-v1.6.0-3-text-attachments.md`
-- `tasks/task-v1.6.0-4-image-attachments.md`
-- `tasks/task-v1.6.0-5-audio-attachments.md`
-- `tasks/task-v1.6.0-6-turn-orchestration.md`
-- `tasks/task-v1.6.0-7-journal-upload-api.md`
-- `tasks/task-v1.6.0-8-journal-attachment-ui.md`
-- `tasks/task-v1.6.0-9-code-quality-entropy-review.md`
-- `tasks/task-v1.6.0-10-release-verification.md`
+- `tasks/done/task-v1.6.0-1-attachment-policy-and-format-gate.md`
+- `tasks/done/task-v1.6.0-2-attachment-domain-plan.md`
+- `tasks/done/task-v1.6.0-3-text-attachments.md`
+- `tasks/done/task-v1.6.0-4-image-attachments.md`
+- `tasks/done/task-v1.6.0-5-audio-attachments.md`
+- `tasks/done/task-v1.6.0-6-turn-orchestration.md`
+- `tasks/done/task-v1.6.0-7-journal-upload-api.md`
+- `tasks/done/task-v1.6.0-8-journal-attachment-ui.md`
+- `tasks/done/task-v1.6.0-9-code-quality-entropy-review.md`
+- `tasks/done/task-v1.6.0-10-release-verification.md`
 
 ## Stop Conditions
 

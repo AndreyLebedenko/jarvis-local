@@ -1,7 +1,7 @@
 # Task v1.6.0-3: Text attachments
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.6.0-file-attachments.md`
+**Story:** `tasks/done/story-v1.6.0-file-attachments.md`
 **Depends on:** task-v1.6.0-2.
 
 ## Summary

@@ -673,6 +673,7 @@ let _journalContextHighlightTimer = null;
 let _journalUsageBySession = new Map();
 let _journalActiveSessionId = null;
 let _journalInputInFlight = false;
+let _journalAttachmentEntries = [];
 let _journalSelectPendingInputSession = false;
 let _journalForkInFlightSessionId = null;
 let _journalNewContextInFlight = false;
@@ -722,6 +723,7 @@ function _onJournalVisibilityChanged(mode) {
   } else if (_isJournalActive()) {
     refreshJournalSessions();
   }
+  _syncJournalInputControls();
 }
 
 function _clearJournalContent() {
@@ -738,6 +740,7 @@ function _clearJournalContent() {
   _journalForkInFlightSessionId = null;
   _journalNewContextInFlight = false;
   _clearJournalMemoryPanel();
+  _clearJournalAttachments();
   _updateJournalNewContextButton();
   _setJournalInputStatus("");
   document.getElementById("journalSessionList").replaceChildren();
@@ -1011,12 +1014,200 @@ function _journalNewContextErrorMessage(payload) {
   return uiString("journal_new_context_failed");
 }
 
+function openJournalFilePicker() {
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_input_hidden"));
+    return;
+  }
+  document.getElementById("journalFileInput").click();
+}
+
+function onJournalFileInputChanged(event) {
+  _addJournalAttachmentFiles(event.target.files);
+  event.target.value = "";
+}
+
+function onJournalAttachmentDragOver(event) {
+  if (_isHiddenActive()) return;
+  event.preventDefault();
+  event.stopPropagation();
+  document.getElementById("journalDropTarget").classList.add("drag-over");
+}
+
+function onJournalAttachmentDragLeave(event) {
+  event.currentTarget.classList.remove("drag-over");
+}
+
+function onJournalAttachmentDrop(event) {
+  if (_isHiddenActive()) return;
+  event.preventDefault();
+  event.stopPropagation();
+  document.getElementById("journalDropTarget").classList.remove("drag-over");
+  if (event.dataTransfer) _addJournalAttachmentFiles(event.dataTransfer.files);
+}
+
+function installJournalDocumentDropGuard() {
+  document.addEventListener("dragover", _guardJournalDocumentDrop);
+  document.addEventListener("drop", _guardJournalDocumentDrop);
+}
+
+function _guardJournalDocumentDrop(event) {
+  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes("Files")) {
+    return;
+  }
+  event.preventDefault();
+  const target = event.target;
+  if (
+    target &&
+    target.closest &&
+    target.closest("#journalDropTarget") &&
+    !_isHiddenActive()
+  ) return;
+  event.stopPropagation();
+}
+
+function _addJournalAttachmentFiles(files) {
+  if (_isHiddenActive()) {
+    _clearJournalAttachments();
+    _setJournalInputStatus(uiString("journal_input_hidden"));
+    return;
+  }
+  _journalAttachmentEntries = _journalAttachmentEntries.filter((entry) => !entry.sent);
+  for (const file of Array.from(files || [])) {
+    _journalAttachmentEntries.push({ file, result: null, sent: false });
+  }
+  _renderJournalAttachments();
+  _setJournalInputStatus("");
+}
+
+function removeJournalAttachment(index) {
+  _journalAttachmentEntries.splice(index, 1);
+  _renderJournalAttachments();
+}
+
+function _clearJournalAttachments() {
+  _journalAttachmentEntries = [];
+  const fileInput = document.getElementById("journalFileInput");
+  if (fileInput) fileInput.value = "";
+  _renderJournalAttachments();
+}
+
+function _journalPendingAttachmentFiles() {
+  return _journalAttachmentEntries
+    .filter((entry) => !entry.sent)
+    .map((entry) => entry.file);
+}
+
+function _applyJournalAttachmentResults(payload) {
+  const files = payload.files || [];
+  if (files.length === 0) return;
+  const keepPending = payload.reason === "busy";
+  _journalAttachmentEntries = _journalAttachmentEntries.map((entry, index) => ({
+    ...entry,
+    result: files[index] || entry.result,
+    sent: !keepPending && files[index] && files[index].status !== "rejected",
+  }));
+  _renderJournalAttachments();
+}
+
+function _clearCompletedJournalAttachments() {
+  _journalAttachmentEntries = _journalAttachmentEntries.filter(
+    (entry) => entry.result && entry.result.status === "rejected");
+  _renderJournalAttachments();
+}
+
+function _renderJournalAttachments() {
+  const list = document.getElementById("journalAttachmentList");
+  if (!list) return;
+  list.replaceChildren();
+  _journalAttachmentEntries.forEach((entry, index) => {
+    list.appendChild(_journalAttachmentElement(entry, index));
+  });
+}
+
+function _journalAttachmentElement(entry, index) {
+  const result = entry.result;
+  const row = document.createElement("div");
+  row.className = "journal-attachment";
+  if (result) row.dataset.status = result.status;
+
+  const body = document.createElement("div");
+  body.className = "journal-attachment-body";
+
+  const name = document.createElement("div");
+  name.className = "journal-attachment-name";
+  name.textContent = result && result.filename ? result.filename : entry.file.name;
+
+  const meta = document.createElement("div");
+  meta.className = "journal-attachment-meta";
+  const classLabel = _journalAttachmentClassLabel(
+    result && result.class ? result.class : _journalAttachmentKind(entry.file));
+  const status = result
+    ? uiString("journal_attachment_status_" + result.status)
+    : uiString("journal_attachment_pending");
+  meta.textContent = classLabel + " - " + _formatJournalBytes(entry.file.size) + " - " + status;
+  body.append(name, meta);
+
+  const detailText = _journalAttachmentDetail(result);
+  if (detailText) {
+    const detail = document.createElement("div");
+    detail.className = "journal-attachment-detail";
+    detail.textContent = detailText;
+    body.appendChild(detail);
+  }
+
+  row.appendChild(body);
+  if (!entry.sent) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "journal-attachment-remove";
+    remove.title = uiString("journal_attachment_remove");
+    remove.textContent = "x";
+    remove.addEventListener("click", () => removeJournalAttachment(index));
+    row.appendChild(remove);
+  }
+  return row;
+}
+
+function _journalAttachmentDetail(result) {
+  if (!result) return "";
+  const parts = [];
+  if (result.reason) parts.push(result.reason);
+  for (const warning of result.warnings || []) {
+    parts.push(warning);
+  }
+  return parts.join(" ");
+}
+
+function _journalAttachmentKind(file) {
+  const type = (file.type || "").toLowerCase();
+  if (type.startsWith("audio/")) return "audio";
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("text/") || type === "application/json") return "text";
+  return "unknown";
+}
+
+function _journalAttachmentClassLabel(value) {
+  return uiString("journal_attachment_class_" + (value || "unknown"));
+}
+
+function _syncJournalInputControls() {
+  const disabled = _journalInputInFlight || _isHiddenActive();
+  const send = document.getElementById("journalSendButton");
+  const attach = document.getElementById("journalAttachButton");
+  const fileInput = document.getElementById("journalFileInput");
+  if (send) send.disabled = disabled;
+  if (attach) attach.disabled = disabled;
+  if (fileInput) fileInput.disabled = disabled;
+}
+
 async function submitJournalInput() {
   if (_journalInputInFlight) {
     _setJournalInputStatus(uiString("journal_input_busy"));
     return;
   }
   if (_isHiddenActive()) {
+    _clearJournalAttachments();
     _setJournalInputStatus(uiString("journal_input_hidden"));
     return;
   }
@@ -1025,8 +1216,8 @@ async function submitJournalInput() {
     return;
   }
   const input = document.getElementById("journalTextInput");
-  const send = document.getElementById("journalSendButton");
   const text = input.value;
+  const pendingFiles = _journalPendingAttachmentFiles();
   const url = _journalUrl("/api/journal/input");
   if (url === null) {
     _setJournalInputStatus(uiString("transport_no_token"));
@@ -1034,18 +1225,32 @@ async function submitJournalInput() {
   }
   _journalInputInFlight = true;
   _journalSelectPendingInputSession = true;
-  send.disabled = true;
+  _syncJournalInputControls();
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
+    let requestOptions;
+    if (pendingFiles.length > 0) {
+      const body = new FormData();
+      body.append("text", text);
+      for (const file of pendingFiles) {
+        body.append("files", file, file.name);
+      }
+      requestOptions = { method: "POST", body };
+    } else {
+      requestOptions = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      };
+    }
+    const response = await fetch(url, requestOptions);
     const payload = await response.json();
+    if (payload.files) _applyJournalAttachmentResults(payload);
     if (payload.status === "accepted") {
       if (input.value === text) input.value = "";
+      _clearCompletedJournalAttachments();
       _setJournalInputStatus(uiString("journal_input_sent"));
     } else if (payload.status === "hidden") {
+      _clearJournalAttachments();
       _journalSelectPendingInputSession = false;
       _setJournalInputStatus(uiString("journal_input_hidden"));
     } else {
@@ -1058,7 +1263,7 @@ async function submitJournalInput() {
     _setJournalInputStatus(uiString("journal_input_failed"));
   } finally {
     _journalInputInFlight = false;
-    send.disabled = false;
+    _syncJournalInputControls();
   }
 }
 
@@ -1570,7 +1775,7 @@ function _shouldSelectJournalInputSession(payload) {
   return (
     _journalSelectPendingInputSession &&
     payload.role === "user" &&
-    payload.source === "dock"
+    (payload.source === "dock" || payload.source === "attachment")
   );
 }
 
@@ -1882,6 +2087,7 @@ function _formatJournalBytes(bytes) {
 }
 
 if (typeof startUiTransport === "function") {
+  installJournalDocumentDropGuard();
   window.addEventListener("beforeunload", (event) => {
     if (!_journalMemoryHasUnsavedChanges()) return;
     event.preventDefault();

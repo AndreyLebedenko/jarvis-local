@@ -573,7 +573,7 @@ Story/task readiness: story card exists as
 ## v1.6.0 - File attachments
 
 (Moved from v1.5.0 on 2026-07-16; story card renamed to
-`tasks/story-v1.6.0-file-attachments.md`.)
+`tasks/done/story-v1.6.0-file-attachments.md`.)
 
 Purpose: add deliberate file input as a new turn source, including audio files,
 without weakening runtime locality or confusing file upload with live realtime
@@ -610,5 +610,5 @@ Boundary:
   features exist; the turn-source contract should not preclude it.
 
 Story/task readiness: story card exists as
-`tasks/story-v1.6.0-file-attachments.md`. No task cards are created in this
+`tasks/done/story-v1.6.0-file-attachments.md`. No task cards are created in this
 planning pass.

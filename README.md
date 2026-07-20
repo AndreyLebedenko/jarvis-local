@@ -12,15 +12,15 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.5.3 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
+v1.6.0 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
 runtime and module health, timestamp-first metadata for the latest request to
 the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
 visibility mode, context reset, guarded Shutdown, typed restart-to-apply
 configuration (model, microphone, TTS routes, UI language, and VAD), Journal
-text input, answer copy controls, screenshot thumbnails, manual journal disk
-management, session fork, editable curated memory files, and a compact
-touchstrip glance surface. Since v1.2.11 the UI is English by default, with
-Russian available via `[ui].language = "ru"`.
+text input with local file attachments, answer copy controls, screenshot
+thumbnails, manual journal disk management, session fork, editable curated
+memory files, and a compact touchstrip glance surface. Since v1.2.11 the UI
+is English by default, with Russian available via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
@@ -30,7 +30,7 @@ Russian available via `[ui].language = "ru"`.
 
 ## Status
 
-This is a usable v1.5.3 hobby/research release with verified bilingual TTS:
+This is a usable v1.6.0 hobby/research release with verified bilingual TTS:
 Silero handles Russian and Piper handles English, with streamed text routed
 automatically by character set. TTS engines and local voice models remain
 configurable per language. The zero-config compatibility default uses Russian
@@ -62,15 +62,22 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   configuration, and touchstrip glance surface. The UI language is English by
   default; Russian is available via `[ui].language = "ru"` in `config.toml`
   (UI chrome only - the assistant's dialog language and TTS are not affected).
-- Persistent Dialog Journal with per-session JSONL logs, typed messages to
-  Jarvis, answer copy controls, local audio playback, screenshot thumbnails,
-  live feed updates, assistant-answer search, date filtering, disk-usage
-  display, manual per-session deletion, session fork ("continue this
-  conversation"), explicit blank-context creation, editable
+- Persistent Dialog Journal with per-session JSONL logs, typed messages and
+  local file attachments to Jarvis, answer copy controls, local audio playback,
+  screenshot thumbnails, live feed updates, assistant-answer search, date
+  filtering, disk-usage display, manual per-session deletion, session fork
+  ("continue this conversation"), explicit blank-context creation, editable
   `memory.md`/`self.md` curated memory files, and Hidden-mode privacy
   enforcement. Journal media and memory files are served through the
   authenticated local transport; search is exact/prefix matching for Russian
   text.
+- Journal attachments are current-turn only and stay local. The first
+  iteration supports one text file (`.txt`, `.md`, `.csv`, `.json`, `.log`,
+  UTF-8, 2 MB upload cap, 20000 model-facing characters), up to four images
+  (`.png`, `.jpg`, `.jpeg`, 15 MB each), and one audio file (`.wav`, `.mp3`,
+  20 MB, up to 90 s split into 30 s clips). A turn can include at most four
+  attached files and 40 MB of file bytes. Hidden mode clears pending
+  selections and suppresses upload submission.
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
 - Async event-bus architecture with isolated modules.

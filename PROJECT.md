@@ -2222,7 +2222,7 @@ surface while preserving the append-only journal invariant.
 
 ## Architecture v1.6.0 (file attachments)
 
-See [tasks/story-v1.6.0-file-attachments.md](tasks/story-v1.6.0-file-attachments.md).
+See [tasks/done/story-v1.6.0-file-attachments.md](tasks/done/story-v1.6.0-file-attachments.md).
 File attachments extend the Journal input dock's local turn-submission surface;
 they do not add a second chat surface, hotkey, cloud upload path, or `file://`
 access.
@@ -2251,6 +2251,35 @@ access.
   `status: accepted|warning|rejected`, `filename`, `class`, `warnings`, and a
   rejection `reason` when applicable. Transport-level count rejections use the
   same human-readable sentence style as planner rejections.
+- The Journal input dock is the only v1.6.0 upload UI. It exposes an Attach
+  button, drag-and-drop target, selected-file list with remove controls, and
+  per-file result rows after the API answers. It does no client-side policy
+  enforcement beyond collecting browser `File` objects; supported formats,
+  byte caps, truncation, audio duration, and rejection messages remain server
+  contracts. Hidden mode clears any selected files and blocks submission before
+  file bytes can be sent. A document-level file drag/drop guard also prevents
+  the WebView's default file-navigation behavior, including while the Journal
+  dock is hidden.
+- The first-iteration supported upload classes are text (`.txt`, `.md`,
+  `.csv`, `.json`, `.log`), image (`.png`, `.jpg`, `.jpeg`), and audio
+  (`.wav`, `.mp3`). Text is decoded as UTF-8 and capped at 20000 model-facing
+  characters with an explicit truncation marker. Images are sent as-is after a
+  PNG/JPEG signature sniff, with no resize/recompression dependency. Uploaded
+  audio is decoded through the existing `soundfile`/`torchaudio` stack,
+  normalized to 16 kHz mono WAV clips, and split into deterministic <= 30 s
+  chunks up to the 90 s per-file cap.
+- Human release verification on 2026-07-20 confirmed the v1.6.0 attachment
+  paths through the Status Console Journal against local Ollama: text
+  attachments, a real JPG image, and uploaded speech audio are accepted and
+  reach the model through the intended local media path; unsupported files are
+  rejected without starting a model turn; text truncation, audio chunking, and
+  audio size/duration controls are visible to the user.
+- Accepted image media and normalized uploaded-audio clips use the same
+  current-turn `images` payload list as screenshots and microphone audio.
+  Images are ordered before audio clips within an attachment turn. Attachment
+  media is not stored in `ConversationHistory` and is not written as journal
+  binary media; the journal records the composed text with source
+  `attachment`.
 - Oversize request paths for `/api/journal/input` return JSON `413`:
   `status: rejected`, `reason: request_too_large`, `actual_bytes`,
   `max_bytes`, and `files: []`. The outer aiohttp request-size guard and the

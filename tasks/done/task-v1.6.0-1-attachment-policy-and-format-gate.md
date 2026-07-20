@@ -1,7 +1,7 @@
 # Task v1.6.0-1: Attachment policy and format gate
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.6.0-file-attachments.md`
+**Story:** `tasks/done/story-v1.6.0-file-attachments.md`
 **Depends on:** roadmap readiness for v1.6.0; no code task dependencies.
 
 ## Summary
@@ -12,7 +12,7 @@ rules, and the dependency decision for compressed audio formats.
 
 ## Context you need
 
-- `tasks/story-v1.6.0-file-attachments.md`: user-facing goal,
+- `tasks/done/story-v1.6.0-file-attachments.md`: user-facing goal,
   boundaries, and stop conditions.
 - `tasks/roadmap-v1.5.1-v1.7.md`: v1.6.0 entry point is the Journal input
   dock; no new hotkey.
