@@ -41,6 +41,8 @@ class CameraFrame:
 
 
 class CameraBackend(Protocol):
+    def probe_usb(self, device_index: int) -> None: ...
+
     def capture_usb(
         self, device_index: int, width: int, height: int, fourcc: str
     ) -> bytes: ...
@@ -61,6 +63,16 @@ class CameraState:
 
 
 class OpenCvCameraBackend:
+    def probe_usb(self, device_index: int) -> None:
+        import cv2
+
+        camera = cv2.VideoCapture(device_index, cv2.CAP_DSHOW)
+        try:
+            if not camera.isOpened():
+                raise CameraError("USB camera could not be opened")
+        finally:
+            camera.release()
+
     def capture_usb(
         self, device_index: int, width: int, height: int, fourcc: str
     ) -> bytes:
@@ -116,3 +128,14 @@ class CameraCapture:
         if not self._state.enabled:
             raise CameraDisabledError("Camera was turned off during capture")
         return CameraFrame(jpeg_bytes=jpeg_bytes, captured_at=self._clock())
+
+    async def probe(self) -> None:
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._backend.probe_usb, self._settings.usb_device_index
+                ),
+                timeout=self._settings.capture_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise CameraError("USB camera probe timed out") from exc

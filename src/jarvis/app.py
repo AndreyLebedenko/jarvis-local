@@ -594,6 +594,7 @@ class App:
     # about MCP, matching visibility_mode/history's own pattern above.
     mcp_host: McpHost | None = None
     camera_state: CameraState = field(default_factory=CameraState)
+    camera_capture: CameraCapture | None = None
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -723,6 +724,7 @@ def build_app(
         settings=settings,
         mcp_host=mcp_host,
         camera_state=camera_state,
+        camera_capture=camera_capture,
     )
 
 
@@ -800,6 +802,7 @@ def create_live_status_console(
         settings=app.settings,
         mcp_host=app.mcp_host,
         camera_state=app.camera_state,
+        camera_capture=app.camera_capture,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None

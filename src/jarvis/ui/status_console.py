@@ -24,7 +24,13 @@ from jarvis.core.config import (
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
-from jarvis.inputs.camera import CameraState, CameraStateChanged
+from jarvis.inputs.camera import (
+    CameraCapture,
+    CameraCaptureFailed,
+    CameraError,
+    CameraState,
+    CameraStateChanged,
+)
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
@@ -403,6 +409,7 @@ _MODULE_RESET_SOURCE: dict[ModuleId, str] = {
     ModuleId.TTS: "TTS",
     ModuleId.MEMORY: "ENGINE",
     ModuleId.VISION: "CAPTURE",
+    ModuleId.CAMERA: "CAMERA",
 }
 
 ModelOptionsSource = Callable[[], Awaitable[list[str]]]
@@ -466,6 +473,7 @@ class StatusConsoleApi:
         microphone_options_source: MicrophoneOptionsSource | None = None,
         mcp_host: McpControl | None = None,
         camera_state: CameraState | None = None,
+        camera_capture: CameraCapture | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -486,6 +494,7 @@ class StatusConsoleApi:
         )
         self._mcp_host = mcp_host
         self._camera_state = camera_state
+        self._camera_capture = camera_capture
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -550,15 +559,28 @@ class StatusConsoleApi:
 
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         if name == CAMERA_TOOL_NAME and self._camera_state is not None:
-            self._camera_state.set_enabled(enabled)
-            self._schedule(
-                self._bus.publish(CameraStateChanged, CameraStateChanged(enabled))
-            )
+            self._schedule(self._set_camera_enabled(enabled))
+            return
         if self._mcp_host is None:
             return
         changed = self._mcp_host.set_tool_enabled(name, enabled)
         if not changed:
             self._logger.warning("Ignoring stale tool toggle for %r", name)
+
+    async def _set_camera_enabled(self, enabled: bool) -> None:
+        if self._camera_state is None or self._mcp_host is None:
+            return
+        if enabled and self._camera_capture is not None:
+            try:
+                await self._camera_capture.probe()
+            except CameraError:
+                self._camera_state.set_enabled(False)
+                self._mcp_host.set_tool_enabled(CAMERA_TOOL_NAME, False)
+                await self._bus.publish(CameraCaptureFailed, CameraCaptureFailed())
+                return
+        self._camera_state.set_enabled(enabled)
+        self._mcp_host.set_tool_enabled(CAMERA_TOOL_NAME, enabled)
+        await self._bus.publish(CameraStateChanged, CameraStateChanged(enabled))
 
     async def _set_mcp_enabled_async(self, enabled: bool) -> None:
         if self._mcp_host is None:
