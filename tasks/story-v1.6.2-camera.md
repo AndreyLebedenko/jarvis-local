@@ -96,23 +96,22 @@ through its own tool call and answer questions about what it sees.
 
 ## Acceptance criteria
 
-- [ ] Spike facts (answer quality, capture latency, dependency
-      decision, and RTSP connect behavior when that hardware is
-      available) are recorded in `PROJECT.md` before module
-      implementation starts.
-- [ ] "Look at the camera" as a voice request produces a model-initiated
+- [x] USB spike facts (answer quality, capture latency, dependency decision)
+      are recorded in `PROJECT.md` before module implementation starts.
+      RTSP connect behavior is deferred until Imou is available.
+- [x] "Look at the camera" as a voice request produces a model-initiated
       tool call that captures a frame and answers about its content,
       with the image entering only the current turn's media.
-- [ ] USB captures are audited `local`; LAN captures are audited `lan`
-      and reported on the data-source axis like LAN MCP tools.
-- [ ] The camera is off by default; while off, no code path can capture
+- [x] USB captures are audited `local`. LAN `lan` auditing is deferred with
+      RTSP.
+- [x] The camera is off by default; while off, no code path can capture
       a frame; enabling is an explicit user action; every capture plays
       a cue; the health chip reflects module state.
-- [ ] The camera toggle is not delegable through any tool.
-- [ ] Config documentation states plainly that RTSP credentials are
-      stored in plain text in the local config file.
-- [ ] `python -m pytest` and Ruff checks are green; camera hardware
-      verification is a prepared human-run handoff.
+- [x] The camera toggle is not delegable through any tool.
+- [ ] RTSP credential documentation is deferred with the RTSP source; no
+      RTSP credentials exist in the USB-only configuration.
+- [x] `python -m pytest` and Ruff checks are green; the USB hardware handoff
+      is completed and recorded in `PROJECT.md`.
 
 ## Stop conditions
 
