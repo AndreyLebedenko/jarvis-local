@@ -274,6 +274,36 @@ Story/task readiness: story card exists as
 `tasks/task-v1.6.2-1..5-*.md` (created 2026-07-20); task 1 is the spike
 and remains the hard gate for tasks 2-5.
 
+## v1.6.3 - Status Console UI reorganization
+
+Purpose: replace the accumulated scatter of buttons and inline forms
+with three tabs - Status, Journal, Settings - organized by the nature
+of the data (owner decision, 2026-07-20): live engine state on Status,
+the conversation surface on Journal, cold configuration on Settings.
+
+Scope:
+
+- Three tabs plus a global header (honesty indicators and Open/Hidden
+  visible on every tab).
+- Status keeps runtime state and immediate controls: avatar/state,
+  module chips, reasoning level, MCP toggle with the tool list, system
+  events, Shutdown as the single destructive action.
+- The configuration form (model, microphone, UI language, TTS voices,
+  MCP server configuration) moves wholesale to Settings; the
+  scroll-to-settings button disappears.
+- Context reset is deduplicated: the Journal's explicit "Новый
+  контекст" (task-v1.5.3-8) remains the only reset control.
+
+Boundary:
+
+- Layout-only: no new features, no new engine state, no transport
+  changes beyond what relocation strictly requires. Hidden mode
+  semantics unchanged.
+
+Story/task readiness: story card exists as
+`tasks/story-v1.6.3-status-console-ui-reorg.md` with task cards
+`tasks/task-v1.6.3-1..3-*.md` (created 2026-07-20).
+
 ## v1.7.0 - Memory layer B, part 1: consolidation (near/far journal)
 
 Purpose: human-modeled long-term memory. The journal splits into a "near
