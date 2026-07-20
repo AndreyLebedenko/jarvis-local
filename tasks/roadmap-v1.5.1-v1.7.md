@@ -227,7 +227,9 @@ Boundary:
   decision, but they must never be silently conflated with the external
   MCP capability on the data-source axis.
 
-Story/task readiness: needs a story card.
+Story/task readiness: story card exists as
+`tasks/story-v1.6.1-builtin-tools-delegated-control.md` with task cards
+`tasks/task-v1.6.1-1..4-*.md` (created 2026-07-20).
 
 ## v1.6.2 - Camera
 
@@ -267,7 +269,10 @@ Boundary:
 - If frame quality from the spike is insufficient for useful answers,
   stop and re-plan before building the module.
 
-Story/task readiness: needs a spike task card, then a story card.
+Story/task readiness: story card exists as
+`tasks/story-v1.6.2-camera.md` with task cards
+`tasks/task-v1.6.2-1..5-*.md` (created 2026-07-20); task 1 is the spike
+and remains the hard gate for tasks 2-5.
 
 ## v1.7.0 - Memory layer B, part 1: consolidation (near/far journal)
 
