@@ -1,0 +1,99 @@
+# Story v1.6.3: Status Console UI reorganization
+
+**Status:** Planned.
+**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.3 section, added
+2026-07-20 by owner decision from the UI review dialog).
+**Created:** 2026-07-20.
+
+## User-facing goal
+
+Replace the current scatter of buttons and inline forms with three
+tabs - Status, Journal, Settings - so the console reads as one coherent
+surface: live engine state where you glance, conversation where you
+talk, cold configuration where you rarely go.
+
+## Boundaries
+
+- Layout-only story: no new features, no new engine state, no
+  transport/contract changes beyond what moving existing controls
+  between views strictly requires. Every control that exists before
+  this story exists after it (except the two removals below, which are
+  deduplications, not feature removals).
+- The organizing principle is the nature of the data, not the widget
+  inventory (owner-agreed, 2026-07-20):
+  - **Status** = live engine state and controls that act immediately;
+  - **Journal** = the conversation surface (cross-cutting rule 10
+    keeps growing it: memory, attachments);
+  - **Settings** = cold configuration, rarely touched.
+- Honesty indicators (LOCAL / LOCAL SOURCES) and the Open/Hidden
+  switch live in the global header, visible on every tab - the honesty
+  axis never disappears behind tab switching.
+- Hidden mode semantics are unchanged; the reorganization must not
+  create any new path that exposes journal or memory content in
+  Hidden mode.
+- Localization: all moved/renamed strings go through the existing UI
+  language catalog; no hardcoded text.
+
+## Design decisions (agreed in the 2026-07-20 dialog)
+
+- **Three tabs: Status, Journal, Settings.** "Status" (not "Control"):
+  the tab primarily answers "what is happening now"; its toggles are
+  secondary to that.
+- **Runtime state stays on Status:** avatar and engine state, module
+  health chips (the v1.6.2 camera chip will join them), reasoning
+  level selector, the MCP module toggle with the tool list (v1.6.1
+  adds builtin tools and per-tool toggles there - operational state,
+  not config), the system events panel, and Shutdown as the single
+  destructive action, placed at the bottom, away from frequent
+  controls.
+- **The settings form moves wholesale to the Settings tab:** model,
+  microphone, UI language, TTS voices, and MCP *server configuration*
+  (commands, adapters) - as opposed to the MCP on/off toggle and tool
+  list, which are runtime and stay on Status. The current "Settings"
+  button that merely scrolls to the inline form disappears entirely.
+- **Context reset lives only in the Journal.** "Сбросить контекст" on
+  the console duplicates the Journal's explicit "Новый контекст"
+  (task-v1.5.3-8 made that the canonical, explicit action). The
+  console copy is removed; resetting context is a dialog action and
+  belongs beside the dialog.
+
+## Scope (ordered task cards)
+
+- `tasks/task-v1.6.3-1-tab-shell-and-header.md` - the three-tab
+  navigation and the global header (honesty indicators, Open/Hidden).
+- `tasks/task-v1.6.3-2-content-migration.md` - move the settings form
+  to Settings, trim Status to runtime state, remove the duplicate
+  context reset, split MCP runtime controls from server config.
+- `tasks/task-v1.6.3-3-docs-and-verification.md` - docs, localization
+  audit, human-run visual review checklist.
+
+## Acceptance criteria
+
+- [ ] The console presents exactly three tabs (Status, Journal,
+      Settings); the header with honesty indicators and Open/Hidden is
+      visible on all of them.
+- [ ] Status contains only live state and immediate controls listed
+      above; no inline configuration form remains there.
+- [ ] Settings contains the full configuration form previously inlined
+      under the console, including MCP server configuration; the
+      scroll-to-settings button is gone.
+- [ ] Context reset exists only as the Journal's "Новый контекст";
+      behavior of the action itself is unchanged.
+- [ ] The MCP toggle and tool list remain functional on Status;
+      engine-state events keep every moved control honest (no control
+      renders stale state after the move).
+- [ ] Hidden mode presents exactly as before the reorganization.
+- [ ] All UI text comes from the language catalog in both languages.
+- [ ] `python -m pytest` and Ruff checks are green; visual review is a
+      prepared human-run handoff (WebView review is hardware-scope per
+      the testing protocol).
+
+## Stop conditions
+
+- Stop if any control turns out to require new backend state or a
+  transport contract change to survive the move - that is scope
+  growth beyond a layout story and needs an explicit decision.
+- Stop if the Status/Settings split forces duplicating a control on
+  both tabs to stay usable - duplication is what this story exists to
+  remove, so a case where it seems necessary is a design question,
+  not a compromise to make silently.
