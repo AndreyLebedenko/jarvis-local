@@ -50,6 +50,7 @@ class ModuleId(enum.Enum):
     TTS = "tts"
     MEMORY = "memory"
     VISION = "vision"
+    CAMERA = "camera"
 
 
 class HealthStatus(enum.Enum):

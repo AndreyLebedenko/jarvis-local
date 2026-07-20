@@ -31,11 +31,13 @@ class BuiltinToolProvider:
         memory_file_repository: MemoryFileRepository,
         camera_capture: CameraCapture | None = None,
         on_camera_capture: Callable[[], Awaitable[None]] | None = None,
+        on_camera_failure: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._thinking_mode = thinking_mode
         self._memory_file_repository = memory_file_repository
         self._camera_capture = camera_capture
         self._on_camera_capture = on_camera_capture
+        self._on_camera_failure = on_camera_failure
 
     def register_tools(self, registry: ToolRegistry) -> None:
         registry.set_provider_tools(BUILTIN_TOOL_PROVIDER_NAME, _builtin_tools())
@@ -64,6 +66,8 @@ class BuiltinToolProvider:
         except CameraDisabledError as exc:
             return ToolCallResult(content=str(exc), is_error=True)
         except CameraError as exc:
+            if self._on_camera_failure is not None:
+                await self._on_camera_failure()
             return ToolCallResult(content=str(exc), is_error=True)
         if self._on_camera_capture is not None:
             await self._on_camera_capture()

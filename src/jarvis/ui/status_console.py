@@ -24,7 +24,7 @@ from jarvis.core.config import (
 )
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
-from jarvis.inputs.camera import CameraState
+from jarvis.inputs.camera import CameraState, CameraStateChanged
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
@@ -551,6 +551,9 @@ class StatusConsoleApi:
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         if name == CAMERA_TOOL_NAME and self._camera_state is not None:
             self._camera_state.set_enabled(enabled)
+            self._schedule(
+                self._bus.publish(CameraStateChanged, CameraStateChanged(enabled))
+            )
         if self._mcp_host is None:
             return
         changed = self._mcp_host.set_tool_enabled(name, enabled)

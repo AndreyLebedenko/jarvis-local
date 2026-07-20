@@ -67,7 +67,12 @@ from jarvis.inputs.attachments import (
     compose_turn_images,
     compose_turn_text,
 )
-from jarvis.inputs.camera import CameraCapture, CameraState
+from jarvis.inputs.camera import (
+    CameraCapture,
+    CameraCaptureFailed,
+    CameraCaptureSucceeded,
+    CameraState,
+)
 from jarvis.inputs.capture import CaptureEngine, CaptureInput, ScreenshotCaptured
 from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_listener
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -641,12 +646,21 @@ def build_app(
     memory_loader = MemoryFileLoader(memory_file_specs, logger=logger)
     memory_file_repository = MemoryFileRepository(memory_file_specs)
     thinking_mode = ReasoningLevelState(bus)
+
+    async def on_camera_capture() -> None:
+        await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded())
+        await sound_cues.play("camera_capture")
+
+    async def on_camera_failure() -> None:
+        await bus.publish(CameraCaptureFailed, CameraCaptureFailed())
+
     tool_registry = ToolRegistry()
     builtin_tool_provider = BuiltinToolProvider(
         thinking_mode=thinking_mode,
         memory_file_repository=memory_file_repository,
         camera_capture=camera_capture,
-        on_camera_capture=lambda: sound_cues.play("camera_capture"),
+        on_camera_capture=on_camera_capture,
+        on_camera_failure=on_camera_failure,
     )
     builtin_tool_provider.register_tools(tool_registry)
     tool_registry.set_tool_enabled(CAMERA_TOOL_NAME, settings.camera.enabled)
@@ -758,6 +772,16 @@ def _microphone_health(is_awake: bool, language: str) -> ModuleHealth:
     )
 
 
+def _camera_health(is_enabled: bool, language: str) -> ModuleHealth:
+    return ModuleHealth(
+        module=ModuleId.CAMERA,
+        status=HealthStatus.OK if is_enabled else HealthStatus.UNAVAILABLE,
+        detail=ui_text(
+            "camera_detail_ready" if is_enabled else "camera_detail_disabled", language
+        ),
+    )
+
+
 def create_live_status_console(
     app: App,
     *,
@@ -805,6 +829,9 @@ def wire_status_console(
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
     live_console.transport.set_module_health(
         _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
+    )
+    live_console.transport.set_module_health(
+        _camera_health(app.camera_state.enabled, app.settings.ui.language)
     )
 
     async def on_runtime_state_changed(event: RuntimeStateChanged) -> None:

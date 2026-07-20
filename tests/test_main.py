@@ -1821,6 +1821,14 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
                 module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="listening"
             ),
         ),
+        (
+            "module",
+            ModuleHealth(
+                module=ModuleId.CAMERA,
+                status=HealthStatus.UNAVAILABLE,
+                detail="privacy off",
+            ),
+        ),
     ]
 
     unwire(app, subscriptions)
@@ -1872,9 +1880,9 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    # Only the six snapshot seeds: mic-toggle projection belongs to the
+    # Only the seven snapshot seeds: mic-toggle projection belongs to the
     # real transport server's own bus subscription, not to this wiring.
-    assert len(transport.calls) == 6
+    assert len(transport.calls) == 7
     assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)

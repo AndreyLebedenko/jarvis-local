@@ -9,6 +9,21 @@ from typing import Protocol
 from jarvis.core.config import CameraSettings, DataBoundary
 
 
+@dataclass(frozen=True)
+class CameraStateChanged:
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class CameraCaptureSucceeded:
+    pass
+
+
+@dataclass(frozen=True)
+class CameraCaptureFailed:
+    pass
+
+
 class CameraError(Exception):
     pass
 

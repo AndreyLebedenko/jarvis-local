@@ -5,7 +5,7 @@
 // maintained copies that could silently drift apart.
 
 const RUNTIME_STATES = ["idle", "warming", "listening", "thinking", "speaking", "error"];
-const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision"];
+const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision", "camera"];
 const HEALTH_STATUSES = ["ok", "degraded", "error", "unavailable"];
 const EVENT_LEVELS = ["info", "active", "warn", "error"];
 const VISIBILITY_MODES = ["open", "hidden"];
