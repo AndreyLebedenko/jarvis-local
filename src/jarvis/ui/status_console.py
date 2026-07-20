@@ -99,18 +99,17 @@ def data_source_payload(source: DataSource) -> dict:
 def mcp_state_payload(
     status: McpModuleStatus, tools: tuple[RegisteredTool, ...]
 ) -> dict:
-    if status is McpModuleStatus.OFF:
-        return {"status": status.value, "enabled": False, "tools": []}
-    available = status in {McpModuleStatus.ON, McpModuleStatus.DEGRADED}
+    mcp_available = status in {McpModuleStatus.ON, McpModuleStatus.DEGRADED}
     return {
         "status": status.value,
-        "enabled": available,
+        "enabled": mcp_available,
         "tools": [
             {
                 "name": tool.name,
                 "provider": tool.provider,
+                "provider_kind": tool.provider_kind,
                 "enabled": tool.enabled,
-                "available": available,
+                "available": tool.provider_kind == "builtin" or mcp_available,
             }
             for tool in sorted(tools, key=lambda item: item.name)
         ],
@@ -393,6 +392,8 @@ class McpControl(Protocol):
 
     async def disable(self) -> None: ...
 
+    def set_tool_enabled(self, name: str, enabled: bool) -> bool: ...
+
 
 _MODULE_RESET_SOURCE: dict[ModuleId, str] = {
     ModuleId.BACKEND: "LLM",
@@ -542,6 +543,13 @@ class StatusConsoleApi:
         if self._mcp_host is None:
             return
         self._schedule(self._set_mcp_enabled_async(enabled))
+
+    def set_tool_enabled(self, name: str, enabled: bool) -> None:
+        if self._mcp_host is None:
+            return
+        changed = self._mcp_host.set_tool_enabled(name, enabled)
+        if not changed:
+            self._logger.warning("Ignoring stale tool toggle for %r", name)
 
     async def _set_mcp_enabled_async(self, enabled: bool) -> None:
         if self._mcp_host is None:

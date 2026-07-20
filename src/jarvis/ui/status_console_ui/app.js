@@ -216,10 +216,24 @@ function applyMcpState(payload) {
   for (const tool of payload.tools || []) {
     const row = document.createElement("li");
     row.setAttribute("data-available", String(tool.available));
+    row.setAttribute("data-provider-kind", tool.provider_kind || "mcp");
     const stateKey = tool.available && tool.enabled
       ? "mcp_tool_available"
       : "mcp_tool_unavailable";
-    row.textContent = `${tool.name} - ${tool.provider} - ${uiString(stateKey)}`;
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = tool.enabled === true;
+    checkbox.disabled = tool.available !== true;
+    checkbox.setAttribute("aria-label", tool.name);
+    checkbox.addEventListener("change", () => {
+      _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
+    });
+    const label = document.createElement("span");
+    const providerKind = tool.provider_kind === "builtin"
+      ? uiString("tool_provider_builtin")
+      : tool.provider;
+    label.textContent = `${tool.name} - ${providerKind} - ${uiString(stateKey)}`;
+    row.append(checkbox, label);
     list.appendChild(row);
   }
   document.getElementById("mcpToolsEmpty").hidden = list.children.length !== 0;

@@ -40,8 +40,9 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import DataBoundary
 from jarvis.core.system_log import publish_system_event
 from jarvis.tools.json_types import JSONObject
-from jarvis.tools.mcp_client import McpTransportError, ToolArguments, ToolCallResult
+from jarvis.tools.mcp_client import McpTransportError
 from jarvis.tools.registry import ToolRegistry, UnsupportedToolArguments
+from jarvis.tools.results import ToolArguments, ToolCallResult
 from jarvis.ui.contract import EventLevel
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 
@@ -106,8 +107,8 @@ class ToolDispatcher:
         bus: EventBus,
         registry: ToolRegistry,
         get_client: Callable[[str], _CallableClient | None],
-        enter_dispatch: Callable[[], bool],
-        exit_dispatch: Callable[[], None],
+        enter_dispatch: Callable[[str], bool],
+        exit_dispatch: Callable[[str], None],
         on_transport_error: Callable[[str, Exception], Awaitable[None]] | None = None,
         ui_language: str = DEFAULT_UI_LANGUAGE,
     ) -> None:
@@ -127,21 +128,34 @@ class ToolDispatcher:
     ) -> ToolDispatchResult:
         correlation_id = uuid.uuid4().hex
 
-        if not self._enter_dispatch():
+        tool = self._registry.get(tool_name)
+        if tool is None:
             return await self._complete_outcome(
                 self._reject(
                     correlation_id,
                     tool_name,
                     None,
                     arguments,
-                    "MCP is disabled",
-                    "mcp_call_rejected_disabled",
+                    f"Unknown tool: {tool_name!r}",
+                    "mcp_call_rejected_unknown_tool",
+                )
+            )
+        if not self._enter_dispatch(tool.provider):
+            return await self._complete_outcome(
+                self._reject(
+                    correlation_id,
+                    tool_name,
+                    tool.provider,
+                    arguments,
+                    f"Provider not available: {tool.provider!r}",
+                    "tool_call_rejected_provider_unavailable",
+                    data_boundary=tool.data_boundary,
                 )
             )
         try:
             return await self._dispatch_admitted(correlation_id, tool_name, arguments)
         finally:
-            self._exit_dispatch()
+            self._exit_dispatch(tool.provider)
 
     async def _dispatch_admitted(
         self, correlation_id: str, tool_name: str, arguments: ToolArguments

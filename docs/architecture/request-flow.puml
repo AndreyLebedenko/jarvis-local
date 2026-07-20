@@ -23,6 +23,7 @@ participant "OllamaBackend" as Backend
 database "Local Ollama" as Ollama
 participant "ToolRegistry" as Registry
 participant "ToolDispatcher" as Dispatcher
+participant "Builtin tool provider" as BuiltinProvider
 participant "StdioMcpClient" as McpClient
 participant "Enabled MCP server" as McpServer
 participant "TtsOutput" as Tts
@@ -64,7 +65,16 @@ else voice or clipboard turn
     Ollama --> Backend : content, tool calls, metrics
     Backend --> Dialog : parsed stream chunks
 
-    alt model requests an enabled tool
+    alt model requests an enabled builtin tool
+      Dialog -> Dispatcher : dispatch(name, typed arguments)
+      Dispatcher -> Dispatcher : validate policy and data boundary
+      Dispatcher -> Bus : ToolCallStarted
+      Dispatcher -> BuiltinProvider : call_tool(...)
+      BuiltinProvider --> Dispatcher : typed result/error
+      Dispatcher -> Bus : ToolCallFinished
+      Dispatcher --> Dialog : ToolDispatchResult
+      Dialog -> Dialog : append tool result to messages
+    else model requests an enabled MCP tool
       Dialog -> Dispatcher : dispatch(name, typed arguments)
       Dispatcher -> Dispatcher : validate policy and data boundary
       Dispatcher -> Bus : ToolCallStarted
@@ -99,8 +109,9 @@ else voice or clipboard turn
 end
 
 note over Dialog,Dispatcher
-  Tool use is optional. With MCP disabled, Registry returns no enabled
-  tools and ToolAwareDialog delegates directly to OllamaBackend.
+  Tool use is optional. With all tools disabled, ToolAwareDialog delegates
+  directly to OllamaBackend. MCP disabled removes MCP clients only; builtin
+  local tools can remain registered and callable.
 end note
 
 note over Orch,Tts

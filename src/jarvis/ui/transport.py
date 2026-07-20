@@ -289,6 +289,8 @@ class ControlApi(Protocol):
 
     def set_mcp_enabled(self, enabled: bool) -> None: ...
 
+    def set_tool_enabled(self, name: str, enabled: bool) -> None: ...
+
     def reset_context(self) -> None: ...
 
     def reset_module(self, module_id: str) -> None: ...
@@ -1459,6 +1461,7 @@ class UiTransportServer:
             "toggle_thinking": self._toggle_thinking,
             "set_reasoning_level": self._set_reasoning_level,
             "set_mcp_enabled": self._set_mcp_enabled,
+            "set_tool_enabled": self._set_tool_enabled,
             "reset_context": self._reset_context,
             "reset_module": self._reset_module,
             "set_visibility_mode": self._set_visibility_mode,
@@ -1491,6 +1494,15 @@ class UiTransportServer:
         if not isinstance(enabled, bool):
             raise ProtocolError("set_mcp_enabled requires arguments.enabled boolean")
         self._control_api.set_mcp_enabled(enabled)
+
+    def _set_tool_enabled(self, arguments: JsonObject) -> None:
+        name = arguments.get("name")
+        enabled = arguments.get("enabled")
+        if not isinstance(name, str) or not name:
+            raise ProtocolError("set_tool_enabled requires arguments.name")
+        if not isinstance(enabled, bool):
+            raise ProtocolError("set_tool_enabled requires arguments.enabled boolean")
+        self._control_api.set_tool_enabled(name, enabled)
 
     def _reset_context(self, arguments: JsonObject) -> None:
         del arguments

@@ -1,7 +1,7 @@
 # Task v1.6.1-3: Memory write tools
 
-**Status:** Planned.
-**Story:** `tasks/story-v1.6.1-builtin-tools-delegated-control.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.6.1-builtin-tools-delegated-control.md`
 **Depends on:** task-v1.6.1-1 (builtin provider core). Independent of
 task 2.
 
@@ -48,7 +48,9 @@ left them.
 - Append is the primary operation: new content joins the existing file
   with a deterministic separator, validated against the cap as a whole
   (existing + appended). Replace (full-content update) exists for
-  corrections; both go through `MemoryFileRepository.write`.
+  corrections; successful replace writes first save one previous version as
+  `memory.md.bak` or `self.md.bak` and report the backup path in the tool
+  result.
 - An over-cap write fails with a tool error stating the file, current
   size, cap, and that the user can prune the file in the memory panel -
   the model can relay "memory is full". Never silent truncation.
@@ -63,13 +65,25 @@ left them.
 
 ## Acceptance criteria
 
-- [ ] Tests cover: append to an empty and a non-empty file (separator
-      correctness, UTF-8 Russian content), replace, over-cap append and
-      over-cap replace both failing with the informative error and
-      leaving the file unchanged, empty-content rejection, and that
-      writes go through the injected repository seam (no direct file
-      IO in the tool).
-- [ ] A human-run handoff scenario exists: "запомни, что ..." by
+- [x] Tests cover: append to an empty and a non-empty file (separator
+      correctness, UTF-8 Russian content), replace with a one-step `.bak`
+      backup, over-cap append and over-cap replace both failing with the
+      informative error and leaving the file and backup unchanged,
+      empty-content rejection, and that writes go through the injected
+      repository seam (no direct file IO in the tool).
+- [x] A human-run handoff scenario exists: "запомни, что ..." by
       voice, then verify the fact is in memory.md via the memory panel
       and that the next session's Jarvis knows it.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Implementation outcome
+
+Tool shape decision: one `remember` tool with `file = memory|self`,
+`mode = append|replace`, and `content`. Append joins non-empty files with
+one blank line. Replace goes through `MemoryFileRepository.replace_with_backup`
+so cap checks, the one-step `.bak` file, and atomic writes stay centralized.
+Successful replace results mention the `.bak` file in `content` and expose it
+as `structured_content.backup`.
+
+Automated verification: `python -m ruff format --check .`,
+`python -m ruff check .`, and `python -m pytest` are green.

@@ -10,6 +10,7 @@ from jarvis.core.config import (
 )
 from jarvis.tools.host import McpHost, McpModuleStatus, McpModuleStatusChanged
 from jarvis.tools.mcp_client import McpTransportError, ToolCallResult, ToolDeclaration
+from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import SystemEvent
 
 
@@ -37,6 +38,38 @@ class FakeMcpClient:
 
     async def call_tool(self, name, arguments):
         raise NotImplementedError
+
+
+class FakeBuiltinClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def call_tool(self, name, arguments):
+        self.calls.append((name, dict(arguments)))
+        return ToolCallResult(content="builtin-ok")
+
+
+class RaisingBuiltinClient:
+    async def call_tool(self, name, arguments):
+        del name, arguments
+        raise RuntimeError("builtin failed")
+
+
+def _registry_with_builtin_tool() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.set_provider_tools(
+        "builtin",
+        [
+            RegisteredTool(
+                name="remember",
+                description="d",
+                schema={},
+                provider="builtin",
+                provider_kind="builtin",
+            )
+        ],
+    )
+    return registry
 
 
 def _factory(clients_by_command: dict):
@@ -76,6 +109,72 @@ async def test_mcp_host_is_off_and_inert_at_construction():
     assert host.status == McpModuleStatus.OFF
     assert host.enabled is False
     assert host.registry.all() == ()
+
+
+async def test_builtin_tool_dispatch_is_admitted_while_mcp_status_is_off():
+    registry = _registry_with_builtin_tool()
+    builtin_client = FakeBuiltinClient()
+    mcp_client = FakeMcpClient(tools=[ToolDeclaration("web_search", "d", {})])
+    host = McpHost(
+        EventBus(),
+        McpSettings(servers={"search": McpServerSettings(command="c")}),
+        registry=registry,
+        builtin_clients={"builtin": builtin_client},
+        client_factory=lambda server: mcp_client,
+    )
+
+    result = await host.dispatcher.dispatch("remember", {"file": "memory"})
+
+    assert host.status is McpModuleStatus.OFF
+    assert result.ok is True
+    assert result.content == "builtin-ok"
+    assert builtin_client.calls == [("remember", {"file": "memory"})]
+    assert mcp_client.connected is False
+
+
+async def test_builtin_tools_survive_mcp_enable_disable_reenable_cycles():
+    registry = _registry_with_builtin_tool()
+    builtin_client = FakeBuiltinClient()
+    mcp_client = FakeMcpClient(tools=[ToolDeclaration("web_search", "d", {})])
+    host = McpHost(
+        EventBus(),
+        McpSettings(
+            enabled=True,
+            servers={"search": McpServerSettings(command="c")},
+        ),
+        registry=registry,
+        builtin_clients={"builtin": builtin_client},
+        client_factory=lambda server: mcp_client,
+    )
+
+    await host.enable()
+    assert {tool.name for tool in host.registry.all()} == {"remember", "web_search"}
+
+    await host.disable()
+    assert host.status is McpModuleStatus.OFF
+    assert {tool.name for tool in host.registry.all()} == {"remember"}
+
+    await host.enable()
+    assert host.status is McpModuleStatus.ON
+    assert {tool.name for tool in host.registry.all()} == {"remember", "web_search"}
+    assert host.registry.get("remember").provider_kind == "builtin"
+
+
+async def test_builtin_tool_exception_returns_failed_result_without_status_change():
+    registry = _registry_with_builtin_tool()
+    host = McpHost(
+        EventBus(),
+        McpSettings(),
+        registry=registry,
+        builtin_clients={"builtin": RaisingBuiltinClient()},
+    )
+
+    result = await host.dispatcher.dispatch("remember", {})
+
+    assert result.ok is False
+    assert result.error == "builtin failed"
+    assert host.status is McpModuleStatus.OFF
+    assert {tool.name for tool in host.registry.all()} == {"remember"}
 
 
 async def test_enable_connects_every_enabled_server_and_populates_registry():
@@ -573,7 +672,7 @@ async def test_dispatch_is_rejected_once_disable_has_started():
     result = await host.dispatcher.dispatch("lookup", {})
 
     assert result.ok is False
-    assert result.error == "MCP is disabled"
+    assert result.error == "Provider not available: 'search'"
 
     proceed.set()
     await disable_task

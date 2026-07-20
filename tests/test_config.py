@@ -1507,6 +1507,16 @@ def test_mcp_section_parses_enabled_and_servers(tmp_path):
     }
 
 
+def test_mcp_server_cannot_use_reserved_builtin_provider_name(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[mcp.servers.builtin]\ncommand = "server"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match="reserved provider name 'builtin'"):
+        load_settings(config_path)
+
+
 def test_mcp_server_enabled_defaults_to_true(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

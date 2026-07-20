@@ -128,7 +128,6 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_tool_call_failed": "Tool {tool} failed ({duration:.1f}s)",
         "mcp_tool_call_finished": "{tool} ({provider}) finished in {duration:.1f}s",
         "mcp_tool_call_cancelled": "Tool {tool} ({provider}) call was cancelled",
-        "mcp_call_rejected_disabled": "Tool call to {tool} rejected: MCP is disabled",
         "mcp_call_rejected_unknown_tool": "Tool call rejected: unknown tool {tool}",
         "mcp_call_rejected_tool_disabled": "Tool call rejected: {tool} is disabled",
         "mcp_call_rejected_arguments": (
@@ -136,6 +135,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "mcp_call_rejected_provider_not_connected": (
             "Tool call to {tool} rejected: provider {provider} is not connected"
+        ),
+        "tool_call_rejected_provider_unavailable": (
+            "Tool call to {tool} rejected: provider {provider} is unavailable"
         ),
         "mcp_tool_adapter_rejected": (
             "MCP server {server} does not match its configured tool adapter"
@@ -202,7 +204,6 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "mcp_tool_call_finished": "«{tool}» ({provider}) завершён за {duration:.1f} с",
         "mcp_tool_call_cancelled": "Вызов «{tool}» ({provider}) отменён",
-        "mcp_call_rejected_disabled": "Вызов «{tool}» отклонён: MCP выключен",
         "mcp_call_rejected_unknown_tool": (
             "Вызов отклонён: неизвестный инструмент «{tool}»"
         ),
@@ -212,6 +213,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "mcp_call_rejected_provider_not_connected": (
             "Вызов «{tool}» отклонён: провайдер «{provider}» не подключён"
+        ),
+        "tool_call_rejected_provider_unavailable": (
+            "Вызов «{tool}» отклонён: провайдер «{provider}» недоступен"
         ),
         "mcp_tool_adapter_rejected": (
             "MCP-сервер {server} не соответствует настроенному адаптеру инструментов"

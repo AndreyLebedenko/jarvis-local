@@ -112,6 +112,53 @@ def test_memory_repository_rejects_over_cap_without_writing(tmp_path) -> None:
     assert repository.read(MemoryFileId.MEMORY).content == "old"
 
 
+def test_memory_repository_replace_with_backup_keeps_one_previous_version(
+    tmp_path,
+) -> None:
+    settings = MemorySettings(root=str(tmp_path), memory_max_chars=100)
+    repository = MemoryFileRepository(build_memory_file_specs(settings))
+    memory_path = tmp_path / "memory.md"
+    backup_path = tmp_path / "memory.md.bak"
+    repository.write(MemoryFileId.MEMORY, "old")
+
+    first = repository.replace_with_backup(MemoryFileId.MEMORY, "new")
+    second = repository.replace_with_backup(MemoryFileId.MEMORY, "newer")
+
+    assert first.content == "new"
+    assert second.content == "newer"
+    assert memory_path.read_text(encoding="utf-8") == "newer"
+    assert backup_path.read_text(encoding="utf-8") == "new"
+
+
+def test_memory_repository_replace_missing_file_writes_empty_backup(tmp_path) -> None:
+    settings = MemorySettings(root=str(tmp_path), memory_max_chars=100)
+    repository = MemoryFileRepository(build_memory_file_specs(settings))
+
+    written = repository.replace_with_backup(MemoryFileId.MEMORY, "new")
+
+    assert written.content == "new"
+    assert (tmp_path / "memory.md.bak").read_text(encoding="utf-8") == ""
+
+
+def test_memory_repository_over_cap_replace_leaves_file_and_backup_unchanged(
+    tmp_path,
+) -> None:
+    settings = MemorySettings(root=str(tmp_path), memory_max_chars=3)
+    repository = MemoryFileRepository(build_memory_file_specs(settings))
+    repository.write(MemoryFileId.MEMORY, "old")
+
+    try:
+        repository.replace_with_backup(MemoryFileId.MEMORY, "new text")
+    except MemoryFileOverCapError as error:
+        assert error.chars == len("new text")
+        assert error.max_chars == 3
+    else:
+        raise AssertionError("expected MemoryFileOverCapError")
+
+    assert repository.read(MemoryFileId.MEMORY).content == "old"
+    assert not (tmp_path / "memory.md.bak").exists()
+
+
 def test_memory_repository_write_uses_injected_atomic_writer() -> None:
     settings = MemorySettings(root="memory-root")
     calls: list[tuple[Path, str]] = []

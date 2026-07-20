@@ -18,6 +18,7 @@ class RegisteredTool:
     description: str
     schema: JSONObject
     provider: str
+    provider_kind: str = "mcp"
     enabled: bool = True
     data_boundary: DataBoundary = DataBoundary.UNKNOWN
     upstream_name: str | None = None
@@ -86,9 +87,6 @@ class ToolRegistry:
             for name, tool in self._tools.items()
             if tool.provider != provider
         }
-
-    def clear(self) -> None:
-        self._tools = {}
 
     def get(self, name: str) -> RegisteredTool | None:
         return self._tools.get(name)

@@ -37,14 +37,16 @@ class _Admission:
         self.enter_calls = 0
         self.exit_calls = 0
 
-    def enter(self) -> bool:
+    def enter(self, provider: str) -> bool:
+        del provider
         self.enter_calls += 1
         if not self.admitting:
             return False
         self.inflight += 1
         return True
 
-    def exit(self) -> None:
+    def exit(self, provider: str) -> None:
+        del provider
         self.exit_calls += 1
         self.inflight -= 1
 
@@ -176,14 +178,13 @@ async def _collect(bus: EventBus, event_type) -> list:
 
 
 async def test_dispatch_returns_disabled_error_when_module_is_off():
-    dispatcher = _dispatcher(
-        EventBus(), ToolRegistry(), {}, _Admission(admitting=False)
-    )
+    registry = _registry_with(_enabled_tool())
+    dispatcher = _dispatcher(EventBus(), registry, {}, _Admission(admitting=False))
 
-    result = await dispatcher.dispatch("anything", {})
+    result = await dispatcher.dispatch("web_search", {})
 
     assert result.ok is False
-    assert result.error == "MCP is disabled"
+    assert result.error == "Provider not available: 'search'"
     assert result.correlation_id
 
 
@@ -192,9 +193,9 @@ async def test_dispatch_when_not_admitted_never_calls_exit():
     entered - exit_dispatch() must not be called for a slot that was
     never granted."""
     admission = _Admission(admitting=False)
-    dispatcher = _dispatcher(EventBus(), ToolRegistry(), {}, admission)
+    dispatcher = _dispatcher(EventBus(), _registry_with(_enabled_tool()), {}, admission)
 
-    await dispatcher.dispatch("anything", {})
+    await dispatcher.dispatch("web_search", {})
 
     assert admission.enter_calls == 1
     assert admission.exit_calls == 0
@@ -493,7 +494,9 @@ async def test_cancellation_after_started_event_still_publishes_correlated_outco
 async def test_rejected_dispatch_publishes_a_system_event():
     bus = EventBus()
     events = await _collect(bus, SystemEvent)
-    dispatcher = _dispatcher(bus, ToolRegistry(), {}, _Admission(admitting=False))
+    dispatcher = _dispatcher(
+        bus, _registry_with(_enabled_tool()), {}, _Admission(admitting=False)
+    )
 
     await dispatcher.dispatch("web_search", {"query": "x"})
 
@@ -504,7 +507,9 @@ async def test_rejected_dispatch_publishes_a_system_event():
 async def test_rejected_dispatch_publishes_a_typed_tool_call_finished_event():
     bus = EventBus()
     finished = await _collect(bus, ToolCallFinished)
-    dispatcher = _dispatcher(bus, ToolRegistry(), {}, _Admission(admitting=False))
+    dispatcher = _dispatcher(
+        bus, _registry_with(_enabled_tool()), {}, _Admission(admitting=False)
+    )
 
     result = await dispatcher.dispatch("web_search", {"query": "x"})
 
@@ -517,7 +522,9 @@ async def test_rejected_dispatch_publishes_a_typed_tool_call_finished_event():
 async def test_rejected_dispatch_does_not_publish_a_started_event():
     bus = EventBus()
     started = await _collect(bus, ToolCallStarted)
-    dispatcher = _dispatcher(bus, ToolRegistry(), {}, _Admission(admitting=False))
+    dispatcher = _dispatcher(
+        bus, _registry_with(_enabled_tool()), {}, _Admission(admitting=False)
+    )
 
     await dispatcher.dispatch("web_search", {})
 
@@ -531,23 +538,29 @@ async def test_rejection_ui_message_is_localized_and_has_no_embedded_english_rea
     bus = EventBus()
     events = await _collect(bus, SystemEvent)
     dispatcher = _dispatcher(
-        bus, ToolRegistry(), {}, _Admission(admitting=False), ui_language="ru"
+        bus,
+        _registry_with(_enabled_tool()),
+        {},
+        _Admission(admitting=False),
+        ui_language="ru",
     )
 
     await dispatcher.dispatch("web_search", {})
 
-    assert "MCP is disabled" not in events[0].message
-    assert "выключен" in events[0].message.lower()
+    assert "Provider not available" not in events[0].message
+    assert "недоступ" in events[0].message.lower()
 
 
 async def test_rejection_ui_message_defaults_to_english():
     bus = EventBus()
     events = await _collect(bus, SystemEvent)
-    dispatcher = _dispatcher(bus, ToolRegistry(), {}, _Admission(admitting=False))
+    dispatcher = _dispatcher(
+        bus, _registry_with(_enabled_tool()), {}, _Admission(admitting=False)
+    )
 
     await dispatcher.dispatch("web_search", {})
 
-    assert "disabled" in events[0].message.lower()
+    assert "unavailable" in events[0].message.lower()
 
 
 async def test_successful_call_ui_message_is_localized():

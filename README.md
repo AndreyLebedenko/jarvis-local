@@ -12,15 +12,16 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.6.0 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
+v1.6.1 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
 runtime and module health, timestamp-first metadata for the latest request to
 the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
 visibility mode, context reset, guarded Shutdown, typed restart-to-apply
 configuration (model, microphone, TTS routes, UI language, and VAD), Journal
 text input with local file attachments, answer copy controls, screenshot
 thumbnails, manual journal disk management, session fork, editable curated
-memory files, and a compact touchstrip glance surface. Since v1.2.11 the UI
-is English by default, with Russian available via `[ui].language = "ru"`.
+memory files, local builtin tools for delegated reasoning/memory updates, and a
+compact touchstrip glance surface. Since v1.2.11 the UI is English by default,
+with Russian available via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
@@ -30,7 +31,7 @@ is English by default, with Russian available via `[ui].language = "ru"`.
 
 ## Status
 
-This is a usable v1.6.0 hobby/research release with verified bilingual TTS:
+This is a usable v1.6.1 hobby/research release with verified bilingual TTS:
 Silero handles Russian and Piper handles English, with streamed text routed
 automatically by character set. TTS engines and local voice models remain
 configurable per language. The zero-config compatibility default uses Russian
@@ -78,6 +79,12 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   20 MB, up to 90 s split into 30 s clips). A turn can include at most four
   attached files and 40 MB of file bytes. Hidden mode clears pending
   selections and suppresses upload submission.
+- Local builtin tools let Jarvis, through the audited tool path, switch its
+  own reasoning level for the next turn and append/replace the user-auditable
+  `memory.md` / `self.md` files. These tools stay local and are independent of
+  the optional MCP module; successful builtin replace writes save the previous
+  version as `memory.md.bak` or `self.md.bak`; privacy controls such as
+  microphone sleep, Open/Hidden, and MCP enablement are not delegable.
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
 - Async event-bus architecture with isolated modules.

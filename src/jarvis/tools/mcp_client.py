@@ -9,10 +9,10 @@ the connection-owner task started by connect() (matching tts_piper.py's
 lazy-import precedent) so importing
 this module - or any module that imports it - never pulls in the mcp
 package's own dependency tree (starlette, uvicorn, cryptography, ...)
-when MCP is disabled. `ClientSession`/`ContentBlock` are only imported
-under TYPE_CHECKING for that same reason - real values still flow through
-at runtime, only the type-checker needs the import. `anyio` itself is
-imported eagerly below (not deferred): it is already a base Jarvis
+when MCP is disabled. `ClientSession` is only imported under TYPE_CHECKING
+for that same reason - real values still flow through at runtime, only the
+type-checker needs the import. `anyio` itself is imported eagerly below (not
+deferred): it is already a base Jarvis
 dependency via httpx (`pip show anyio` lists httpx as a requirer
 independent of mcp), so importing it costs nothing extra when MCP is
 disabled.
@@ -50,12 +50,10 @@ from typing import TYPE_CHECKING, Protocol, cast
 import anyio
 
 from jarvis.tools.json_types import JSONObject
+from jarvis.tools.results import ToolArguments, ToolCallResult
 
 if TYPE_CHECKING:
     from mcp import ClientSession
-    from mcp.types import ContentBlock
-
-ToolArguments = JSONObject
 
 # The anyio exception family that means "the underlying transport itself
 # broke", not "this one request failed" - see the module docstring.
@@ -81,16 +79,6 @@ class ToolDeclaration:
     name: str
     description: str
     schema: JSONObject
-
-
-@dataclass(frozen=True)
-class ToolCallResult:
-    content: list[ContentBlock]
-    is_error: bool = False
-    # CallToolResult.structuredContent (verified against installed mcp
-    # 1.28.1's CallToolResult.model_fields) - carried through rather than
-    # dropped, even though nothing consumes it yet (task 4's job).
-    structured_content: JSONObject | None = None
 
 
 class McpClient(Protocol):

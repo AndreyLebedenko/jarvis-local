@@ -15,14 +15,15 @@ routes.
 
 ## Status Console UI
 
-В v1.6.0 Status Console развивается в Control Center и постоянный Dialog Journal: состояние runtime и
+В v1.6.1 Status Console развивается в Control Center и постоянный Dialog Journal: состояние runtime и
 здоровье модулей, метаданные последнего запроса к модели с timestamp в начале,
 события движка, уровни reasoning (Off/Low/Medium/High), Open/Hidden, сброс
 контекста, защищённый Shutdown, типизированные restart-to-apply настройки
 (модель, микрофон, TTS routes, язык UI и VAD), текстовый ввод из Journal с
 локальными file attachments, копирование ответов, thumbnails скриншотов,
 ручное управление размером journal, session fork, редактируемые файлы curated
-memory и компактная touchstrip панель.
+memory, локальные builtin tools для делегированного изменения reasoning/памяти
+и компактная touchstrip панель.
 Начиная с v1.2.11 интерфейс по умолчанию английский; русский включается через
 `[ui].language = "ru"` в `config.toml`.
 
@@ -34,7 +35,7 @@ memory и компактная touchstrip панель.
 
 ## Статус
 
-Это рабочий v1.6.0 hobby/research release с проверенным двуязычным TTS: русский
+Это рабочий v1.6.1 hobby/research release с проверенным двуязычным TTS: русский
 текст озвучивает Silero, английский - Piper, а потоковый ответ автоматически
 маршрутизируется по набору символов. TTS-движок и локальная voice model
 настраиваются отдельно для каждого языка. Совместимый zero-config default
@@ -81,6 +82,12 @@ Jarvis не связан с Marvel, Disney или правообладателя
   один аудиофайл (`.wav`, `.mp3`, 20 MB, до 90 s с нарезкой на клипы по 30 s).
   В одном turn максимум четыре прикреплённых файла и 40 MB file bytes. Hidden
   очищает ожидающие выбора файлы и запрещает upload submit.
+- Локальные builtin tools позволяют Jarvis через audited tool path менять свой
+  reasoning level для следующего turn и append/replace пользовательски
+  проверяемых файлов `memory.md` / `self.md`. Эти tools остаются локальными и
+  не зависят от optional MCP module; успешный builtin replace сохраняет
+  предыдущую версию как `memory.md.bak` или `self.md.bak`; privacy controls
+  вроде microphone sleep, Open/Hidden и MCP enablement не делегируются модели.
 - Контекст текущих локальных даты, дня недели, времени и числового UTC offset
   для каждого запроса без сохранения этого контекста в истории диалога.
 - Асинхронная event-bus архитектура с изолированными модулями.

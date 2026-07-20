@@ -113,12 +113,3 @@ def test_clear_provider_removes_only_that_providers_tools():
     registry.clear_provider("search")
 
     assert {t.name for t in registry.all()} == {"query"}
-
-
-def test_clear_removes_everything():
-    registry = ToolRegistry()
-    registry.set_provider_tools("search", [_tool("web_search", "search")])
-
-    registry.clear()
-
-    assert registry.all() == ()

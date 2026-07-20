@@ -82,6 +82,9 @@ class _FakeControlApi:
     def set_mcp_enabled(self, enabled: bool) -> None:
         self.calls.append(("set_mcp_enabled", str(enabled)))
 
+    def set_tool_enabled(self, name: str, enabled: bool) -> None:
+        self.calls.append(("set_tool_enabled", name, str(enabled)))
+
     def reset_context(self) -> None:
         self.calls.append(("reset_context", None))
 
@@ -657,6 +660,19 @@ def test_set_mcp_enabled_control_requires_boolean_target():
     assert control_api.calls == [("set_mcp_enabled", "True")]
     with pytest.raises(ProtocolError, match="arguments.enabled"):
         server._dispatch_control("set_mcp_enabled", {"enabled": "true"})
+
+
+def test_set_tool_enabled_control_requires_name_and_boolean_target():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control("set_tool_enabled", {"name": "remember", "enabled": False})
+
+    assert control_api.calls == [("set_tool_enabled", "remember", "False")]
+    with pytest.raises(ProtocolError, match="set_tool_enabled"):
+        server._dispatch_control("set_tool_enabled", {"name": "", "enabled": True})
+    with pytest.raises(ProtocolError, match="set_tool_enabled"):
+        server._dispatch_control("set_tool_enabled", {"name": "remember"})
 
 
 @pytest.mark.asyncio

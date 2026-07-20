@@ -38,7 +38,7 @@ rectangle "APPLICATION RUNTIME" as RuntimeZone #F8FAFC {
 
   component "dialog  <<package>>\n---\nbackend: Ollama streaming\ntool_presentation: dialog loop\nthinking/time: request context\ndepends on: config, bus, tools" as Dialog
 
-  component "tools  <<package>>\n---\nhost: MCP lifecycle\nregistry: typed catalog\ndispatch: policy + audit\nclient: stdio JSON-RPC\ndepends on: config, bus, ui.contract" as Tools
+  component "tools  <<package>>\n---\nhost: MCP lifecycle\nregistry: typed catalog\ndispatch: policy + audit\nbuiltin: in-process tools\nclient: stdio JSON-RPC\ndepends on: config, bus, ui.contract" as Tools
 
   component "journal  <<package>>\n---\nrecorder: ordered background writes\nstore: local JSONL + media\nsearch: session lookup\ndepends on: bus" as Journal
 
@@ -97,7 +97,7 @@ InputDevices -up-> Inputs : screen + clipboard
 InputDevices -up-> Audio : microphone samples
 Audio -down-> Speakers : speech + cues
 Dialog -down-> Ollama : local streaming HTTP
-Tools -down-> McpServers : stdio JSON-RPC\nonly when enabled
+Tools -down-> McpServers : stdio JSON-RPC\nfor MCP only when enabled
 Ui -down-> WebView : loopback transport + views
 
 legend bottom

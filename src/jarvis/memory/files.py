@@ -132,6 +132,18 @@ class MemoryFileRepository:
             max_chars=spec.max_chars,
         )
 
+    def replace_with_backup(
+        self, file_id: MemoryFileId, content: str
+    ) -> MemoryFileRead:
+        spec = self._specs[file_id]
+        chars = len(content)
+        if chars > spec.max_chars:
+            raise MemoryFileOverCapError(chars, spec.max_chars)
+
+        previous = self._reader(spec.path) or ""
+        self._writer(_backup_path(spec.path), previous)
+        return self.write(file_id, content)
+
 
 def build_memory_file_specs(
     settings: MemorySettings,
@@ -181,6 +193,10 @@ def _atomic_write_text(path: Path, content: str) -> None:
             temp_path = Path(temp_name)
             if temp_path.exists():
                 temp_path.unlink()
+
+
+def _backup_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.bak")
 
 
 def _prompt_block(label: str, content: str) -> str:

@@ -43,6 +43,7 @@ from typing import Any, get_args, get_origin
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
 DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
+BUILTIN_TOOL_PROVIDER_NAME = "builtin"
 
 _TOML_SECTION_LINE = re.compile(
     r"^[ \t]*\[[ \t]*(?P<name>[A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?(?:\r?\n)?$"
@@ -631,6 +632,11 @@ def _build_mcp_servers(section_name: str, raw: object) -> dict[str, McpServerSet
         if not isinstance(name, str):
             raise ConfigError(
                 f"MCP server keys must be str, got {type(name).__name__}: {name!r}"
+            )
+        if name == BUILTIN_TOOL_PROVIDER_NAME:
+            raise ConfigError(
+                f"[{section_name}.servers.{name}] uses reserved provider name "
+                f"{BUILTIN_TOOL_PROVIDER_NAME!r}"
             )
         if not isinstance(server_raw, dict):
             raise ConfigError(

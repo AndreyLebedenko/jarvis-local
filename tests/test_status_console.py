@@ -115,24 +115,57 @@ def test_data_source_payload_shape():
     assert data_source_payload(DataSource.INTERNET) == {"source": "internet"}
 
 
-def test_mcp_state_payload_zeros_tools_when_off_and_marks_live_tools_available():
-    tools = (RegisteredTool("web_search", "Search", {}, "search", enabled=True),)
+def test_mcp_state_payload_keeps_builtin_tools_available_when_mcp_is_off():
+    tools = (
+        RegisteredTool("web_search", "Search", {}, "search", enabled=True),
+        RegisteredTool(
+            "remember",
+            "Remember",
+            {},
+            "builtin",
+            provider_kind="builtin",
+            enabled=True,
+        ),
+    )
 
     assert mcp_state_payload(McpModuleStatus.OFF, tools) == {
         "status": "off",
         "enabled": False,
-        "tools": [],
+        "tools": [
+            {
+                "name": "remember",
+                "provider": "builtin",
+                "provider_kind": "builtin",
+                "enabled": True,
+                "available": True,
+            },
+            {
+                "name": "web_search",
+                "provider": "search",
+                "provider_kind": "mcp",
+                "enabled": True,
+                "available": False,
+            },
+        ],
     }
     assert mcp_state_payload(McpModuleStatus.DEGRADED, tools) == {
         "status": "degraded",
         "enabled": True,
         "tools": [
             {
-                "name": "web_search",
-                "provider": "search",
+                "name": "remember",
+                "provider": "builtin",
+                "provider_kind": "builtin",
                 "enabled": True,
                 "available": True,
-            }
+            },
+            {
+                "name": "web_search",
+                "provider": "search",
+                "provider_kind": "mcp",
+                "enabled": True,
+                "available": True,
+            },
         ],
     }
 
@@ -209,6 +242,7 @@ class _FakeMcpHost:
     def __init__(self) -> None:
         self.status = McpModuleStatus.OFF
         self.registry = ToolRegistry()
+        self.tool_toggles: list[tuple[str, bool]] = []
 
     @property
     def enabled(self) -> bool:
@@ -219,6 +253,10 @@ class _FakeMcpHost:
 
     async def disable(self) -> None:
         self.status = McpModuleStatus.OFF
+
+    def set_tool_enabled(self, name: str, enabled: bool) -> bool:
+        self.tool_toggles.append((name, enabled))
+        return True
 
 
 @pytest.mark.asyncio
@@ -265,6 +303,22 @@ async def test_mcp_control_applies_live_then_persists_authoritative_state(tmp_pa
         ).mcp.enabled
         is False
     )
+
+
+def test_tool_enabled_control_reaches_mcp_host_registry_owner():
+    bus = EventBus()
+    host = _FakeMcpHost()
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        mcp_host=host,
+    )
+
+    api.set_tool_enabled("remember", False)
+
+    assert host.tool_toggles == [("remember", False)]
 
 
 async def test_api_methods_are_a_no_op_before_set_loop_is_called():

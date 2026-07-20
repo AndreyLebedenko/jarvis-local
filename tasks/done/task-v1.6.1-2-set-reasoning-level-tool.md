@@ -1,7 +1,7 @@
 # Task v1.6.1-2: set_reasoning_level builtin tool
 
-**Status:** Planned.
-**Story:** `tasks/story-v1.6.1-builtin-tools-delegated-control.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.6.1-builtin-tools-delegated-control.md`
 **Depends on:** task-v1.6.1-1 (builtin provider core).
 
 ## Summary
@@ -53,14 +53,23 @@ round trip.
 
 ## Acceptance criteria
 
-- [ ] Tests cover: a dispatched tool call changes
+- [x] Tests cover: a dispatched tool call changes
       `ReasoningLevelState.level` and publishes `ReasoningLevelChanged`
       with the tool source tag; the in-flight turn's sampled level is
       unaffected (next-turn semantics); invalid level values produce a
       failed tool result and no state change; setting the already-active
       level succeeds without a spurious event.
-- [ ] A human-run handoff scenario exists for the voice path: ask
+- [x] A human-run handoff scenario exists for the voice path: ask
       Jarvis by voice to raise the reasoning level, confirm the reply,
       the Control Center indicator, and that the next turn actually
       reasons at the new level.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Implementation outcome
+
+`set_reasoning_level` accepts `off`, `low`, `medium`, or `high` and calls
+`ReasoningLevelState.set_level(..., source="TOOL")`. Its result states that
+the level applies from the next accepted turn.
+
+Automated verification: `python -m ruff format --check .`,
+`python -m ruff check .`, and `python -m pytest` are green.

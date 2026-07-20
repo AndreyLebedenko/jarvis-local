@@ -1799,8 +1799,9 @@ dialog path, task 5 wires a Control Center switch.
   it holds no client objects and has spawned no subprocess -
   `client_factory` is invoked only from inside `enable()`. A
   config/app-construction-level test asserts exactly this: `McpHost`
-  exists immediately after `build_app()` but `status == OFF` and the
-  registry is empty.
+  exists immediately after `build_app()` but `status == OFF`; after
+  v1.6.1 the shared registry may still contain local builtin tools, which
+  are not MCP clients and do not spawn subprocesses.
 - **Status model: `OFF` / `CONNECTING` / `ON` / `DEGRADED` /
   `DISCONNECTING`**, not a bare enabled bool. `McpModuleStatusChanged` is
   published on every transition - the typed, authoritative signal task 5
@@ -2288,6 +2289,57 @@ access.
   `accepted`, `busy`, or `no_accepted_content` results. The transport maps that
   result to HTTP response state and does not inspect the orchestrator's busy
   flag directly.
+
+## Architecture v1.6.1 (builtin tools and delegated control)
+
+See [tasks/story-v1.6.1-builtin-tools-delegated-control.md](tasks/story-v1.6.1-builtin-tools-delegated-control.md).
+Builtin tools extend the existing v1.4.0 tool path with in-process local
+providers. They do not add network capability, subprocesses, or a second
+dispatch path.
+
+- Builtin tools register in the same `ToolRegistry` as MCP tools under the
+  reserved provider name `builtin`. `[mcp.servers.builtin]` is rejected during
+  config parsing so an external MCP server cannot claim that identity.
+  `RegisteredTool.provider_kind` distinguishes `builtin` from `mcp` for the
+  Control Center without changing the flat model-facing tool namespace.
+- `ToolDispatcher.dispatch()` remains the single interception point for every
+  model-requested tool call. It resolves the registered provider, applies a
+  provider-specific admission gate, publishes the same correlated
+  `ToolCallStarted` / `ToolCallFinished` audit events, and emits the paired
+  localized `SystemEvent`. Builtin calls use `data_boundary = local` and
+  dispatch to an in-process object; MCP calls still require an enabled MCP
+  provider client.
+- MCP off still means no MCP clients, no MCP server processes, and no external
+  tool capability. It no longer means the shared registry is empty: builtin
+  tools stay registered and callable while `McpHost.status == OFF`. MCP
+  enable/disable/degraded transitions clear only MCP providers' tools and do
+  not drop or duplicate builtin registrations.
+- The Control Center tool list projects the shared registry. Builtin tools are
+  visible with a distinct provider label, remain available when MCP is off,
+  and use the same per-tool enable/disable path as MCP tools.
+- Delegation is strictly allowlisted. The model may only delegate these local
+  changes: set the reasoning level, append/replace `memory.md`, and
+  append/replace `self.md`. Privacy-relevant controls are not delegable:
+  microphone sleep, Open/Hidden visibility mode, MCP module toggles, and MCP
+  server enablement remain user controls only.
+- `set_reasoning_level` accepts exactly `off`, `low`, `medium`, or `high`.
+  It calls the single state owner, `ReasoningLevelState.set_level(...,
+  source="TOOL")`. The existing sampled-at-turn-start contract is unchanged:
+  the change applies from the next accepted turn, while the current turn's
+  confirmation is a normal tool round trip. UI honesty still comes from the
+  existing `ReasoningLevelChanged` event.
+- Memory writes use one builtin `remember` tool with explicit `file`
+  (`memory` or `self`), `mode` (`append` or `replace`), and `content`
+  arguments. Writes go through `MemoryFileRepository`; no tool path accepts
+  arbitrary paths or bypasses the per-file caps. Append joins
+  non-empty files with a deterministic blank-line separator. Successful
+  replace writes first save the previous file content to the same directory as
+  `memory.md.bak` or `self.md.bak`; this is a single previous-version slot,
+  overwritten by the next successful replace, and reported in the tool result
+  content plus structured content. Over-cap and empty-content requests return
+  normal tool errors and leave the file and backup unchanged. Mid-session
+  writes become part of the injected system prompt only at the next session
+  start, matching the v1.5.3 memory sampling contract.
 
 ## Project verification contract (v1.2.2)
 

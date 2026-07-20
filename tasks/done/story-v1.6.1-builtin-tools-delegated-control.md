@@ -1,6 +1,6 @@
 # Story v1.6.1: Builtin tool provider and delegated control
 
-**Status:** Planned.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.1 section; delegation
 semantics for `set_reasoning_level` decided 2026-07-18).
 **Created:** 2026-07-20.
@@ -85,36 +85,52 @@ tool machinery the user already sees in the Control Center.
 
 ## Scope (ordered task cards)
 
-- `tasks/task-v1.6.1-1-builtin-provider-core.md` - the builtin provider
+- `tasks/done/task-v1.6.1-1-builtin-provider-core.md` - the builtin provider
   concept in the registry/dispatcher, ownership untangling, audit
   parity, Control Center visibility.
-- `tasks/task-v1.6.1-2-set-reasoning-level-tool.md` - the first builtin
+- `tasks/done/task-v1.6.1-2-set-reasoning-level-tool.md` - the first builtin
   tool, wired to `ReasoningLevelState`.
-- `tasks/task-v1.6.1-3-memory-write-tools.md` - append/update within
+- `tasks/done/task-v1.6.1-3-memory-write-tools.md` - append/update within
   memory.md and self.md caps.
-- `tasks/task-v1.6.1-4-docs-and-release-verification.md` - PROJECT.md
+- `tasks/done/task-v1.6.1-4-docs-and-release-verification.md` - PROJECT.md
   allowlist boundary, config docs, human-run checklist.
 
 ## Acceptance criteria
 
-- [ ] A builtin tool call flows through the same interception point as
+- [x] A builtin tool call flows through the same interception point as
       MCP calls and produces `ToolCallStarted`/`ToolCallFinished` with
       `data_boundary = local` and a correlated `SystemEvent`.
-- [ ] Builtin tools appear in the Control Center tool list, visibly
+- [x] Builtin tools appear in the Control Center tool list, visibly
       distinct from MCP tools, and can be individually disabled there;
       the MCP module switch does not affect them.
-- [ ] "Set reasoning to high" by voice changes the level from the next
+- [x] "Set reasoning to high" by voice changes the level from the next
       accepted turn; the current turn's confirming reply is a normal
       tool round trip; UI reflects the change through the existing
       engine-state events; hotkey and UI paths still work unchanged.
-- [ ] "Remember this" appends to memory.md within its cap through the
+- [x] "Remember this" appends to memory.md within its cap through the
       audited tool path; an over-cap write returns a clear tool error;
       the file remains editable in the v1.5.3 memory panel.
-- [ ] `PROJECT.md` records the delegation allowlist boundary
+- [x] `PROJECT.md` records the delegation allowlist boundary
       (cross-cutting rule 9) in the same change that introduces
       delegated control.
-- [ ] `python -m pytest` and Ruff checks are green; voice-path
+- [x] `python -m pytest` and Ruff checks are green; voice-path
       verification is a prepared human-run handoff.
+
+## Implementation outcome
+
+- Builtin tools register under reserved provider `builtin` with
+  `provider_kind = "builtin"` and `data_boundary = local`.
+- The implemented tools are `set_reasoning_level` and `remember`.
+  `remember` has explicit `file`, `mode`, and `content` arguments; it covers
+  both `memory.md` and `self.md`. Successful `replace` writes keep one
+  previous-version backup as `memory.md.bak` or `self.md.bak` and report that
+  backup in the tool result.
+- Human-run voice/WebView verification is prepared in
+  `tasks/done/task-v1.6.1-4-docs-and-release-verification.md`.
+- Review follow-up removed the accidental MCP type import from builtin/host
+  code by moving `ToolArguments` to the neutral tool result contract.
+- Automated verification: `python -m ruff format --check .`,
+  `python -m ruff check .`, and `python -m pytest` are green.
 
 ## Stop conditions
 

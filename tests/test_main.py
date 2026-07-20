@@ -1767,6 +1767,25 @@ def test_live_status_console_closes_all_surfaces():
     assert touchstrip.close_calls == 2
 
 
+def _builtin_tool_payloads() -> list[dict[str, object]]:
+    return [
+        {
+            "name": "remember",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+        },
+        {
+            "name": "set_reasoning_level",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+        },
+    ]
+
+
 async def test_wire_status_console_seeds_the_transport_snapshot():
     app = _fake_app()
     live_console = create_live_status_console(app, include_touchstrip=False)
@@ -1785,7 +1804,7 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
         ("locality", DataLocality.LOCAL),
         (
             "mcp",
-            {"status": "off", "enabled": False, "tools": []},
+            {"status": "off", "enabled": False, "tools": _builtin_tool_payloads()},
         ),
         ("thinking", ReasoningLevel.OFF),
         ("visibility", VisibilityMode.OPEN),
@@ -1815,7 +1834,11 @@ async def test_wire_status_console_projects_authoritative_mcp_status_changes():
 
     assert transport.calls[-1] == (
         "mcp",
-        {"status": "connecting", "enabled": False, "tools": []},
+        {
+            "status": "connecting",
+            "enabled": False,
+            "tools": _builtin_tool_payloads(),
+        },
     )
     unwire(app, subscriptions)
 
@@ -2592,13 +2615,16 @@ def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
     is now always constructed (so a later live toggle has something to
     call enable() on) - the structural guarantee lives in McpHost itself
     being side-effect-free until enable() runs, asserted here as status
-    OFF and an empty registry rather than the object's mere absence."""
+    OFF; builtin tools are local in-process registrations and do not
+    weaken the MCP-off invariant."""
     app = build_app(_settings(), backend=_FakeBackend())
 
     assert app.mcp_host is not None
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False
-    assert app.mcp_host.registry.all() == ()
+    tools = {tool.name: tool for tool in app.mcp_host.registry.all()}
+    assert set(tools) == {"set_reasoning_level", "remember"}
+    assert {tool.provider_kind for tool in tools.values()} == {"builtin"}
 
 
 def test_build_app_constructs_an_mcp_host_when_mcp_is_enabled():

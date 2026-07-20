@@ -48,6 +48,7 @@ import enum
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import McpServerSettings, McpSettings
@@ -56,12 +57,19 @@ from jarvis.tools.interception import SOURCE, ToolDispatcher
 from jarvis.tools.mcp_client import McpClient, StdioMcpClient
 from jarvis.tools.provider_adapter import adapt_provider_tools
 from jarvis.tools.registry import ToolRegistry
+from jarvis.tools.results import ToolArguments, ToolCallResult
 from jarvis.ui.contract import EventLevel
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 
 logger = logging.getLogger(__name__)
 
 ClientFactory = Callable[[McpServerSettings], McpClient]
+
+
+class BuiltinClient(Protocol):
+    async def call_tool(
+        self, name: str, arguments: ToolArguments
+    ) -> ToolCallResult: ...
 
 
 def _default_client_factory(server: McpServerSettings) -> McpClient:
@@ -100,6 +108,8 @@ class McpHost:
         self,
         bus: EventBus,
         settings: McpSettings,
+        registry: ToolRegistry | None = None,
+        builtin_clients: dict[str, BuiltinClient] | None = None,
         client_factory: ClientFactory = _default_client_factory,
         ui_language: str = DEFAULT_UI_LANGUAGE,
     ) -> None:
@@ -107,8 +117,9 @@ class McpHost:
         self._settings = settings
         self._client_factory = client_factory
         self._ui_language = ui_language
-        self._registry = ToolRegistry()
+        self._registry = registry or ToolRegistry()
         self._clients: dict[str, McpClient] = {}
+        self._builtin_clients = dict(builtin_clients or {})
         self._status = McpModuleStatus.OFF
         self._lock = asyncio.Lock()
         # Admission gate - see module docstring.
@@ -145,17 +156,24 @@ class McpHost:
     def set_tool_enabled(self, name: str, enabled: bool) -> bool:
         return self._registry.set_tool_enabled(name, enabled)
 
-    def _get_client(self, provider: str) -> McpClient | None:
+    def _get_client(self, provider: str) -> McpClient | BuiltinClient | None:
+        builtin = self._builtin_clients.get(provider)
+        if builtin is not None:
+            return builtin
         return self._clients.get(provider)
 
-    def _enter_dispatch(self) -> bool:
+    def _enter_dispatch(self, provider: str) -> bool:
+        if provider in self._builtin_clients:
+            return True
         if not self._admitting:
             return False
         self._inflight += 1
         self._drained.clear()
         return True
 
-    def _exit_dispatch(self) -> None:
+    def _exit_dispatch(self, provider: str) -> None:
+        if provider in self._builtin_clients:
+            return
         self._inflight -= 1
         if self._inflight <= 0:
             self._inflight = 0
@@ -178,7 +196,8 @@ class McpHost:
         here - actively tearing down a connection from inside a call
         that's already failing is more invasive than this fix requires;
         disable()'s own teardown still reaches it normally."""
-        self._registry.clear_provider(provider)
+        if provider not in self._builtin_clients:
+            self._registry.clear_provider(provider)
         if self._status == McpModuleStatus.ON:
             await self._set_status(McpModuleStatus.DEGRADED)
         await publish_system_event(
@@ -255,8 +274,9 @@ class McpHost:
                     name,
                     exc_info=True,
                 )
+        for provider in list(self._clients):
+            self._registry.clear_provider(provider)
         self._clients.clear()
-        self._registry.clear()
         await self._set_status(McpModuleStatus.OFF)
 
     async def disable(self) -> None:
@@ -284,8 +304,9 @@ class McpHost:
                     # module stuck in a half-torn-down status.
                     errors.append((name, exc))
 
+            for provider in list(self._clients):
+                self._registry.clear_provider(provider)
             self._clients.clear()
-            self._registry.clear()
             await self._set_status(McpModuleStatus.OFF)
 
             for name, exc in errors:
@@ -399,9 +420,9 @@ class McpHost:
 
     async def _disconnect_server(self, name: str) -> None:
         """Only attempts the actual disconnect - disable()'s trailing
-        self._clients.clear()/self._registry.clear() handle bookkeeping
-        for every provider in one place, once, regardless of which
-        individual disconnects here succeeded or raised."""
+        provider-scoped registry cleanup handles bookkeeping for every
+        MCP provider in one place, once, regardless of which individual
+        disconnects here succeeded or raised."""
         client = self._clients.get(name)
         if client is not None:
             await client.disconnect()

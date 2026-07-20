@@ -22,7 +22,12 @@ from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.bus import EventBus
-from jarvis.core.config import PromptSettings, Settings, load_settings
+from jarvis.core.config import (
+    BUILTIN_TOOL_PROVIDER_NAME,
+    PromptSettings,
+    Settings,
+    load_settings,
+)
 from jarvis.core.lifecycle import (
     VOICE_PLACEHOLDER_TEXT,
     AttachmentSubmissionReason,
@@ -82,7 +87,9 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.tools.builtin import BuiltinToolProvider
 from jarvis.tools.host import McpHost, McpModuleStatusChanged
+from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -630,6 +637,12 @@ def build_app(
     memory_loader = MemoryFileLoader(memory_file_specs, logger=logger)
     memory_file_repository = MemoryFileRepository(memory_file_specs)
     thinking_mode = ReasoningLevelState(bus)
+    tool_registry = ToolRegistry()
+    builtin_tool_provider = BuiltinToolProvider(
+        thinking_mode=thinking_mode,
+        memory_file_repository=memory_file_repository,
+    )
+    builtin_tool_provider.register_tools(tool_registry)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
     journal_store = JournalStore(Path(settings.journal.root))
@@ -643,7 +656,13 @@ def build_app(
     # Always constructed, never conditionally omitted - see the App
     # dataclass's mcp_host field comment for why this is still safe under
     # the "off equals the capability does not exist" invariant.
-    mcp_host = McpHost(bus, settings.mcp, ui_language=settings.ui.language)
+    mcp_host = McpHost(
+        bus,
+        settings.mcp,
+        registry=tool_registry,
+        builtin_clients={BUILTIN_TOOL_PROVIDER_NAME: builtin_tool_provider},
+        ui_language=settings.ui.language,
+    )
     dialog_backend = ToolAwareDialog(
         backend,
         bus,

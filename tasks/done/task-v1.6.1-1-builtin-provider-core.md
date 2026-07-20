@@ -1,7 +1,7 @@
 # Task v1.6.1-1: Builtin provider core
 
-**Status:** Planned.
-**Story:** `tasks/story-v1.6.1-builtin-tools-delegated-control.md`
+**Status:** Completed.
+**Story:** `tasks/done/story-v1.6.1-builtin-tools-delegated-control.md`
 **Depends on:** nothing; first card of the story.
 
 ## Summary
@@ -69,11 +69,25 @@ Center tool list, independent of the MCP module switch.
 
 ## Acceptance criteria
 
-- [ ] Tests cover: registration under the reserved provider name,
+- [x] Tests cover: registration under the reserved provider name,
       dispatch through the interception point with correct audit
       events and `data_boundary = local`, MCP off/on/off transitions
       leaving builtin tools intact, per-tool disable blocking dispatch,
       collision between a builtin name and an MCP tool name resolving
       per the registry's existing rejection rules, and an exception
       inside a builtin tool returning a failed `ToolDispatchResult`.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Implementation outcome
+
+The shared registry remains the model-facing catalog. `McpHost` now accepts
+an injected registry plus builtin clients, and the dispatcher admission gate
+is provider-specific: builtin tools are admitted in-process while MCP tools
+still require the MCP gate. MCP cleanup clears only MCP providers.
+Review follow-up added host-level regression coverage for builtin dispatch
+while MCP is off, builtin survival across MCP enable/disable/reenable cycles,
+and builtin provider exceptions returning failed dispatch results without
+changing MCP status.
+
+Automated verification: `python -m ruff format --check .`,
+`python -m ruff check .`, and `python -m pytest` are green.
