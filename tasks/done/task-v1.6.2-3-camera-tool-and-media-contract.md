@@ -1,6 +1,6 @@
 # Task v1.6.2-3: Camera tool and media-from-tool-result contract
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task-v1.6.2-2 (capture core); v1.6.1 builtin provider.
 

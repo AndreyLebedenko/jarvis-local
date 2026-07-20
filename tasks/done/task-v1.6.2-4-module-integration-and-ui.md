@@ -1,6 +1,6 @@
 # Task v1.6.2-4: Module integration and UI
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task-v1.6.2-3 (camera tool).
 

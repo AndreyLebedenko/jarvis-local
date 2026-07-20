@@ -1,6 +1,6 @@
 # Task v1.6.2-2: Capture core
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task-v1.6.2-1 spike outcome "go".
 

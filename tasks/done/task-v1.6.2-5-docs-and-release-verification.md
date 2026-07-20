@@ -1,6 +1,6 @@
 # Task v1.6.2-5: Docs and release verification
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** tasks v1.6.2-1..4.
 

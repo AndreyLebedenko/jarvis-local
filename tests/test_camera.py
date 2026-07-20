@@ -1,3 +1,6 @@
+import asyncio
+import threading
+
 import pytest
 
 from jarvis.core.config import CameraSettings, DataBoundary
@@ -81,3 +84,28 @@ async def test_camera_probe_reports_a_missing_configured_device_without_capturin
 
     assert backend.probe_calls == [2]
     assert backend.calls == []
+
+
+@pytest.mark.asyncio
+async def test_disabling_camera_during_capture_prevents_frame_delivery():
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingBackend(FakeBackend):
+        def capture_usb(
+            self, device_index: int, width: int, height: int, fourcc: str
+        ) -> bytes:
+            del device_index, width, height, fourcc
+            started.set()
+            release.wait(timeout=1)
+            return b"jpeg"
+
+    state = CameraState(True)
+    capture = CameraCapture(CameraSettings(), state, BlockingBackend(b"jpeg"))
+    capture_task = asyncio.create_task(capture.capture())
+    await asyncio.to_thread(started.wait, 1)
+    state.set_enabled(False)
+    release.set()
+
+    with pytest.raises(CameraDisabledError, match="turned off"):
+        await capture_task

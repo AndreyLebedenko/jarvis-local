@@ -1,6 +1,6 @@
 # Story v1.6.2: Camera
 
-**Status:** Planned. Gated on the task-1 spike: if frame quality is
+**Status:** Completed for the USB scope. Gated on the task-1 spike: if frame quality is
 insufficient for useful answers, stop and re-plan before building the
 module (roadmap boundary).
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.2 section; native
@@ -84,14 +84,14 @@ through its own tool call and answer questions about what it sees.
 
 - `tasks/done/task-v1.6.2-1-camera-spike.md` - human-run spike, hard gate;
   verified facts into `PROJECT.md`.
-- `tasks/task-v1.6.2-2-capture-core.md` - capture module (USB + RTSP
+- `tasks/done/task-v1.6.2-2-capture-core.md` - capture module (USB + RTSP
   frame grab), config, pure logic tests.
-- `tasks/task-v1.6.2-3-camera-tool-and-media-contract.md` - the builtin
+- `tasks/done/task-v1.6.2-3-camera-tool-and-media-contract.md` - the builtin
   capture tool and the media-from-tool-result contract through
   `ToolAwareDialog`.
-- `tasks/task-v1.6.2-4-module-integration-and-ui.md` - health chip,
+- `tasks/done/task-v1.6.2-4-module-integration-and-ui.md` - health chip,
   sound cues, privacy toggle with mic-sleep parity.
-- `tasks/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
+- `tasks/done/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
   config docs (credentials honesty), human-run checklist.
 
 ## Acceptance criteria
