@@ -948,6 +948,70 @@ def test_last_model_request_renders_the_timestamp_before_metadata():
     assert 'uiString("last_request_" + item.kind)' in app_js
 
 
+def test_app_js_renders_request_log_entries_from_the_catalog():
+    """story-v1.6.4-task-2: SystemEvent.message is a free-form engine
+    string the panel prints verbatim, so a pre-rendered request line would
+    be English forever. The entry arrives typed and the UI localizes it
+    from the same last_request_* keys the chip strip uses."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = js.index("function appendSystemEvent")
+    body = js[start : js.index("\n}\n", start)]
+
+    assert 'payload.entry === "model_request"' in body
+    assert "_appendModelRequestEntry(payload)" in body
+
+    entry_start = js.index("function _appendModelRequestEntry")
+    entry_body = js[entry_start : js.index("\n}\n", entry_start)]
+    assert "_requestItemText" in entry_body
+    assert 'uiString("log_source_model_request")' in entry_body
+    assert "payload.message" not in entry_body
+
+
+def test_app_js_renders_a_modality_through_one_shared_formatter():
+    """The chip strip and the log entry describe the same fact; two
+    renderers would drift into two wordings for one modality."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = js.index("function _requestItemText")
+    body = js[start : js.index("\n}\n", start)]
+
+    assert 'uiString("last_request_" + item.kind)' in body
+    assert "_AUDIO_DURATION_KINDS.has(item.kind)" in body
+
+    strip_start = js.index("function applyLastModelRequest")
+    strip_body = js[strip_start : js.index("\n}\n", strip_start)]
+    entry_start = js.index("function _appendModelRequestEntry")
+    entry_body = js[entry_start : js.index("\n}\n", entry_start)]
+    assert "_requestItemText" in strip_body
+    assert "_requestItemText" in entry_body
+
+
+def test_request_log_entry_strings_exist_in_both_languages():
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert strings.count("log_source_model_request:") == 2
+
+
+def test_audio_duration_unit_comes_from_the_catalog():
+    """Pre-existing gap surfaced by story-v1.6.4-task-2: the unit was
+    hardcoded English, so the Russian UI read "Голос: 3.2 s". Harmless
+    while it appeared once under the orb, wrong twice over once the same
+    text is also rendered into the events panel."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert 'uiString("unit_seconds")' in js
+    assert '" s"' not in js
+    assert strings.count("unit_seconds:") == 2
+
+
+def test_style_css_distinguishes_request_entries_from_diagnostics():
+    """A user-facing record of what was sent to the model is not a warning
+    or an error; it must not read as one in a panel full of diagnostics."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert '.log-entry[data-entry="model_request"]' in css
+
+
 def test_last_model_request_is_a_chip_strip_under_the_orb_not_a_section():
     """task-v1.6.3-4: the record is one wrapping row of chips directly
     under the orb state, not a titled section - it costs a heading, a

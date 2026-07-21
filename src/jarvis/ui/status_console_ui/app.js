@@ -166,16 +166,22 @@ function renderModules() {
 // value (see transport.py's _AUDIO_DURATION_INPUTS) - either kind renders it.
 const _AUDIO_DURATION_KINDS = new Set(["audio", "attachment_audio"]);
 
+// story-v1.6.4-task-2: one renderer for a modality, shared by the chip
+// strip under the orb and the events panel's request entry. They describe
+// the same fact and must never drift into two wordings.
+function _requestItemText(item) {
+  const detail = _AUDIO_DURATION_KINDS.has(item.kind) && item.duration_seconds !== undefined
+    ? ": " + item.duration_seconds.toFixed(1) + " " + uiString("unit_seconds")
+    : "";
+  return uiString("last_request_" + item.kind) + detail;
+}
+
 function applyLastModelRequest(payload) {
   const list = document.getElementById("lastRequestList");
   list.replaceChildren();
   for (const item of payload.items || []) {
     const row = document.createElement("li");
-    const detail = _AUDIO_DURATION_KINDS.has(item.kind) && item.duration_seconds !== undefined
-      ? ": " + item.duration_seconds.toFixed(1) + " s"
-      : "";
-    row.textContent = formatLogTime(payload.timestamp) + " - "
-      + uiString("last_request_" + item.kind) + detail;
+    row.textContent = formatLogTime(payload.timestamp) + " - " + _requestItemText(item);
     list.appendChild(row);
   }
 }
@@ -254,10 +260,29 @@ function formatLogTime(timestampSeconds) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+// story-v1.6.4-task-2: the panel carries two kinds of entry. A plain
+// system event prints payload.message, a free-form English string the
+// engine composed. A model-request entry arrives typed instead, because
+// pre-rendering it engine-side would either lose the translation or force
+// the engine to know the interface language - so it is localized here,
+// from the same last_request_* keys the chip strip under the orb uses.
 function appendSystemEvent(payload) {
   if (!EVENT_LEVELS.includes(payload.level)) {
     throw new Error("Unknown event level: " + payload.level);
   }
+  if (payload.entry === "model_request") {
+    _appendModelRequestEntry(payload);
+    return;
+  }
+  _appendLogRow(payload, payload.source, payload.message);
+}
+
+function _appendModelRequestEntry(payload) {
+  const text = (payload.items || []).map(_requestItemText).join(", ");
+  _appendLogRow(payload, uiString("log_source_model_request"), text, "model_request");
+}
+
+function _appendLogRow(payload, sourceText, messageText, entryKind) {
   const list = document.getElementById("logList");
   const empty = document.getElementById("logEmpty");
   if (empty) empty.remove();
@@ -265,6 +290,7 @@ function appendSystemEvent(payload) {
   const row = document.createElement("div");
   row.className = "log-entry";
   row.dataset.level = payload.level;
+  if (entryKind) row.dataset.entry = entryKind;
 
   const time = document.createElement("span");
   time.className = "log-time";
@@ -272,11 +298,11 @@ function appendSystemEvent(payload) {
 
   const src = document.createElement("span");
   src.className = "log-src";
-  src.textContent = payload.source;
+  src.textContent = sourceText;
 
   const msg = document.createElement("span");
   msg.className = "log-msg";
-  msg.textContent = payload.message;
+  msg.textContent = messageText;
 
   row.append(time, src, msg);
   list.prepend(row);

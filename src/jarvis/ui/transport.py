@@ -78,6 +78,7 @@ from jarvis.ui.status_console import (
     journal_event_payload,
     journal_search_hit_payload,
     journal_session_payload,
+    model_request_log_payload,
     model_request_payload,
     module_health_payload,
     runtime_state_payload,
@@ -453,8 +454,19 @@ class UiStateStore:
         return self._replace("model", {"label": label})
 
     def add_system_event(self, event: SystemEvent) -> JsonObject:
+        return self._append_event(cast(JsonObject, system_event_payload(event)))
+
+    def add_model_request_event(self, summary: ModelRequestSummary) -> JsonObject:
+        """story-v1.6.4-task-2: the panel's user-facing turn record.
+
+        It shares one bounded history with the diagnostics rather than
+        getting its own budget: this is one panel, and the durable record
+        of what was sent is the file log, not these 200 entries.
+        """
+        return self._append_event(cast(JsonObject, model_request_log_payload(summary)))
+
+    def _append_event(self, payload: JsonObject) -> JsonObject:
         events = cast(list[JSONValue], self._state["system_events"])
-        payload = cast(JsonObject, system_event_payload(event))
         events.append(payload)
         del events[:-MAX_SYSTEM_EVENTS]
         return make_message(
@@ -725,6 +737,7 @@ class UiTransportServer:
             ),
         )
         self._publish_delta(self._state.set_last_model_request(summary))
+        self._publish_delta(self._state.add_model_request_event(summary))
 
     async def _on_tool_call_started(self, event: ToolCallStarted) -> None:
         self._publish_delta(self._state.record_tool_boundary(event.data_boundary))

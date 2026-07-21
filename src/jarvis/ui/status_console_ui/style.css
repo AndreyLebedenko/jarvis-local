@@ -494,6 +494,15 @@ html[data-transport="offline"] .transport-status {
 .log-entry[data-level="error"] .log-src { background: var(--red-tint); color: var(--red); }
 .log-entry[data-level="error"] .log-msg { color: var(--red); }
 
+/* story-v1.6.4-task-2: the user-facing record of what a turn sent to the
+   model. Violet marks it as a different kind of line from the engine
+   diagnostics around it without implying severity - it is neither a
+   warning nor an error, and the severity colors are spoken for. */
+.log-entry[data-entry="model_request"] .log-src {
+  background: var(--violet-tint); color: var(--violet);
+}
+.log-entry[data-entry="model_request"] .log-msg { color: var(--text); }
+
 .legend {
   display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; margin-top: auto;
   border-top: 1px solid var(--border-soft); font-size: 10px; color: var(--text-faint);

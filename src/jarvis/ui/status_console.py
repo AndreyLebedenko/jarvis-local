@@ -134,6 +134,30 @@ def model_request_payload(summary: ModelRequestSummary) -> dict:
     return {"timestamp": summary.timestamp, "items": items}
 
 
+def model_request_log_payload(summary: ModelRequestSummary) -> dict:
+    """story-v1.6.4-task-2: the events panel's user-facing record of one
+    turn's request.
+
+    It is a sibling of system_event_payload(), not an extension of it.
+    SystemEvent.message is a free-form engine string the panel prints
+    verbatim, so putting a rendered line there would either lose the
+    translation or force the engine to know the interface language. This
+    payload stays typed and the UI localizes it from the existing
+    last_request_* catalog keys.
+
+    Content rule: kinds and durations only. There is deliberately no
+    field here that could carry transcript text, clipboard text, or a
+    file name.
+    """
+    request = model_request_payload(summary)
+    return {
+        "entry": "model_request",
+        "timestamp": request["timestamp"],
+        "level": EventLevel.INFO.value,
+        "items": request["items"],
+    }
+
+
 def system_event_payload(event: SystemEvent) -> dict:
     return {
         "timestamp": event.timestamp,

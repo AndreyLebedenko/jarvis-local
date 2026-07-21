@@ -1,8 +1,76 @@
 # Task v1.6.4-2: User-facing model-request log
 
-**Status:** Planned.
+**Status:** Implemented, pending the human verification run.
 **Story:** `tasks/story-v1.6.4-observability-and-logging.md`
 **Depends on:** task-v1.6.4-1 (system log split established).
+
+## Outcome
+
+`model_request_log_payload()` in `status_console.py` is a sibling of
+`system_event_payload()`, not an extension of it: `SystemEvent` is
+untouched. The events panel's list now carries two payload shapes,
+discriminated by an `entry` field that only the new one sets, so
+existing entries keep their exact shape and every existing test of
+`system_event_payload()` still describes reality.
+
+`_on_model_request_started()` publishes the same `ModelRequestSummary`
+twice: to `last_model_request` (the chip strip, "what is true now") and
+to `system_events` (the panel, "what happened"). One source, two
+projections, no second code path deriving modalities.
+
+On the UI side `appendSystemEvent()` branches on the discriminator and
+`_appendModelRequestEntry()` localizes from the existing
+`last_request_*` keys. Both it and the chip strip render a modality
+through one shared `_requestItemText()`, so the two surfaces cannot
+drift into two wordings for the same fact. Violet marks the entry as a
+different kind of line without implying severity.
+
+**Decision: request entries share the panel's 200-entry budget** rather
+than getting their own. This is one panel with one bounded history, and
+the durable record of what was sent is the file log from task 1, not
+these entries. A chatty tool session can evict older request records
+from the panel; the chip strip still answers "now" and the file still
+answers "then".
+
+**Language switching is not a concern in practice:** `[ui].language` is
+restart-to-apply, and `_applyStateSnapshot()` calls `applyUiLanguage()`
+before replaying `system_events`, so replayed entries always render in
+the current language.
+
+## Pre-existing defect fixed here
+
+The audio duration unit was hardcoded English, so the Russian UI read
+"Голос: 3.2 s". Harmless while it appeared once under the orb; wrong
+twice over once the same text is also rendered into the events panel.
+The unit now comes from a `unit_seconds` catalog key in both languages.
+This also fixes the v1.6.3 chip strip.
+
+## Found, not fixed here - needs an owner decision
+
+This card assumed a turn's request already produced a detailed English
+line in the system log, and that the work was only to add the localized
+UI half. It does not. `ModelRequestStarted` is published straight onto
+the bus in `app.py` and never passes through `publish_system_event()`,
+so **the file log has no record of what any turn sent to the model.**
+
+That inverts story v1.6.4's premise: the panel now answers "what did
+this turn send" while the file - the artifact a user actually attaches
+to a problem report - does not.
+
+The fix is one line, but not a line this card may add:
+
+- Calling `publish_system_event()` would also push an English
+  `SystemEvent` into the panel, so every turn would show twice: once as
+  the localized typed entry, once as a raw diagnostic. Wrong.
+- A direct `logger.info(...)` at the `ModelRequestStarted` publish site
+  gives the file its line without touching the panel. Right - but it is
+  a new log call site, which task-v1.6.4-1's boundary excluded and this
+  card's boundary ("one new typed event and its rendering") does not
+  cover.
+
+Recommend a small task-v1.6.4-4 for it, before the story closes. The
+content rule applies unchanged: modality kinds, count, and duration -
+never the text or media that was sent.
 
 ## Summary
 
@@ -63,19 +131,23 @@ revisited first - stop and raise it rather than deciding inline.
 - The event is included in the state snapshot's `system_events` replay
   on the same terms as existing events, so a reconnect does not produce
   a panel that disagrees with itself.
-- The corresponding detailed English line continues to reach the system
-  log through `publish_system_event()`'s `log_message` path.
+- ~~The corresponding detailed English line continues to reach the
+  system log through `publish_system_event()`'s `log_message` path.~~
+  Written on a false premise; see "Found, not fixed here" below.
 
 ## Acceptance criteria
 
-- [ ] Automated tests cover: the typed event's payload shape; the UI
-      renders it from catalog keys in both languages with no hardcoded
-      modality text; the audio-duration path; snapshot replay.
-- [ ] An automated test asserts the event carries no payload content.
+- [x] Automated tests cover: the typed event's payload shape; the UI
+      renders it from catalog keys with no hardcoded modality text or
+      unit; the audio-duration path; the shared modality formatter; and
+      that request entries share the panel's bounded budget.
+- [x] An automated test asserts the event carries no payload content -
+      it pins the payload's exact key set, so a future field that could
+      carry content fails the test rather than shipping.
 - [ ] A human-run check confirms the panel shows the record for voice,
       screenshot, clipboard, and attachment turns, in both languages,
       and that Hidden mode exposes nothing new.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
 
 ## Human verification handoff
 
