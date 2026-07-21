@@ -272,6 +272,22 @@ class CaptureSettings:
 
 
 @dataclass(frozen=True)
+class CameraSettings:
+    enabled: bool = False
+    usb_device_index: int = field(default=0, metadata={"minimum": 0})
+    frame_width: int = field(
+        default=1920, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    frame_height: int = field(
+        default=1080, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    fourcc: str = field(default="MJPG", metadata={"non_empty": True})
+    capture_timeout_seconds: float = field(
+        default=5.0, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+
+
+@dataclass(frozen=True)
 class SoundCueSettings:
     listening: str = "sounds/listening.wav"
     thinking: str = "sounds/thinking.wav"
@@ -290,6 +306,7 @@ class SoundCueSettings:
     # Wiring into SoundCuePlayer/ensure_generated() is task-13's job.
     thinking_on: str = "sounds/thinking_on.wav"
     thinking_off: str = "sounds/thinking_off.wav"
+    camera_capture: str = "sounds/camera_capture.wav"
 
 
 @dataclass(frozen=True)
@@ -431,6 +448,7 @@ class Settings:
     vad: VadSettings = field(default_factory=VadSettings)
     tts: TtsSettings = field(default_factory=TtsSettings)
     capture: CaptureSettings = field(default_factory=CaptureSettings)
+    camera: CameraSettings = field(default_factory=CameraSettings)
     sound_cues: SoundCueSettings = field(default_factory=SoundCueSettings)
     clipboard: ClipboardSettings = field(default_factory=ClipboardSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
@@ -447,6 +465,7 @@ _SECTIONS: dict[str, type] = {
     "vad": VadSettings,
     "tts": TtsSettings,
     "capture": CaptureSettings,
+    "camera": CameraSettings,
     "sound_cues": SoundCueSettings,
     "clipboard": ClipboardSettings,
     "microphone": MicrophoneSettings,

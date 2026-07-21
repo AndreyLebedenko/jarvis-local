@@ -75,6 +75,14 @@ def test_message_lookup_formats_arguments():
     assert message == "Reset of memory requested, but not supported by the engine yet"
 
 
+def test_russian_camera_reset_uses_the_grammatical_module_label():
+    message = ui_text(
+        "module_reset_unsupported", "ru", module=module_label(ModuleId.CAMERA, "ru")
+    )
+
+    assert message == "Сброс камеры запрошен, но пока не поддерживается движком"
+
+
 def test_russian_wording_preserves_v1_2_10_muted_microphone_detail():
     assert ui_text("mic_detail_muted", "ru") == "не используется"
 

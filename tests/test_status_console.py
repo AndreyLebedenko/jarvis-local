@@ -18,6 +18,13 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevelChanged,
     ReasoningLevelState,
 )
+from jarvis.inputs.camera import (
+    CameraCapture,
+    CameraCaptureFailed,
+    CameraError,
+    CameraState,
+    CameraStateChanged,
+)
 from jarvis.journal import JournalEvent, JournalStore
 from jarvis.tools.host import McpModuleStatus
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
@@ -319,6 +326,73 @@ def test_tool_enabled_control_reaches_mcp_host_registry_owner():
     api.set_tool_enabled("remember", False)
 
     assert host.tool_toggles == [("remember", False)]
+
+
+@pytest.mark.asyncio
+async def test_camera_toggle_probes_before_enabling_and_publishes_state():
+    class ProbeBackend:
+        def probe_usb(self, device_index: int) -> None:
+            assert device_index == 0
+
+        def capture_usb(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+    bus = EventBus()
+    events: list[CameraStateChanged] = []
+    bus.subscribe(CameraStateChanged, lambda event: events.append(event))
+    host = _FakeMcpHost()
+    state = CameraState()
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=host,
+        camera_state=state,
+        camera_capture=CameraCapture(Settings().camera, state, ProbeBackend()),
+    )
+
+    api.set_tool_enabled("capture_camera_image", True)
+    await asyncio.sleep(0.05)
+
+    assert state.enabled is True
+    assert host.tool_toggles == [("capture_camera_image", True)]
+    assert events == [CameraStateChanged(True)]
+
+
+@pytest.mark.asyncio
+async def test_camera_toggle_failure_keeps_tool_disabled_and_publishes_failure():
+    class MissingCameraBackend:
+        def probe_usb(self, device_index: int) -> None:
+            del device_index
+            raise CameraError("missing")
+
+        def capture_usb(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+    bus = EventBus()
+    failures: list[CameraCaptureFailed] = []
+    bus.subscribe(CameraCaptureFailed, lambda event: failures.append(event))
+    host = _FakeMcpHost()
+    state = CameraState()
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=host,
+        camera_state=state,
+        camera_capture=CameraCapture(Settings().camera, state, MissingCameraBackend()),
+    )
+
+    api.set_tool_enabled("capture_camera_image", True)
+    await asyncio.sleep(0.05)
+
+    assert state.enabled is False
+    assert host.tool_toggles == [("capture_camera_image", False)]
+    assert failures == [CameraCaptureFailed()]
 
 
 async def test_api_methods_are_a_no_op_before_set_loop_is_called():

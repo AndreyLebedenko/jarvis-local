@@ -1,5 +1,12 @@
 # Jarvis
 
+## USB camera
+
+Jarvis can capture one static image from a configured local USB camera when
+the user asks it to look. It ships disabled: enable `capture_camera_image` in
+the Status Console's tool list before use. The captured frame is sent only to
+the current local-model turn and is not retained in conversation history.
+
 Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks answers through configurable local TTS routes.
 
 Jarvis core is designed to run without network access after the one-time setup

@@ -31,6 +31,7 @@ def test_module_id_has_exactly_the_chips_from_the_story_card():
         "tts",
         "memory",
         "vision",
+        "camera",
     }
 
 

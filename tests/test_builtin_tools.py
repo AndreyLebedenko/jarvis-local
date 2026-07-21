@@ -56,7 +56,7 @@ async def test_builtin_provider_registers_reserved_local_tools(tmp_path) -> None
     provider.register_tools(registry)
 
     tools = {tool.name: tool for tool in registry.all()}
-    assert set(tools) == {"set_reasoning_level", "remember"}
+    assert set(tools) == {"set_reasoning_level", "remember", "capture_camera_image"}
     assert all(tool.provider == BUILTIN_TOOL_PROVIDER_NAME for tool in tools.values())
     assert all(tool.provider_kind == "builtin" for tool in tools.values())
     assert all(tool.data_boundary is DataBoundary.LOCAL for tool in tools.values())

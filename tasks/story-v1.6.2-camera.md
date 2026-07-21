@@ -1,11 +1,16 @@
 # Story v1.6.2: Camera
 
-**Status:** Planned. Gated on the task-1 spike: if frame quality is
+**Status:** Completed for the USB scope. Gated on the task-1 spike: if frame quality is
 insufficient for useful answers, stop and re-plan before building the
 module (roadmap boundary).
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.2 section; native
 sensor module decision 2026-07-18).
 **Created:** 2026-07-20.
+
+**Sprint scope update (2026-07-20):** this implementation sprint delivers
+USB capture only. Imou/RTSP is deferred until the camera is available and its
+hardware spike is complete. All references below to LAN capture describe that
+future continuation, not an acceptance criterion for this sprint.
 
 ## User-facing goal
 
@@ -79,35 +84,34 @@ through its own tool call and answer questions about what it sees.
 
 - `tasks/done/task-v1.6.2-1-camera-spike.md` - human-run spike, hard gate;
   verified facts into `PROJECT.md`.
-- `tasks/task-v1.6.2-2-capture-core.md` - capture module (USB + RTSP
+- `tasks/done/task-v1.6.2-2-capture-core.md` - capture module (USB + RTSP
   frame grab), config, pure logic tests.
-- `tasks/task-v1.6.2-3-camera-tool-and-media-contract.md` - the builtin
+- `tasks/done/task-v1.6.2-3-camera-tool-and-media-contract.md` - the builtin
   capture tool and the media-from-tool-result contract through
   `ToolAwareDialog`.
-- `tasks/task-v1.6.2-4-module-integration-and-ui.md` - health chip,
+- `tasks/done/task-v1.6.2-4-module-integration-and-ui.md` - health chip,
   sound cues, privacy toggle with mic-sleep parity.
-- `tasks/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
+- `tasks/done/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
   config docs (credentials honesty), human-run checklist.
 
 ## Acceptance criteria
 
-- [ ] Spike facts (answer quality, capture latency, dependency
-      decision, and RTSP connect behavior when that hardware is
-      available) are recorded in `PROJECT.md` before module
-      implementation starts.
-- [ ] "Look at the camera" as a voice request produces a model-initiated
+- [x] USB spike facts (answer quality, capture latency, dependency decision)
+      are recorded in `PROJECT.md` before module implementation starts.
+      RTSP connect behavior is deferred until Imou is available.
+- [x] "Look at the camera" as a voice request produces a model-initiated
       tool call that captures a frame and answers about its content,
       with the image entering only the current turn's media.
-- [ ] USB captures are audited `local`; LAN captures are audited `lan`
-      and reported on the data-source axis like LAN MCP tools.
-- [ ] The camera is off by default; while off, no code path can capture
+- [x] USB captures are audited `local`. LAN `lan` auditing is deferred with
+      RTSP.
+- [x] The camera is off by default; while off, no code path can capture
       a frame; enabling is an explicit user action; every capture plays
       a cue; the health chip reflects module state.
-- [ ] The camera toggle is not delegable through any tool.
-- [ ] Config documentation states plainly that RTSP credentials are
-      stored in plain text in the local config file.
-- [ ] `python -m pytest` and Ruff checks are green; camera hardware
-      verification is a prepared human-run handoff.
+- [x] The camera toggle is not delegable through any tool.
+- [ ] RTSP credential documentation is deferred with the RTSP source; no
+      RTSP credentials exist in the USB-only configuration.
+- [x] `python -m pytest` and Ruff checks are green; the USB hardware handoff
+      is completed and recorded in `PROJECT.md`.
 
 ## Stop conditions
 

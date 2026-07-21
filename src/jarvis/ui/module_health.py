@@ -18,6 +18,11 @@ from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import ResponseComplete
+from jarvis.inputs.camera import (
+    CameraCaptureFailed,
+    CameraCaptureSucceeded,
+    CameraStateChanged,
+)
 from jarvis.inputs.capture import CaptureFailed, ScreenshotCaptured
 from jarvis.ui.contract import HealthStatus, ModuleId
 
@@ -49,6 +54,9 @@ class ModuleHealthTracker:
             (TtsSynthesisResult, self._on_tts_synthesis_result),
             (ScreenshotCaptured, self._on_screenshot_captured),
             (CaptureFailed, self._on_capture_failed),
+            (CameraStateChanged, self._on_camera_state_changed),
+            (CameraCaptureSucceeded, self._on_camera_capture_succeeded),
+            (CameraCaptureFailed, self._on_camera_capture_failed),
         ]
         for event_type, handler in subscriptions:
             self._bus.subscribe(event_type, handler)
@@ -115,6 +123,23 @@ class ModuleHealthTracker:
         del event
         await self._transition(
             ModuleId.VISION, HealthStatus.ERROR, "vision_detail_failed"
+        )
+
+    async def _on_camera_state_changed(self, event: CameraStateChanged) -> None:
+        await self._transition(
+            ModuleId.CAMERA,
+            HealthStatus.OK if event.enabled else HealthStatus.UNAVAILABLE,
+            "camera_detail_ready" if event.enabled else "camera_detail_disabled",
+        )
+
+    async def _on_camera_capture_succeeded(self, event: CameraCaptureSucceeded) -> None:
+        del event
+        await self._transition(ModuleId.CAMERA, HealthStatus.OK, "camera_detail_ready")
+
+    async def _on_camera_capture_failed(self, event: CameraCaptureFailed) -> None:
+        del event
+        await self._transition(
+            ModuleId.CAMERA, HealthStatus.ERROR, "camera_detail_failed"
         )
 
     async def _transition(

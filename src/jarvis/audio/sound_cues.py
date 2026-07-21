@@ -97,6 +97,10 @@ def _cue_thinking_off() -> np.ndarray:
     return np.concatenate([_tone(830, 0.06), _tone(660, 0.06), _tone(520, 0.08)])
 
 
+def _cue_camera_capture() -> np.ndarray:
+    return np.concatenate([_tone(1046, 0.05), _tone(1568, 0.08)])
+
+
 _GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "listening": _cue_listening,
     "thinking": _cue_thinking,
@@ -108,6 +112,7 @@ _GENERATORS: dict[str, Callable[[], np.ndarray]] = {
     "mic_wake": _cue_mic_wake,
     "thinking_on": _cue_thinking_on,
     "thinking_off": _cue_thinking_off,
+    "camera_capture": _cue_camera_capture,
 }
 
 
@@ -124,6 +129,7 @@ def ensure_generated(settings: SoundCueSettings) -> None:
         "mic_wake": settings.mic_wake,
         "thinking_on": settings.thinking_on,
         "thinking_off": settings.thinking_off,
+        "camera_capture": settings.camera_capture,
     }
     for cue, path_str in paths.items():
         path = Path(path_str)
@@ -151,6 +157,7 @@ class SoundCuePlayer:
             "mic_wake": settings.mic_wake,
             "thinking_on": settings.thinking_on,
             "thinking_off": settings.thinking_off,
+            "camera_capture": settings.camera_capture,
         }
         self._playback_lock = playback_lock or asyncio.Lock()
         self._play_file = play_file or self._default_play_file

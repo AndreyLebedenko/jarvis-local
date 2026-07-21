@@ -1770,6 +1770,13 @@ def test_live_status_console_closes_all_surfaces():
 def _builtin_tool_payloads() -> list[dict[str, object]]:
     return [
         {
+            "name": "capture_camera_image",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": False,
+            "available": True,
+        },
+        {
             "name": "remember",
             "provider": "builtin",
             "provider_kind": "builtin",
@@ -1812,6 +1819,14 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
             "module",
             ModuleHealth(
                 module=ModuleId.MICROPHONE, status=HealthStatus.OK, detail="listening"
+            ),
+        ),
+        (
+            "module",
+            ModuleHealth(
+                module=ModuleId.CAMERA,
+                status=HealthStatus.UNAVAILABLE,
+                detail="privacy off",
             ),
         ),
     ]
@@ -1865,9 +1880,9 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    # Only the six snapshot seeds: mic-toggle projection belongs to the
+    # Only the seven snapshot seeds: mic-toggle projection belongs to the
     # real transport server's own bus subscription, not to this wiring.
-    assert len(transport.calls) == 6
+    assert len(transport.calls) == 7
     assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)
@@ -2623,7 +2638,7 @@ def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False
     tools = {tool.name: tool for tool in app.mcp_host.registry.all()}
-    assert set(tools) == {"set_reasoning_level", "remember"}
+    assert set(tools) == {"set_reasoning_level", "remember", "capture_camera_image"}
     assert {tool.provider_kind for tool in tools.values()} == {"builtin"}
 
 

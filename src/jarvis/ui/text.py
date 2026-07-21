@@ -55,6 +55,7 @@ _MODULE_LABELS: dict[str, dict[ModuleId, str]] = {
         ModuleId.TTS: "TTS",
         ModuleId.MEMORY: "memory",
         ModuleId.VISION: "vision/screen",
+        ModuleId.CAMERA: "camera",
     },
     "ru": {
         ModuleId.BACKEND: "модели/backend",
@@ -62,6 +63,7 @@ _MODULE_LABELS: dict[str, dict[ModuleId, str]] = {
         ModuleId.TTS: "TTS",
         ModuleId.MEMORY: "памяти",
         ModuleId.VISION: "vision/экрана",
+        ModuleId.CAMERA: "камеры",
     },
 }
 
@@ -87,6 +89,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "tts_detail_load_failed": "engine load failed",
         "vision_detail_ready": "capture ok",
         "vision_detail_failed": "capture failed",
+        "camera_detail_disabled": "privacy off",
+        "camera_detail_ready": "ready",
+        "camera_detail_failed": "capture failed",
         # System event ui_message strings.
         "context_reset": "Conversation context reset",
         "module_reset_unsupported": (
@@ -160,6 +165,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "tts_detail_load_failed": "сбой загрузки движка",
         "vision_detail_ready": "захват в норме",
         "vision_detail_failed": "сбой захвата",
+        "camera_detail_disabled": "приватность выключена",
+        "camera_detail_ready": "готова",
+        "camera_detail_failed": "сбой захвата",
         "context_reset": "Контекст диалога сброшен",
         "module_reset_unsupported": (
             "Сброс {module} запрошен, но пока не поддерживается движком"
