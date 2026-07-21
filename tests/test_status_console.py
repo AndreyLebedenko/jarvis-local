@@ -938,7 +938,7 @@ def test_modules_panel_is_rendered_from_the_shared_module_contract():
     assert 'status: "unavailable"' in app_js
 
 
-def test_last_model_request_panel_renders_the_timestamp_before_metadata():
+def test_last_model_request_renders_the_timestamp_before_metadata():
     html = INDEX_HTML.read_text(encoding="utf-8")
     app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
@@ -948,12 +948,65 @@ def test_last_model_request_panel_renders_the_timestamp_before_metadata():
     assert 'uiString("last_request_" + item.kind)' in app_js
 
 
+def test_last_model_request_is_a_chip_strip_under_the_orb_not_a_section():
+    """task-v1.6.3-4: the record is one wrapping row of chips directly
+    under the orb state, not a titled section - it costs a heading, a
+    section, and a column gap for a single line of content."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "last-request-panel" not in html
+    assert "last-request-panel" not in css
+    assert 'id="lastRequestHeading"' not in html
+    assert 'data-i18n="last_request_title"' not in html
+
+    orb_state_end = html.index('id="orbSub"')
+    strip_start = html.index('id="lastRequestList"')
+    modules_start = html.index('id="modulesPanel"')
+    assert orb_state_end < strip_start < modules_start
+
+    strip_start_css = css.index(".last-request-strip {")
+    strip_rule = css[strip_start_css : css.index("}", strip_start_css)]
+    assert "flex-wrap: wrap" in strip_rule
+
+
+def test_last_request_title_string_is_dropped_from_both_catalogs():
+    """The chip strip has no heading, and no other surface used the key -
+    leaving it behind would be an orphaned catalog entry."""
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert "last_request_title" not in strings
+    assert strings.count("last_request_screenshot:") == 2
+    assert strings.count("last_request_audio:") == 2
+
+
 def test_status_console_does_not_render_the_observed_input_panel():
     html = INDEX_HTML.read_text(encoding="utf-8")
     app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
     assert "dataPresenceList" not in html
     assert "applyDataPresence" not in app_js
+
+
+def test_demo_html_mirrors_the_tab_structure_it_can_actually_render():
+    """task-ui-07 precedent: a QA harness that no longer shows what the
+    product shows hides real bugs instead of catching them. The demo gets
+    the Status and Settings tabs and the same Settings placement.
+
+    It deliberately does not get a Journal tab: the harness has never
+    carried journal markup, so the button would hide .main and render a
+    blank page - a worse harness than none."""
+    demo = (UI_DIR / "demo.html").read_text(encoding="utf-8")
+
+    assert 'data-view="status"' in demo
+    for view in ("status", "settings"):
+        assert f"setActiveView('{view}')" in demo
+    assert "setActiveView('journal')" not in demo
+    assert 'id="journalView"' not in demo
+
+    settings_start = demo.index('id="settingsView"')
+    assert demo.index('id="configPanel"') > settings_start
+    assert demo.index('id="btnShutdown"') < settings_start
 
 
 def test_index_html_status_view_does_not_render_duplicate_context_reset():
@@ -1302,8 +1355,8 @@ def test_index_html_has_a_real_config_menu_not_a_placeholder():
 def test_index_html_keeps_only_shutdown_in_the_status_action_row():
     html = INDEX_HTML.read_text(encoding="utf-8")
     row_start = html.index('<div class="action-row">')
-    feedback_start = html.index('<div class="action-feedback">', row_start)
-    action_row = html[row_start:feedback_start]
+    confirm_start = html.index('id="shutdownConfirmRow"', row_start)
+    action_row = html[row_start:confirm_start]
 
     assert 'id="btnConfigToggle"' not in action_row
     assert 'id="btnResetGlobal"' not in action_row
@@ -1327,26 +1380,39 @@ def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
 def test_index_html_keeps_confirmation_panels_below_the_action_row():
     html = INDEX_HTML.read_text(encoding="utf-8")
     row_start = html.index('<div class="action-row">')
-    feedback_start = html.index('<div class="action-feedback">', row_start)
-    action_row = html[row_start:feedback_start]
+    confirm_start = html.index('id="shutdownConfirmRow"', row_start)
+    action_row = html[row_start:confirm_start]
 
     assert 'id="confirmRow"' not in action_row
     assert 'id="shutdownConfirmRow"' not in action_row
-    assert 'id="shutdownConfirmRow"' in html[feedback_start:]
 
 
-def test_style_css_confirmation_feedback_spans_the_action_area():
+def test_confirmation_is_a_direct_column_child_so_it_costs_no_gap():
+    """task-v1.6.3-4: the old .action-feedback wrapper was always in the
+    markup while its only child stayed display:none, so it claimed one
+    column gap for nothing. A display:none element is not a flex item."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
     css = (UI_DIR / "style.css").read_text(encoding="utf-8")
-    feedback_start = css.index(".action-feedback {")
-    feedback_rule = css[feedback_start : css.index("}", feedback_start)]
+
+    assert "action-feedback" not in html
+    assert ".action-feedback {" not in css
+    row_end = html.index("</div>", html.index('<div class="action-row">'))
+    assert html.index('id="shutdownConfirmRow"') > row_end
+
+
+def test_style_css_confirmation_spans_the_action_area():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
     confirm_start = css.index(".confirm-row {")
     confirm_rule = css[confirm_start : css.index("}", confirm_start)]
 
-    assert "width: 100%" in feedback_rule
     assert "width: 100%" in confirm_rule
+    assert "max-width: 760px" in confirm_rule
 
 
-def test_status_console_default_height_avoids_initial_status_scrollbar():
+def test_status_console_default_height_fits_a_1080p_display():
+    """task-v1.6.3-4: 1020 does not reliably fit 1080p once the taskbar
+    and window frame are subtracted. Status is made to fit 900 by
+    density instead (chip strip, tighter rhythm, bounded MCP list)."""
     captured: dict[str, object] = {}
 
     def window_factory(**kwargs: object) -> object:
@@ -1355,7 +1421,52 @@ def test_status_console_default_height_avoids_initial_status_scrollbar():
 
     StatusConsoleWindow(window_factory=window_factory).create()
 
-    assert captured["height"] == 1020
+    assert captured["height"] == 900
+
+
+def test_style_css_main_column_rhythm_is_tight_enough_for_900px():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".main {")
+    rule = css[start : css.index("}", start)]
+
+    assert "gap: 16px" in rule
+
+
+def test_style_css_status_column_children_never_squash_to_fit():
+    """Found in browser verification of task-v1.6.3-4: .main scrolls, but
+    its children were shrinkable, so an overflowing column stole 25px of
+    height from the orb while its absolutely positioned 132px ring kept
+    its size - a round ring around an ellipse, and a shifted column."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".main > * {")
+    rule = css[start : css.index("}", start)]
+
+    assert "flex-shrink: 0" in rule
+
+
+def test_style_css_mcp_tool_list_scrolls_inside_its_own_card():
+    """Regression guard for v1.6.1: builtin tools will lengthen this list,
+    and an unbounded list pushes Shutdown off the column."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".mcp-tools {")
+    rule = css[start : css.index("}", start)]
+
+    assert "max-height" in rule
+    assert "overflow-y: auto" in rule
+
+
+def test_style_css_action_row_is_not_bottom_pinned():
+    """Regression guard, task-v1.6.3-4: a bottom-pinned action row absorbs
+    the confirmation's height out of the column's free space, so opening
+    the confirmation moves the Shutdown button up by its own height
+    (measured at 63px in the browser). story-v1.2.10-task-5's guarantee
+    that a confirmation never moves a primary action wins over the
+    cosmetics of pinning."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".action-row {")
+    rule = css[start : css.index("}", start)]
+
+    assert "margin-top: auto" not in rule
 
 
 def test_style_css_scrollbars_use_the_status_console_theme():

@@ -1,6 +1,6 @@
 # Task v1.6.3-4: Status vertical density
 
-**Status:** Planned.
+**Status:** Implemented, pending human visual review.
 **Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** task-v1.6.3-2 (content migration).
 **Created:** 2026-07-21 (owner decision from the v1.6.3 review dialog).
@@ -72,28 +72,75 @@ behavior changes"). This card is where they belong.
   is showing.
 - The MCP tool list gets a bounded height (about 180 px) with its own
   internal scroll, so tool-count growth cannot displace Shutdown.
-- Shutdown is pinned to the bottom of the Status column
-  (`margin-top: auto`) and stays horizontally centered on the column's
-  existing vertical axis. It stays on Status, stays the single
-  destructive action, and stays out of the global header.
+- Shutdown stays on Status, centered on the column's vertical axis,
+  the single destructive action, and out of the global header.
 - `StatusConsoleWindow` default height returns to 900.
 - The global scrollbar theming added in task-v1.6.3-2 is kept and
   documented here as a deliberate, console-wide decision rather than an
   unexplained side effect of the tab work.
 
+## Decisions changed during implementation
+
+- **Bottom-pinning Shutdown was implemented and reverted.** With
+  `margin-top: auto` the pinned row absorbs the confirmation's height
+  out of the column's free space, so opening the confirmation moved the
+  Shutdown button up by 63px (measured in the browser). That breaks
+  story-v1.2.10-task-5's guarantee that opening a confirmation never
+  moves a primary action, which is the older and stronger commitment.
+  The row stays in normal flow; trailing free space is accepted.
+- **The `.action-feedback` wrapper is removed rather than hidden.** It
+  was always in the markup while its only child stayed `display: none`,
+  so it always claimed one column gap. A `:empty` rule cannot help - the
+  wrapper is never empty. Dropping it makes `#shutdownConfirmRow` a
+  direct child of the column, and a `display: none` element is not a
+  flex item at all.
+- **`demo.html` gets Status and Settings tabs, not three.** The harness
+  has never carried journal markup, so a Journal button would hide
+  `.main` and render a blank page. The omission is asserted in the test
+  with its reason, so it does not read as drift.
+
+## Defect found and fixed during verification
+
+`.main` scrolls, but its children were shrinkable. With a full MCP tool
+list the column overflowed and stole 25px of height from `.orb-wrap`,
+while `.ring` - absolutely positioned at 132px - kept its size: a round
+ring around an ellipse, and every element below shifted. Fixed with
+`.main > * { flex-shrink: 0; }`, which is the correct rule for a scroll
+container regardless of this card. Pre-existing, not introduced here;
+fixed in place because it is the same column and the same symptom this
+card exists to remove.
+
 ## Acceptance criteria
 
-- [ ] Automated tests assert: the chip strip renders from
+- [x] Automated tests assert: the chip strip renders from
       `last_request_*` catalog keys in both languages; no
       `last-request-panel` section remains; the MCP tool list rule
-      carries a bounded height with `overflow-y: auto`; Shutdown is
-      pinned with `margin-top: auto`; the window default height is 900.
+      carries a bounded height with `overflow-y: auto`; the action row
+      is not bottom-pinned; column children do not shrink; the window
+      default height is 900.
 - [ ] A human-run visual check at 900 px confirms: Status shows no
       initial scrollbar with a cold MCP list, Shutdown sits at the
       bottom, the screenshot and audio-duration facts are still visible
       after a turn that used them, and a long MCP tool list scrolls
       inside its own card instead of moving Shutdown.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Measurements from browser verification (960x900 viewport)
+
+Taken against `index.html` with all module chips healthy, MCP enabled
+with 14 tools, and a two-modality request strip - the realistic worst
+case for column height:
+
+- `.main` content 844px against 844px of client height: no scrollbar.
+- MCP tool list bounded at 180px and scrolling internally.
+- Shutdown shift when the confirmation opens: 0px (was 63px while the
+  row was bottom-pinned, and 25px while children could shrink).
+- Orb height stable at 132px whether the column overflows or not.
+- Chip strip renders in both languages ("Voice: 3.2 s" / "Screenshot"
+  and "Голос: 3.2 s" / "Скриншот").
+
+These are DOM measurements, not a visual judgement. The visual review
+below is still human-run per the testing protocol.
 
 ## Human visual review handoff
 

@@ -185,8 +185,14 @@ body {
   grid-area: main;
   padding: 26px 34px;
   overflow-y: auto;
-  display: flex; flex-direction: column; align-items: center; gap: 26px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
 }
+/* task-v1.6.3-4: .main scrolls, so its children must never be squashed to
+   fit - that is what the scrollbar is for. Without this the orb loses
+   height when the column overflows while its ring, being absolutely
+   positioned at 132px, does not: the circle turns into an ellipse inside
+   a still-round ring, and everything below shifts. */
+.main > * { flex-shrink: 0; }
 
 .orb-wrap { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
 .ring {
@@ -213,13 +219,28 @@ body {
 .orb-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); text-align: center; max-width: 420px; min-height: 16px; }
 
 .chip-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
-.modules-panel, .last-request-panel { width: min(760px, 100%); }
-.modules-panel h2, .last-request-panel h2 {
+.modules-panel { width: min(760px, 100%); }
+.modules-panel h2 {
   margin: 0 0 8px; color: var(--text-dim); font: 11px "Consolas", "Cascadia Mono", monospace;
   letter-spacing: 0.8px; text-transform: uppercase;
 }
-.last-request-panel ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.last-request-panel li { padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11px; }
+
+/* task-v1.6.3-4: what the last turn actually sent to the model. It used
+   to be a titled section, which cost a heading, a section, and a column
+   gap for a single wrapping line. It reads as metadata about the state
+   above it, so it sits with the orb state instead of standing alone.
+   Not deleted in favour of the Journal: the Journal labels each message
+   with its source but has no equivalent for last_request_screenshot and
+   never shows audio duration, so this is the only place the UI answers
+   "was a screenshot sent to the model". */
+.last-request-strip {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  margin: 8px 0 0; padding: 0; list-style: none; max-width: 520px;
+}
+.last-request-strip li {
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text-dim); font-size: 11px;
+}
 .chip {
   display: flex; align-items: center; gap: 10px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
@@ -292,7 +313,14 @@ body {
   border-radius: 6px; padding: 7px 14px; cursor: pointer;
 }
 .mcp-header button:disabled { cursor: default; opacity: 0.55; }
-.mcp-tools { margin: 12px 0 0; padding: 0; list-style: none; }
+/* task-v1.6.3-4: bounded so tool-count growth stays inside the card.
+   v1.6.1's builtin provider adds tools to this same list; an unbounded
+   list would push Shutdown off the column no matter how tall the window
+   is, which is why the window height is not the lever here. */
+.mcp-tools {
+  margin: 12px 0 0; padding: 0; list-style: none;
+  max-height: 180px; overflow-y: auto;
+}
 .mcp-tools li {
   padding: 6px 0; border-top: 1px solid var(--border); color: var(--text-dim);
   font: 11px "Consolas", "Cascadia Mono", monospace;
@@ -301,7 +329,13 @@ body {
 .mcp-tools-empty { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
 
 /* story-v1.2.10-task-5: keep the primary action in a stable row. The
-   confirmation panel lives below it so opening it never moves the action. */
+   confirmation panel lives below it so opening it never moves the action.
+   task-v1.6.3-4 tried pinning this row to the bottom with margin-top:
+   auto and reverted it: a bottom-pinned row absorbs the confirmation's
+   height out of the column's free space, so opening the confirmation
+   moved the Shutdown button up by its own height (measured: 63px). The
+   no-movement guarantee above is the older and stronger commitment, so
+   the row stays in normal flow and trailing free space is accepted. */
 .action-row {
   display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: center;
   gap: 10px 16px; width: 100%; max-width: 760px;
@@ -310,14 +344,16 @@ body {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   min-width: 0;
 }
-.action-feedback {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  width: 100%; max-width: 760px; min-width: 0;
-}
+/* task-v1.6.3-4: the confirmation is a direct child of the column now.
+   It used to sit in an .action-feedback wrapper that was always present
+   and therefore always claimed one column gap, even though its only
+   child stays display:none until a confirmation opens. A display:none
+   element is not a flex item at all, so no wrapper means no wasted gap. */
 .confirm-row {
   display: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
   background: var(--panel-2); border: 1px solid var(--red-dim); border-radius: 8px;
-  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim); width: 100%;
+  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim);
+  width: 100%; max-width: 760px;
 }
 .confirm-row.show { display: flex; }
 .confirm-row button {

@@ -43,16 +43,12 @@
   <div style="text-align: center; margin-top: -10px;">
     <div class="orb-state" id="orbState">Idle</div>
     <div class="orb-sub" id="orbSub"></div>
+    <ul class="last-request-strip" id="lastRequestList"></ul>
   </div>
 
   <section class="modules-panel" aria-labelledby="modulesHeading">
     <h2 id="modulesHeading" data-i18n="modules_title">Modules</h2>
     <div class="chip-row" id="modulesPanel"></div>
-  </section>
-
-  <section class="last-request-panel" aria-labelledby="lastRequestHeading">
-    <h2 id="lastRequestHeading" data-i18n="last_request_title">Last request to model</h2>
-    <ul id="lastRequestList"></ul>
   </section>
 
   <div class="think-card">
@@ -86,12 +82,10 @@
     </div>
   </div>
 
-  <div class="action-feedback">
-    <div class="confirm-row" id="shutdownConfirmRow">
-      <span data-i18n="confirm_shutdown_text">Jarvis will be stopped. You will need to start the process again.</span>
-      <button data-i18n="btn_cancel" onclick="hideShutdownConfirm()">Cancel</button>
-      <button class="danger" data-i18n="btn_confirm_shutdown" onclick="confirmShutdown()">Shut down</button>
-    </div>
+  <div class="confirm-row" id="shutdownConfirmRow">
+    <span data-i18n="confirm_shutdown_text">Jarvis will be stopped. You will need to start the process again.</span>
+    <button data-i18n="btn_cancel" onclick="hideShutdownConfirm()">Cancel</button>
+    <button class="danger" data-i18n="btn_confirm_shutdown" onclick="confirmShutdown()">Shut down</button>
   </div>
 
 </div>
