@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-state="idle" data-visibility="open" data-view="console">
+<html lang="en" data-state="idle" data-visibility="open" data-view="status">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,8 +15,9 @@
   </div>
   <div class="topbar-right">
     <div class="view-toggle" id="viewToggle">
-      <button data-view="console" class="sel" data-i18n="view_console" onclick="setActiveView('console')">Console</button>
+      <button data-view="status" class="sel" data-i18n="view_status" onclick="setActiveView('status')">Status</button>
       <button data-view="journal" data-i18n="view_journal" onclick="setActiveView('journal')">Journal</button>
+      <button data-view="settings" data-i18n="view_settings" onclick="setActiveView('settings')">Settings</button>
     </div>
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
@@ -80,25 +81,12 @@
   </section>
 
   <div class="action-row">
-    <div class="config-zone">
-      <button class="btn-config-toggle" id="btnConfigToggle" data-i18n="btn_settings" onclick="toggleConfigMenu()">&#9881; Settings</button>
-    </div>
-
-    <div class="reset-zone">
-      <button class="btn-reset-global" id="btnResetGlobal" data-i18n="btn_reset_context" onclick="showResetConfirm()">Reset context</button>
-    </div>
-
     <div class="shutdown-zone">
       <button class="btn-shutdown" id="btnShutdown" data-i18n="btn_shutdown" onclick="showShutdownConfirm()">Shut down</button>
     </div>
   </div>
 
   <div class="action-feedback">
-    <div class="confirm-row" id="confirmRow">
-      <span data-i18n="confirm_reset_text">The dialog and current context will be deleted. This cannot be undone.</span>
-      <button data-i18n="btn_cancel" onclick="hideResetConfirm()">Cancel</button>
-      <button class="danger" data-i18n="btn_confirm_reset" onclick="confirmContextReset()">Reset</button>
-    </div>
     <div class="confirm-row" id="shutdownConfirmRow">
       <span data-i18n="confirm_shutdown_text">Jarvis will be stopped. You will need to start the process again.</span>
       <button data-i18n="btn_cancel" onclick="hideShutdownConfirm()">Cancel</button>
@@ -106,6 +94,9 @@
     </div>
   </div>
 
+</div>
+
+<div class="settings" id="settingsView">
   <div class="config-panel" id="configPanel">
     <div class="config-field">
       <label for="modelSelect" data-i18n="config_model_label">Model</label>
@@ -145,7 +136,6 @@
     <button class="btn-config-apply" id="btnConfigApply" data-i18n="btn_apply" disabled onclick="applyConfigSelection()">Apply</button>
     <div class="pending-restart" id="pendingRestart" data-i18n="pending_restart_text">Changes saved - restart Jarvis to apply.</div>
   </div>
-
 </div>
 
 <div class="journal" id="journalView">

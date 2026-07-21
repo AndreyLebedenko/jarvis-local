@@ -110,25 +110,12 @@
   </div>
 
   <div class="action-row">
-    <div class="config-zone">
-      <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Settings</button>
-    </div>
-
-    <div class="reset-zone">
-      <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Reset context</button>
-    </div>
-
     <div class="shutdown-zone">
       <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Shut down</button>
     </div>
   </div>
 
   <div class="action-feedback">
-    <div class="confirm-row" id="confirmRow">
-      <span>The dialog and current context will be deleted. This cannot be undone.</span>
-      <button onclick="hideResetConfirm()">Cancel</button>
-      <button class="danger" onclick="confirmContextReset()">Reset</button>
-    </div>
     <div class="confirm-row" id="shutdownConfirmRow">
       <span>Jarvis will be stopped. You will need to start the process again.</span>
       <button onclick="hideShutdownConfirm()">Cancel</button>

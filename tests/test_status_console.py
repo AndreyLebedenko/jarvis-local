@@ -956,12 +956,13 @@ def test_status_console_does_not_render_the_observed_input_panel():
     assert "applyDataPresence" not in app_js
 
 
-def test_index_html_global_reset_requires_confirmation_before_the_api_call():
+def test_index_html_status_view_does_not_render_duplicate_context_reset():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
-    assert 'id="confirmRow"' in html
-    assert "showResetConfirm()" in html
-    assert "confirmContextReset()" in html
+    assert 'id="btnResetGlobal"' not in html
+    assert 'id="confirmRow"' not in html
+    assert "showResetConfirm()" not in html
+    assert "confirmContextReset()" not in html
 
 
 def test_index_html_uses_open_hidden_labels_not_the_old_ones():
@@ -1287,26 +1288,26 @@ async def test_config_menu_methods_are_a_no_op_before_set_loop_is_called():
 
 def test_index_html_has_a_real_config_menu_not_a_placeholder():
     html = INDEX_HTML.read_text(encoding="utf-8")
+    settings_start = html.index('id="settingsView"')
+    journal_start = html.index('id="journalView"', settings_start)
+    settings_markup = html[settings_start:journal_start]
 
-    assert 'id="modelSelect"' in html
-    assert 'id="micSelect"' in html
-    assert "toggleConfigMenu()" in html
-    assert "applyConfigSelection()" in html
+    assert 'id="modelSelect"' in settings_markup
+    assert 'id="micSelect"' in settings_markup
+    assert "toggleConfigMenu()" not in html
+    assert "applyConfigSelection()" in settings_markup
     assert "task-3" not in html
 
 
-def test_index_html_groups_lower_controls_in_one_action_row():
+def test_index_html_keeps_only_shutdown_in_the_status_action_row():
     html = INDEX_HTML.read_text(encoding="utf-8")
     row_start = html.index('<div class="action-row">')
-    config_panel_start = html.index('<div class="config-panel"', row_start)
-    action_row = html[row_start:config_panel_start]
+    feedback_start = html.index('<div class="action-feedback">', row_start)
+    action_row = html[row_start:feedback_start]
 
-    assert action_row.index('id="btnConfigToggle"') < action_row.index(
-        'id="btnResetGlobal"'
-    )
-    assert action_row.index('id="btnResetGlobal"') < action_row.index(
-        'id="btnShutdown"'
-    )
+    assert 'id="btnConfigToggle"' not in action_row
+    assert 'id="btnResetGlobal"' not in action_row
+    assert 'id="btnShutdown"' in action_row
 
 
 def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
@@ -1331,7 +1332,6 @@ def test_index_html_keeps_confirmation_panels_below_the_action_row():
 
     assert 'id="confirmRow"' not in action_row
     assert 'id="shutdownConfirmRow"' not in action_row
-    assert 'id="confirmRow"' in html[feedback_start:]
     assert 'id="shutdownConfirmRow"' in html[feedback_start:]
 
 
@@ -1346,7 +1346,7 @@ def test_style_css_confirmation_feedback_spans_the_action_area():
     assert "width: 100%" in confirm_rule
 
 
-def test_status_console_default_height_allows_the_config_panel_to_open():
+def test_status_console_default_height_avoids_initial_status_scrollbar():
     captured: dict[str, object] = {}
 
     def window_factory(**kwargs: object) -> object:
@@ -1355,19 +1355,30 @@ def test_status_console_default_height_allows_the_config_panel_to_open():
 
     StatusConsoleWindow(window_factory=window_factory).create()
 
-    assert captured["height"] == 900
+    assert captured["height"] == 1020
 
 
-def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
-    """toggleConfigMenu() must not fetch on close - re-fetching only makes
-    sense when the panel is becoming visible."""
+def test_style_css_scrollbars_use_the_status_console_theme():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "scrollbar-color: var(--border) var(--panel);" in css
+    assert "scrollbar-width: thin;" in css
+    assert "*::-webkit-scrollbar-thumb" in css
+    thumb_start = css.index("*::-webkit-scrollbar-thumb {")
+    thumb_rule = css[thumb_start : css.index("}", thumb_start)]
+    assert "background: var(--border)" in thumb_rule
+    assert "border: 2px solid var(--panel)" in thumb_rule
+
+
+def test_app_js_settings_tab_refetches_options_when_entered():
+    """Entering Settings re-fetches model and microphone options, preserving
+    the old fresh-on-open behavior without keeping a Settings button."""
     js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    start = js.index("function toggleConfigMenu")
+    start = js.index("function refreshSettingsOptions")
     end = js.index("\n}\n", start)
     body = js[start:end]
 
-    assert "if (!opening) return;" in body
     assert "request_model_options" in body
     assert "request_microphone_options" in body
     # Regression (2026-07-07): must re-arm the Apply button to disabled
@@ -1376,6 +1387,12 @@ def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
     # not-yet-refreshed selections as if they were current.
     assert "_modelOptionsLoaded = false;" in body
     assert "_microphoneOptionsLoaded = false;" in body
+
+    view_start = js.index("function setActiveView")
+    view_end = js.index("\n}\n", view_start)
+    view_body = js[view_start:view_end]
+    assert 'view === "settings"' in view_body
+    assert "refreshSettingsOptions();" in view_body
 
 
 def test_index_html_config_apply_button_starts_disabled():
@@ -1410,21 +1427,6 @@ def test_app_js_only_enables_apply_once_both_selectors_have_loaded():
     mic_fn_start = js.index("function applyMicrophoneOptions")
     mic_fn_end = js.index("\n}\n", mic_fn_start)
     assert "_microphoneOptionsLoaded = true;" in js[mic_fn_start:mic_fn_end]
-
-
-def test_style_css_config_menu_uses_cyan_not_amber_or_red():
-    """Saving here is not itself destructive (restart-to-apply only) -
-    unlike reset (amber) and shutdown (red), it should not carry warning/
-    severity coloring."""
-    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
-
-    marker = ".btn-config-toggle {"
-    start = css.index(marker)
-    rule = css[start : css.index("}", start)]
-
-    assert "var(--cyan)" in rule
-    assert "var(--amber)" not in rule
-    assert "var(--red)" not in rule
 
 
 def test_style_css_config_apply_button_looks_visibly_disabled():

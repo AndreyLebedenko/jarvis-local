@@ -1,8 +1,14 @@
 # Task v1.6.3-1: Tab shell and global header
 
-**Status:** Planned.
+**Status:** Implemented, pending human visual review.
 **Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** nothing; first card of the story.
+
+**Outcome:** The existing unpersisted view switch was extended from two
+views to three unpersisted tabs: Status, Journal, Settings. The old
+Console caption is now Status in both UI languages. This card initially
+introduced Settings as an empty shell; task v1.6.3-2 then moved the real
+configuration form into it.
 
 ## Summary
 
@@ -53,10 +59,25 @@ where it is in this card; only the navigation skeleton changes.
 
 ## Acceptance criteria
 
-- [ ] Automated tests that cover UI contract/strings today are
+- [x] Automated tests that cover UI contract/strings today are
       extended to the new tab captions in both languages; no
       hardcoded tab text.
 - [ ] A human-run visual check confirms: three tabs render, header
       identical on all tabs, Hidden mode behaves exactly as before,
       journal view unaffected by tab switching.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
+
+## Human visual review handoff
+
+Run Jarvis normally and open the Status Console. Confirm:
+
+- The header shows exactly three tabs: Status, Journal, Settings.
+- The brand, LOCAL, LOCAL SOURCES, and Open/Hidden controls stay visible
+  and in the same header on all three tabs.
+- Status still shows the existing runtime console content, including the
+  settings form for this card.
+- Journal opens without unnecessary reload loops; switching away with
+  unsaved memory edits still asks for confirmation.
+- Hidden mode still replaces Journal content with the generic hidden
+  placeholder and does not expose memory or journal text.
+- Settings shows the configuration form after task v1.6.3-2.
