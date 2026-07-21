@@ -1,7 +1,8 @@
 # Task v1.6.3-2: Content migration
 
-**Status:** Implemented with known gaps; blocked on an owner decision
-(see "Known gaps found in review" below) before human visual review.
+**Status:** Implemented; demo.html sync still open. Human visual review
+deferred until task-v1.6.3-4 lands, since that card reworks the Status
+layout this review would otherwise check twice.
 **Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** task-v1.6.3-1 (tab shell).
 
@@ -14,8 +15,7 @@ the MCP toggle/tool list, system events, and Shutdown.
 
 Move every control to its agreed home: the configuration form to the
 Settings tab, Status trimmed to live state and immediate controls,
-the duplicate context reset removed, MCP runtime controls separated
-from MCP server configuration.
+the duplicate context reset removed.
 
 ## Context you need
 
@@ -31,12 +31,11 @@ from MCP server configuration.
   why the Journal's "Новый контекст" is the canonical reset; this
   card deletes the console's "Сбросить контекст" without touching the
   underlying command.
-- The MCP block: today the toggle, tool list, and (in settings) server
-  config are one visual cluster; after this card the toggle + tool
-  list live on Status, server configuration fields on Settings. The
-  v1.6.1 builtin provider will add tools to the same Status list -
-  do not structure the split in a way that assumes tools imply a
-  connected MCP server.
+- The MCP block: the toggle and tool list are runtime state and live
+  on Status. Server configuration has no UI and stays in `config.toml`
+  (see the resolved gap below). The v1.6.1 builtin provider will add
+  tools to the same Status list - do not structure the block in a way
+  that assumes tools imply a connected MCP server.
 
 ## Boundary
 
@@ -51,9 +50,9 @@ from MCP server configuration.
 
 ## Requirements
 
-- Settings tab: model, microphone, UI language, TTS voices, MCP
-  server configuration - the complete former inline form, nothing
-  left behind on Status.
+- Settings tab: model, microphone, UI language, TTS voices, VAD - the
+  complete former inline form, nothing left behind on Status. MCP
+  server configuration is out of scope, see the resolved gap below.
 - Status tab: avatar/state, module chips, reasoning level selector,
   MCP toggle + tool list, events panel, Shutdown. Nothing else.
 - Every moved control still reflects engine state live (module
@@ -66,16 +65,17 @@ from MCP server configuration.
 
 ## Known gaps found in review (2026-07-21)
 
-- **MCP server configuration does not exist in the UI.** This card and
-  the story both require splitting MCP runtime controls from MCP
+- **MCP server configuration does not exist in the UI - resolved,
+  dropped from scope (owner decision, 2026-07-21).** This card and the
+  story originally required splitting MCP runtime controls from MCP
   *server configuration*, with the latter moving to Settings. There is
-  no server-configuration form anywhere in `index.html` - the inline
-  form was only model, microphone, UI language, TTS, and VAD; MCP
-  servers are configured in `config.toml`. The requirement as written
-  is not implementable by relocation. Per project rule 0.2 this needs
-  an owner decision: either drop it from this card's scope explicitly,
-  or open it as new UI work in its own card. Until then the first
-  acceptance criterion below stays unchecked.
+  no server-configuration form anywhere in `index.html`: the inline
+  form was only model, microphone, UI language, TTS, and VAD, and MCP
+  servers are edited in `config.toml` directly. The requirement was not
+  implementable by relocation. MCP server configuration stays where it
+  is; building a form for it would be new feature work outside a layout
+  story. No code change follows from this - only the scope correction
+  recorded here and in the story.
 - **`demo.html` is out of sync.** The QA harness lost the Settings and
   Reset buttons but gained neither the tab switcher nor the `.settings`
   wrapper, so the configuration form now renders permanently inside the
@@ -90,9 +90,8 @@ from MCP server configuration.
 
 ## Acceptance criteria
 
-- [ ] Existing automated UI-contract/string tests updated for moved
-      and removed controls; no orphaned catalog entries. **Blocked** on
-      the MCP server-configuration decision above.
+- [x] Existing automated UI-contract/string tests updated for moved
+      and removed controls; no orphaned catalog entries.
 - [ ] `demo.html` renders the same three-tab structure as `index.html`,
       with the configuration form behind the Settings tab.
 - [ ] A human-run visual check confirms each tab matches the story

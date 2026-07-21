@@ -47,10 +47,17 @@ talk, cold configuration where you rarely go.
   destructive action, placed at the bottom, away from frequent
   controls.
 - **The settings form moves wholesale to the Settings tab:** model,
-  microphone, UI language, TTS voices, and MCP *server configuration*
-  (commands, adapters) - as opposed to the MCP on/off toggle and tool
-  list, which are runtime and stay on Status. The current "Settings"
-  button that merely scrolls to the inline form disappears entirely.
+  microphone, UI language, TTS voices, and VAD - the complete former
+  inline form. The MCP on/off toggle and tool list are runtime and stay
+  on Status. The current "Settings" button that merely scrolls to the
+  inline form disappears entirely.
+- **MCP server configuration stays in `config.toml`** (owner decision,
+  2026-07-21, correcting this story's original wording). The story was
+  drafted assuming server configuration - commands, adapters - was part
+  of the inline form and only needed relocating. It never had any UI:
+  it is edited in `config.toml` directly. Building that form is new
+  feature work, not relocation, and is out of scope for a layout story.
+  Nothing about MCP server configuration changes in v1.6.3.
 - **"Last request to model" is compressed, not deleted** (owner
   decision, 2026-07-21). The Journal duplicates most of it through its
   per-message source labels, but has no equivalent for
@@ -89,8 +96,9 @@ talk, cold configuration where you rarely go.
 - [ ] Status contains only live state and immediate controls listed
       above; no inline configuration form remains there.
 - [ ] Settings contains the full configuration form previously inlined
-      under the console, including MCP server configuration; the
-      scroll-to-settings button is gone.
+      under the console; the scroll-to-settings button is gone. MCP
+      server configuration is not part of this - see the design
+      decision above.
 - [ ] Context reset exists only as the Journal's "Новый контекст";
       behavior of the action itself is unchanged.
 - [ ] The MCP toggle and tool list remain functional on Status;

@@ -27,25 +27,37 @@ so the entire diagnostic stream exists only on stderr.
   socket and is not a network capability. Confirm this explicitly in
   the card outcome so a future reader does not have to re-derive it.
 
-## Open question for the owner (ask before implementing)
+## Owner decision (2026-07-21)
 
-Where the file lives is a product decision, not an implementation
-detail. Candidates: next to `config.ui.toml`, a `logs/` directory in the
-project root, or the platform user-data directory. The choice affects
-how a user finds the file to attach to a report, and whether it survives
-a reinstall. Do not pick silently.
+The log lives on the local filesystem, and the directory is a config
+parameter - not a hardcoded path and not a platform-guessed location.
+
+This makes it an engine setting, so it belongs in `config.toml` through
+`Settings`, not in `config.ui.toml` (which holds UI overrides the
+console writes). Follow the existing directory-setting precedent
+exactly: `JournalSettings.root = "journal"` and
+`MemorySettings.root = "memory"` in `src/jarvis/core/config.py` - a
+plain string, relative to the same base those two resolve against, with
+a working default so an untouched `config.toml` still produces a log.
+Register the new section in `_SECTIONS` alongside the others.
 
 ## Boundary
 
-- Logging configuration and its documentation only. No new log call
-  sites, no re-levelling of existing ones, no changes to what any
-  component logs.
+- Logging configuration, its config section, and its documentation
+  only. No new log call sites, no re-levelling of existing ones, no
+  changes to what any component logs.
+- The setting is the directory, not the file name. Rotation owns the
+  file naming; letting the user name the file invites collisions with
+  the rotation suffixes.
 - No log shipping, no network sink, no telemetry of any kind.
 - Rotation must be bounded in both size and file count; an unbounded
   log is a disk-space bug waiting for a long-running session.
 
 ## Requirements
 
+- A new config section carries the log directory, defaulting to a
+  working value, parsed and validated on the same terms as every other
+  section in `src/jarvis/core/config.py`.
 - A rotating file handler is installed alongside the existing stderr
   handler; stderr behavior when run from a terminal is unchanged.
 - The format carries at minimum timestamp, level, logger name, and
@@ -62,10 +74,12 @@ a reinstall. Do not pick silently.
 
 ## Acceptance criteria
 
-- [ ] Automated tests cover: the handler is installed with the agreed
-      rotation bounds; an unwritable log location degrades to
-      stderr-only without raising; the format includes the required
-      fields. Tests must not depend on a real long-running process.
+- [ ] Automated tests cover: the config section parses, defaults, and
+      rejects bad input like its siblings; the handler is installed at
+      the configured directory with the agreed rotation bounds; an
+      unwritable log location degrades to stderr-only without raising;
+      the format includes the required fields. Tests must not depend on
+      a real long-running process.
 - [ ] A human-run check confirms a file appears after a normal session,
       contains the detailed English lines, and is still there after the
       process exits.

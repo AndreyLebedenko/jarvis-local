@@ -289,8 +289,11 @@ Scope:
   module chips, reasoning level, MCP toggle with the tool list, system
   events, Shutdown as the single destructive action.
 - The configuration form (model, microphone, UI language, TTS voices,
-  MCP server configuration) moves wholesale to Settings; the
-  scroll-to-settings button disappears.
+  VAD) moves wholesale to Settings; the scroll-to-settings button
+  disappears. MCP server configuration stays in `config.toml` - it
+  never had a UI to relocate (owner decision, 2026-07-21).
+- Status fits the default window without an initial scrollbar, and a
+  growing MCP tool list cannot displace Shutdown.
 - Context reset is deduplicated: the Journal's explicit "Новый
   контекст" (task-v1.5.3-8) remains the only reset control.
 
