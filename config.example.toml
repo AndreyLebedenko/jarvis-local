@@ -142,6 +142,15 @@ max_chars = 20000
 enabled = true
 root = "journal"
 
+[logging]
+# Durable local system log: detailed, English, for diagnosing a problem
+# after the fact. This is the file to attach to a problem report. It is
+# never sent anywhere by Jarvis - copying it out is always a manual act.
+# The setting is the directory; rotation owns the file names.
+directory = "logs"
+max_bytes = 2000000
+backup_count = 5
+
 [memory]
 # Local curated memory directory. By default this sits beside the default
 # journal/ directory. Files are UTF-8 Markdown edited by the user; Jarvis only

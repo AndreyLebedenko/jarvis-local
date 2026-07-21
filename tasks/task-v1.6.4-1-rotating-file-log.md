@@ -1,8 +1,35 @@
 # Task v1.6.4-1: Rotating system log on disk
 
-**Status:** Planned.
+**Status:** Implemented, pending the human verification run.
 **Story:** `tasks/story-v1.6.4-observability-and-logging.md`
 **Depends on:** nothing; first card of the story.
+
+## Outcome
+
+`[logging]` in `config.toml` carries `directory` (default `logs`),
+`max_bytes` (default 2000000), and `backup_count` (default 5).
+`jarvis.core.log_config.configure_logging()` replaces `app.py`'s bare
+`basicConfig()`: it keeps the stream handler, adds a
+`RotatingFileHandler` at `<directory>/jarvis.log`, and returns the
+directory it opened. `run()` now loads settings before configuring
+logging, because the directory is configured rather than hardcoded.
+
+**Rotation bounds, justified rather than inherited:** 2 MB per file at
+roughly 90 bytes per INFO line is on the order of 20000 lines, which
+covers a long session without a rotation mid-diagnosis; 5 backups keep
+about 10 MB total, small enough to attach to a report and bounded so a
+long-running session cannot fill a disk. Both are configurable, so a
+user who wants a longer history sets it rather than patching code.
+
+**Locality:** a local file sink opens no socket. Under `PROJECT.md`'s
+runtime locality contract this is not a network capability and does not
+touch the two-tier guarantee. No log shipping, no telemetry, no upload
+path exists or is planned.
+
+**Idempotence:** `configure_logging()` will not stack handlers when
+called twice, which would otherwise duplicate every line in the file.
+
+`/logs/` joins `/journal/` and `/memory/` in `.gitignore`.
 
 ## Summary
 
@@ -74,16 +101,17 @@ Register the new section in `_SECTIONS` alongside the others.
 
 ## Acceptance criteria
 
-- [ ] Automated tests cover: the config section parses, defaults, and
+- [x] Automated tests cover: the config section parses, defaults, and
       rejects bad input like its siblings; the handler is installed at
       the configured directory with the agreed rotation bounds; an
-      unwritable log location degrades to stderr-only without raising;
-      the format includes the required fields. Tests must not depend on
-      a real long-running process.
+      unwritable log location degrades to stream-only without raising;
+      the format includes the required fields; repeated calls do not
+      stack handlers. Tests must not depend on a real long-running
+      process.
 - [ ] A human-run check confirms a file appears after a normal session,
       contains the detailed English lines, and is still there after the
       process exits.
-- [ ] `python -m pytest` and Ruff checks are green.
+- [x] `python -m pytest` and Ruff checks are green.
 
 ## Human verification handoff
 

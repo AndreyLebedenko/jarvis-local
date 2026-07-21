@@ -45,6 +45,7 @@ from jarvis.core.lifecycle import (
     WarmupCompleted,
     WarmupStarted,
 )
+from jarvis.core.log_config import configure_logging
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import (
@@ -1078,11 +1079,16 @@ async def run(
     # makes every such internal event observable without re-instrumenting
     # each one at WARNING level, which would misrepresent normal events as
     # warnings.
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
-
+    #
+    # story-v1.6.4-task-1: stderr alone lost all of it again the moment
+    # Jarvis was started outside a terminal, which is how a user runs it.
+    # configure_logging() keeps this stream output and adds a rotating
+    # local file, so a problem report can carry the detailed English
+    # stream that publish_system_event()'s log_message has always
+    # produced. Settings must load first now: the log directory is
+    # configured, not hardcoded.
     settings = settings or load_settings()
+    configure_logging(settings.logging)
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)
