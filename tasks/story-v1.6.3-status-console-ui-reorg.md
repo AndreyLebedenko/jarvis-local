@@ -51,6 +51,15 @@ talk, cold configuration where you rarely go.
   (commands, adapters) - as opposed to the MCP on/off toggle and tool
   list, which are runtime and stay on Status. The current "Settings"
   button that merely scrolls to the inline form disappears entirely.
+- **"Last request to model" is compressed, not deleted** (owner
+  decision, 2026-07-21). The Journal duplicates most of it through its
+  per-message source labels, but has no equivalent for
+  `last_request_screenshot` and never shows audio duration. Deleting
+  the panel would remove the only place in the UI that answers "was a
+  screenshot sent to the model" - an honesty-axis fact. It becomes a
+  chip strip under the orb (task-v1.6.3-4). Moving the record into the
+  system events panel is the right long-term shape but needs a typed
+  event and a contract change, so it belongs to story v1.6.4, not here.
 - **Context reset lives only in the Journal.** "Сбросить контекст" on
   the console duplicates the Journal's explicit "Новый контекст"
   (task-v1.5.3-8 made that the canonical, explicit action). The
@@ -64,8 +73,13 @@ talk, cold configuration where you rarely go.
 - `tasks/task-v1.6.3-2-content-migration.md` - move the settings form
   to Settings, trim Status to runtime state, remove the duplicate
   context reset, split MCP runtime controls from server config.
+- `tasks/task-v1.6.3-4-status-vertical-density.md` - fit Status into a
+  900 px window by fixing the cause: the "Last request to model"
+  section becomes a chip strip under the orb, the column rhythm
+  tightens, the MCP tool list gets a bounded height, and the window
+  height raised during task 2 is reverted (added 2026-07-21).
 - `tasks/task-v1.6.3-3-docs-and-verification.md` - docs, localization
-  audit, human-run visual review checklist.
+  audit, human-run visual review checklist. Runs last, after card 4.
 
 ## Acceptance criteria
 
@@ -84,6 +98,8 @@ talk, cold configuration where you rarely go.
       renders stale state after the move).
 - [ ] Hidden mode presents exactly as before the reorganization.
 - [ ] All UI text comes from the language catalog in both languages.
+- [ ] Status fits the default window without an initial scrollbar, and
+      a growing MCP tool list cannot displace Shutdown.
 - [ ] `python -m pytest` and Ruff checks are green; visual review is a
       prepared human-run handoff (WebView review is hardware-scope per
       the testing protocol).
