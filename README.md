@@ -19,16 +19,25 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.6.1 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
-runtime and module health, timestamp-first metadata for the latest request to
-the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
-visibility mode, context reset, guarded Shutdown, typed restart-to-apply
-configuration (model, microphone, TTS routes, UI language, and VAD), Journal
-text input with local file attachments, answer copy controls, screenshot
-thumbnails, manual journal disk management, session fork, editable curated
-memory files, local builtin tools for delegated reasoning/memory updates, and a
-compact touchstrip glance surface. Since v1.2.11 the UI is English by default,
-with Russian available via `[ui].language = "ru"`.
+Since v1.6.3 the console is organized into three tabs, by the nature of the
+data rather than by widget type:
+
+- **Status** - live engine state and controls that act immediately: runtime
+  and module health, timestamp-first metadata for the latest request to the
+  model, graded reasoning (Off/Low/Medium/High), the external tools (MCP)
+  toggle with its tool list, system events, and a guarded Shutdown.
+- **Journal** - the conversation surface: persistent dialog log, text input
+  with local file attachments, answer copy controls, screenshot thumbnails,
+  manual journal disk management, session fork, editable curated memory
+  files, and the explicit "New context" action.
+- **Settings** - cold configuration, restart-to-apply: model, microphone,
+  UI language, TTS routes, and VAD.
+
+The header stays the same on every tab: the `LOCAL` and `LOCAL SOURCES`
+honesty indicators and the Open/Hidden visibility mode never disappear behind
+a tab switch. Local builtin tools for delegated reasoning and memory updates
+and the compact touchstrip glance surface are unchanged. Since v1.2.11 the UI
+is English by default, with Russian available via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 

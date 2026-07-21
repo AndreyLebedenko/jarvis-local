@@ -2384,6 +2384,58 @@ dispatch path.
   writes become part of the injected system prompt only at the next session
   start, matching the v1.5.3 memory sampling contract.
 
+## Architecture v1.6.3 (Status Console three-tab layout)
+
+See [tasks/story-v1.6.3-status-console-ui-reorg.md](tasks/story-v1.6.3-status-console-ui-reorg.md).
+A layout story: no new engine state, no transport changes. It replaces the
+accumulated scatter of buttons and inline forms with three tabs and records
+the criterion that decides where a future control goes.
+
+- **Placement is decided by the nature of the data, not by widget type.**
+  `Status` is live engine state and controls that act immediately.
+  `Journal` is the conversation surface. `Settings` is cold configuration,
+  rarely touched. A new control is placed by that rule, not by taste or by
+  which tab has room. The MCP module toggle and tool list are runtime and
+  belong on Status even though they look like configuration; the model and
+  microphone selectors are cold configuration and belong on Settings even
+  though they sit next to runtime chips historically.
+- Tabs are an unpersisted `data-view` attribute on `<html>`, the same
+  mechanism the v1.5.0 journal switch already used. There is no stored tab
+  preference and no engine-side view state.
+- The global header - brand, `LOCAL`, `LOCAL SOURCES`, and Open/Hidden - is
+  visible on every tab. The honesty axis never disappears behind tab
+  switching.
+- Entering Settings re-fetches model and microphone options, preserving the
+  v1.2.4 fresh-on-open contract without a Settings button. The form stays
+  restart-to-apply; nothing about `config.ui.toml` changes.
+- Context reset exists only as the Journal's explicit "Новый контекст"
+  (task-v1.5.3-8). The console's duplicate was removed; the underlying
+  `reset_context` command is untouched and the Touchstrip still uses it.
+- MCP *server* configuration stays in `config.toml`. The story was drafted
+  assuming it was part of the inline settings form and only needed
+  relocating; it never had a UI. Building one is feature work, not layout.
+- **"Last request to model" is not a Journal duplicate.** The Journal labels
+  each message with its source, but has no equivalent for
+  `last_request_screenshot` and never shows audio duration, so this record
+  is the only place the UI answers "was a screenshot sent to the model". It
+  is compressed to a chip strip under the orb state, not deleted. It is
+  current state from the state snapshot, not history: it survives reconnect
+  and answers "what is true now", which a bounded scrolling log cannot.
+- The Status column fits the default 900 px window by density, not by window
+  height. The MCP tool list is bounded at 180 px with its own scroll so
+  v1.6.1's builtin tools cannot displace Shutdown; raising the window
+  instead would have failed on a 1080p display and would not have survived
+  the next tool added.
+- **The action row is deliberately not bottom-pinned.** A bottom-pinned row
+  absorbs the confirmation panel's height out of the column's free space, so
+  opening the confirmation moves the Shutdown button up by its own height.
+  story-v1.2.10-task-5's guarantee that a confirmation never moves a primary
+  action wins over the cosmetics of pinning. Do not re-add `margin-top:
+  auto` here.
+- `.main` scrolls, so its children carry `flex-shrink: 0`. Without it an
+  overflowing column steals height from the orb while its absolutely
+  positioned ring keeps its size, producing a round ring around an ellipse.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
