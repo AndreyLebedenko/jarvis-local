@@ -1,7 +1,9 @@
 # Task v1.6.3-1: Tab shell and global header
 
-**Status:** Implemented, pending human visual review.
-**Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
+**Status:** Completed. Verified by the human on 2026-07-22 through
+the combined v1.6.3 + v1.6.4 checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`.
+**Story:** `tasks/done/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** nothing; first card of the story.
 
 **Outcome:** The existing unpersisted view switch was extended from two
@@ -62,7 +64,7 @@ where it is in this card; only the navigation skeleton changes.
 - [x] Automated tests that cover UI contract/strings today are
       extended to the new tab captions in both languages; no
       hardcoded tab text.
-- [ ] A human-run visual check confirms: three tabs render, header
+- [x] A human-run visual check confirms: three tabs render, header
       identical on all tabs, Hidden mode behaves exactly as before,
       journal view unaffected by tab switching.
 - [x] `python -m pytest` and Ruff checks are green.

@@ -1,6 +1,17 @@
 # Story v1.6.4: Observability - system log and user-facing request log
 
-**Status:** Planned.
+**Status:** Completed 2026-07-22. All four task cards are done and the
+combined v1.6.3 + v1.6.4 human verification run passed; outcomes are
+recorded in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`.
+
+**Known gap left open by design, needing an owner decision:** the system
+log records neither the opened microphone device name nor any capture
+level. The first real diagnosis performed with this story's own logs -
+`tasks/bug_reports/2026-07-22-quiet-microphone-capture-and-unselectable-device.md`
+- had to be reconstructed from journal wav files instead. A device name
+is payload-adjacent under the content rule above, and a level figure is a
+new log call site; neither may be added without that decision.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.4 section, added
 2026-07-21 by owner decision from the v1.6.3 review dialog).
 **Created:** 2026-07-21.
@@ -72,26 +83,31 @@ This story finishes the split instead of blurring it:
 
 ## Scope (ordered task cards)
 
-- `tasks/task-v1.6.4-1-rotating-file-log.md` - durable system log on
+- `tasks/done/task-v1.6.4-1-rotating-file-log.md` - durable system log on
   disk with rotation, replacing stderr-only logging.
-- `tasks/task-v1.6.4-2-user-facing-request-log.md` - typed
+- `tasks/done/task-v1.6.4-2-user-facing-request-log.md` - typed
   model-request event, localized in the events panel.
-- `tasks/task-v1.6.4-3-docs-and-release-verification.md` - documenting
+- `tasks/done/task-v1.6.4-3-docs-and-release-verification.md` - documenting
   the two-log contract and the content rule, plus the human-run check.
+- `tasks/done/task-v1.6.4-4-system-log-model-request-line.md` - added
+  2026-07-22 after task 2 found that the file log had no record of any
+  turn's request at all, inverting this story's premise. Ordered after
+  task 3 by discovery, not by dependency; task 3's docs describe the
+  contract as it stands with task 4 included.
 
 ## Acceptance criteria
 
-- [ ] A detailed English log exists on disk after a normal run,
+- [x] A detailed English log exists on disk after a normal run,
       survives process exit, and rotates instead of growing without
       bound.
-- [ ] The console's events panel shows, in the interface language, a
+- [x] The console's events panel shows, in the interface language, a
       record of what each turn sent to the model, including the
       screenshot modality and audio duration.
-- [ ] Neither log contains payload content per the content rule above,
+- [x] Neither log contains payload content per the content rule above,
       and an automated test asserts it for the paths this story adds.
-- [ ] Hidden mode behavior is unchanged; no new path exposes content
+- [x] Hidden mode behavior is unchanged; no new path exposes content
       the Hidden mode conceals.
-- [ ] `python -m pytest` and Ruff checks are green; file-log inspection
+- [x] `python -m pytest` and Ruff checks are green; file-log inspection
       and the WebView check are prepared human-run handoffs.
 
 ## Stop conditions

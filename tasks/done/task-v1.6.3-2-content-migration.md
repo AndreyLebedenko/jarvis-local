@@ -1,9 +1,22 @@
 # Task v1.6.3-2: Content migration
 
-**Status:** Implemented; demo.html sync still open. Human visual review
-deferred until task-v1.6.3-4 lands, since that card reworks the Status
-layout this review would otherwise check twice.
-**Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
+**Status:** Completed. Verified by the human on 2026-07-22 through
+the combined v1.6.3 + v1.6.4 checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`. The
+demo.html sync listed below as an open gap was in fact completed and is
+pinned by
+`test_demo_html_mirrors_the_tab_structure_it_can_actually_render`; that
+status line was stale and was corrected 2026-07-22.
+
+**Defect this card introduced, found by that verification run and
+fixed:** moving the configuration form into the `.settings` tab left
+`.config-panel`'s `align-self: center` untouched, which silently changed
+meaning from horizontal to vertical centering and made the top of the
+form unreachable on a short window - see
+`tasks/bug_reports/2026-07-22-quiet-microphone-capture-and-unselectable-device.md`.
+A pure relocation can still break layout when a declaration's meaning
+depends on the parent it was relocated into.
+**Story:** `tasks/done/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** task-v1.6.3-1 (tab shell).
 
 **Outcome:** The former inline settings form now lives in the Settings
@@ -83,7 +96,7 @@ the duplicate context reset removed.
   This is the same class of drift that task-ui-07 caught as a real bug
   (`PROJECT.md`, demo.html inline-style entry). Fix belongs here.
 - **Two changes landed outside this card's boundary** and are moved to
-  `tasks/task-v1.6.3-4-status-vertical-density.md`: the window default
+  `tasks/done/task-v1.6.3-4-status-vertical-density.md`: the window default
   height raised 900 -> 1020, and the console-wide scrollbar theming.
   Both are behavior changes in a card scoped to pure relocation, and
   1020 px does not reliably fit a 1080p display.
@@ -92,9 +105,9 @@ the duplicate context reset removed.
 
 - [x] Existing automated UI-contract/string tests updated for moved
       and removed controls; no orphaned catalog entries.
-- [ ] `demo.html` renders the same three-tab structure as `index.html`,
+- [x] `demo.html` renders the same three-tab structure as `index.html`,
       with the configuration form behind the Settings tab.
-- [ ] A human-run visual check confirms each tab matches the story
+- [x] A human-run visual check confirms each tab matches the story
       layout, every moved control works (reasoning change from UI and
       hotkey both render, MCP toggle round-trips, a settings edit
       applies), and the context reset exists only in the Journal.

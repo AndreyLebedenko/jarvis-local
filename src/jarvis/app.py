@@ -46,6 +46,7 @@ from jarvis.core.lifecycle import (
     WarmupStarted,
 )
 from jarvis.core.log_config import configure_logging
+from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import (
@@ -507,14 +508,22 @@ class Orchestrator:
         )
         try:
             if self._bus is not None:
-                await self._bus.publish(
-                    ModelRequestStarted,
-                    ModelRequestStarted(
-                        timestamp=self._clock(),
-                        inputs=inputs,
-                        audio_duration_seconds=audio_duration_seconds,
-                    ),
+                request_started = ModelRequestStarted(
+                    timestamp=self._clock(),
+                    inputs=inputs,
+                    audio_duration_seconds=audio_duration_seconds,
                 )
+                # Not publish_system_event(): the events panel already has
+                # this turn as a typed, localized entry (task-v1.6.4-2), so
+                # routing it through there would show every turn twice. The
+                # file log needs its own English line because it, not the
+                # panel, is what a user attaches to a problem report.
+                logger.info(
+                    "[%s] %s",
+                    LOG_SOURCE,
+                    model_request_log_message(request_started),
+                )
+                await self._bus.publish(ModelRequestStarted, request_started)
             await self._backend.chat(
                 messages, images_b64=media_b64, reasoning_level=reasoning_level
             )

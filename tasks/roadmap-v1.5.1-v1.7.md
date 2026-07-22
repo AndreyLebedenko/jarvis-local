@@ -276,6 +276,8 @@ and remains the hard gate for tasks 2-5.
 
 ## v1.6.3 - Status Console UI reorganization
 
+**Completed 2026-07-22.** Story and task cards are in `tasks/done/`.
+
 Purpose: replace the accumulated scatter of buttons and inline forms
 with three tabs - Status, Journal, Settings - organized by the nature
 of the data (owner decision, 2026-07-20): live engine state on Status,
@@ -304,11 +306,13 @@ Boundary:
   semantics unchanged.
 
 Story/task readiness: story card exists as
-`tasks/story-v1.6.3-status-console-ui-reorg.md` with task cards
-`tasks/task-v1.6.3-1..4-*.md` (1-3 created 2026-07-20; card 4,
+`tasks/done/story-v1.6.3-status-console-ui-reorg.md` with task cards
+`tasks/done/task-v1.6.3-1..4-*.md` (1-3 created 2026-07-20; card 4,
 Status vertical density, added 2026-07-21 from the review dialog).
 
 ## v1.6.4 - Observability: system log and user-facing request log
+
+**Completed 2026-07-22.** Story and task cards are in `tasks/done/`.
 
 Purpose: make failures diagnosable after the fact, and make "what did
 Jarvis send to the model" answerable in the user's own language (owner
@@ -343,8 +347,19 @@ Boundary:
   happened"; the strip answers "what is true now".
 
 Story/task readiness: story card exists as
-`tasks/story-v1.6.4-observability-and-logging.md` with task cards
-`tasks/task-v1.6.4-1..3-*.md` (created 2026-07-21).
+`tasks/done/story-v1.6.4-observability-and-logging.md` with task cards
+`tasks/done/task-v1.6.4-1..3-*.md` (created 2026-07-21) and
+`tasks/done/task-v1.6.4-4-system-log-model-request-line.md` (added
+2026-07-22: task 2 found the file log had no record of any turn's
+request, which inverted the scope statement above - the file was the
+half assumed to already exist). **Completed 2026-07-22**: all four cards
+done and the combined v1.6.3 + v1.6.4 human verification run passed.
+Story and task cards are in `tasks/done/`. One gap is deliberately left
+open and needs an owner decision before any code - the system log records
+neither the opened microphone device name nor any capture level, so the
+first real diagnosis made with these logs still had to be reconstructed
+from journal wav files (see
+`tasks/bug_reports/2026-07-22-quiet-microphone-capture-and-unselectable-device.md`).
 
 ## v1.7.0 - Memory layer B, part 1: consolidation (near/far journal)
 

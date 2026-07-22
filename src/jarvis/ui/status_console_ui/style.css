@@ -363,9 +363,18 @@ body {
 }
 .confirm-row button.danger { background: var(--red); border-color: var(--red); color: #1a0d0d; }
 
+/* No align-self here. It carried `center` from the pre-v1.6.3 layout, where
+   this panel was an inline form inside .main - a column flex, so the cross
+   axis was horizontal and `center` meant "center it horizontally". v1.6.3
+   moved the panel into .settings, a row flex, where the identical
+   declaration silently changed meaning to "center it vertically" and
+   overrode the container's align-items: flex-start. A flex item centered on
+   the overflowing axis spills past the container's start edge into space no
+   scrollbar can reach, so on any window shorter than about 720 px the top of
+   the form - Model and Microphone - was cut off and unreachable. Horizontal
+   centering already comes from the container's justify-content: center. */
 .config-panel {
   display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 520px;
-  align-self: center;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 18px;
 }

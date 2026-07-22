@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 import pytest
 
@@ -1071,6 +1072,29 @@ def test_demo_html_mirrors_the_tab_structure_it_can_actually_render():
     settings_start = demo.index('id="settingsView"')
     assert demo.index('id="configPanel"') > settings_start
     assert demo.index('id="btnShutdown"') < settings_start
+
+
+def test_demo_harness_drives_both_surfaces_a_real_request_reaches():
+    """Same task-ui-07 precedent as the tab structure above: the engine
+    projects one ModelRequestSummary onto the chip strip and the events
+    panel, so a harness that only produced the strip would leave the panel
+    entry unverifiable without a live turn."""
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+
+    assert "applyLastModelRequest(payload)" in demo_js
+    assert 'entry: "model_request"' in demo_js
+
+
+def test_demo_harness_covers_every_request_modality_the_ui_can_localize():
+    """A modality with no sample is a label nobody looks at until a user
+    hits it in a language nobody checked."""
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+    strings_js = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    catalog_kinds = set(re.findall(r"last_request_(\w+):", strings_js))
+
+    for kind in catalog_kinds:
+        assert f'kind: "{kind}"' in demo_js, f"demo.js has no sample for {kind}"
 
 
 def test_index_html_status_view_does_not_render_duplicate_context_reset():

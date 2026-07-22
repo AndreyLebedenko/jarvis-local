@@ -1,7 +1,9 @@
 # Task v1.6.3-4: Status vertical density
 
-**Status:** Implemented, pending human visual review.
-**Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
+**Status:** Completed. Verified by the human on 2026-07-22 through
+the combined v1.6.3 + v1.6.4 checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`.
+**Story:** `tasks/done/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** task-v1.6.3-2 (content migration).
 **Created:** 2026-07-21 (owner decision from the v1.6.3 review dialog).
 
@@ -118,7 +120,7 @@ card exists to remove.
       carries a bounded height with `overflow-y: auto`; the action row
       is not bottom-pinned; column children do not shrink; the window
       default height is 900.
-- [ ] A human-run visual check at 900 px confirms: Status shows no
+- [x] A human-run visual check at 900 px confirms: Status shows no
       initial scrollbar with a cold MCP list, Shutdown sits at the
       bottom, the screenshot and audio-duration facts are still visible
       after a turn that used them, and a long MCP tool list scrolls

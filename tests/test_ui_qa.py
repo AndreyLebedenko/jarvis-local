@@ -143,3 +143,37 @@ def test_demo_html_respects_style_css_narrow_width_breakpoint():
     assert "@media (max-width: 720px)" in demo_html
     media_query_body = demo_html[demo_html.index("@media (max-width: 720px)") :]
     assert '"main" "log"' in media_query_body
+
+
+def _css_block(css: str, selector: str) -> str:
+    start = css.index(selector + " {")
+    return css[start : css.index("}", start)]
+
+
+def test_the_settings_form_is_not_centered_on_the_axis_it_overflows():
+    """Regression for a bug found live during the v1.6.3 + v1.6.4
+    verification run: the user could not reach the microphone selector.
+
+    .config-panel carried `align-self: center` from the pre-v1.6.3 layout,
+    where it sat inside .main - a column flex, so the cross axis was
+    horizontal and the declaration meant "center it horizontally". v1.6.3
+    moved the panel into .settings, a row flex, where the identical
+    declaration silently changed meaning to "center it vertically" and
+    overrode the container's align-items: flex-start.
+
+    A flex item centered on the axis it overflows spills past the
+    container's start edge into space no scrollbar can reach. On a window
+    shorter than roughly 720 px the top of the form - Model and Microphone,
+    the first two fields - was cut off with no way to scroll back to it.
+
+    The horizontal centering the declaration was originally for comes from
+    the container's justify-content, which is why removing it is the fix
+    rather than a trade-off."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "align-self" not in _css_block(css, ".config-panel")
+
+    container = _css_block(css, 'html[data-view="settings"] .settings')
+    assert "align-items: flex-start" in container
+    assert "justify-content: center" in container
+    assert "overflow-y: auto" in container

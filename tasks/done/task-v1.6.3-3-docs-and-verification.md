@@ -1,8 +1,14 @@
 # Task v1.6.3-3: Docs and verification
 
-**Status:** Docs and localization audit complete; checklist handed off,
-awaiting the human verification run.
-**Story:** `tasks/story-v1.6.3-status-console-ui-reorg.md`
+**Status:** Completed. Docs and localization audit complete; the
+checklist below was superseded 2026-07-22 by the combined v1.6.3 + v1.6.4
+checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md` (sections A-E
+are this card's items, unchanged) - both stories exercise the same Status
+Console, and two separate runs would open the same window twice. The
+human ran the combined checklist on 2026-07-22; outcomes are recorded
+there, not here.
+**Story:** `tasks/done/story-v1.6.3-status-console-ui-reorg.md`
 **Depends on:** tasks v1.6.3-1..2, and v1.6.3-4 (density), which reworked
 the Status column after this card was written.
 
@@ -126,6 +132,6 @@ UI language (`[ui].language = "en"` and `"ru"`), and record the outcome.
       layout change. Screenshots in the README files are refreshed by
       the human, not by the agent.
 - [x] The localization audit is complete and recorded above.
-- [ ] The human-run checklist is prepared and handed off; verified
+- [x] The human-run checklist is prepared and handed off; verified
       outcomes are recorded before the story closes.
 - [x] `python -m pytest` and Ruff checks are green.

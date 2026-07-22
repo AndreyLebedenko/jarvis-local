@@ -1,7 +1,9 @@
 # Task v1.6.4-1: Rotating system log on disk
 
-**Status:** Implemented, pending the human verification run.
-**Story:** `tasks/story-v1.6.4-observability-and-logging.md`
+**Status:** Completed. Verified by the human on 2026-07-22 through
+the combined v1.6.3 + v1.6.4 checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`.
+**Story:** `tasks/done/story-v1.6.4-observability-and-logging.md`
 **Depends on:** nothing; first card of the story.
 
 ## Outcome
@@ -108,7 +110,7 @@ Register the new section in `_SECTIONS` alongside the others.
       the format includes the required fields; repeated calls do not
       stack handlers. Tests must not depend on a real long-running
       process.
-- [ ] A human-run check confirms a file appears after a normal session,
+- [x] A human-run check confirms a file appears after a normal session,
       contains the detailed English lines, and is still there after the
       process exits.
 - [x] `python -m pytest` and Ruff checks are green.

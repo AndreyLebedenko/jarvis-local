@@ -325,6 +325,70 @@ async def test_request_composition_event_is_published_before_backend_chat():
     assert len(backend.calls) == 1
 
 
+async def test_the_system_log_records_what_the_turn_sent_to_the_model(caplog):
+    """story-v1.6.4 task 4: the events panel's localized entry is not a
+    diagnostic artifact - the file a user attaches to a problem report is.
+    Before this, the file log had no record of any turn's request at all."""
+    bus = EventBus()
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus)
+    await orchestrator.on_screenshot(
+        ScreenshotCaptured(png_bytes=b"screen", mode="full", width=1, height=1)
+    )
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        await orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"audio", start_seconds=2.5, end_seconds=6.75)
+        )
+
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if "Model request" in record.getMessage()
+    ] == ["[LLM] Model request: inputs=audio,screenshot count=2 audio_duration=4.2s"]
+
+
+async def test_the_request_line_is_logged_before_the_backend_is_called(caplog):
+    """A request that hangs or crashes the backend is exactly the case the
+    file log exists for, so the line cannot wait for the call to return."""
+    bus = EventBus()
+    orchestrator, backend, _sound_cues = _orchestrator(bus=bus)
+    backend.calls.clear()
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        await orchestrator.on_clipboard(
+            ClipboardSubmitted(text="anything", truncated=False, is_empty=False)
+        )
+        logged_before_first_call = next(
+            index
+            for index, record in enumerate(caplog.records)
+            if "Model request" in record.getMessage()
+        )
+
+    assert logged_before_first_call >= 0
+    assert len(backend.calls) == 1
+
+
+async def test_the_request_line_never_carries_the_content_that_was_sent(caplog):
+    """The story's content rule, pinned at the call site rather than only at
+    the formatter: kinds, counts, durations - never payload."""
+    bus = EventBus()
+    orchestrator, _backend, _sound_cues = _orchestrator(bus=bus)
+    secret = "the user's private clipboard text"
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        await orchestrator.on_clipboard(
+            ClipboardSubmitted(text=secret, truncated=False, is_empty=False)
+        )
+
+    request_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if "Model request" in record.getMessage()
+    ]
+    assert request_lines == ["[LLM] Model request: inputs=clipboard count=1"]
+    assert secret not in "\n".join(request_lines)
+
+
 async def test_accepted_clipboard_request_reports_no_content_or_audio_duration():
     bus = EventBus()
     recorder = _RequestRecorder(bus)

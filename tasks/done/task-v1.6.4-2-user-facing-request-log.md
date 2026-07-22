@@ -1,7 +1,9 @@
 # Task v1.6.4-2: User-facing model-request log
 
-**Status:** Implemented, pending the human verification run.
-**Story:** `tasks/story-v1.6.4-observability-and-logging.md`
+**Status:** Completed. Verified by the human on 2026-07-22 through
+the combined v1.6.3 + v1.6.4 checklist in
+`tasks/done/task-v1.6.4-3-docs-and-release-verification.md`.
+**Story:** `tasks/done/story-v1.6.4-observability-and-logging.md`
 **Depends on:** task-v1.6.4-1 (system log split established).
 
 ## Outcome
@@ -144,7 +146,7 @@ revisited first - stop and raise it rather than deciding inline.
 - [x] An automated test asserts the event carries no payload content -
       it pins the payload's exact key set, so a future field that could
       carry content fails the test rather than shipping.
-- [ ] A human-run check confirms the panel shows the record for voice,
+- [x] A human-run check confirms the panel shows the record for voice,
       screenshot, clipboard, and attachment turns, in both languages,
       and that Hidden mode exposes nothing new.
 - [x] `python -m pytest` and Ruff checks are green.

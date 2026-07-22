@@ -629,9 +629,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   punctuation-only fragments, soft-drops malformed control tags without
   speaking them). Malformed known control fragments, missing language
   attributes, unsupported language codes, and unmatched `</lang>` closers
-  log warnings through standard `logging`; `main.py` configures logging to
-  print those warnings to the console/stderr at runtime. This is not full
-  SSML compatibility.
+  log warnings through standard `logging`; `app.py` configures logging at
+  startup, so those warnings reach stderr and, since v1.6.4, the rotating
+  file log. This is not full SSML compatibility.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `sound_cues.py` — synthesizes placeholder cue tones (pure math, offline,
@@ -772,7 +772,12 @@ Human manual-testing review of task-10 found two more issues, both fixed:
   format="%(asctime)s %(levelname)s %(name)s: %(message)s")` at
   startup, and `SoundCuePlayer.play()`/`_on_mic_sleep_toggled()` now log
   an INFO line naming the cue/state so cue-related activity is visible
-  with a timestamp, as requested during review.
+  with a timestamp, as requested during review. *Superseded by v1.6.4:*
+  the bare `basicConfig()` became
+  `core/log_config.py::configure_logging()`, which keeps this stream
+  handler and adds the rotating file sink. The reasoning above still
+  holds - v1.6.4 only extends it from "visible in a terminal" to
+  "recoverable after the fact".
 - **The `input_error` cue was not reliably audible.** Its original tone
   (a single 240 Hz, 0.1 s blip) was quieter/shorter than every other
   v1.1 cue (all multi-segment). Fixed: redesigned as two same-pitch
@@ -2386,7 +2391,7 @@ dispatch path.
 
 ## Architecture v1.6.3 (Status Console three-tab layout)
 
-See [tasks/story-v1.6.3-status-console-ui-reorg.md](tasks/story-v1.6.3-status-console-ui-reorg.md).
+See [tasks/done/story-v1.6.3-status-console-ui-reorg.md](tasks/done/story-v1.6.3-status-console-ui-reorg.md).
 A layout story: no new engine state, no transport changes. It replaces the
 accumulated scatter of buttons and inline forms with three tabs and records
 the criterion that decides where a future control goes.
@@ -2435,6 +2440,82 @@ the criterion that decides where a future control goes.
 - `.main` scrolls, so its children carry `flex-shrink: 0`. Without it an
   overflowing column steals height from the orb while its absolutely
   positioned ring keeps its size, producing a round ring around an ellipse.
+
+## Architecture v1.6.4 (two logs: system log and user-facing record)
+
+See [tasks/done/story-v1.6.4-observability-and-logging.md](tasks/done/story-v1.6.4-observability-and-logging.md).
+`publish_system_event()` has always taken two texts - a detailed English
+`log_message` and a `ui_message` - but only half the wiring existed: logging
+had no file handler, so the detailed stream lived on stderr and died with the
+process, and `ui_message` never passed through the UI language catalog. This
+story finishes the split rather than blurring it. **Place future logging work
+by the rule below, not by which surface is easier to reach.**
+
+- **Two logs, two audiences, and neither substitutes for the other.**
+  - The *system log* is detailed, English, on disk, rotating, and is not a
+    UI surface. It is what a user attaches to a problem report.
+  - The *user-facing log* is the console's events panel, in the interface
+    language, and it answers "what has Jarvis been doing" for the person
+    using it.
+- **English is correct for the system log and is not a localization gap.**
+  It is an engineering artifact, on the same terms as identifiers, commit
+  messages, and technical documentation. Translating it would help no one:
+  the audience reading it is the audience reading the source.
+- **A UI panel is not a diagnostic tool.** The events panel holds 200
+  entries in memory, is cleared on every reconnect, and does not exist yet
+  when a startup crash happens. Diagnosis is the file's job. This is why the
+  panel's bounded budget is not a defect to be fixed by growing it.
+- **Content rule, binding on both logs:** record kinds, counts, durations,
+  and sizes - never payload content. No transcript text, no clipboard text,
+  no image data, no attachment file contents. File names are
+  payload-adjacent and stay out of the user-facing log; the system log may
+  carry one only as a deliberate, documented decision in the relevant task
+  card, never as a default. Automated tests pin this for the paths the story
+  added, including one that pins the request payload's exact key set so a
+  future content-carrying field fails rather than ships.
+- **Log location and bounds are configuration, not a guessed platform
+  path.** `[logging].directory` (default `logs`) follows the
+  `JournalSettings.root`/`MemorySettings.root` precedent exactly.
+  `max_bytes = 2000000` at roughly 90 bytes per INFO line is on the order of
+  20000 lines - a long session without a rotation mid-diagnosis - and
+  `backup_count = 5` caps the set near 10 MB: small enough to attach to a
+  report, bounded so a long session cannot fill a disk. The setting is the
+  directory, not the file name; rotation owns file naming.
+- **A failure to open the log degrades to stderr with a warning.** Jarvis
+  must not fail to start because it could not write a log file.
+- **Locality is untouched.** A local file sink opens no socket, so under the
+  two-tier runtime locality contract at the top of this file it is not a
+  network capability and does not appear on the data-source axis. There is
+  no log shipping, no telemetry, and no upload path; sending a log anywhere
+  is always an explicit human act of attaching a file.
+- **The model-request record is a typed event, not a formatted string.** The
+  engine emits the modality kind and, where it has one, the duration; the UI
+  localizes from the existing `last_request_*` keys. Pre-rendering engine
+  side would either lose the translation or force the engine to know the
+  interface language. It is a sibling payload of `system_event_payload()`
+  discriminated by an `entry` field, not an extension of `SystemEvent`, so
+  no existing producer changes shape.
+- **One `ModelRequestSummary`, three projections, no derived duplicates.**
+  The chip strip answers "what is true now" and survives reconnect; the
+  panel entry answers "what happened" within a bounded history; the system
+  log answers "what happened then" and survives process exit. The chip strip
+  from task-v1.6.3-4 is not replaced by the panel entry - they answer
+  different questions.
+- **The system log's request line does not go through
+  `publish_system_event()`**, and this is deliberate. That function's
+  guarantee is that one occurrence reaches both sinks together; here the
+  panel already has a typed localized entry, so sharing the call would
+  render every turn twice - once localized, once as a raw diagnostic. The
+  formatter therefore lives in its own `core/model_request_log.py` rather
+  than inside `system_log.py`, whose docstring promises the opposite
+  invariant. Do not "simplify" it back into the shared helper.
+- The request line is written *before* the backend call, because a request
+  that hangs or crashes the backend is exactly the case the file exists for.
+- **Hidden mode is unchanged.** The events panel has no
+  `data-visibility="hidden"` rule and stays visible, which is acceptable
+  only while its entries carry modality names and nothing else. If an entry
+  ever needs to say something more specific, the Hidden rules must be
+  revisited first - that is a stop-and-ask, not an inline decision.
 
 ## Project verification contract (v1.2.2)
 
