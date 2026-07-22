@@ -1,16 +1,32 @@
 # Story v1.6.2: Camera
 
-**Status:** Completed for the USB scope. Gated on the task-1 spike: if frame quality is
-insufficient for useful answers, stop and re-plan before building the
-module (roadmap boundary).
+**Status:** USB scope completed. LAN scope in progress: the task-1 spike
+passed its hard gate on real Imou hardware on 2026-07-22, so the deferred
+RTSP source is now being built.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.2 section; native
 sensor module decision 2026-07-18).
 **Created:** 2026-07-20.
 
-**Sprint scope update (2026-07-20):** this implementation sprint delivers
-USB capture only. Imou/RTSP is deferred until the camera is available and its
-hardware spike is complete. All references below to LAN capture describe that
-future continuation, not an acceptance criterion for this sprint.
+**Sprint scope update (2026-07-20):** the first implementation sprint
+delivered USB capture only. Imou/RTSP was deferred until the camera was
+available and its hardware spike complete.
+
+**LAN scope reopened (2026-07-22):** the camera arrived, the spike ran, and
+the gate is a go - see `PROJECT.md` for the verified facts. The remaining
+LAN work is tasks 6-8 below. Three findings shape it: RTSP credentials are
+configured as separate fields rather than one URL; capture over LAN RTSP is
+measurably faster than the tuned USB path, so no prefetch or buffering
+design is needed; and the media-from-tool-result contract binds a frame to
+its source only positionally, which task 7 fixes before several sources can
+be addressed at once.
+
+**Scope held (2026-07-22):** a general typed source registry with
+discovery ("give me every source of type camera") and a multi-reply mode
+for slow data gathering are the right direction, but they are their own
+story next to v1.7.x conversational fluidity, not camera work. v1.6.2 keeps
+its original goal: the first on-command sense. Camera controls that change
+the world - pan/tilt and the illuminator - are excluded and recorded in
+`tasks/backlog/camera-world-changing-controls.md`.
 
 ## User-facing goal
 
@@ -73,12 +89,11 @@ through its own tool call and answer questions about what it sees.
 ## Candidate hardware for the spike
 
 - Immediate USB source: Logitech C920.
-- Later LAN source: Imou Dual Lens, ASIN B0FBG3RPZ8, 5 GHz Wi-Fi.
-  The owner-supplied initial research says the camera is expected to
-  expose Dahua-style local RTSP streams on port 554, with one channel
-  per lens, and ONVIF discovery/control. This is not yet a verified
-  project fact; task 1 must treat the RTSP URL as a human-supplied
-  local argument and record real behavior only after the hardware run.
+- LAN source: Imou Ranger Dual, IPC-S2XP-6M0WED, ASIN B0FBG3RPZ8,
+  5 GHz Wi-Fi. Verified on 2026-07-22: Dahua-style RTSP on port 554 with
+  one channel per lens, both 2560x1440, about 1.87 s open-to-frame. The
+  camera has no HTTP snapshot endpoint, so RTSP is the only local video
+  interface. Full facts in `PROJECT.md`.
 
 ## Scope (ordered task cards)
 
@@ -93,23 +108,33 @@ through its own tool call and answer questions about what it sees.
   sound cues, privacy toggle with mic-sleep parity.
 - `tasks/done/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
   config docs (credentials honesty), human-run checklist.
+- `tasks/task-v1.6.2-6-lan-source-capture-core.md` - named source registry
+  with USB as an ordinary entry, LAN credential fields with percent-encoded
+  URL assembly, RTSP backend, `lan` boundary.
+- `tasks/task-v1.6.2-7-lan-source-selection-and-ui.md` - source selector on
+  the capture tool, frame provenance attached to its own tool result,
+  `lan` auditing, health chip for a networked camera.
+- `tasks/task-v1.6.2-8-lan-docs-and-verification.md` - LAN config docs,
+  vision-limitation honesty, human-run checklist on both lenses.
 
 ## Acceptance criteria
 
 - [x] USB spike facts (answer quality, capture latency, dependency decision)
       are recorded in `PROJECT.md` before module implementation starts.
-      RTSP connect behavior is deferred until Imou is available.
+- [x] LAN spike facts (both lenses, latency, no HTTP snapshot path,
+      credential encoding, vision limits) are recorded in `PROJECT.md`,
+      and the gate outcome is a go.
 - [x] "Look at the camera" as a voice request produces a model-initiated
       tool call that captures a frame and answers about its content,
       with the image entering only the current turn's media.
-- [x] USB captures are audited `local`. LAN `lan` auditing is deferred with
-      RTSP.
+- [x] USB captures are audited `local`. LAN `lan` auditing lands in task 7.
 - [x] The camera is off by default; while off, no code path can capture
       a frame; enabling is an explicit user action; every capture plays
       a cue; the health chip reflects module state.
 - [x] The camera toggle is not delegable through any tool.
-- [ ] RTSP credential documentation is deferred with the RTSP source; no
-      RTSP credentials exist in the USB-only configuration.
+- [ ] RTSP credential documentation lands in task 8: the password is
+      stored in the local config in clear text, written literally, and the
+      documentation says so.
 - [x] `python -m pytest` and Ruff checks are green; the USB hardware handoff
       is completed and recorded in `PROJECT.md`.
 

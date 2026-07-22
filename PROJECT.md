@@ -128,6 +128,83 @@ system is intended to grow.
   camera now reports camera failure and keeps the capture tool unavailable;
   reconnecting it and requesting the camera-chip reset restores ready state.
   A capture tool request while the privacy toggle is off does not capture.
+- **LAN camera spike, Imou Ranger Dual (IPC-S2XP-6M0WED), 2026-07-22:** the
+  camera is a go for the deferred RTSP half of v1.6.2. Verified on the
+  owner's LAN at a static `192.168.1.108`, both lenses reachable as
+  independent Dahua-style channels:
+  `rtsp://<credentials>@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0`
+  and the same URL with `channel=2`. Each returned 2560x1440.
+  `open_to_frame_seconds` was 1.869 (channel 1) and 1.888 (channel 2) -
+  faster than the tuned C920 USB path's 3.254, because the network camera's
+  sensor is already streaming while a USB capture pays sensor start-up on
+  every open. The story's "too slow for a synchronous in-turn capture" stop
+  condition does not trigger.
+- **The two Imou lenses are genuinely distinct optics, not one view.**
+  Channel 2 shows pronounced barrel distortion and a lower vantage; channel 1
+  is geometrically flatter and framed higher. Distortion is a lens property
+  rather than a pan/tilt pose, so the channels are separately addressable
+  cameras. A future wide-plus-detail capture design is therefore possible;
+  it is not part of v1.6.2.
+  The lenses differ in kind, not only in framing (owner, 2026-07-22):
+  channel 1 is the upper lens, motorized on two axes; channel 2 is the
+  lower fixed wide-angle lens, and it carries an illuminator that the
+  motorized lens does not. Consequence for the source registry: the wide
+  lens is a reproducible source, while the motorized one shows wherever it
+  was last aimed - or wherever auto-tracking moved it - so its description
+  must say so rather than implying a predictable view. Config names the
+  sources for what they are ("wide", "detail"), never by channel number.
+- **Motor control is out of v1.6.2 scope and gated behind its own opt-in
+  when it arrives (decision, 2026-07-22).** Steering the lens is not the
+  model acting on its own initiative - it would happen while carrying out
+  the user's own request - but it is still a different class from reading
+  a frame, for two reasons. It widens the scope of consent: "look at the
+  camera" agrees to the view currently framed, whereas a steerable lens
+  turns "look around the room" into a survey of corners the user never
+  aimed at, and the lens direction is exactly what anchors the user's
+  sense of what the camera can see. And it mutates physical state that
+  does not roll back: the lens stays where Jarvis left it, affecting the
+  next capture and the owner's own use of the camera. It is the product's
+  first tool that changes the world rather than reading it, which is
+  reason enough to separate world-changing tools from reading ones by
+  default. v1.6.2 reads frames only; motor control, if built, is an
+  explicit per-capability permission distinct from the camera on/off
+  switch. The wide lens's illuminator falls in the same class and is
+  covered by the same decision: switching it on emits light into a real
+  room, which is a physical act with an audience, not a read. See
+  `tasks/backlog/camera-world-changing-controls.md`.
+- **Vision OCR fails by confabulation, not by abstention.** On the same
+  physical shirt, `gemma4:12b-it-qat` read "SONY" from the channel 1 frame,
+  where the text is small, and "BOSS" - the correct text - from the channel 2
+  frame, where it is larger. The model did not report low confidence on the
+  wrong reading. This sharpens the softer USB-spike wording ("smaller text
+  was indistinct"): the real failure mode is a confident plausible invention
+  that scales with the text's apparent size in frame. Object identity fails
+  the same way - the same white keyboard was called a laptop on one channel
+  and an electronic keyboard being played on the other. Consequence for the
+  product: scene description is a supported answer; reading text and counting
+  objects are not v1.6.2 guarantees and must not be presented to the user as
+  fact. Not a model-selection decision; revisiting the vision model is
+  explicitly deferred (owner, 2026-07-22).
+- **The Imou exposes no HTTP snapshot path; RTSP is the only local video
+  interface.** Port 80 accepts a TCP connection but never answers an HTTP
+  request - neither `/` nor the Dahua-conventional
+  `/cgi-bin/snapshot.cgi?channel=1` - so the consumer firmware has no web
+  server behind the open port. A single-frame HTTP GET design, which would
+  have avoided RTSP session setup entirely, is not available. Related
+  diagnostic fact: the camera answers `401` to a DESCRIBE on any path,
+  including one that cannot exist, so a wrong stream path is indistinguishable
+  from wrong credentials until valid credentials are in hand.
+- **LAN camera credentials are configured as separate fields, never as one
+  RTSP URL (decision, 2026-07-22).** A password containing `#` silently
+  destroyed the URL: `#` opens the fragment component, so ffmpeg parsed the
+  authority as `admin:<password prefix>` and failed with
+  `Failed to resolve hostname admin`. Every one of `# / @ : ? &` breaks a
+  hand-written RTSP URL the same way, and the resulting error names neither
+  the password nor the real cause. Config therefore takes host, port, user,
+  password, and path as separate keys and the code assembles the URL with
+  percent-encoding, so the password is always written literally. The cost is
+  that a ready-made URL from camera documentation cannot be pasted as one
+  line; that is accepted deliberately to remove the whole class of failures.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process

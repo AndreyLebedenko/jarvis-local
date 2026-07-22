@@ -78,3 +78,29 @@ Closed after the USB-only hardware run. The C920 path is a go for task 2
 with DirectShow + MJPG + requested 1920x1080. Imou Dual Lens RTSP is not
 verified yet and remains a later hardware continuation, not a blocker for
 the USB capture core.
+
+## RTSP continuation, 2026-07-22
+
+The deferred LAN half of this card ran once the Imou camera arrived, and
+the hard gate is now fully passed. Facts are in `PROJECT.md`; the short
+version: both lenses grab a 2560x1440 frame in about 1.87 s over local
+RTSP, the two channels are genuinely different optics, and scene
+description is useful while text reading and object counting are not.
+
+Two setup guesses in "Context you need" above were wrong and are corrected
+by the run: the camera exposes no HTTP snapshot endpoint at all, and a
+password containing URL-reserved characters cannot be pasted into an RTSP
+URL by hand. The second one produced a misleading
+`Failed to resolve hostname admin` error and drives the separate-config-
+fields decision recorded in `PROJECT.md`.
+
+This card required a second, faster diagnostic than the OpenCV path, whose
+30-second open timeout makes credential and path errors expensive to
+distinguish: `manual/manual_check_rtsp_discovery.py` speaks RTSP DESCRIBE
+with Digest auth directly and answers in well under a second. It reads the
+password interactively so credentials never reach a shell history, a
+config file, or an agent transcript.
+
+Card boundary held: no changes to `src/jarvis` or `requirements.txt` -
+`opencv-python` had already become a real dependency in task 2, so the
+LAN source needs no new one.
