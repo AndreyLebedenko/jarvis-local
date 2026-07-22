@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 import pytest
 
@@ -938,7 +939,7 @@ def test_modules_panel_is_rendered_from_the_shared_module_contract():
     assert 'status: "unavailable"' in app_js
 
 
-def test_last_model_request_panel_renders_the_timestamp_before_metadata():
+def test_last_model_request_renders_the_timestamp_before_metadata():
     html = INDEX_HTML.read_text(encoding="utf-8")
     app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
@@ -946,6 +947,102 @@ def test_last_model_request_panel_renders_the_timestamp_before_metadata():
     assert "function applyLastModelRequest(payload)" in app_js
     assert 'formatLogTime(payload.timestamp) + " - "' in app_js
     assert 'uiString("last_request_" + item.kind)' in app_js
+
+
+def test_app_js_renders_request_log_entries_from_the_catalog():
+    """story-v1.6.4-task-2: SystemEvent.message is a free-form engine
+    string the panel prints verbatim, so a pre-rendered request line would
+    be English forever. The entry arrives typed and the UI localizes it
+    from the same last_request_* keys the chip strip uses."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = js.index("function appendSystemEvent")
+    body = js[start : js.index("\n}\n", start)]
+
+    assert 'payload.entry === "model_request"' in body
+    assert "_appendModelRequestEntry(payload)" in body
+
+    entry_start = js.index("function _appendModelRequestEntry")
+    entry_body = js[entry_start : js.index("\n}\n", entry_start)]
+    assert "_requestItemText" in entry_body
+    assert 'uiString("log_source_model_request")' in entry_body
+    assert "payload.message" not in entry_body
+
+
+def test_app_js_renders_a_modality_through_one_shared_formatter():
+    """The chip strip and the log entry describe the same fact; two
+    renderers would drift into two wordings for one modality."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = js.index("function _requestItemText")
+    body = js[start : js.index("\n}\n", start)]
+
+    assert 'uiString("last_request_" + item.kind)' in body
+    assert "_AUDIO_DURATION_KINDS.has(item.kind)" in body
+
+    strip_start = js.index("function applyLastModelRequest")
+    strip_body = js[strip_start : js.index("\n}\n", strip_start)]
+    entry_start = js.index("function _appendModelRequestEntry")
+    entry_body = js[entry_start : js.index("\n}\n", entry_start)]
+    assert "_requestItemText" in strip_body
+    assert "_requestItemText" in entry_body
+
+
+def test_request_log_entry_strings_exist_in_both_languages():
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert strings.count("log_source_model_request:") == 2
+
+
+def test_audio_duration_unit_comes_from_the_catalog():
+    """Pre-existing gap surfaced by story-v1.6.4-task-2: the unit was
+    hardcoded English, so the Russian UI read "Голос: 3.2 s". Harmless
+    while it appeared once under the orb, wrong twice over once the same
+    text is also rendered into the events panel."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert 'uiString("unit_seconds")' in js
+    assert '" s"' not in js
+    assert strings.count("unit_seconds:") == 2
+
+
+def test_style_css_distinguishes_request_entries_from_diagnostics():
+    """A user-facing record of what was sent to the model is not a warning
+    or an error; it must not read as one in a panel full of diagnostics."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert '.log-entry[data-entry="model_request"]' in css
+
+
+def test_last_model_request_is_a_chip_strip_under_the_orb_not_a_section():
+    """task-v1.6.3-4: the record is one wrapping row of chips directly
+    under the orb state, not a titled section - it costs a heading, a
+    section, and a column gap for a single line of content."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "last-request-panel" not in html
+    assert "last-request-panel" not in css
+    assert 'id="lastRequestHeading"' not in html
+    assert 'data-i18n="last_request_title"' not in html
+
+    orb_state_end = html.index('id="orbSub"')
+    strip_start = html.index('id="lastRequestList"')
+    modules_start = html.index('id="modulesPanel"')
+    assert orb_state_end < strip_start < modules_start
+
+    strip_start_css = css.index(".last-request-strip {")
+    strip_rule = css[strip_start_css : css.index("}", strip_start_css)]
+    assert "flex-wrap: wrap" in strip_rule
+
+
+def test_last_request_title_string_is_dropped_from_both_catalogs():
+    """The chip strip has no heading, and no other surface used the key -
+    leaving it behind would be an orphaned catalog entry."""
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    assert "last_request_title" not in strings
+    assert strings.count("last_request_screenshot:") == 2
+    assert strings.count("last_request_audio:") == 2
 
 
 def test_status_console_does_not_render_the_observed_input_panel():
@@ -956,12 +1053,57 @@ def test_status_console_does_not_render_the_observed_input_panel():
     assert "applyDataPresence" not in app_js
 
 
-def test_index_html_global_reset_requires_confirmation_before_the_api_call():
+def test_demo_html_mirrors_the_tab_structure_it_can_actually_render():
+    """task-ui-07 precedent: a QA harness that no longer shows what the
+    product shows hides real bugs instead of catching them. The demo gets
+    the Status and Settings tabs and the same Settings placement.
+
+    It deliberately does not get a Journal tab: the harness has never
+    carried journal markup, so the button would hide .main and render a
+    blank page - a worse harness than none."""
+    demo = (UI_DIR / "demo.html").read_text(encoding="utf-8")
+
+    assert 'data-view="status"' in demo
+    for view in ("status", "settings"):
+        assert f"setActiveView('{view}')" in demo
+    assert "setActiveView('journal')" not in demo
+    assert 'id="journalView"' not in demo
+
+    settings_start = demo.index('id="settingsView"')
+    assert demo.index('id="configPanel"') > settings_start
+    assert demo.index('id="btnShutdown"') < settings_start
+
+
+def test_demo_harness_drives_both_surfaces_a_real_request_reaches():
+    """Same task-ui-07 precedent as the tab structure above: the engine
+    projects one ModelRequestSummary onto the chip strip and the events
+    panel, so a harness that only produced the strip would leave the panel
+    entry unverifiable without a live turn."""
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+
+    assert "applyLastModelRequest(payload)" in demo_js
+    assert 'entry: "model_request"' in demo_js
+
+
+def test_demo_harness_covers_every_request_modality_the_ui_can_localize():
+    """A modality with no sample is a label nobody looks at until a user
+    hits it in a language nobody checked."""
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+    strings_js = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    catalog_kinds = set(re.findall(r"last_request_(\w+):", strings_js))
+
+    for kind in catalog_kinds:
+        assert f'kind: "{kind}"' in demo_js, f"demo.js has no sample for {kind}"
+
+
+def test_index_html_status_view_does_not_render_duplicate_context_reset():
     html = INDEX_HTML.read_text(encoding="utf-8")
 
-    assert 'id="confirmRow"' in html
-    assert "showResetConfirm()" in html
-    assert "confirmContextReset()" in html
+    assert 'id="btnResetGlobal"' not in html
+    assert 'id="confirmRow"' not in html
+    assert "showResetConfirm()" not in html
+    assert "confirmContextReset()" not in html
 
 
 def test_index_html_uses_open_hidden_labels_not_the_old_ones():
@@ -1287,26 +1429,26 @@ async def test_config_menu_methods_are_a_no_op_before_set_loop_is_called():
 
 def test_index_html_has_a_real_config_menu_not_a_placeholder():
     html = INDEX_HTML.read_text(encoding="utf-8")
+    settings_start = html.index('id="settingsView"')
+    journal_start = html.index('id="journalView"', settings_start)
+    settings_markup = html[settings_start:journal_start]
 
-    assert 'id="modelSelect"' in html
-    assert 'id="micSelect"' in html
-    assert "toggleConfigMenu()" in html
-    assert "applyConfigSelection()" in html
+    assert 'id="modelSelect"' in settings_markup
+    assert 'id="micSelect"' in settings_markup
+    assert "toggleConfigMenu()" not in html
+    assert "applyConfigSelection()" in settings_markup
     assert "task-3" not in html
 
 
-def test_index_html_groups_lower_controls_in_one_action_row():
+def test_index_html_keeps_only_shutdown_in_the_status_action_row():
     html = INDEX_HTML.read_text(encoding="utf-8")
     row_start = html.index('<div class="action-row">')
-    config_panel_start = html.index('<div class="config-panel"', row_start)
-    action_row = html[row_start:config_panel_start]
+    confirm_start = html.index('id="shutdownConfirmRow"', row_start)
+    action_row = html[row_start:confirm_start]
 
-    assert action_row.index('id="btnConfigToggle"') < action_row.index(
-        'id="btnResetGlobal"'
-    )
-    assert action_row.index('id="btnResetGlobal"') < action_row.index(
-        'id="btnShutdown"'
-    )
+    assert 'id="btnConfigToggle"' not in action_row
+    assert 'id="btnResetGlobal"' not in action_row
+    assert 'id="btnShutdown"' in action_row
 
 
 def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
@@ -1326,27 +1468,39 @@ def test_style_css_action_row_is_centered_and_wraps_at_narrow_widths():
 def test_index_html_keeps_confirmation_panels_below_the_action_row():
     html = INDEX_HTML.read_text(encoding="utf-8")
     row_start = html.index('<div class="action-row">')
-    feedback_start = html.index('<div class="action-feedback">', row_start)
-    action_row = html[row_start:feedback_start]
+    confirm_start = html.index('id="shutdownConfirmRow"', row_start)
+    action_row = html[row_start:confirm_start]
 
     assert 'id="confirmRow"' not in action_row
     assert 'id="shutdownConfirmRow"' not in action_row
-    assert 'id="confirmRow"' in html[feedback_start:]
-    assert 'id="shutdownConfirmRow"' in html[feedback_start:]
 
 
-def test_style_css_confirmation_feedback_spans_the_action_area():
+def test_confirmation_is_a_direct_column_child_so_it_costs_no_gap():
+    """task-v1.6.3-4: the old .action-feedback wrapper was always in the
+    markup while its only child stayed display:none, so it claimed one
+    column gap for nothing. A display:none element is not a flex item."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
     css = (UI_DIR / "style.css").read_text(encoding="utf-8")
-    feedback_start = css.index(".action-feedback {")
-    feedback_rule = css[feedback_start : css.index("}", feedback_start)]
+
+    assert "action-feedback" not in html
+    assert ".action-feedback {" not in css
+    row_end = html.index("</div>", html.index('<div class="action-row">'))
+    assert html.index('id="shutdownConfirmRow"') > row_end
+
+
+def test_style_css_confirmation_spans_the_action_area():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
     confirm_start = css.index(".confirm-row {")
     confirm_rule = css[confirm_start : css.index("}", confirm_start)]
 
-    assert "width: 100%" in feedback_rule
     assert "width: 100%" in confirm_rule
+    assert "max-width: 760px" in confirm_rule
 
 
-def test_status_console_default_height_allows_the_config_panel_to_open():
+def test_status_console_default_height_fits_a_1080p_display():
+    """task-v1.6.3-4: 1020 does not reliably fit 1080p once the taskbar
+    and window frame are subtracted. Status is made to fit 900 by
+    density instead (chip strip, tighter rhythm, bounded MCP list)."""
     captured: dict[str, object] = {}
 
     def window_factory(**kwargs: object) -> object:
@@ -1358,16 +1512,72 @@ def test_status_console_default_height_allows_the_config_panel_to_open():
     assert captured["height"] == 900
 
 
-def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
-    """toggleConfigMenu() must not fetch on close - re-fetching only makes
-    sense when the panel is becoming visible."""
+def test_style_css_main_column_rhythm_is_tight_enough_for_900px():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".main {")
+    rule = css[start : css.index("}", start)]
+
+    assert "gap: 16px" in rule
+
+
+def test_style_css_status_column_children_never_squash_to_fit():
+    """Found in browser verification of task-v1.6.3-4: .main scrolls, but
+    its children were shrinkable, so an overflowing column stole 25px of
+    height from the orb while its absolutely positioned 132px ring kept
+    its size - a round ring around an ellipse, and a shifted column."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".main > * {")
+    rule = css[start : css.index("}", start)]
+
+    assert "flex-shrink: 0" in rule
+
+
+def test_style_css_mcp_tool_list_scrolls_inside_its_own_card():
+    """Regression guard for v1.6.1: builtin tools will lengthen this list,
+    and an unbounded list pushes Shutdown off the column."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".mcp-tools {")
+    rule = css[start : css.index("}", start)]
+
+    assert "max-height" in rule
+    assert "overflow-y: auto" in rule
+
+
+def test_style_css_action_row_is_not_bottom_pinned():
+    """Regression guard, task-v1.6.3-4: a bottom-pinned action row absorbs
+    the confirmation's height out of the column's free space, so opening
+    the confirmation moves the Shutdown button up by its own height
+    (measured at 63px in the browser). story-v1.2.10-task-5's guarantee
+    that a confirmation never moves a primary action wins over the
+    cosmetics of pinning."""
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index(".action-row {")
+    rule = css[start : css.index("}", start)]
+
+    assert "margin-top: auto" not in rule
+
+
+def test_style_css_scrollbars_use_the_status_console_theme():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "scrollbar-color: var(--border) var(--panel);" in css
+    assert "scrollbar-width: thin;" in css
+    assert "*::-webkit-scrollbar-thumb" in css
+    thumb_start = css.index("*::-webkit-scrollbar-thumb {")
+    thumb_rule = css[thumb_start : css.index("}", thumb_start)]
+    assert "background: var(--border)" in thumb_rule
+    assert "border: 2px solid var(--panel)" in thumb_rule
+
+
+def test_app_js_settings_tab_refetches_options_when_entered():
+    """Entering Settings re-fetches model and microphone options, preserving
+    the old fresh-on-open behavior without keeping a Settings button."""
     js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    start = js.index("function toggleConfigMenu")
+    start = js.index("function refreshSettingsOptions")
     end = js.index("\n}\n", start)
     body = js[start:end]
 
-    assert "if (!opening) return;" in body
     assert "request_model_options" in body
     assert "request_microphone_options" in body
     # Regression (2026-07-07): must re-arm the Apply button to disabled
@@ -1376,6 +1586,12 @@ def test_app_js_config_menu_refetches_options_only_when_opening_the_panel():
     # not-yet-refreshed selections as if they were current.
     assert "_modelOptionsLoaded = false;" in body
     assert "_microphoneOptionsLoaded = false;" in body
+
+    view_start = js.index("function setActiveView")
+    view_end = js.index("\n}\n", view_start)
+    view_body = js[view_start:view_end]
+    assert 'view === "settings"' in view_body
+    assert "refreshSettingsOptions();" in view_body
 
 
 def test_index_html_config_apply_button_starts_disabled():
@@ -1410,21 +1626,6 @@ def test_app_js_only_enables_apply_once_both_selectors_have_loaded():
     mic_fn_start = js.index("function applyMicrophoneOptions")
     mic_fn_end = js.index("\n}\n", mic_fn_start)
     assert "_microphoneOptionsLoaded = true;" in js[mic_fn_start:mic_fn_end]
-
-
-def test_style_css_config_menu_uses_cyan_not_amber_or_red():
-    """Saving here is not itself destructive (restart-to-apply only) -
-    unlike reset (amber) and shutdown (red), it should not carry warning/
-    severity coloring."""
-    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
-
-    marker = ".btn-config-toggle {"
-    start = css.index(marker)
-    rule = css[start : css.index("}", start)]
-
-    assert "var(--cyan)" in rule
-    assert "var(--amber)" not in rule
-    assert "var(--red)" not in rule
 
 
 def test_style_css_config_apply_button_looks_visibly_disabled():

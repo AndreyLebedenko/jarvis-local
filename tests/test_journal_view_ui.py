@@ -16,8 +16,9 @@ APP_JS = (UI_DIR / "app.js").read_text(encoding="utf-8")
 STRINGS_JS = (UI_DIR / "strings.js").read_text(encoding="utf-8")
 
 JOURNAL_STRING_KEYS = (
-    "view_console",
+    "view_status",
     "view_journal",
+    "view_settings",
     "journal_sessions_title",
     "journal_no_sessions",
     "journal_no_selection",
@@ -154,21 +155,25 @@ def _parse_journal_view():
     return parser
 
 
-def test_header_has_console_journal_switcher():
+def test_header_has_status_journal_settings_switcher():
     parser = _parse_journal_view()
     views = [button.get("data-view") for button in parser.view_toggle_buttons]
-    assert views == ["console", "journal"]
+    assert views == ["status", "journal", "settings"]
     for button in parser.view_toggle_buttons:
         assert "setActiveView(" in button.get("onclick", "")
-        assert button.get("data-i18n") in ("view_console", "view_journal")
+        assert button.get("data-i18n") in (
+            "view_status",
+            "view_journal",
+            "view_settings",
+        )
 
 
 def test_switcher_toggles_view_visibility_via_css():
     """The journal replaces the central column and is invisible by default
-    (data-view="console" on <html> keeps the Console view untouched)."""
-    assert 'data-view="console"' in INDEX_HTML.split("<body>")[0]
+    (data-view="status" on <html> keeps the Status view untouched)."""
+    assert 'data-view="status"' in INDEX_HTML.split("<body>")[0]
     compact = re.sub(r"\s+", " ", STYLE_CSS)
-    assert ".journal { display: none; }" in compact
+    assert ".journal, .settings { display: none; }" in compact
     assert 'html[data-view="journal"] .main { display: none; }' in compact
     assert re.search(
         r'html\[data-view="journal"\] \.journal \{[^}]*display: grid;', compact
@@ -178,6 +183,23 @@ def test_switcher_toggles_view_visibility_via_css():
 def test_system_events_panel_is_hidden_in_journal_view():
     compact = re.sub(r"\s+", " ", STYLE_CSS)
     assert 'html[data-view="journal"] .logpanel { display: none; }' in compact
+
+
+def test_settings_tab_hosts_the_configuration_form():
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert 'id="settingsView"' in INDEX_HTML
+    settings_start = INDEX_HTML.index('id="settingsView"')
+    journal_start = INDEX_HTML.index('id="journalView"', settings_start)
+    settings_markup = INDEX_HTML[settings_start:journal_start]
+    assert 'id="configPanel"' in settings_markup
+    assert 'id="modelSelect"' in settings_markup
+    assert 'id="micSelect"' in settings_markup
+    assert 'html[data-view="settings"] .main { display: none; }' in compact
+    assert 'html[data-view="settings"] .logpanel { display: none; }' in compact
+    assert re.search(
+        r'html\[data-view="settings"\] \.settings \{[^}]*display: flex;',
+        compact,
+    )
 
 
 def test_input_dock_has_textarea_and_send_action():
@@ -425,6 +447,7 @@ def test_journal_memory_unsaved_changes_guard_navigation_and_unload():
     assert 'window.addEventListener("beforeunload"' in APP_JS
     body = APP_JS.split("function setActiveView(")[1].split("\n}")[0]
     assert 'view !== "journal"' in body
+    assert "ACTIVE_VIEWS.includes(view)" in body
     assert "_confirmDiscardJournalMemoryChanges()" in body
 
 

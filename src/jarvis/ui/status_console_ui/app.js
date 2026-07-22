@@ -166,16 +166,22 @@ function renderModules() {
 // value (see transport.py's _AUDIO_DURATION_INPUTS) - either kind renders it.
 const _AUDIO_DURATION_KINDS = new Set(["audio", "attachment_audio"]);
 
+// story-v1.6.4-task-2: one renderer for a modality, shared by the chip
+// strip under the orb and the events panel's request entry. They describe
+// the same fact and must never drift into two wordings.
+function _requestItemText(item) {
+  const detail = _AUDIO_DURATION_KINDS.has(item.kind) && item.duration_seconds !== undefined
+    ? ": " + item.duration_seconds.toFixed(1) + " " + uiString("unit_seconds")
+    : "";
+  return uiString("last_request_" + item.kind) + detail;
+}
+
 function applyLastModelRequest(payload) {
   const list = document.getElementById("lastRequestList");
   list.replaceChildren();
   for (const item of payload.items || []) {
     const row = document.createElement("li");
-    const detail = _AUDIO_DURATION_KINDS.has(item.kind) && item.duration_seconds !== undefined
-      ? ": " + item.duration_seconds.toFixed(1) + " s"
-      : "";
-    row.textContent = formatLogTime(payload.timestamp) + " - "
-      + uiString("last_request_" + item.kind) + detail;
+    row.textContent = formatLogTime(payload.timestamp) + " - " + _requestItemText(item);
     list.appendChild(row);
   }
 }
@@ -254,10 +260,29 @@ function formatLogTime(timestampSeconds) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+// story-v1.6.4-task-2: the panel carries two kinds of entry. A plain
+// system event prints payload.message, a free-form English string the
+// engine composed. A model-request entry arrives typed instead, because
+// pre-rendering it engine-side would either lose the translation or force
+// the engine to know the interface language - so it is localized here,
+// from the same last_request_* keys the chip strip under the orb uses.
 function appendSystemEvent(payload) {
   if (!EVENT_LEVELS.includes(payload.level)) {
     throw new Error("Unknown event level: " + payload.level);
   }
+  if (payload.entry === "model_request") {
+    _appendModelRequestEntry(payload);
+    return;
+  }
+  _appendLogRow(payload, payload.source, payload.message);
+}
+
+function _appendModelRequestEntry(payload) {
+  const text = (payload.items || []).map(_requestItemText).join(", ");
+  _appendLogRow(payload, uiString("log_source_model_request"), text, "model_request");
+}
+
+function _appendLogRow(payload, sourceText, messageText, entryKind) {
   const list = document.getElementById("logList");
   const empty = document.getElementById("logEmpty");
   if (empty) empty.remove();
@@ -265,6 +290,7 @@ function appendSystemEvent(payload) {
   const row = document.createElement("div");
   row.className = "log-entry";
   row.dataset.level = payload.level;
+  if (entryKind) row.dataset.entry = entryKind;
 
   const time = document.createElement("span");
   time.className = "log-time";
@@ -272,11 +298,11 @@ function appendSystemEvent(payload) {
 
   const src = document.createElement("span");
   src.className = "log-src";
-  src.textContent = payload.source;
+  src.textContent = sourceText;
 
   const msg = document.createElement("span");
   msg.className = "log-msg";
-  msg.textContent = payload.message;
+  msg.textContent = messageText;
 
   row.append(time, src, msg);
   list.prepend(row);
@@ -308,25 +334,11 @@ function requestModuleReset(moduleId) {
   _sendControl("reset_module", { module_id: moduleId });
 }
 
-function showResetConfirm() {
-  document.getElementById("confirmRow").classList.add("show");
-}
-
-function hideResetConfirm() {
-  document.getElementById("confirmRow").classList.remove("show");
-}
-
-function confirmContextReset() {
-  hideResetConfirm();
-  _sendControl("reset_context");
-}
-
-// story-v1.2.4-task-1: guarded Shutdown control - same confirm-before-
-// destructive-action shape as the context reset above (show/hide only
-// toggle local UI state; only confirmShutdown() calls back into the
-// engine). Unlike context reset, there is no applyShutdown() callback to
-// wait for: once request_shutdown() actually tears down the running
-// engine, there is nothing left running to push a confirmation back.
+// story-v1.2.4-task-1: guarded Shutdown control. show/hide only toggles
+// local UI state; only confirmShutdown() calls back into the engine. There
+// is no applyShutdown() callback to wait for: once request_shutdown()
+// actually tears down the running engine, there is nothing left running to
+// push a confirmation back.
 function showShutdownConfirm() {
   document.getElementById("shutdownConfirmRow").classList.add("show");
 }
@@ -370,21 +382,19 @@ function setVisibilityMode(modeValue) {
   _sendControl("set_visibility_mode", { mode: modeValue });
 }
 
-// story-v1.2.4-task-3: configuration menu (model + microphone,
-// restart-to-apply). toggleConfigMenu() re-fetches both selectors' options
-// every time the panel is opened (never on close), so reopening it always
-// shows fresh enumeration rather than a stale snapshot from last time -
-// each fetch degrades to just the current configured value on failure
+// story-v1.2.4-task-3: configuration form (model + microphone,
+// restart-to-apply). refreshSettingsOptions() re-fetches both selectors'
+// options every time the Settings tab is entered, so returning to Settings
+// shows fresh enumeration rather than a stale snapshot from last time. Each
+// fetch degrades to just the current configured value on failure
 // (status_console.py's request_model_options()/request_microphone_options(),
 // never invented or guessed here). Like every other control on this page,
 // selecting an option does not apply anything by itself - only
-// applyConfigSelection() (the "Apply" button) writes config.ui.toml,
-// and even that is restart-to-apply, not live (see confirmShutdown() and
-// the reset flow above for the same "engine confirms, UI never assumes"
-// shape - the difference here is there is no live confirmation event to
-// wait for, since nothing changes in the running process at all until the
-// next start; applyPendingRestart() is shown immediately after a
-// successful save, not deferred to any engine event).
+// applyConfigSelection() (the "Apply" button) writes config.ui.toml, and
+// even that is restart-to-apply, not live. There is no live confirmation
+// event to wait for, since nothing changes in the running process at all
+// until the next start; applyPendingRestart() is shown immediately after a
+// successful save.
 // Regression guard (2026-07-07, real live-session bug): both <select>s
 // start empty (no <option>s) until request_model_options()/
 // request_microphone_options() resolve - a click on "Apply" before
@@ -404,11 +414,7 @@ function _updateApplyButtonEnabled() {
     !(_modelOptionsLoaded && _microphoneOptionsLoaded && inputsValid);
 }
 
-function toggleConfigMenu() {
-  const panel = document.getElementById("configPanel");
-  const opening = !panel.classList.contains("show");
-  panel.classList.toggle("show");
-  if (!opening) return;
+function refreshSettingsOptions() {
   _modelOptionsLoaded = false;
   _microphoneOptionsLoaded = false;
   _updateApplyButtonEnabled();
@@ -702,6 +708,7 @@ const _MEMORY_FILE_DESCRIPTION_KEYS = {
 };
 let _journalMemoryOpen = false;
 let _journalMemoryFiles = new Map();
+const ACTIVE_VIEWS = ["status", "journal", "settings"];
 
 function _isJournalActive() {
   return document.documentElement.getAttribute("data-view") === "journal";
@@ -712,6 +719,9 @@ function _isHiddenActive() {
 }
 
 function setActiveView(view) {
+  if (!ACTIVE_VIEWS.includes(view)) {
+    throw new Error("Unknown active view: " + view);
+  }
   if (
     document.documentElement.getAttribute("data-view") === "journal" &&
     view !== "journal" &&
@@ -725,6 +735,8 @@ function setActiveView(view) {
     .forEach((button) => button.classList.toggle("sel", button.dataset.view === view));
   if (view === "journal" && !_isHiddenActive()) {
     refreshJournalSessions();
+  } else if (view === "settings") {
+    refreshSettingsOptions();
   }
 }
 

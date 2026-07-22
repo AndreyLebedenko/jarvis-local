@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-state="idle" data-visibility="open">
+<html lang="en" data-state="idle" data-visibility="open" data-view="status">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -47,6 +47,12 @@
     <div class="brand-name">JARVIS <span>Status Console - DEMO</span></div>
   </div>
   <div class="topbar-right">
+    <!-- No Journal tab here: this harness has never carried journal
+         markup, and the button would hide .main and blank the page. -->
+    <div class="view-toggle" id="viewToggle">
+      <button data-view="status" class="sel" onclick="setActiveView('status')">Status</button>
+      <button data-view="settings" onclick="setActiveView('settings')">Settings</button>
+    </div>
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
       <span class="locality-label">Local</span>
@@ -66,6 +72,7 @@
   <div style="text-align: center; margin-top: -10px;">
     <div class="orb-state" id="orbState">Idle</div>
     <div class="orb-sub" id="orbSub"></div>
+    <ul class="last-request-strip" id="lastRequestList"></ul>
   </div>
 
   <div class="chip-row">
@@ -110,32 +117,20 @@
   </div>
 
   <div class="action-row">
-    <div class="config-zone">
-      <button class="btn-config-toggle" id="btnConfigToggle" onclick="toggleConfigMenu()">&#9881; Settings</button>
-    </div>
-
-    <div class="reset-zone">
-      <button class="btn-reset-global" id="btnResetGlobal" onclick="showResetConfirm()">Reset context</button>
-    </div>
-
     <div class="shutdown-zone">
       <button class="btn-shutdown" id="btnShutdown" onclick="showShutdownConfirm()">Shut down</button>
     </div>
   </div>
 
-  <div class="action-feedback">
-    <div class="confirm-row" id="confirmRow">
-      <span>The dialog and current context will be deleted. This cannot be undone.</span>
-      <button onclick="hideResetConfirm()">Cancel</button>
-      <button class="danger" onclick="confirmContextReset()">Reset</button>
-    </div>
-    <div class="confirm-row" id="shutdownConfirmRow">
-      <span>Jarvis will be stopped. You will need to start the process again.</span>
-      <button onclick="hideShutdownConfirm()">Cancel</button>
-      <button class="danger" onclick="confirmShutdown()">Shut down</button>
-    </div>
+  <div class="confirm-row" id="shutdownConfirmRow">
+    <span>Jarvis will be stopped. You will need to start the process again.</span>
+    <button onclick="hideShutdownConfirm()">Cancel</button>
+    <button class="danger" onclick="confirmShutdown()">Shut down</button>
   </div>
 
+</div>
+
+<div class="settings" id="settingsView">
   <div class="config-panel" id="configPanel">
     <div class="config-field">
       <label for="modelSelect">Model</label>

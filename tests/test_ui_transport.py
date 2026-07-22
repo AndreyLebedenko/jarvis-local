@@ -55,6 +55,7 @@ from jarvis.ui.contract import (
     VisibilityMode,
 )
 from jarvis.ui.transport import (
+    MAX_SYSTEM_EVENTS,
     PROTOCOL_VERSION,
     ProtocolError,
     UiStateStore,
@@ -365,6 +366,95 @@ async def test_server_projects_attachment_audio_duration_like_mic_audio():
             "timestamp": 5.0,
             "items": [{"kind": "attachment_audio", "duration_seconds": 3.5}],
         }
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+@pytest.mark.asyncio
+async def test_model_request_also_lands_in_the_user_facing_event_log():
+    """story-v1.6.4-task-2: the chip strip answers "what is true now" and
+    is replaced every turn; the events panel is where a user scrolls back
+    through what earlier turns sent. Both are fed from the same event."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=7.0,
+                inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
+                audio_duration_seconds=2.5,
+            ),
+        )
+
+        events = server.state.snapshot()["system_events"]
+        assert events == [
+            {
+                "entry": "model_request",
+                "timestamp": 7.0,
+                "level": "info",
+                "items": [
+                    {"kind": "audio", "duration_seconds": 2.5},
+                    {"kind": "screenshot"},
+                ],
+            }
+        ]
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+@pytest.mark.asyncio
+async def test_model_request_log_entry_carries_no_payload_content():
+    """story-v1.6.4 content rule: kinds, counts, durations, sizes - never
+    transcript, clipboard text, file names, or image data. The entry is
+    built only from the typed inputs, so there is nowhere for content to
+    enter, and this test fails loudly if a field is ever added."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=8.0,
+                inputs=(ModelRequestInput.CLIPBOARD,),
+                audio_duration_seconds=None,
+            ),
+        )
+
+        entry = server.state.snapshot()["system_events"][0]
+        assert set(entry) == {"entry", "timestamp", "level", "items"}
+        assert entry["items"] == [{"kind": "clipboard"}]
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+@pytest.mark.asyncio
+async def test_model_request_entries_share_the_event_panel_budget():
+    """One panel, one bounded history. A request entry is evicted by the
+    same MAX_SYSTEM_EVENTS rule as any diagnostic line; the durable
+    record is the file log, not this panel."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        for index in range(MAX_SYSTEM_EVENTS + 5):
+            await bus.publish(
+                ModelRequestStarted,
+                ModelRequestStarted(
+                    timestamp=float(index),
+                    inputs=(ModelRequestInput.AUDIO,),
+                    audio_duration_seconds=None,
+                ),
+            )
+
+        events = server.state.snapshot()["system_events"]
+        assert len(events) == MAX_SYSTEM_EVENTS
+        assert events[0]["timestamp"] == 5.0
     finally:
         for event_type, handler in server._subscriptions:
             bus.unsubscribe(event_type, handler)

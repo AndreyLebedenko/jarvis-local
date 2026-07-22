@@ -13,6 +13,7 @@ from jarvis.core.config import (
     DataBoundary,
     HotkeySettings,
     JournalSettings,
+    LoggingSettings,
     McpServerSettings,
     McpSettings,
     McpToolAdapterSettings,
@@ -89,6 +90,40 @@ def test_journal_settings_parse_from_config(tmp_path):
     settings = load_settings(config_path)
 
     assert settings.journal == JournalSettings(enabled=False, root=".local/journal")
+
+
+def test_logging_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [logging]
+        directory = ".local/logs"
+        max_bytes = 100000
+        backup_count = 2
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.logging == LoggingSettings(
+        directory=".local/logs", max_bytes=100000, backup_count=2
+    )
+
+
+@pytest.mark.parametrize(
+    "override",
+    ['directory = ""', "max_bytes = 0", "backup_count = -1"],
+)
+def test_logging_settings_reject_unusable_values(tmp_path, override):
+    """An empty directory, a zero rotation bound, or a negative backup
+    count would each produce a log nobody can rely on - fail at parse
+    time like every other section rather than at first write."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[logging]\n{override}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
 
 
 def test_memory_settings_parse_from_config(tmp_path):

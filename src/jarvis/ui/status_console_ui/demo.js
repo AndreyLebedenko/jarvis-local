@@ -66,11 +66,41 @@ function buildControls() {
       label: "clipboard",
       payload: { timestamp: Date.now() / 1000, items: [{ kind: "clipboard" }] },
     },
+    {
+      label: "text input",
+      payload: { timestamp: Date.now() / 1000, items: [{ kind: "text_input" }] },
+    },
+    {
+      // Every remaining modality in one sample, so the buttons together
+      // cover the full last_request_* vocabulary: the localization pass has
+      // to see each label in both languages, and the attachment labels are
+      // the longest in the catalog - if the chip strip's wrapping breaks
+      // anywhere, it breaks here.
+      label: "attachments",
+      payload: {
+        timestamp: Date.now() / 1000,
+        items: [
+          { kind: "attachment_image" },
+          { kind: "attachment_audio", duration_seconds: 12.5 },
+          { kind: "attachment_text" },
+        ],
+      },
+    },
   ];
+  // story-v1.6.4-task-2: one turn's request reaches two surfaces - the chip
+  // strip ("what is true now") and the events panel ("what happened"). The
+  // engine drives both from one ModelRequestSummary (transport.py's
+  // _on_model_request_started), so one demo button does too: a harness that
+  // could only produce the strip would leave the panel entry unverifiable
+  // without a live turn, which is the failure task-ui-07 exists to prevent.
   for (const sample of requestSamples) {
     const button = document.createElement("button");
     button.textContent = sample.label;
-    button.onclick = () => applyLastModelRequest({ ...sample.payload, timestamp: Date.now() / 1000 });
+    button.onclick = () => {
+      const payload = { ...sample.payload, timestamp: Date.now() / 1000 };
+      applyLastModelRequest(payload);
+      appendSystemEvent({ ...payload, entry: "model_request", level: "info" });
+    };
     root.appendChild(button);
   }
 

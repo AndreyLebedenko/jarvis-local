@@ -60,6 +60,29 @@ html, body {
 
 .mono { font-family: "Consolas", "Cascadia Mono", monospace; }
 
+* {
+  scrollbar-color: var(--border) var(--panel);
+  scrollbar-width: thin;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid var(--panel);
+  border-radius: 10px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--panel);
+}
+
 body {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -142,7 +165,7 @@ body {
 .visibility-toggle button.sel[data-mode="open"] { background: var(--cyan); color: var(--bg); }
 .visibility-toggle button.sel[data-mode="hidden"] { background: var(--violet); color: var(--bg); }
 
-/* task-journal-05: Console | Journal view switcher. Same segmented-control
+/* task-journal-05: Status | Journal | Settings view switcher. Same segmented-control
    shape as the Open/Hidden toggle; both options use cyan (calm/default) -
    switching views is navigation, not a mode with severity semantics. */
 .view-toggle {
@@ -162,8 +185,14 @@ body {
   grid-area: main;
   padding: 26px 34px;
   overflow-y: auto;
-  display: flex; flex-direction: column; align-items: center; gap: 26px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
 }
+/* task-v1.6.3-4: .main scrolls, so its children must never be squashed to
+   fit - that is what the scrollbar is for. Without this the orb loses
+   height when the column overflows while its ring, being absolutely
+   positioned at 132px, does not: the circle turns into an ellipse inside
+   a still-round ring, and everything below shifts. */
+.main > * { flex-shrink: 0; }
 
 .orb-wrap { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
 .ring {
@@ -190,13 +219,28 @@ body {
 .orb-sub { margin-top: 2px; font-size: 12.5px; color: var(--text-dim); text-align: center; max-width: 420px; min-height: 16px; }
 
 .chip-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
-.modules-panel, .last-request-panel { width: min(760px, 100%); }
-.modules-panel h2, .last-request-panel h2 {
+.modules-panel { width: min(760px, 100%); }
+.modules-panel h2 {
   margin: 0 0 8px; color: var(--text-dim); font: 11px "Consolas", "Cascadia Mono", monospace;
   letter-spacing: 0.8px; text-transform: uppercase;
 }
-.last-request-panel ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.last-request-panel li { padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-dim); font-size: 11px; }
+
+/* task-v1.6.3-4: what the last turn actually sent to the model. It used
+   to be a titled section, which cost a heading, a section, and a column
+   gap for a single wrapping line. It reads as metadata about the state
+   above it, so it sits with the orb state instead of standing alone.
+   Not deleted in favour of the Journal: the Journal labels each message
+   with its source but has no equivalent for last_request_screenshot and
+   never shows audio duration, so this is the only place the UI answers
+   "was a screenshot sent to the model". */
+.last-request-strip {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  margin: 8px 0 0; padding: 0; list-style: none; max-width: 520px;
+}
+.last-request-strip li {
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text-dim); font-size: 11px;
+}
 .chip {
   display: flex; align-items: center; gap: 10px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
@@ -269,7 +313,14 @@ body {
   border-radius: 6px; padding: 7px 14px; cursor: pointer;
 }
 .mcp-header button:disabled { cursor: default; opacity: 0.55; }
-.mcp-tools { margin: 12px 0 0; padding: 0; list-style: none; }
+/* task-v1.6.3-4: bounded so tool-count growth stays inside the card.
+   v1.6.1's builtin provider adds tools to this same list; an unbounded
+   list would push Shutdown off the column no matter how tall the window
+   is, which is why the window height is not the lever here. */
+.mcp-tools {
+  margin: 12px 0 0; padding: 0; list-style: none;
+  max-height: 180px; overflow-y: auto;
+}
 .mcp-tools li {
   padding: 6px 0; border-top: 1px solid var(--border); color: var(--text-dim);
   font: 11px "Consolas", "Cascadia Mono", monospace;
@@ -277,32 +328,32 @@ body {
 .mcp-tools li[data-available="false"] { color: var(--text-faint); }
 .mcp-tools-empty { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
 
-/* story-v1.2.10-task-5: keep the three primary actions in one stable row.
-   The confirmation panels live below it so opening one never moves another
-   primary action to a different row. */
+/* story-v1.2.10-task-5: keep the primary action in a stable row. The
+   confirmation panel lives below it so opening it never moves the action.
+   task-v1.6.3-4 tried pinning this row to the bottom with margin-top:
+   auto and reverted it: a bottom-pinned row absorbs the confirmation's
+   height out of the column's free space, so opening the confirmation
+   moved the Shutdown button up by its own height (measured: 63px). The
+   no-movement guarantee above is the older and stronger commitment, so
+   the row stays in normal flow and trailing free space is accepted. */
 .action-row {
   display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: center;
   gap: 10px 16px; width: 100%; max-width: 760px;
 }
-.config-zone, .reset-zone, .shutdown-zone {
+.shutdown-zone {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   min-width: 0;
 }
-.config-zone { width: auto; }
-.action-feedback {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  width: 100%; max-width: 760px; min-width: 0;
-}
-.btn-reset-global {
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
-  padding: 9px 20px; border-radius: 8px; border: 1px solid var(--amber-dim);
-  background: var(--amber-tint); color: var(--amber); cursor: pointer; transition: all 0.15s;
-}
-.btn-reset-global:hover { filter: brightness(1.1); }
+/* task-v1.6.3-4: the confirmation is a direct child of the column now.
+   It used to sit in an .action-feedback wrapper that was always present
+   and therefore always claimed one column gap, even though its only
+   child stays display:none until a confirmation opens. A display:none
+   element is not a flex item at all, so no wrapper means no wasted gap. */
 .confirm-row {
   display: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
   background: var(--panel-2); border: 1px solid var(--red-dim); border-radius: 8px;
-  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim); width: 100%;
+  padding: 10px 14px; font-size: 12.5px; color: var(--text-dim);
+  width: 100%; max-width: 760px;
 }
 .confirm-row.show { display: flex; }
 .confirm-row button {
@@ -312,25 +363,21 @@ body {
 }
 .confirm-row button.danger { background: var(--red); border-color: var(--red); color: #1a0d0d; }
 
-/* story-v1.2.4-task-3: configuration menu (model + microphone,
-   restart-to-apply). Cyan, matching this project's "calm/default action"
-   color (same family as Open/data-locality) - unlike reset/shutdown below,
-   saving here is not itself destructive (it only ever touches
-   config.ui.toml, applied on next restart), so it does not need amber/red
-   severity coloring. */
-.btn-config-toggle {
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
-  padding: 9px 20px; border-radius: 8px; border: 1px solid var(--cyan-dim);
-  background: var(--cyan-tint); color: var(--cyan); cursor: pointer; transition: all 0.15s;
-}
-.btn-config-toggle:hover { filter: brightness(1.1); }
+/* No align-self here. It carried `center` from the pre-v1.6.3 layout, where
+   this panel was an inline form inside .main - a column flex, so the cross
+   axis was horizontal and `center` meant "center it horizontally". v1.6.3
+   moved the panel into .settings, a row flex, where the identical
+   declaration silently changed meaning to "center it vertically" and
+   overrode the container's align-items: flex-start. A flex item centered on
+   the overflowing axis spills past the container's start edge into space no
+   scrollbar can reach, so on any window shorter than about 720 px the top of
+   the form - Model and Microphone - was cut off and unreachable. Horizontal
+   centering already comes from the container's justify-content: center. */
 .config-panel {
-  display: none; flex-direction: column; gap: 12px; width: 100%; max-width: 420px;
-  align-self: center;
+  display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 520px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 18px;
 }
-.config-panel.show { display: flex; }
 .config-field { display: flex; flex-direction: column; gap: 4px; }
 .config-field label { font-size: 11.5px; color: var(--text-dim); }
 .config-field select,
@@ -456,6 +503,15 @@ html[data-transport="offline"] .transport-status {
 .log-entry[data-level="error"] .log-src { background: var(--red-tint); color: var(--red); }
 .log-entry[data-level="error"] .log-msg { color: var(--red); }
 
+/* story-v1.6.4-task-2: the user-facing record of what a turn sent to the
+   model. Violet marks it as a different kind of line from the engine
+   diagnostics around it without implying severity - it is neither a
+   warning nor an error, and the severity colors are spoken for. */
+.log-entry[data-entry="model_request"] .log-src {
+  background: var(--violet-tint); color: var(--violet);
+}
+.log-entry[data-entry="model_request"] .log-msg { color: var(--text); }
+
 .legend {
   display: flex; flex-wrap: wrap; gap: 10px; padding-top: 14px; margin-top: auto;
   border-top: 1px solid var(--border-soft); font-size: 10px; color: var(--text-faint);
@@ -464,12 +520,13 @@ html[data-transport="offline"] .transport-status {
 .legend span { display: flex; align-items: center; gap: 5px; }
 .legend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 
-/* ===== JOURNAL VIEW (task-journal-05, static) ===== */
+/* ===== JOURNAL / SETTINGS VIEWS ===== */
 /* The Journal view replaces the central column and hides System Events
-   while active (story-v1.5.0 UI/UX). data-view="console" is the default
-   on <html>, and none of these rules match then, so the Console view
+   while active (story-v1.5.0 UI/UX). data-view="status" is the default
+   on <html>, and none of these rules match then, so the Status view
    stays exactly as before this task. */
-.journal { display: none; }
+.journal,
+.settings { display: none; }
 html[data-view="journal"] .main { display: none; }
 html[data-view="journal"] .logpanel { display: none; }
 html[data-view="journal"] body {
@@ -481,6 +538,21 @@ html[data-view="journal"] .journal {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   overflow: hidden;
+  min-height: 0;
+}
+html[data-view="settings"] .main { display: none; }
+html[data-view="settings"] .logpanel { display: none; }
+html[data-view="settings"] body {
+  grid-template-columns: 1fr;
+  grid-template-areas: "top" "main";
+}
+html[data-view="settings"] .settings {
+  grid-area: main;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 26px 34px;
   min-height: 0;
 }
 
@@ -845,5 +917,6 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
   .journal-search { flex-wrap: wrap; padding: 10px 16px; }
   .journal-search-query { flex-basis: 100%; }
   .journal-input-dock { padding: 9px 16px; }
-  html[data-view="journal"] body { height: 100vh; overflow: hidden; }
+  html[data-view="journal"] body,
+  html[data-view="settings"] body { height: 100vh; overflow: hidden; }
 }

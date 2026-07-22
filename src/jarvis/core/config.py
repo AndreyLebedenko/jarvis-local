@@ -377,6 +377,19 @@ class JournalSettings:
     root: str = "journal"
 
 
+@dataclass(frozen=True)
+class LoggingSettings:
+    """story-v1.6.4: where the detailed English engine log is written.
+    The setting is the directory, not the file name - rotation owns file
+    naming, and a user-chosen name would collide with its suffixes."""
+
+    directory: str = field(default="logs", metadata={"non_empty": True})
+    max_bytes: int = field(
+        default=2_000_000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    backup_count: int = field(default=5, metadata={"minimum": 0})
+
+
 DEFAULT_FORK_SEED_MAX_CHARS = 12000
 
 
@@ -456,6 +469,7 @@ class Settings:
     prompts: PromptSettings = field(default_factory=PromptSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
+    logging: LoggingSettings = field(default_factory=LoggingSettings)
     memory: MemorySettings = field(default_factory=MemorySettings)
 
 
@@ -473,6 +487,7 @@ _SECTIONS: dict[str, type] = {
     "prompts": PromptSettings,
     "mcp": McpSettings,
     "journal": JournalSettings,
+    "logging": LoggingSettings,
     "memory": MemorySettings,
 }
 
@@ -521,6 +536,8 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         return _build_mcp_section(section_name, raw)
     if cls is MemorySettings:
         return _build_memory_section(section_name, raw)
+    if cls is LoggingSettings:
+        return _build_logging_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -568,6 +585,23 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
                 f"[{section_name}].{name} must be a non-empty string; an empty "
                 "prompt is almost certainly a config mistake"
             )
+    return settings
+
+
+def _build_logging_section(section_name: str, raw: dict[str, Any]) -> "LoggingSettings":
+    settings = _build_plain_section(section_name, LoggingSettings, raw)
+    if not settings.directory.strip():
+        raise ConfigError(f"[{section_name}].directory must not be empty")
+    if settings.max_bytes <= 0:
+        raise ConfigError(
+            f"[{section_name}].max_bytes must be a positive int, "
+            f"got {settings.max_bytes!r}"
+        )
+    if settings.backup_count < 0:
+        raise ConfigError(
+            f"[{section_name}].backup_count must not be negative, "
+            f"got {settings.backup_count!r}"
+        )
     return settings
 
 

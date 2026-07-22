@@ -19,16 +19,27 @@ their own network requirements.
 
 ## Status Console UI
 
-v1.6.1 includes the Control Center and persistent Dialog Journal evolution of the local desktop Status Console:
-runtime and module health, timestamp-first metadata for the latest request to
-the model, system events, graded reasoning (Off/Low/Medium/High), Open/Hidden
-visibility mode, context reset, guarded Shutdown, typed restart-to-apply
-configuration (model, microphone, TTS routes, UI language, and VAD), Journal
-text input with local file attachments, answer copy controls, screenshot
-thumbnails, manual journal disk management, session fork, editable curated
-memory files, local builtin tools for delegated reasoning/memory updates, and a
-compact touchstrip glance surface. Since v1.2.11 the UI is English by default,
-with Russian available via `[ui].language = "ru"`.
+Since v1.6.3 the console is organized into three tabs, by the nature of the
+data rather than by widget type:
+
+- **Status** - live engine state and controls that act immediately: runtime
+  and module health, timestamp-first metadata for the latest request to the
+  model, graded reasoning (Off/Low/Medium/High), the external tools (MCP)
+  toggle with its tool list, system events, and a guarded Shutdown. The
+  events panel also records each turn's request to the model in the
+  interface language - see [Logs and diagnostics](#logs-and-diagnostics).
+- **Journal** - the conversation surface: persistent dialog log, text input
+  with local file attachments, answer copy controls, screenshot thumbnails,
+  manual journal disk management, session fork, editable curated memory
+  files, and the explicit "New context" action.
+- **Settings** - cold configuration, restart-to-apply: model, microphone,
+  UI language, TTS routes, and VAD.
+
+The header stays the same on every tab: the `LOCAL` and `LOCAL SOURCES`
+honesty indicators and the Open/Hidden visibility mode never disappear behind
+a tab switch. Local builtin tools for delegated reasoning and memory updates
+and the compact touchstrip glance surface are unchanged. Since v1.2.11 the UI
+is English by default, with Russian available via `[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
@@ -94,6 +105,9 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   microphone sleep, Open/Hidden, and MCP enablement are not delegable.
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
+- Durable local system log with bounded rotation for after-the-fact
+  diagnosis, alongside a localized per-turn record of what was sent to the
+  model in the console's events panel. Neither carries request content.
 - Async event-bus architecture with isolated modules.
 - Type-checked TOML configuration, including the dialog prompts: the
   system prompt and warm-up request are set via `[prompts]` in
@@ -169,6 +183,37 @@ Default hotkeys:
 - `Ctrl+Alt+M`: toggle microphone sleep/wake.
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
 - `Ctrl+Alt+Q`: shut down Jarvis.
+
+## Logs and diagnostics
+
+Jarvis keeps two separate records, for two different questions.
+
+**The system log** answers "what went wrong". It is a detailed English log
+file at `logs/jarvis.log`, written whether or not Jarvis was started from a
+terminal, and it survives the process exiting. **This is the file to attach
+to a problem report.** It rotates at 2 MB and keeps 5 previous files, so the
+whole set stays around 10 MB and cannot fill a disk during a long session.
+The directory and both bounds are configurable under `[logging]` in
+`config.toml`; the setting is the directory, because rotation owns the file
+names. If the log cannot be opened, Jarvis still starts and warns instead.
+
+The log never leaves your machine on its own. There is no telemetry, no
+upload path, and no network sink - sending it anywhere is always you
+attaching a file.
+
+**The events panel** on the Status tab answers "what has Jarvis been doing",
+in your interface language. It shows engine events and one record per turn
+of what that turn sent to the model - voice with its duration, screenshot,
+clipboard, typed message, or attachments. It is a live view holding the most
+recent 200 entries and it starts empty on reconnect, so it is not a
+diagnostic tool: a crash before the window opens leaves nothing here, which
+is exactly why the file log exists.
+
+Neither record contains what you actually said or sent. Both are limited to
+kinds, counts, durations, and sizes - no transcripts, no clipboard text, no
+image data, and no attachment contents. The events panel additionally holds
+no file names, so leaving it visible does not expose anything Hidden mode is
+meant to conceal.
 
 ## Optional MCP examples: DDGS and Qdrant
 
