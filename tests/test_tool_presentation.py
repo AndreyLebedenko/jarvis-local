@@ -259,9 +259,11 @@ async def test_tool_result_image_is_available_only_to_the_current_tool_follow_up
     await dialog.chat(messages)
 
     follow_up_messages = backend.raw_calls[1]["messages"]
-    assert follow_up_messages[3]["images"] == ["aW1hZ2U="]
-    assert "images" not in follow_up_messages[1]
-    assert "aW1hZ2U=" not in str(follow_up_messages[-1])
+    media_message = follow_up_messages[-1]
+    assert media_message["images"] == ["aW1hZ2U="]
+    assert follow_up_messages[-2]["role"] == "tool"
+    assert "search_web" in str(media_message["content"])
+    assert all("images" not in message for message in follow_up_messages[:-1])
     assert all("images" not in message for message in messages)
 
 
@@ -689,3 +691,100 @@ async def test_stream_without_done_still_completes_final_turn_once():
     await dialog.chat([{"role": "user", "content": "hello"}])
 
     assert completions == [ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0))]
+
+
+@pytest.mark.asyncio
+async def test_two_captures_in_one_turn_each_carry_their_own_source_text():
+    """The defect this replaced: both frames were appended to the turn's
+    original user message, so the model saw two images in a row with
+    nothing tying either to the result that named its camera."""
+    backend = FakeBackend(
+        [
+            _native_calls(
+                ("capture_camera_image", {"source": "wide"}),
+                ("capture_camera_image", {"source": "detail"}),
+            ),
+            _done("The detail lens shows the shelf."),
+        ]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool("capture_camera_image")),
+        FakeDispatcher(
+            [
+                ToolDispatchResult(
+                    ok=True,
+                    correlation_id="1",
+                    content="Captured one camera image from wide for this turn.",
+                    images_b64=("d2lkZQ==",),
+                ),
+                ToolDispatchResult(
+                    ok=True,
+                    correlation_id="2",
+                    content="Captured one camera image from detail for this turn.",
+                    images_b64=("ZGV0YWls",),
+                ),
+            ]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    await dialog.chat([{"role": "user", "content": "look through both"}])
+
+    follow_up = backend.raw_calls[1]["messages"]
+    media = [message for message in follow_up if "images" in message]
+    assert [message["images"] for message in media] == [["d2lkZQ=="], ["ZGV0YWls"]]
+    assert "wide" in str(media[0]["content"])
+    assert "detail" in str(media[1]["content"])
+    assert "detail" not in str(media[0]["content"])
+    # Each frame follows its own result rather than piling onto the user
+    # message that started the turn.
+    assert follow_up[0] == {"role": "user", "content": "look through both"}
+    assert "images" not in follow_up[0]
+    for index, message in enumerate(follow_up):
+        if "images" in message:
+            assert follow_up[index - 1]["role"] == "tool"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_capture_does_not_discard_the_frame_that_arrived():
+    backend = FakeBackend(
+        [
+            _native_calls(
+                ("capture_camera_image", {"source": "wide"}),
+                ("capture_camera_image", {"source": "detail"}),
+            ),
+            _done("Only the wide lens answered."),
+        ]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool("capture_camera_image")),
+        FakeDispatcher(
+            [
+                ToolDispatchResult(
+                    ok=True,
+                    correlation_id="1",
+                    content="Captured one camera image from wide for this turn.",
+                    images_b64=("d2lkZQ==",),
+                ),
+                ToolDispatchResult(
+                    ok=False,
+                    correlation_id="2",
+                    content=None,
+                    error="Camera capture timed out for source detail",
+                ),
+            ]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    await dialog.chat([{"role": "user", "content": "look through both"}])
+
+    follow_up = backend.raw_calls[1]["messages"]
+    media = [message for message in follow_up if "images" in message]
+    assert [message["images"] for message in media] == [["d2lkZQ=="]]

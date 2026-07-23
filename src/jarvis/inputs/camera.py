@@ -22,16 +22,25 @@ from jarvis.core.config import (
 @dataclass(frozen=True)
 class CameraStateChanged:
     enabled: bool
+    # Sources that did not answer their probe while the module still has
+    # at least one that did. The module is usable, so it is enabled, but
+    # the chip must not claim ready: an unreachable LAN camera is a real
+    # condition a person needs to see, unlike a USB device that simply is
+    # not configured.
+    unreachable_sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class CameraCaptureSucceeded:
-    pass
+    # Which source answered. Module health is per module, but reachability
+    # is per source: a frame from the USB camera says nothing about a LAN
+    # camera that did not answer its probe, and must not clear it.
+    source: str = ""
 
 
 @dataclass(frozen=True)
 class CameraCaptureFailed:
-    pass
+    source: str = ""
 
 
 class CameraError(Exception):
@@ -234,6 +243,26 @@ class CameraCapture:
     async def probe(self, source_name: str | None = None) -> None:
         source = self._source(source_name)
         await self._run("probe", source, *self._probe_call(source))
+
+    async def probe_all(self) -> tuple[str, ...]:
+        """Names of the sources that did not answer, in configured order.
+
+        Returning them rather than raising is what lets the caller tell a
+        camera module that is unusable from one that is merely incomplete:
+        a LAN camera out of reach is a different condition from every
+        camera being gone, and only the second should refuse to turn on."""
+        unreachable = []
+        for source in self.sources:
+            try:
+                await self.probe(source.name)
+            except CameraError:
+                unreachable.append(source.name)
+        return tuple(unreachable)
+
+    def resolve_source_name(self, source_name: str | None) -> str:
+        """The configured name behind what a caller asked for, so a failure
+        is reported against the source as configured rather than as typed."""
+        return self._source(source_name).name
 
     def _source(self, source_name: str | None) -> CameraSource:
         sources = self.sources

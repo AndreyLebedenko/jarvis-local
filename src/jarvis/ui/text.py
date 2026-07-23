@@ -91,8 +91,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vision_detail_failed": "capture failed",
         "camera_detail_disabled": "privacy off",
         "camera_detail_ready": "ready",
+        "camera_detail_partial": "some cameras unreachable",
         "camera_detail_failed": "capture failed",
         # System event ui_message strings.
+        "camera_sources_unreachable": "Camera on, but unreachable: {sources}",
         "context_reset": "Conversation context reset",
         "module_reset_unsupported": (
             "Reset of {module} requested, but not supported by the engine yet"
@@ -167,7 +169,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vision_detail_failed": "сбой захвата",
         "camera_detail_disabled": "приватность выключена",
         "camera_detail_ready": "готова",
+        "camera_detail_partial": "часть камер недоступна",
         "camera_detail_failed": "сбой захвата",
+        "camera_sources_unreachable": "Камера включена, но недоступны: {sources}",
         "context_reset": "Контекст диалога сброшен",
         "module_reset_unsupported": (
             "Сброс {module} запрошен, но пока не поддерживается движком"

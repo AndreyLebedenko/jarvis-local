@@ -42,7 +42,7 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
-from jarvis.tools.interception import ToolCallStarted
+from jarvis.tools.interception import ToolCallFinished, ToolCallStarted
 from jarvis.ui.contract import (
     EventLevel,
     HealthStatus,
@@ -2284,3 +2284,60 @@ def _journal_clock():
     from datetime import UTC, datetime
 
     return lambda: datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_lan_capture_widens_the_axis_when_the_call_finishes():
+    """A camera tool is registered local, because its default source is a
+    USB device; only the finished call knows a LAN source was used. The
+    axis must follow that, and a later local call must not pull it back."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ToolCallStarted,
+            ToolCallStarted(
+                correlation_id="call-1",
+                tool_name="capture_camera_image",
+                provider="builtin",
+                arguments={"source": "wide"},
+                outbound_summary="builtin.capture_camera_image(source='wide')",
+                timestamp=1.0,
+                data_boundary=DataBoundary.LOCAL,
+            ),
+        )
+        assert server.state.snapshot()["data_source"] == {"source": "local_only"}
+
+        await bus.publish(
+            ToolCallFinished,
+            ToolCallFinished(
+                correlation_id="call-1",
+                tool_name="capture_camera_image",
+                provider="builtin",
+                outbound_summary="builtin.capture_camera_image(source='wide')",
+                duration_seconds=1.9,
+                ok=True,
+                error=None,
+                data_boundary=DataBoundary.LAN,
+            ),
+        )
+        assert server.state.snapshot()["data_source"] == {"source": "lan"}
+
+        await bus.publish(
+            ToolCallFinished,
+            ToolCallFinished(
+                correlation_id="call-2",
+                tool_name="capture_camera_image",
+                provider="builtin",
+                outbound_summary="builtin.capture_camera_image(source='desk')",
+                duration_seconds=3.5,
+                ok=True,
+                error=None,
+                data_boundary=DataBoundary.LOCAL,
+            ),
+        )
+        assert server.state.snapshot()["data_source"] == {"source": "lan"}
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)

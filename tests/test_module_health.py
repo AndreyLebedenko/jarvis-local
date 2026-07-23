@@ -5,6 +5,11 @@ from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete
+from jarvis.inputs.camera import (
+    CameraCaptureFailed,
+    CameraCaptureSucceeded,
+    CameraStateChanged,
+)
 from jarvis.inputs.capture import CaptureFailed, ScreenshotCaptured
 from jarvis.ui.contract import HealthStatus, ModuleId
 from jarvis.ui.module_health import ModuleHealthChanged, ModuleHealthTracker
@@ -165,3 +170,72 @@ async def test_no_signal_publishes_nothing():
     _bus, recorder = _tracked_bus()
 
     assert recorder.events == []
+
+
+async def test_camera_enabled_with_every_source_answering_reports_ok():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(CameraStateChanged, CameraStateChanged(enabled=True))
+
+    assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
+        (ModuleId.CAMERA, HealthStatus.OK, "camera_detail_ready")
+    ]
+
+
+async def test_camera_with_an_unreachable_source_never_claims_ready():
+    """A LAN camera can be configured, enabled, and simply not answering -
+    a condition an unplugged USB device does not have. The module still
+    works through its other sources, so it is neither ready nor failed."""
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        CameraStateChanged,
+        CameraStateChanged(enabled=True, unreachable_sources=("wide",)),
+    )
+
+    assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
+        (ModuleId.CAMERA, HealthStatus.DEGRADED, "camera_detail_partial")
+    ]
+
+
+async def test_a_frame_from_one_camera_does_not_clear_another_that_is_unreachable():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        CameraStateChanged,
+        CameraStateChanged(enabled=True, unreachable_sources=("wide",)),
+    )
+    await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded("desk"))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.DEGRADED, "camera_detail_partial")
+    ]
+
+
+async def test_a_frame_from_the_unreachable_camera_itself_restores_ready():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        CameraStateChanged,
+        CameraStateChanged(enabled=True, unreachable_sources=("wide",)),
+    )
+    await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded("wide"))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.DEGRADED, "camera_detail_partial"),
+        (HealthStatus.OK, "camera_detail_ready"),
+    ]
+
+
+async def test_a_failed_source_keeps_the_module_degraded_after_another_succeeds():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(CameraStateChanged, CameraStateChanged(enabled=True))
+    await bus.publish(CameraCaptureFailed, CameraCaptureFailed("wide"))
+    await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded("desk"))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.OK, "camera_detail_ready"),
+        (HealthStatus.ERROR, "camera_detail_failed"),
+        (HealthStatus.DEGRADED, "camera_detail_partial"),
+    ]

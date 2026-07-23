@@ -234,6 +234,44 @@ system is intended to grow.
   documented for v1.6.2; the owner reopened it as a design question on
   2026-07-23 as a project-wide question, not a camera one, and it is
   captured in `tasks/backlog/secret-storage.md`.
+- **Media from a tool result travels in its own message, bound to that
+  result (decision, task v1.6.2-7).** The v1.6.0 contract appended a tool
+  result's frames to the turn's last `user` message, found by searching
+  backwards. Under the default `native` strategy tool results have role
+  `tool`, so the search skipped them and landed on the original user
+  message: two camera captures arrived as an unlabeled pair of images with
+  nothing tying either to the result naming its camera, and the model could
+  attribute them only by order. Each result's media now travels in its own
+  message appended immediately after that result, repeating the result's
+  own text. The message is `user`, not `tool`, because role `user` carrying
+  `images` is the verified media path and image support on a `tool` message
+  is model-template-dependent; repeating the result text keeps the binding
+  even if a template flattens roles. The rule is general for any
+  media-producing tool, not a camera special case, and the current-turn-only
+  guarantee is unchanged - none of it reaches history.
+- **A tool call's data boundary may be widened by its arguments (decision,
+  task v1.6.2-7).** `capture_camera_image` reads a USB device or a LAN
+  stream depending on the source asked for, so a single registered boundary
+  would understate one of them. A result may therefore carry its own
+  boundary, and reporting takes the wider of the two - never the narrower,
+  so no call can talk its declared reach back down. The axis is recorded
+  from the finished call as well as the started one, because which source
+  ran is not known until then; recording stays monotonic within a turn, so
+  a mixed turn reports LAN and a later local capture cannot pull it back.
+- **An unreachable camera degrades the module rather than disabling it
+  (decision, task v1.6.2-7).** Enabling the camera probes every configured
+  source. All answering is OK; none answering refuses to turn on, exactly
+  as an unplugged USB device does today; some answering enables the module
+  with a DEGRADED chip and a warning naming the unreachable sources. A LAN
+  camera can be configured, enabled, and simply not responding - a state a
+  USB device does not have - and a laptop away from the home network must
+  not lose its USB camera because of it.
+- **The tool-call budget stays at 3 for camera captures (decision, task
+  v1.6.2-7).** Two cameras in one turn cost two calls and fit. A three-
+  camera survey exhausts the budget and gets the existing explicit
+  "budget exhausted" message rather than a silently dropped frame. The
+  budget is a general safeguard against runaway tool loops, not a camera
+  setting, and raising it for one scenario would weaken it everywhere.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process

@@ -54,7 +54,7 @@ from jarvis.memory.files import (
     MemoryFileRead,
     MemoryFileRepository,
 )
-from jarvis.tools.interception import ToolCallStarted
+from jarvis.tools.interception import ToolCallFinished, ToolCallStarted
 from jarvis.ui.contract import (
     DataLocality,
     DataSource,
@@ -690,6 +690,7 @@ class UiTransportServer:
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
             (ToolCallStarted, self._on_tool_call_started),
+            (ToolCallFinished, self._on_tool_call_finished),
             (ModelOptionsAvailable, self._on_model_options_available),
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
@@ -740,6 +741,13 @@ class UiTransportServer:
         self._publish_delta(self._state.add_model_request_event(summary))
 
     async def _on_tool_call_started(self, event: ToolCallStarted) -> None:
+        self._publish_delta(self._state.record_tool_boundary(event.data_boundary))
+
+    async def _on_tool_call_finished(self, event: ToolCallFinished) -> None:
+        # A call whose reach depends on its arguments - a camera capture
+        # naming a LAN source - is only known to be wider than its tool's
+        # declared boundary once it has run. Recording is monotonic, so a
+        # local call finishing after a LAN one cannot pull the axis back.
         self._publish_delta(self._state.record_tool_boundary(event.data_boundary))
 
     async def _on_model_options_available(self, event: ModelOptionsAvailable) -> None:

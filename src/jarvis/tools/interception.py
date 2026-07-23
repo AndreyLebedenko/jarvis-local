@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import DataBoundary
+from jarvis.core.config import DataBoundary, widest_data_boundary
 from jarvis.core.system_log import publish_system_event
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.mcp_client import McpTransportError
@@ -341,7 +341,12 @@ class ToolDispatcher:
                 content=result.content,
                 structured_content=result.structured_content,
                 images_b64=result.images_b64,
-                data_boundary=tool.data_boundary,
+                # A per-call boundary widens the registered one, never
+                # narrows it: a tool declared to reach the internet cannot
+                # talk its own call back down to local.
+                data_boundary=widest_data_boundary(
+                    tool.data_boundary, result.data_boundary
+                ),
                 level=EventLevel.INFO if ok else EventLevel.WARN,
                 log_message=(
                     f"Tool {tool_name!r} via {tool.provider!r} finished in "

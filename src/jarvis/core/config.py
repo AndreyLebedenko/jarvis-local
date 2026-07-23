@@ -68,6 +68,26 @@ class DataBoundary(enum.Enum):
     UNKNOWN = "unknown"
 
 
+_DATA_BOUNDARY_REACH = {
+    DataBoundary.LOCAL: 0,
+    # Above LOCAL deliberately: an undeclared destination must never be
+    # reported as proof that data stayed on this machine.
+    DataBoundary.UNKNOWN: 1,
+    DataBoundary.LAN: 2,
+    DataBoundary.INTERNET: 3,
+}
+
+
+def widest_data_boundary(*boundaries: DataBoundary | None) -> DataBoundary:
+    """The furthest reach among the given boundaries. Reporting is
+    monotonic: combining boundaries can only ever widen the answer, so no
+    call can talk its own declared reach back down."""
+    known = [boundary for boundary in boundaries if boundary is not None]
+    if not known:
+        return DataBoundary.UNKNOWN
+    return max(known, key=lambda boundary: _DATA_BOUNDARY_REACH[boundary])
+
+
 @dataclass(frozen=True)
 class BackendSettings:
     model: str = "gemma4:12b-it-qat"

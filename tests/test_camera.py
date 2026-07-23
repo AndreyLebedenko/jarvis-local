@@ -341,3 +341,30 @@ async def test_a_failing_lan_capture_never_leaks_the_password_into_the_error():
     assert WIDE.password not in message
     assert "%23" not in message
     assert "wide" in message
+
+
+@pytest.mark.asyncio
+async def test_probe_all_reports_only_the_sources_that_did_not_answer():
+    class HalfDeadBackend(FakeBackend):
+        def probe_lan(self, url: str, timeout_seconds: float) -> None:
+            del url, timeout_seconds
+            raise CameraError("unreachable")
+
+    capture = CameraCapture(
+        CameraSettings(sources=(UsbCameraSource(name="desk"), WIDE)),
+        CameraState(True),
+        HalfDeadBackend(),
+    )
+
+    assert await capture.probe_all() == ("wide",)
+
+
+@pytest.mark.asyncio
+async def test_probe_all_is_empty_when_every_source_answers():
+    capture = CameraCapture(
+        CameraSettings(sources=(UsbCameraSource(name="desk"), WIDE)),
+        CameraState(True),
+        FakeBackend(),
+    )
+
+    assert await capture.probe_all() == ()

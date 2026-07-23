@@ -5,7 +5,12 @@ from collections.abc import Awaitable, Callable
 
 from jarvis.core.config import BUILTIN_TOOL_PROVIDER_NAME, DataBoundary
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
-from jarvis.inputs.camera import CameraCapture, CameraDisabledError, CameraError
+from jarvis.inputs.camera import (
+    CameraCapture,
+    CameraDisabledError,
+    CameraError,
+    UnknownCameraSourceError,
+)
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileOverCapError,
@@ -30,8 +35,8 @@ class BuiltinToolProvider:
         thinking_mode: ReasoningLevelState,
         memory_file_repository: MemoryFileRepository,
         camera_capture: CameraCapture | None = None,
-        on_camera_capture: Callable[[], Awaitable[None]] | None = None,
-        on_camera_failure: Callable[[], Awaitable[None]] | None = None,
+        on_camera_capture: Callable[[str], Awaitable[None]] | None = None,
+        on_camera_failure: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._thinking_mode = thinking_mode
         self._memory_file_repository = memory_file_repository
@@ -40,7 +45,9 @@ class BuiltinToolProvider:
         self._on_camera_failure = on_camera_failure
 
     def register_tools(self, registry: ToolRegistry) -> None:
-        registry.set_provider_tools(BUILTIN_TOOL_PROVIDER_NAME, _builtin_tools())
+        registry.set_provider_tools(
+            BUILTIN_TOOL_PROVIDER_NAME, _builtin_tools(self._camera_capture)
+        )
 
     async def call_tool(self, name: str, arguments: ToolArguments) -> ToolCallResult:
         if name == _REASONING_TOOL_NAME:
@@ -55,22 +62,40 @@ class BuiltinToolProvider:
         )
 
     async def _capture_camera_image(self, arguments: ToolArguments) -> ToolCallResult:
-        if arguments:
+        unknown_arguments = set(arguments) - {"source"}
+        if unknown_arguments:
             return ToolCallResult(
-                content="capture_camera_image takes no arguments", is_error=True
+                content=(
+                    "capture_camera_image takes only an optional 'source': "
+                    f"{', '.join(sorted(unknown_arguments))}"
+                ),
+                is_error=True,
             )
         if self._camera_capture is None:
             return ToolCallResult(content="Camera is not configured", is_error=True)
+        source_name = arguments.get("source")
+        if source_name is not None and not isinstance(source_name, str):
+            return ToolCallResult(content="source must be a string", is_error=True)
         try:
-            frame = await self._camera_capture.capture()
+            frame = await self._camera_capture.capture(source_name)
         except CameraDisabledError as exc:
             return ToolCallResult(content=str(exc), is_error=True)
+        except UnknownCameraSourceError as exc:
+            # No camera was touched, so this is not a capture failure and
+            # must not degrade the module. The model gets the catalogue
+            # back and can correct itself within the same turn.
+            return ToolCallResult(
+                content=f"{exc}. {_camera_source_catalogue(self._camera_capture)}",
+                is_error=True,
+            )
         except CameraError as exc:
             if self._on_camera_failure is not None:
-                await self._on_camera_failure()
+                await self._on_camera_failure(
+                    self._camera_capture.resolve_source_name(source_name)
+                )
             return ToolCallResult(content=str(exc), is_error=True)
         if self._on_camera_capture is not None:
-            await self._on_camera_capture()
+            await self._on_camera_capture(frame.source)
         return ToolCallResult(
             content=f"Captured one camera image from {frame.source} for this turn.",
             structured_content={
@@ -78,6 +103,7 @@ class BuiltinToolProvider:
                 "data_boundary": frame.data_boundary.value,
             },
             images_b64=(base64.b64encode(frame.jpeg_bytes).decode("ascii"),),
+            data_boundary=frame.data_boundary,
         )
 
     async def _set_reasoning_level(self, arguments: ToolArguments) -> ToolCallResult:
@@ -202,7 +228,47 @@ def _memory_file_label(file_id: MemoryFileId) -> str:
     return "memory.md" if file_id is MemoryFileId.MEMORY else "self.md"
 
 
-def _builtin_tools() -> list[RegisteredTool]:
+def _camera_source_catalogue(camera_capture: CameraCapture) -> str:
+    """What the model is told about the cameras it may address. The
+    description is the source's own, so a motorized lens can say that it
+    shows wherever it was last aimed instead of implying a fixed view."""
+    entries = "; ".join(
+        f"{source.name} - {source.description}" if source.description else source.name
+        for source in camera_capture.sources
+    )
+    return f"Configured sources: {entries}."
+
+
+def _camera_tool_description(camera_capture: CameraCapture | None) -> str:
+    base = (
+        "Capture one image from a camera when the user asks to look. "
+        "One call captures from one camera; to look through several, "
+        "make several calls."
+    )
+    if camera_capture is None:
+        return base
+    default_source = camera_capture.sources[0].name
+    return (
+        f"{base} {_camera_source_catalogue(camera_capture)} "
+        f"Omitting 'source' uses {default_source}."
+    )
+
+
+def _camera_schema(camera_capture: CameraCapture | None) -> JSONObject:
+    source: JSONObject = {
+        "type": "string",
+        "description": "Name of the camera to capture from.",
+    }
+    if camera_capture is not None:
+        source["enum"] = [entry.name for entry in camera_capture.sources]
+    return {
+        "type": "object",
+        "properties": {"source": source},
+        "additionalProperties": False,
+    }
+
+
+def _builtin_tools(camera_capture: CameraCapture | None = None) -> list[RegisteredTool]:
     return [
         RegisteredTool(
             name=_REASONING_TOOL_NAME,
@@ -217,11 +283,8 @@ def _builtin_tools() -> list[RegisteredTool]:
         ),
         RegisteredTool(
             name=CAMERA_TOOL_NAME,
-            description=(
-                "Capture one image from the local USB camera when the user asks "
-                "to look at it."
-            ),
-            schema={"type": "object", "properties": {}, "additionalProperties": False},
+            description=_camera_tool_description(camera_capture),
+            schema=_camera_schema(camera_capture),
             provider=BUILTIN_TOOL_PROVIDER_NAME,
             provider_kind="builtin",
             data_boundary=DataBoundary.LOCAL,

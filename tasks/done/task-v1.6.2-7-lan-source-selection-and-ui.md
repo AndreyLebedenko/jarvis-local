@@ -1,8 +1,9 @@
 # Task v1.6.2-7: Source selection, frame provenance, and UI
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task 6.
+**Verified:** owner-run manual handoff, 2026-07-24.
 
 ## Summary
 
@@ -87,14 +88,48 @@ images and the model has to guess which camera is which.
 
 ## Acceptance criteria
 
-- [ ] "Look at the camera" still works with no argument; asking for a named
+- [x] "Look at the camera" still works with no argument; asking for a named
       source captures from that source.
-- [ ] With two sources captured in one turn, the model attributes each
+- [x] With two sources captured in one turn, the model attributes each
       image to the right source on real hardware.
-- [ ] The audit panel shows `lan` for LAN, `local` for USB, and both for a
+- [x] The audit panel shows `lan` for LAN, `local` for USB, and both for a
       mixed turn.
-- [ ] No result text claims USB for a LAN frame.
-- [ ] An unreachable LAN camera does not show a ready chip.
-- [ ] The privacy toggle remains non-delegable and still blocks every
+- [x] No result text claims USB for a LAN frame.
+- [x] An unreachable LAN camera does not show a ready chip.
+- [x] The privacy toggle remains non-delegable and still blocks every
       source.
-- [ ] `python -m pytest` and Ruff are green.
+- [x] `python -m pytest` and Ruff are green.
+
+## Outcome
+
+Verified by the owner on 2026-07-24 with
+`python -m manual.manual_check_camera_attribution` against
+`gemma4:12b-it-qat` under the `native` strategy. One turn produced three
+captures - `local`, `lan`, `lan` - and three distinct, camera-specific
+descriptions, which is exactly what the old contract could not deliver:
+the frames used to arrive as an unlabeled pile on the turn's user message.
+An addressed question ("Что видно на камере Rotating?") produced a single
+LAN capture from the named source.
+
+The three-camera run also exercised the budget decision on real hardware:
+all three calls were spent, the loop hit the limit, and the turn still
+produced a final answer instead of dropping a frame.
+
+Decisions recorded in `PROJECT.md`: media travels in its own message bound
+to its result; a call's data boundary may be widened by its arguments and
+is recorded from the finished call too; an unreachable source degrades the
+module rather than disabling it; the tool-call budget stays at 3.
+
+Review finding fixed before closing: a successful capture cleared the
+DEGRADED chip unconditionally, so a USB frame hid a still-unreachable LAN
+camera. The failure path had the same hole in mirror image. Both capture
+events now carry their source name and `ModuleHealthTracker` keeps the
+unreachable set, so a frame clears only its own source - which also makes
+recovery self-healing: a frame from the camera that was unreachable is
+what returns the chip to ready.
+
+Known limit, deliberate: `ToolCallStarted` for a camera call still reports
+the tool's registered `local` boundary, because which source will run is
+unknown until the call finishes. During a capture of about two seconds the
+axis reads local and only then widens to lan. Honest within the turn, but
+it is a compromise rather than an oversight.

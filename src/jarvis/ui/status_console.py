@@ -27,7 +27,6 @@ from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
 from jarvis.inputs.camera import (
     CameraCapture,
     CameraCaptureFailed,
-    CameraError,
     CameraState,
     CameraStateChanged,
 )
@@ -594,17 +593,35 @@ class StatusConsoleApi:
     async def _set_camera_enabled(self, enabled: bool) -> None:
         if self._camera_state is None or self._mcp_host is None:
             return
+        unreachable: tuple[str, ...] = ()
         if enabled and self._camera_capture is not None:
-            try:
-                await self._camera_capture.probe()
-            except CameraError:
+            unreachable = await self._camera_capture.probe_all()
+            if len(unreachable) == len(self._camera_capture.sources):
                 self._camera_state.set_enabled(False)
                 self._mcp_host.set_tool_enabled(CAMERA_TOOL_NAME, False)
                 await self._bus.publish(CameraCaptureFailed, CameraCaptureFailed())
                 return
+            if unreachable:
+                await publish_system_event(
+                    self._bus,
+                    self._logger,
+                    source="CAMERA",
+                    level=EventLevel.WARN,
+                    log_message=(
+                        "Camera enabled with unreachable source(s): "
+                        f"{', '.join(unreachable)}"
+                    ),
+                    ui_message=ui_text(
+                        "camera_sources_unreachable",
+                        self._language,
+                        sources=", ".join(unreachable),
+                    ),
+                )
         self._camera_state.set_enabled(enabled)
         self._mcp_host.set_tool_enabled(CAMERA_TOOL_NAME, enabled)
-        await self._bus.publish(CameraStateChanged, CameraStateChanged(enabled))
+        await self._bus.publish(
+            CameraStateChanged, CameraStateChanged(enabled, unreachable)
+        )
 
     async def _set_mcp_enabled_async(self, enabled: bool) -> None:
         if self._mcp_host is None:

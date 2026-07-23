@@ -43,6 +43,11 @@ class ModuleHealthTracker:
         self._bus = bus
         self._last: dict[ModuleId, ModuleHealthChanged] = {}
         self._failed_tts_routes: set[str] = set()
+        # Camera reachability is per source while the chip is per module,
+        # so the unanswered sources are remembered here. Without this, one
+        # working camera would report the whole module ready while another
+        # stayed unreachable.
+        self._unreachable_camera_sources: set[str] = set()
 
     def subscribe(self) -> list[Subscription]:
         subscriptions: list[Subscription] = [
@@ -126,18 +131,35 @@ class ModuleHealthTracker:
         )
 
     async def _on_camera_state_changed(self, event: CameraStateChanged) -> None:
-        await self._transition(
-            ModuleId.CAMERA,
-            HealthStatus.OK if event.enabled else HealthStatus.UNAVAILABLE,
-            "camera_detail_ready" if event.enabled else "camera_detail_disabled",
-        )
+        self._unreachable_camera_sources = set(event.unreachable_sources)
+        if not event.enabled:
+            await self._transition(
+                ModuleId.CAMERA, HealthStatus.UNAVAILABLE, "camera_detail_disabled"
+            )
+            return
+        await self._publish_camera_reachability()
 
     async def _on_camera_capture_succeeded(self, event: CameraCaptureSucceeded) -> None:
-        del event
+        # A frame proves only its own source reachable. Clearing the whole
+        # module on any success would let a USB capture hide a LAN camera
+        # that never answered.
+        self._unreachable_camera_sources.discard(event.source)
+        await self._publish_camera_reachability()
+
+    async def _publish_camera_reachability(self) -> None:
+        if self._unreachable_camera_sources:
+            await self._transition(
+                ModuleId.CAMERA, HealthStatus.DEGRADED, "camera_detail_partial"
+            )
+            return
         await self._transition(ModuleId.CAMERA, HealthStatus.OK, "camera_detail_ready")
 
     async def _on_camera_capture_failed(self, event: CameraCaptureFailed) -> None:
-        del event
+        # Remembered for the same reason as above, mirrored: once a source
+        # has failed, a frame from a different camera returns the module to
+        # degraded, never to ready.
+        if event.source:
+            self._unreachable_camera_sources.add(event.source)
         await self._transition(
             ModuleId.CAMERA, HealthStatus.ERROR, "camera_detail_failed"
         )
