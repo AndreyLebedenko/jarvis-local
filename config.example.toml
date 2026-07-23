@@ -113,11 +113,52 @@ default_mode = "full"
 # Local USB camera only in v1.6.2's first release. It is off by default.
 [camera]
 enabled = false
+# usb_device_index describes the implicit "usb" source used when no
+# [[camera.sources]] entry is configured below. frame_width/frame_height/
+# fourcc are capture tuning for every USB source, not per-source identity;
+# a LAN stream's resolution is whatever the camera publishes.
 usb_device_index = 0
 frame_width = 1920
 frame_height = 1080
 fourcc = "MJPG"
 capture_timeout_seconds = 5.0
+
+# Named sources. Leave the list out entirely for a USB-only setup. Name a
+# source for what it shows, never for its wiring, and describe it honestly:
+# the description is what the model is told about the view.
+#
+# A LAN camera is an explicit opt-in capability and its captures are
+# reported as LAN on the data-source axis, not local. Its credentials sit
+# in this file in plain text. Write host, port, user, password, and
+# stream_path as separate values and never percent-encode anything by
+# hand: the password is taken literally, however many of `# / @ : ? &` it
+# contains, and the URL is assembled by Jarvis.
+#
+# [[camera.sources]]
+# name = "desk"
+# kind = "usb"
+# device_index = 0
+# description = "Webcam on the desk, facing the user."
+#
+# [[camera.sources]]
+# name = "wide"
+# kind = "lan"
+# host = "192.168.1.108"
+# port = 554
+# user = "admin"
+# password = "your-password"
+# stream_path = "/cam/realmonitor?channel=2&subtype=0"
+# description = "Fixed wide-angle lens covering the whole room."
+#
+# [[camera.sources]]
+# name = "detail"
+# kind = "lan"
+# host = "192.168.1.108"
+# port = 554
+# user = "admin"
+# password = "your-password"
+# stream_path = "/cam/realmonitor?channel=1&subtype=0"
+# description = "Motorized lens; it shows wherever it was last aimed."
 
 [microphone]
 # "" means sounddevice's default input device. Also settable from the

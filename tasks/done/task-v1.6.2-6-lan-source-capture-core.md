@@ -1,8 +1,9 @@
 # Task v1.6.2-6: Named camera sources and LAN capture core
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** task 1's RTSP continuation (done, 2026-07-22).
+**Verified:** owner-run manual handoff, 2026-07-23.
 
 ## Summary
 
@@ -78,9 +79,45 @@ same seam. Config, capture core, and backend only.
 
 ## Acceptance criteria
 
-- [ ] Both Imou lenses and the C920 capture through the module by name.
-- [ ] A password containing `#` works with nothing encoded by hand.
-- [ ] No log, event, or error message exposes a password.
-- [ ] LAN captures carry `LAN`; USB captures carry `LOCAL`; a USB-only
+- [x] Both Imou lenses and the C920 capture through the module by name.
+- [x] A password containing `#` works with nothing encoded by hand.
+- [x] No log, event, or error message exposes a password.
+- [x] LAN captures carry `LAN`; USB captures carry `LOCAL`; a USB-only
       config is unaffected.
-- [ ] `python -m pytest` and Ruff are green.
+- [x] `python -m pytest` and Ruff are green.
+
+## Outcome
+
+Verified by the owner on 2026-07-23 with
+`python -m manual.manual_check_camera_sources`: the C920 captured in
+3.518 s as `local`, the wide lens in 1.914 s and the motorized one in
+2.206 s as `lan`. A wrong password failed in 0.123 s and an unreachable
+host in 5.006 s, both naming the source and neither exposing the password;
+OpenCV's own stderr line reported `401 Unauthorized` without the URL.
+
+Three defects surfaced only on hardware and were fixed before closing:
+
+- Source names matched case-sensitively, so `wide` missed a source
+  configured as `Wide`. Names are human labels a person types and a model
+  repeats back from a description, not code identifiers; they now match
+  case- and whitespace-insensitively, and config rejects two names
+  differing only that way.
+- The manual script counted a misspelled source name as an expected
+  failure, so the wrong-password and bad-host checks could pass without
+  contacting a camera. An unknown name is now a distinct
+  `UnknownCameraSourceError` and a usage error the `--expect-failure`
+  flag never absorbs.
+- Forcing the capture budget through ffmpeg's `timeout` capture option did
+  not work: OpenCV's own 30 s `CAP_PROP_OPEN_TIMEOUT_MSEC` default kept the
+  capture thread alive about 25 s after the asyncio timeout had already
+  answered the caller. The budget is now applied through OpenCV's
+  open/read timeout properties, verified at 5.022 s against an unreachable
+  host.
+
+Note for task 8: "the capture thread ended on time" is a manual-check
+claim, not an automated one. The suite exercises `asyncio.wait_for` against
+a fake backend and cannot observe a thread that outlives it.
+
+Raised and deferred, not part of this card: LAN credentials sit in
+`config.toml` in plain text. The owner reopened this as a project-wide
+question on 2026-07-23; see `tasks/backlog/secret-storage.md`.

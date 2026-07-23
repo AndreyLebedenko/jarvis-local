@@ -205,6 +205,35 @@ system is intended to grow.
   percent-encoding, so the password is always written literally. The cost is
   that a ready-made URL from camera documentation cannot be pasted as one
   line; that is accepted deliberately to remove the whole class of failures.
+- **The camera module addresses named sources, not one implicit device
+  (decision, task v1.6.2-6).** `[camera]` carries a list of named sources;
+  USB is an ordinary entry in that list rather than a special case, so a
+  caller selects by name and never by device kind. Names are human labels a
+  person types and a model repeats back from a description, not code
+  identifiers, so they match case- and whitespace-insensitively and config
+  rejects two names differing only that way. An absent or empty list
+  resolves to the single implicit `usb` source that `usb_device_index`
+  already described, which is why configs written before this change keep
+  working unedited. Frame geometry stays section-level: it is USB capture
+  tuning, not source identity, and a LAN stream's resolution is whatever
+  the camera publishes. A LAN capture reports `DataBoundary.LAN` and a USB
+  one `LOCAL`, decided by the source's own kind. Two invariants back the
+  credential rule above: the RTSP URL is assembled in exactly one function
+  with percent-encoded credentials, and nothing else may build one; and a
+  source is identified to logs, events, and errors only through
+  `describe_source()`, which names the source and `host:port` and never the
+  credentials. An OpenCV/FFMPEG failure is re-raised unchained for the same
+  reason - its own message can quote the stream URL. RTSP is forced over
+  TCP so blocked UDP fails instead of stalling, and the capture budget is
+  applied through OpenCV's `CAP_PROP_OPEN_TIMEOUT_MSEC`/
+  `CAP_PROP_READ_TIMEOUT_MSEC` rather than ffmpeg's `timeout` capture
+  option: verified on 2026-07-23 against an unreachable host, the ffmpeg
+  option was ignored and OpenCV's 30 s default kept the capture thread
+  alive about 25 s past the asyncio timeout, which can abandon a thread but
+  never cancel it. Plain-text storage of the password remains accepted and
+  documented for v1.6.2; the owner reopened it as a design question on
+  2026-07-23 as a project-wide question, not a camera one, and it is
+  captured in `tasks/backlog/secret-storage.md`.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process

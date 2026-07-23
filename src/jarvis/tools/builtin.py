@@ -72,7 +72,7 @@ class BuiltinToolProvider:
         if self._on_camera_capture is not None:
             await self._on_camera_capture()
         return ToolCallResult(
-            content="Captured one USB camera image for this turn.",
+            content=f"Captured one camera image from {frame.source} for this turn.",
             structured_content={
                 "source": frame.source,
                 "data_boundary": frame.data_boundary.value,
