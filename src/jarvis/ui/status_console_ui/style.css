@@ -336,16 +336,12 @@ body {
 .local-tools-card .mcp-tools { max-height: 108px; }
 .local-tools-card .mcp-header { min-height: 0; }
 
-/* The camera row is the camera's privacy switch, not one availability
-   checkbox among equals (see mcp_state_payload's is_privacy_switch).
-   Violet is the same family the reasoning toggle uses for "this is a
-   control, not a readout"; amber stays reserved for warning states. */
-.mcp-tools li[data-privacy-switch="true"] {
-  color: var(--text);
-  border-left: 2px solid var(--violet-dim);
-  padding-left: 8px;
-  background: var(--violet-tint);
-}
+/* The camera row is the camera's privacy switch rather than one
+   availability checkbox among equals (see mcp_state_payload's
+   is_privacy_switch). It says so in words: a color accent was tried and
+   rejected on review - a tinted row reads as decoration or as a state,
+   and it cannot tell anyone what makes that row different. */
+.mcp-tools li[data-privacy-switch="true"] { color: var(--text); }
 
 /* story-v1.2.10-task-5: keep the primary action in a stable row. The
    confirmation panel lives below it so opening it never moves the action.

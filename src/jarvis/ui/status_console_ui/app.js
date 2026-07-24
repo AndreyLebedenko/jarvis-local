@@ -221,15 +221,11 @@ function applyMcpState(payload) {
   renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
 }
 
-// Three states, not two words. "unavailable" describes a provider that
-// cannot serve the tool; a tool the user simply switched off is "off".
-// Availability wins over the user's choice, so a tool enabled while its
-// provider is down reads unavailable rather than on.
-function toolStateKey(tool) {
-  if (tool.available !== true) return "mcp_tool_unavailable";
-  return tool.enabled === true ? "mcp_tool_available" : "mcp_tool_off";
-}
-
+// A row says only what the checkbox cannot. On/off is the checkbox's own
+// job, so naming it in text was both duplication and the original defect:
+// an available tool the user had switched off got labelled with the same
+// word as a dead provider. Only unavailability is written out now, since
+// nothing else on the row explains why the box refuses to move.
 function renderToolList(listId, emptyId, tools) {
   const list = document.getElementById(listId);
   if (!list) return;
@@ -250,10 +246,15 @@ function renderToolList(listId, emptyId, tools) {
       _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
     });
     const label = document.createElement("span");
-    const providerKind = tool.provider_kind === "builtin"
-      ? uiString("tool_provider_builtin")
-      : tool.provider;
-    const parts = [tool.name, providerKind, uiString(toolStateKey(tool))];
+    const parts = [tool.name];
+    // The provider names which server answers; for a builtin tool the
+    // card heading already said "local", so repeating it is noise.
+    if (tool.provider_kind !== "builtin") {
+      parts.push(tool.provider);
+    }
+    if (tool.available !== true) {
+      parts.push(uiString("mcp_tool_unavailable"));
+    }
     if (tool.is_privacy_switch === true) {
       parts.push(uiString("camera_tool_privacy_hint"));
     }
