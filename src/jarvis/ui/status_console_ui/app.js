@@ -217,15 +217,30 @@ function applyMcpState(payload) {
   button.textContent = uiString(_mcpEnabled ? "mcp_disable" : "mcp_enable");
   button.disabled = payload.status === "connecting" || payload.status === "disconnecting";
 
-  const list = document.getElementById("mcpTools");
+  renderToolList("mcpTools", "mcpToolsEmpty", payload.tools || []);
+  renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
+}
+
+// Three states, not two words. "unavailable" describes a provider that
+// cannot serve the tool; a tool the user simply switched off is "off".
+// Availability wins over the user's choice, so a tool enabled while its
+// provider is down reads unavailable rather than on.
+function toolStateKey(tool) {
+  if (tool.available !== true) return "mcp_tool_unavailable";
+  return tool.enabled === true ? "mcp_tool_available" : "mcp_tool_off";
+}
+
+function renderToolList(listId, emptyId, tools) {
+  const list = document.getElementById(listId);
+  if (!list) return;
   list.replaceChildren();
-  for (const tool of payload.tools || []) {
+  for (const tool of tools) {
     const row = document.createElement("li");
     row.setAttribute("data-available", String(tool.available));
     row.setAttribute("data-provider-kind", tool.provider_kind || "mcp");
-    const stateKey = tool.available && tool.enabled
-      ? "mcp_tool_available"
-      : "mcp_tool_unavailable";
+    if (tool.is_privacy_switch === true) {
+      row.setAttribute("data-privacy-switch", "true");
+    }
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = tool.enabled === true;
@@ -238,11 +253,15 @@ function applyMcpState(payload) {
     const providerKind = tool.provider_kind === "builtin"
       ? uiString("tool_provider_builtin")
       : tool.provider;
-    label.textContent = `${tool.name} - ${providerKind} - ${uiString(stateKey)}`;
+    const parts = [tool.name, providerKind, uiString(toolStateKey(tool))];
+    if (tool.is_privacy_switch === true) {
+      parts.push(uiString("camera_tool_privacy_hint"));
+    }
+    label.textContent = parts.join(" - ");
     row.append(checkbox, label);
     list.appendChild(row);
   }
-  document.getElementById("mcpToolsEmpty").hidden = list.children.length !== 0;
+  document.getElementById(emptyId).hidden = list.children.length !== 0;
 }
 
 function setMcpEnabled() {

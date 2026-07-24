@@ -64,6 +64,19 @@
     </div>
   </div>
 
+  <!-- Two cards, not one list: a status line and an enable button must
+       describe only the tools shown under them (see mcp_state_payload). -->
+  <section class="mcp-card local-tools-card" id="localToolsCard" aria-labelledby="localToolsHeading">
+    <div class="mcp-header">
+      <div>
+        <h2 id="localToolsHeading" data-i18n="local_tools_title">Local tools</h2>
+        <div class="mcp-status" data-i18n="local_tools_subtitle">Built in, always present</div>
+      </div>
+    </div>
+    <ul class="mcp-tools" id="localTools"></ul>
+    <div class="mcp-tools-empty" id="localToolsEmpty" data-i18n="local_tools_empty">No local tools</div>
+  </section>
+
   <section class="mcp-card" id="mcpCard" data-status="off" aria-labelledby="mcpHeading">
     <div class="mcp-header">
       <div>

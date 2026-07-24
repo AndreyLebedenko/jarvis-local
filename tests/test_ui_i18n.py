@@ -137,3 +137,15 @@ def test_served_pages_load_strings_js_before_the_scripts_that_use_it():
 def test_pages_default_to_english_lang_attribute():
     for filename in ["index.html", "touchstrip.html", "demo.html"]:
         assert '<html lang="en"' in _read(filename)
+
+
+def test_every_tool_row_state_has_a_label_in_every_language():
+    """app.js's toolStateKey() picks one of three keys dynamically, so
+    test_every_uistring_lookup_key_exists_in_the_dictionary cannot resolve
+    them statically. A missing one throws inside uiString() and blanks the
+    tool row - the surface that already misled a user once by conflating
+    "the user switched this off" with "the provider cannot serve it"."""
+    expected = {"mcp_tool_available", "mcp_tool_off", "mcp_tool_unavailable"}
+
+    for language, keys in _strings_js_keys().items():
+        assert expected <= keys, language

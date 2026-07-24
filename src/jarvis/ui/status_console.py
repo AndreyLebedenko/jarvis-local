@@ -34,7 +34,7 @@ from jarvis.journal.events import JournalEvent
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.tools.builtin import CAMERA_TOOL_NAME
-from jarvis.tools.host import McpModuleStatus
+from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.config_selection import (
     VAD_MAX_CHUNK_RANGE,
@@ -106,20 +106,43 @@ def data_source_payload(source: DataSource) -> dict:
 def mcp_state_payload(
     status: McpModuleStatus, tools: tuple[RegisteredTool, ...]
 ) -> dict:
+    """Tools are grouped by provider kind, not listed together.
+
+    `status` and `enabled` describe the MCP module, so only the tools that
+    module actually governs may be shown under them. Builtin tools are
+    local, always present, and unaffected by the MCP switch; presenting
+    them inside a panel reading "External tools (MCP) - Off" told the
+    owner that his camera was off while it was running (2026-07-24)."""
     mcp_available = status in {McpModuleStatus.ON, McpModuleStatus.DEGRADED}
+    ordered = sorted(tools, key=lambda item: item.name)
     return {
         "status": status.value,
         "enabled": mcp_available,
         "tools": [
-            {
-                "name": tool.name,
-                "provider": tool.provider,
-                "provider_kind": tool.provider_kind,
-                "enabled": tool.enabled,
-                "available": tool.provider_kind == "builtin" or mcp_available,
-            }
-            for tool in sorted(tools, key=lambda item: item.name)
+            _tool_payload(tool, available=mcp_available)
+            for tool in ordered
+            if tool.provider_kind != "builtin"
         ],
+        "local_tools": [
+            _tool_payload(tool, available=True)
+            for tool in ordered
+            if tool.provider_kind == "builtin"
+        ],
+    }
+
+
+def _tool_payload(tool: RegisteredTool, *, available: bool) -> dict:
+    return {
+        "name": tool.name,
+        "provider": tool.provider,
+        "provider_kind": tool.provider_kind,
+        "enabled": tool.enabled,
+        "available": available,
+        # The camera row is the module's privacy switch, not an ordinary
+        # availability checkbox: it probes sources and drives camera state
+        # (see StatusConsoleApi._set_camera_enabled). The UI marks it so a
+        # privacy control does not read as one toggle among equals.
+        "is_privacy_switch": tool.name == CAMERA_TOOL_NAME,
     }
 
 
@@ -589,6 +612,13 @@ class StatusConsoleApi:
         changed = self._mcp_host.set_tool_enabled(name, enabled)
         if not changed:
             self._logger.warning("Ignoring stale tool toggle for %r", name)
+        # Published even when the toggle was rejected as stale: the click
+        # already moved the checkbox in the browser, so the row has to be
+        # repainted from the engine's own state either way.
+        self._schedule(self._publish_tool_enablement_changed())
+
+    async def _publish_tool_enablement_changed(self) -> None:
+        await self._bus.publish(ToolEnablementChanged, ToolEnablementChanged())
 
     async def _set_camera_enabled(self, enabled: bool) -> None:
         if self._camera_state is None or self._mcp_host is None:
@@ -600,6 +630,7 @@ class StatusConsoleApi:
                 self._camera_state.set_enabled(False)
                 self._mcp_host.set_tool_enabled(CAMERA_TOOL_NAME, False)
                 await self._bus.publish(CameraCaptureFailed, CameraCaptureFailed())
+                await self._publish_tool_enablement_changed()
                 return
             if unreachable:
                 await publish_system_event(
@@ -622,6 +653,7 @@ class StatusConsoleApi:
         await self._bus.publish(
             CameraStateChanged, CameraStateChanged(enabled, unreachable)
         )
+        await self._publish_tool_enablement_changed()
 
     async def _set_mcp_enabled_async(self, enabled: bool) -> None:
         if self._mcp_host is None:

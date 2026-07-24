@@ -97,6 +97,13 @@ class McpModuleStatusChanged:
 
 
 @dataclass(frozen=True)
+class ToolEnablementChanged:
+    """One tool's user-facing switch moved. Carries no payload: the UI
+    re-reads the whole registry, so a row can never disagree with the
+    engine about a tool the event did not happen to name."""
+
+
+@dataclass(frozen=True)
 class _ConnectOutcome:
     connected: bool
     rejected_tools: tuple[str, ...] = ()
