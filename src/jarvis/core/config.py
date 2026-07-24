@@ -37,7 +37,7 @@ import enum
 import json
 import re
 import tomllib
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
@@ -66,6 +66,26 @@ class DataBoundary(enum.Enum):
     LAN = "lan"
     INTERNET = "internet"
     UNKNOWN = "unknown"
+
+
+_DATA_BOUNDARY_REACH = {
+    DataBoundary.LOCAL: 0,
+    # Above LOCAL deliberately: an undeclared destination must never be
+    # reported as proof that data stayed on this machine.
+    DataBoundary.UNKNOWN: 1,
+    DataBoundary.LAN: 2,
+    DataBoundary.INTERNET: 3,
+}
+
+
+def widest_data_boundary(*boundaries: DataBoundary | None) -> DataBoundary:
+    """The furthest reach among the given boundaries. Reporting is
+    monotonic: combining boundaries can only ever widen the answer, so no
+    call can talk its own declared reach back down."""
+    known = [boundary for boundary in boundaries if boundary is not None]
+    if not known:
+        return DataBoundary.UNKNOWN
+    return max(known, key=lambda boundary: _DATA_BOUNDARY_REACH[boundary])
 
 
 @dataclass(frozen=True)
@@ -272,6 +292,49 @@ class CaptureSettings:
 
 
 @dataclass(frozen=True)
+class UsbCameraSource:
+    """One named USB camera. Frame geometry is not per-source: it is a
+    capture tuning parameter shared by every USB source in [camera]."""
+
+    name: str
+    device_index: int = 0
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class LanCameraSource:
+    """One named LAN camera reachable over RTSP.
+
+    Credentials are separate fields and never a ready-made URL: a password
+    containing any of `# / @ : ? &` silently destroys a hand-written RTSP
+    URL (see PROJECT.md, 2026-07-22). The URL is assembled in one place,
+    with percent-encoding, so the password is always written literally."""
+
+    name: str
+    host: str
+    stream_path: str
+    user: str = ""
+    password: str = ""
+    port: int = 554
+    description: str = ""
+
+
+CameraSource = UsbCameraSource | LanCameraSource
+
+
+def normalized_source_name(name: str) -> str:
+    """Source names are human labels a person types into config and a model
+    repeats back from a description, not code identifiers, so they are
+    matched case- and whitespace-insensitively. Two names that differ only
+    that way are the same name, and config rejects them as duplicates."""
+    return name.strip().casefold()
+
+
+DEFAULT_USB_SOURCE_NAME = "usb"
+DEFAULT_USB_SOURCE_DESCRIPTION = "Local USB camera attached to this computer."
+
+
+@dataclass(frozen=True)
 class CameraSettings:
     enabled: bool = False
     usb_device_index: int = field(default=0, metadata={"minimum": 0})
@@ -285,6 +348,23 @@ class CameraSettings:
     capture_timeout_seconds: float = field(
         default=5.0, metadata={"minimum": 0, "exclusive_minimum": True}
     )
+    sources: tuple[CameraSource, ...] = ()
+
+    @property
+    def resolved_sources(self) -> tuple[CameraSource, ...]:
+        """An absent or empty source list is a valid USB-only configuration:
+        it resolves to the single implicit USB source that [camera]'s own
+        usb_device_index describes, so configs written before named sources
+        keep working with no edits."""
+        if self.sources:
+            return self.sources
+        return (
+            UsbCameraSource(
+                name=DEFAULT_USB_SOURCE_NAME,
+                device_index=self.usb_device_index,
+                description=DEFAULT_USB_SOURCE_DESCRIPTION,
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -538,7 +618,122 @@ def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
         return _build_memory_section(section_name, raw)
     if cls is LoggingSettings:
         return _build_logging_section(section_name, raw)
+    if cls is CameraSettings:
+        return _build_camera_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
+
+
+def _build_camera_section(section_name: str, raw: dict[str, Any]) -> "CameraSettings":
+    scalars = {key: value for key, value in raw.items() if key != "sources"}
+    settings = _build_plain_section(section_name, CameraSettings, scalars)
+    return replace(
+        settings, sources=_build_camera_sources(section_name, raw.get("sources", []))
+    )
+
+
+def _build_camera_sources(section_name: str, raw: object) -> tuple[CameraSource, ...]:
+    location = f"[[{section_name}.sources]]"
+    if not isinstance(raw, list) or not all(isinstance(item, dict) for item in raw):
+        raise ConfigError(f"{location} must be a list of tables")
+
+    sources: list[CameraSource] = []
+    names: set[str] = set()
+    for entry in raw:
+        source = _build_camera_source(location, entry)
+        normalized = normalized_source_name(source.name)
+        if normalized in names:
+            raise ConfigError(f"{location} has duplicate source name {source.name!r}")
+        names.add(normalized)
+        sources.append(source)
+    return tuple(sources)
+
+
+def _build_camera_source(location: str, raw: dict[str, object]) -> CameraSource:
+    name = raw.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigError(f"{location}.name must be a non-empty string")
+    entry_location = f"{location}.{name}"
+
+    kind = raw.get("kind")
+    if kind not in ("usb", "lan"):
+        raise ConfigError(f"{entry_location}.kind must be one of: usb, lan")
+    description = raw.get("description", "")
+    if not isinstance(description, str):
+        raise ConfigError(f"{entry_location}.description must be a string")
+
+    if kind == "usb":
+        return _build_usb_camera_source(entry_location, raw, name, description)
+    return _build_lan_camera_source(entry_location, raw, name, description)
+
+
+def _build_usb_camera_source(
+    location: str, raw: dict[str, object], name: str, description: str
+) -> UsbCameraSource:
+    _reject_unknown_source_keys(
+        location, raw, {"name", "kind", "description", "device_index"}
+    )
+    device_index = raw.get("device_index", 0)
+    if not isinstance(device_index, int) or isinstance(device_index, bool):
+        raise ConfigError(f"{location}.device_index must be int")
+    if device_index < 0:
+        raise ConfigError(f"{location}.device_index must not be negative")
+    return UsbCameraSource(
+        name=name, device_index=device_index, description=description
+    )
+
+
+def _build_lan_camera_source(
+    location: str, raw: dict[str, object], name: str, description: str
+) -> LanCameraSource:
+    _reject_unknown_source_keys(
+        location,
+        raw,
+        {
+            "name",
+            "kind",
+            "description",
+            "host",
+            "port",
+            "user",
+            "password",
+            "stream_path",
+        },
+    )
+    host = raw.get("host")
+    if not isinstance(host, str) or not host.strip():
+        raise ConfigError(f"{location}.host must be a non-empty string")
+    stream_path = raw.get("stream_path")
+    if not isinstance(stream_path, str) or not stream_path.strip():
+        raise ConfigError(f"{location}.stream_path must be a non-empty string")
+    port = raw.get("port", 554)
+    if not isinstance(port, int) or isinstance(port, bool):
+        raise ConfigError(f"{location}.port must be int")
+    if not 1 <= port <= 65535:
+        raise ConfigError(f"{location}.port must be between 1 and 65535")
+    user = raw.get("user", "")
+    password = raw.get("password", "")
+    for field_name, value in (("user", user), ("password", password)):
+        if not isinstance(value, str):
+            raise ConfigError(f"{location}.{field_name} must be a string")
+    return LanCameraSource(
+        name=name,
+        host=host,
+        stream_path=stream_path,
+        user=str(user),
+        password=str(password),
+        port=port,
+        description=description,
+    )
+
+
+def _reject_unknown_source_keys(
+    location: str, raw: dict[str, object], known: set[str]
+) -> None:
+    unknown_keys = set(raw) - known
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in {location}: {', '.join(sorted(unknown_keys))}"
+        )
 
 
 def _build_plain_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:

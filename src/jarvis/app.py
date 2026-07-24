@@ -658,12 +658,12 @@ def build_app(
     memory_file_repository = MemoryFileRepository(memory_file_specs)
     thinking_mode = ReasoningLevelState(bus)
 
-    async def on_camera_capture() -> None:
-        await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded())
+    async def on_camera_capture(source: str) -> None:
+        await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded(source))
         await sound_cues.play("camera_capture")
 
-    async def on_camera_failure() -> None:
-        await bus.publish(CameraCaptureFailed, CameraCaptureFailed())
+    async def on_camera_failure(source: str) -> None:
+        await bus.publish(CameraCaptureFailed, CameraCaptureFailed(source))
 
     tool_registry = ToolRegistry()
     builtin_tool_provider = BuiltinToolProvider(

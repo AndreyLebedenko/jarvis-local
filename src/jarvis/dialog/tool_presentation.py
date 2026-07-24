@@ -307,18 +307,7 @@ class ToolAwareDialog:
             calls_used += 1
             messages.append(self._presentation.result_message(result))
             if result.images_b64:
-                current_user_message = next(
-                    (
-                        message
-                        for message in reversed(messages)
-                        if message.get("role") == "user"
-                    ),
-                    None,
-                )
-                if current_user_message is not None:
-                    current_images = current_user_message.setdefault("images", [])
-                    if isinstance(current_images, list):
-                        current_images.extend(result.images_b64)
+                messages.append(_media_message(call.name, result))
             if not result.ok:
                 stop_reason = result.error or "Tool call failed."
                 for _ in calls[index + 1 :]:
@@ -450,6 +439,30 @@ def _serialize_result(result: ToolDispatchResult) -> str:
         "error": result.error,
     }
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _media_message(tool_name: str, result: ToolDispatchResult) -> Message:
+    """Media from a tool result travels in its own message, immediately
+    after the result that produced it, and repeats that result's own text.
+
+    The binding must be structural rather than positional. Accumulating
+    frames onto the turn's original user message - which is what this
+    replaced - left two captures as an unlabeled pair of images with
+    nothing tying either to the result naming its camera, and the model
+    could only guess by order.
+
+    The message is `user`, not `tool`: role `user` carrying `images` is the
+    verified media path (PROJECT.md), and whether a template renders images
+    on a `tool` message is model-dependent. Repeating the result text here
+    means the binding survives even a template that flattens roles."""
+    return {
+        "role": "user",
+        "content": (
+            f"Media attached below belongs to the preceding {tool_name} result: "
+            f"{result.content}"
+        ),
+        "images": list(result.images_b64),
+    }
 
 
 def _serialize_error(error: str) -> str:

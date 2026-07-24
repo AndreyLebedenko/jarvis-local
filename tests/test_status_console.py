@@ -1,15 +1,18 @@
 import asyncio
 import logging
 import re
+from dataclasses import replace
 
 import pytest
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    LanCameraSource,
     McpSettings,
     PiperTtsSettings,
     Settings,
     SileroTtsSettings,
+    UsbCameraSource,
     VadSettings,
     load_settings,
 )
@@ -1805,3 +1808,101 @@ async def test_save_config_selection_rejects_partial_tts_routes(tmp_path):
     await asyncio.sleep(0.05)
 
     assert not ui_config_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_camera_toggle_enables_with_a_degraded_chip_when_one_source_is_gone():
+    """A LAN camera out of reach must not block the cameras that answer,
+    and must not be reported as ready either."""
+
+    class PartialBackend:
+        def probe_usb(self, device_index: int) -> None:
+            del device_index
+
+        def probe_lan(self, url: str, timeout_seconds: float) -> None:
+            del url, timeout_seconds
+            raise CameraError("unreachable")
+
+        def capture_usb(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+        def capture_lan(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+    bus = EventBus()
+    events: list[CameraStateChanged] = []
+    bus.subscribe(CameraStateChanged, lambda event: events.append(event))
+    host = _FakeMcpHost()
+    state = CameraState()
+    settings = replace(
+        Settings().camera,
+        sources=(
+            UsbCameraSource(name="desk"),
+            LanCameraSource(name="wide", host="10.0.0.9", stream_path="/live"),
+        ),
+    )
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=host,
+        camera_state=state,
+        camera_capture=CameraCapture(settings, state, PartialBackend()),
+    )
+
+    api.set_tool_enabled("capture_camera_image", True)
+    await asyncio.sleep(0.05)
+
+    assert state.enabled is True
+    assert host.tool_toggles == [("capture_camera_image", True)]
+    assert events == [CameraStateChanged(True, ("wide",))]
+
+
+@pytest.mark.asyncio
+async def test_camera_toggle_refuses_when_no_source_answers_at_all():
+    class DeadBackend:
+        def probe_usb(self, device_index: int) -> None:
+            del device_index
+            raise CameraError("missing")
+
+        def probe_lan(self, url: str, timeout_seconds: float) -> None:
+            del url, timeout_seconds
+            raise CameraError("unreachable")
+
+        def capture_usb(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+        def capture_lan(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+    bus = EventBus()
+    failures: list[CameraCaptureFailed] = []
+    bus.subscribe(CameraCaptureFailed, lambda event: failures.append(event))
+    host = _FakeMcpHost()
+    state = CameraState()
+    settings = replace(
+        Settings().camera,
+        sources=(
+            UsbCameraSource(name="desk"),
+            LanCameraSource(name="wide", host="10.0.0.9", stream_path="/live"),
+        ),
+    )
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=host,
+        camera_state=state,
+        camera_capture=CameraCapture(settings, state, DeadBackend()),
+    )
+
+    api.set_tool_enabled("capture_camera_image", True)
+    await asyncio.sleep(0.05)
+
+    assert state.enabled is False
+    assert host.tool_toggles == [("capture_camera_image", False)]
+    assert failures == [CameraCaptureFailed()]

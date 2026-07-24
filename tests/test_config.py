@@ -6,6 +6,7 @@ import pytest
 from conftest import assert_stdlib_only_imports
 
 from jarvis.core.config import (
+    DEFAULT_USB_SOURCE_DESCRIPTION,
     TTS_ROUTE_TYPES,
     BackendSettings,
     ClipboardSettings,
@@ -13,6 +14,7 @@ from jarvis.core.config import (
     DataBoundary,
     HotkeySettings,
     JournalSettings,
+    LanCameraSource,
     LoggingSettings,
     McpServerSettings,
     McpSettings,
@@ -23,6 +25,7 @@ from jarvis.core.config import (
     Settings,
     SileroTtsSettings,
     TtsSettings,
+    UsbCameraSource,
     VadSettings,
     load_settings,
     tts_route_field_specs,
@@ -1846,3 +1849,129 @@ def test_mcp_ui_layer_can_override_enabled_without_resetting_servers(tmp_path):
     assert settings.mcp.servers == {
         "search": McpServerSettings(command="search-server")
     }
+
+
+def test_camera_sources_parse_usb_and_lan_entries_by_name(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [camera]
+        enabled = true
+
+        [[camera.sources]]
+        name = "desk"
+        kind = "usb"
+        device_index = 1
+        description = "Webcam on the desk."
+
+        [[camera.sources]]
+        name = "wide"
+        kind = "lan"
+        host = "192.168.1.108"
+        stream_path = "/cam/realmonitor?channel=2&subtype=0"
+        user = "admin"
+        password = "pa#ss"
+        description = "Fixed wide-angle lens."
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path, ui_path=_no_ui_layer(tmp_path))
+
+    assert settings.camera.sources == (
+        UsbCameraSource(name="desk", device_index=1, description="Webcam on the desk."),
+        LanCameraSource(
+            name="wide",
+            host="192.168.1.108",
+            stream_path="/cam/realmonitor?channel=2&subtype=0",
+            user="admin",
+            password="pa#ss",
+            port=554,
+            description="Fixed wide-angle lens.",
+        ),
+    )
+
+
+def test_camera_without_sources_resolves_to_the_legacy_usb_device(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "[camera]\nenabled = true\nusb_device_index = 2\n", encoding="utf-8"
+    )
+
+    settings = load_settings(config_path, ui_path=_no_ui_layer(tmp_path))
+
+    assert settings.camera.sources == ()
+    assert settings.camera.resolved_sources == (
+        UsbCameraSource(
+            name="usb", device_index=2, description=DEFAULT_USB_SOURCE_DESCRIPTION
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ('name = "wide"\nkind = "wifi"\nhost = "h"\n', "kind must be one of: usb, lan"),
+        ('kind = "usb"\n', "name must be a non-empty string"),
+        ('name = "wide"\nkind = "lan"\nstream_path = "/live"\n', "host must be"),
+        ('name = "wide"\nkind = "lan"\nhost = "h"\n', "stream_path must be"),
+        (
+            'name = "wide"\nkind = "lan"\nhost = "h"\nstream_path = "/l"\nport = 0\n',
+            "port must be between 1 and 65535",
+        ),
+        (
+            'name = "desk"\nkind = "usb"\ndevice_index = -1\n',
+            "device_index must not be negative",
+        ),
+        (
+            'name = "desk"\nkind = "usb"\nhost = "h"\n',
+            r"Unknown key\(s\) in \[\[camera.sources\]\].desk: host",
+        ),
+    ],
+)
+def test_camera_source_rejects_invalid_entries(tmp_path, body, message):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[[camera.sources]]\n{body}", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=message):
+        load_settings(config_path, ui_path=_no_ui_layer(tmp_path))
+
+
+def test_camera_sources_reject_a_duplicate_name(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [[camera.sources]]
+        name = "desk"
+        kind = "usb"
+
+        [[camera.sources]]
+        name = "desk"
+        kind = "usb"
+        device_index = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="duplicate source name 'desk'"):
+        load_settings(config_path, ui_path=_no_ui_layer(tmp_path))
+
+
+def test_camera_sources_reject_names_that_differ_only_in_case(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [[camera.sources]]
+        name = "Wide"
+        kind = "usb"
+
+        [[camera.sources]]
+        name = "wide"
+        kind = "usb"
+        device_index = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="duplicate source name 'wide'"):
+        load_settings(config_path, ui_path=_no_ui_layer(tmp_path))

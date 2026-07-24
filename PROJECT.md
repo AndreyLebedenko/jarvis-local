@@ -205,6 +205,96 @@ system is intended to grow.
   percent-encoding, so the password is always written literally. The cost is
   that a ready-made URL from camera documentation cannot be pasted as one
   line; that is accepted deliberately to remove the whole class of failures.
+- **The camera module addresses named sources, not one implicit device
+  (decision, task v1.6.2-6).** `[camera]` carries a list of named sources;
+  USB is an ordinary entry in that list rather than a special case, so a
+  caller selects by name and never by device kind. Names are human labels a
+  person types and a model repeats back from a description, not code
+  identifiers, so they match case- and whitespace-insensitively and config
+  rejects two names differing only that way. An absent or empty list
+  resolves to the single implicit `usb` source that `usb_device_index`
+  already described, which is why configs written before this change keep
+  working unedited. Frame geometry stays section-level: it is USB capture
+  tuning, not source identity, and a LAN stream's resolution is whatever
+  the camera publishes. A LAN capture reports `DataBoundary.LAN` and a USB
+  one `LOCAL`, decided by the source's own kind. Two invariants back the
+  credential rule above: the RTSP URL is assembled in exactly one function
+  with percent-encoded credentials, and nothing else may build one; and a
+  source is identified to logs, events, and errors only through
+  `describe_source()`, which names the source and `host:port` and never the
+  credentials. An OpenCV/FFMPEG failure is re-raised unchained for the same
+  reason - its own message can quote the stream URL. RTSP is forced over
+  TCP so blocked UDP fails instead of stalling, and the capture budget is
+  applied through OpenCV's `CAP_PROP_OPEN_TIMEOUT_MSEC`/
+  `CAP_PROP_READ_TIMEOUT_MSEC` rather than ffmpeg's `timeout` capture
+  option: verified on 2026-07-23 against an unreachable host, the ffmpeg
+  option was ignored and OpenCV's 30 s default kept the capture thread
+  alive about 25 s past the asyncio timeout, which can abandon a thread but
+  never cancel it. Plain-text storage of the password remains accepted and
+  documented for v1.6.2; the owner reopened it as a design question on
+  2026-07-23 as a project-wide question, not a camera one, and it is
+  captured in `tasks/backlog/secret-storage.md`.
+- **Media from a tool result travels in its own message, bound to that
+  result (decision, task v1.6.2-7).** The v1.6.0 contract appended a tool
+  result's frames to the turn's last `user` message, found by searching
+  backwards. Under the default `native` strategy tool results have role
+  `tool`, so the search skipped them and landed on the original user
+  message: two camera captures arrived as an unlabeled pair of images with
+  nothing tying either to the result naming its camera, and the model could
+  attribute them only by order. Each result's media now travels in its own
+  message appended immediately after that result, repeating the result's
+  own text. The message is `user`, not `tool`, because role `user` carrying
+  `images` is the verified media path and image support on a `tool` message
+  is model-template-dependent; repeating the result text keeps the binding
+  even if a template flattens roles. The rule is general for any
+  media-producing tool, not a camera special case, and the current-turn-only
+  guarantee is unchanged - none of it reaches history.
+- **A tool call's data boundary may be widened by its arguments (decision,
+  task v1.6.2-7).** `capture_camera_image` reads a USB device or a LAN
+  stream depending on the source asked for, so a single registered boundary
+  would understate one of them. A result may therefore carry its own
+  boundary, and reporting takes the wider of the two - never the narrower,
+  so no call can talk its declared reach back down. The axis is recorded
+  from the finished call as well as the started one, because which source
+  ran is not known until then; recording stays monotonic within a turn, so
+  a mixed turn reports LAN and a later local capture cannot pull it back.
+- **An unreachable camera degrades the module rather than disabling it
+  (decision, task v1.6.2-7).** Enabling the camera probes every configured
+  source. All answering is OK; none answering refuses to turn on, exactly
+  as an unplugged USB device does today; some answering enables the module
+  with a DEGRADED chip and a warning naming the unreachable sources. A LAN
+  camera can be configured, enabled, and simply not responding - a state a
+  USB device does not have - and a laptop away from the home network must
+  not lose its USB camera because of it.
+- **The tool-call budget stays at 3 for camera captures (decision, task
+  v1.6.2-7).** Two cameras in one turn cost two calls and fit. A three-
+  camera survey exhausts the budget and gets the existing explicit
+  "budget exhausted" message rather than a silently dropped frame. The
+  budget is a general safeguard against runaway tool loops, not a camera
+  setting, and raising it for one scenario would weaken it everywhere.
+- **LAN camera release verification, 2026-07-24 (owner-run, closes
+  v1.6.2).** All three sources capture by name through the module - the
+  C920 as `local` in about 3.8 s, both Imou lenses as `lan` in 2.1 and
+  2.3 s. With `[camera].enabled = false` no frame is obtainable at all,
+  and the model does not reach for the camera unprompted when it is on.
+  Attribution holds on real hardware: asked about a named camera, Jarvis
+  captures that camera, and the events panel shows the call with its
+  source argument and the right boundary. The partial-reachability rule
+  behaves as designed with one working camera out of three - the chip
+  stays DEGRADED instead of being cleared by the successful capture. Wrong
+  credentials fail in about 0.12 s and an unreachable host at the capture
+  timeout, neither exposing the password. Documentation of the LAN path,
+  its clear-text credentials, and the vision limits landed in both READMEs
+  and `config.example.toml` in the same card.
+- **Camera OCR remains poor on real hardware and is documented as such,
+  not treated as a defect (owner, 2026-07-24).** The release check
+  confirmed the 2026-07-22 spike finding at product level: the model
+  failed to read even relatively large text from a camera frame. This is
+  a vision-model limitation rather than an integration one, so it does not
+  block the release; revisiting the vision model stays deferred. Scene
+  description is the supported answer and both READMEs say so, including
+  that the failure mode is a confident wrong reading rather than an
+  admission of doubt.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process

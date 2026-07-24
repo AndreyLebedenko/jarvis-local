@@ -1,8 +1,7 @@
 # Story v1.6.2: Camera
 
-**Status:** USB scope completed. LAN scope in progress: the task-1 spike
-passed its hard gate on real Imou hardware on 2026-07-22, so the deferred
-RTSP source is now being built.
+**Status:** Completed. Both scopes delivered and verified on hardware by
+the owner: USB on 2026-07-20, LAN on 2026-07-24.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.2 section; native
 sensor module decision 2026-07-18).
 **Created:** 2026-07-20.
@@ -108,13 +107,13 @@ through its own tool call and answer questions about what it sees.
   sound cues, privacy toggle with mic-sleep parity.
 - `tasks/done/task-v1.6.2-5-docs-and-release-verification.md` - PROJECT.md,
   config docs (credentials honesty), human-run checklist.
-- `tasks/task-v1.6.2-6-lan-source-capture-core.md` - named source registry
+- `tasks/done/task-v1.6.2-6-lan-source-capture-core.md` - named source registry
   with USB as an ordinary entry, LAN credential fields with percent-encoded
   URL assembly, RTSP backend, `lan` boundary.
-- `tasks/task-v1.6.2-7-lan-source-selection-and-ui.md` - source selector on
+- `tasks/done/task-v1.6.2-7-lan-source-selection-and-ui.md` - source selector on
   the capture tool, frame provenance attached to its own tool result,
   `lan` auditing, health chip for a networked camera.
-- `tasks/task-v1.6.2-8-lan-docs-and-verification.md` - LAN config docs,
+- `tasks/done/task-v1.6.2-8-lan-docs-and-verification.md` - LAN config docs,
   vision-limitation honesty, human-run checklist on both lenses.
 
 ## Acceptance criteria
@@ -127,12 +126,13 @@ through its own tool call and answer questions about what it sees.
 - [x] "Look at the camera" as a voice request produces a model-initiated
       tool call that captures a frame and answers about its content,
       with the image entering only the current turn's media.
-- [x] USB captures are audited `local`. LAN `lan` auditing lands in task 7.
+- [x] USB captures are audited `local`, LAN captures `lan`; a turn mixing
+      both reports the wider of the two.
 - [x] The camera is off by default; while off, no code path can capture
       a frame; enabling is an explicit user action; every capture plays
       a cue; the health chip reflects module state.
 - [x] The camera toggle is not delegable through any tool.
-- [ ] RTSP credential documentation lands in task 8: the password is
+- [x] RTSP credential documentation landed in task 8: the password is
       stored in the local config in clear text, written literally, and the
       documentation says so.
 - [x] `python -m pytest` and Ruff checks are green; the USB hardware handoff
@@ -150,3 +150,31 @@ through its own tool call and answer questions about what it sees.
   a separate decision, not an improvisation.
 - Stop if the capture dependency drags in licensing or packaging
   problems for the Windows setup.
+
+## Outcome (2026-07-24)
+
+Jarvis has its first on-command sense. "Look at the camera" produces a
+model-initiated capture from a named USB or LAN source and an answer about
+what it shows, with the frame living only in that turn.
+
+None of the stop conditions triggered. LAN capture turned out faster than
+the tuned USB path (about 1.9 s against 3.3 s), because a network camera is
+already streaming while a USB device pays sensor start-up on every open, so
+the buffering design the story feared was never needed.
+
+What the story delivered beyond its own name: the media-from-tool-result
+contract is now general and structural rather than positional, which is
+what any future media-producing tool inherits; a tool call's data boundary
+can be widened by its arguments, so one tool reaching two different
+distances reports honestly; and reachability is tracked per source while
+the chip stays per module.
+
+Deliberately left out, with the reasons recorded rather than forgotten:
+pan/tilt and the illuminator (`tasks/backlog/camera-world-changing-controls.md`),
+a general typed source registry with discovery, and clear-text credential
+storage (`tasks/backlog/secret-storage.md`, raised by the owner during this
+story and reopened as a project-wide question rather than a camera one).
+
+The honest limit to carry forward: camera OCR is unreliable and fails by
+confident invention. Scene description is the supported answer, both
+READMEs say so, and revisiting the vision model is deferred.
