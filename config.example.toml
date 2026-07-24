@@ -110,7 +110,12 @@ sample_rate = 48000
 [capture]
 default_mode = "full"
 
-# Local USB camera only in v1.6.2's first release. It is off by default.
+# On-command still frames from local USB cameras and LAN cameras reached
+# over RTSP. Off by default, and the capture tool must also be enabled in
+# the Status Console before the model can use it. Jarvis reads frames
+# only: it never aims a motorized lens or switches an illuminator - see
+# tasks/backlog/camera-world-changing-controls.md for why that is a
+# separate decision rather than a missing feature.
 [camera]
 enabled = false
 # usb_device_index describes the implicit "usb" source used when no
@@ -128,11 +133,30 @@ capture_timeout_seconds = 5.0
 # the description is what the model is told about the view.
 #
 # A LAN camera is an explicit opt-in capability and its captures are
-# reported as LAN on the data-source axis, not local. Its credentials sit
-# in this file in plain text. Write host, port, user, password, and
-# stream_path as separate values and never percent-encode anything by
-# hand: the password is taken literally, however many of `# / @ : ? &` it
-# contains, and the URL is assembled by Jarvis.
+# reported as LAN on the data-source axis, not local.
+#
+# CREDENTIALS ARE STORED HERE IN CLEAR TEXT. Anyone who can read this
+# file can watch that camera's live stream, and can reuse the password
+# anywhere else you used it. Treat the file accordingly: keep it out of
+# version control and backups, and give the camera an account that exists
+# only for Jarvis. Improving this is a known open question, not a settled
+# design - see tasks/backlog/secret-storage.md.
+#
+# Write host, port, user, password, and stream_path as separate values and
+# never percent-encode anything by hand: the password is taken literally,
+# however many of `# / @ : ? &` it contains, and Jarvis assembles the URL.
+# A ready-made URL from the camera's documentation cannot be pasted as one
+# line; that is deliberate, because a password containing any of those
+# characters silently corrupts such a URL.
+#
+# Finding stream_path is trial and error. A camera typically answers 401
+# to every path until the credentials are right, so a wrong path and a
+# wrong password look identical. Use
+# `python -m manual.manual_check_rtsp_discovery --host <ip> --user <user>`
+# to try candidate paths in milliseconds instead of waiting out a capture
+# timeout per attempt. Vendor prerequisites first: create an RTSP/media
+# account in the camera's own app and turn media-stream encryption off,
+# or every path stays 401 no matter what you type here.
 #
 # [[camera.sources]]
 # name = "desk"
@@ -159,6 +183,11 @@ capture_timeout_seconds = 5.0
 # password = "your-password"
 # stream_path = "/cam/realmonitor?channel=1&subtype=0"
 # description = "Motorized lens; it shows wherever it was last aimed."
+#
+# The description is what the model is told about the view, so it has to
+# be true. A motorized lens is not a reproducible source: it shows
+# wherever it was last aimed, including by the camera's own auto-tracking,
+# so say that rather than describing a fixed view it does not have.
 
 [microphone]
 # "" means sounddevice's default input device. Also settable from the

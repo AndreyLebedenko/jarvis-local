@@ -1,12 +1,5 @@
 # Jarvis
 
-## USB camera
-
-Jarvis can capture one static image from a configured local USB camera when
-the user asks it to look. It ships disabled: enable `capture_camera_image` in
-the Status Console's tool list before use. The captured frame is sent only to
-the current local-model turn and is not retained in conversation history.
-
 Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks answers through configurable local TTS routes.
 
 Jarvis core is designed to run without network access after the one-time setup
@@ -103,6 +96,10 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   the optional MCP module; successful builtin replace writes save the previous
   version as `memory.md.bak` or `self.md.bak`; privacy controls such as
   microphone sleep, Open/Hidden, and MCP enablement are not delegable.
+- On-command camera capture from named USB and LAN (RTSP) sources, off by
+  default and gated by a non-delegable switch. Frames are current-turn only,
+  each frame stays bound to the source that produced it, and LAN captures are
+  reported as `lan` on the data-source axis. See [Camera](#camera).
 - Per-turn awareness of the local date, weekday, time, and numeric UTC offset,
   without storing the injected time context in conversation history.
 - Durable local system log with bounded rotation for after-the-fact
@@ -215,6 +212,73 @@ image data, and no attachment contents. The events panel additionally holds
 no file names, so leaving it visible does not expose anything Hidden mode is
 meant to conceal.
 
+## Camera
+
+Jarvis can capture one still frame on request, from a local USB camera or
+from a LAN camera over RTSP, and answer questions about what it sees. The
+frame enters only the current model turn and is never written to
+conversation history.
+
+Two switches gate it, and both are yours alone: `[camera].enabled` in
+`config.toml` and the `capture_camera_image` entry in the Status Console's
+tool list. The model cannot flip either one. While the camera is off, no
+frame is captured at all - the tool fails instead. Every capture plays an
+audible cue.
+
+Cameras are configured as a list of named sources under `[[camera.sources]]`
+(see `config.example.toml`). Leaving the list out entirely keeps a USB-only
+setup working with no edits. Name each source for what it shows rather than
+for its wiring, and describe it truthfully: the description is what the model
+is told, and it is how the model picks a camera when you say "look at the
+wide camera". Several cameras in one turn are captured through several tool
+calls, so each frame stays bound to the source that produced it.
+
+USB captures are reported as `local` on the data-source axis; LAN captures
+are reported as `lan`, exactly like a LAN MCP tool. A turn using both reports
+the wider of the two. No camera path contacts a cloud API: RTSP goes straight
+to the camera on your own network.
+
+### Setting up a LAN camera
+
+- **In the camera's own app first.** Create an RTSP/media account and turn
+  media-stream encryption off. Without this every request stays `401` no
+  matter what you configure here.
+- **Credentials go in `config.toml` in clear text.** Anyone who can read that
+  file can watch the camera and reuse the password wherever else you used it.
+  Give the camera an account used only by Jarvis, and keep the file out of
+  version control and backups. Improving this is an open question rather than
+  a settled design - see
+  [the backlog note](tasks/backlog/secret-storage.md).
+- **Never percent-encode anything by hand.** Host, port, user, password, and
+  stream path are separate config values and Jarvis assembles the URL, so a
+  password containing `#`, `/`, `@`, `:`, `?`, or `&` is typed literally. A
+  ready-made URL from the camera's manual cannot be pasted as one line; that
+  is the deliberate cost of removing a whole class of silent failures.
+- **Finding the stream path is trial and error.** Cameras commonly answer
+  `401` to every path until the credentials are correct, so a wrong path and
+  a wrong password are indistinguishable. Use
+  `python -m manual.manual_check_rtsp_discovery --host <ip> --user <user>` to
+  test candidates in milliseconds rather than waiting out a capture timeout
+  each time.
+
+### What the camera is good for, and what it is not
+
+Scene description is the supported answer: "what is in this room", "is the
+door open", "what is on the desk". Reading text and counting objects are
+**not** guarantees, and the failure mode is the dangerous one - on the same
+physical shirt the model confidently read "SONY" from one lens and the
+correct "BOSS" from another, with no hint of doubt in either answer. Treat
+any label, number, or count from a camera frame as a guess, not as fact.
+
+Jarvis reads frames only. It does not aim a motorized lens or switch an
+illuminator on, even when the camera supports both: those change the physical
+world rather than observing it, and they are gated behind their own future
+opt-in rather than the camera switch. See
+[the backlog note](tasks/backlog/camera-world-changing-controls.md) for the
+reasoning. A consequence worth stating: a motorized lens shows wherever it
+was last aimed, including by the camera's own auto-tracking, so its captures
+are not reproducible and its description should say so.
+
 ## Optional MCP examples: DDGS and Qdrant
 
 MCP stays disabled unless `[mcp].enabled` is explicitly set. The checked-in
@@ -301,6 +365,10 @@ This repository was built with an agent-assisted workflow: project facts were re
 - There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
 - Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
 - Dense screenshots, especially large IDE views, can cause OCR confabulation. Use region capture for targeted questions.
+- The same confabulation applies to camera frames, and it does not announce
+  itself: the model returns a confident wrong reading rather than admitting
+  doubt. Scene description is reliable enough to be useful; text and object
+  counts from a camera are not. Revisiting the vision model is deferred.
 - Region selection currently creates a Tkinter overlay from the hotkey
   callback thread. A defensive guard covers the observed callback-order
   failure, but the threading design remains a documented backlog item.

@@ -1,8 +1,9 @@
 # Task v1.6.2-8: LAN camera docs and release verification
 
-**Status:** Planned.
+**Status:** Completed.
 **Story:** `tasks/story-v1.6.2-camera.md`
 **Depends on:** tasks 6 and 7.
+**Verified:** owner-run checklist, 2026-07-24.
 
 ## Summary
 
@@ -57,9 +58,43 @@ verification checklist on real hardware.
 
 ## Acceptance criteria
 
-- [ ] Config and README documentation cover the LAN source, its clear-text
+- [x] Config and README documentation cover the LAN source, its clear-text
       credentials, and the vision limitations without overclaiming.
-- [ ] The human has run the checklist on the Imou camera and reported the
+- [x] The human has run the checklist on the Imou camera and reported the
       result.
-- [ ] `PROJECT.md` records the LAN release verification outcome.
-- [ ] `python -m pytest` and Ruff are green.
+- [x] `PROJECT.md` records the LAN release verification outcome.
+- [x] `python -m pytest` and Ruff are green.
+
+## Outcome
+
+Documentation landed in both READMEs and `config.example.toml`, and the
+checklist is `manual/camera-lan-release-handoff.md`. The owner ran it on
+2026-07-24 and everything claimed works: the privacy switch blocks every
+source, attribution picks the right camera, the audit panel reports the
+call with its source and boundary, and one working camera out of three
+keeps the chip DEGRADED rather than clearing it. The full result is
+recorded in `PROJECT.md`.
+
+Two observations from the run, neither a blocker:
+
+- Camera OCR is poor even on relatively large text. This is the
+  vision-model limitation the spike already recorded, now confirmed at
+  product level, and it is exactly what this card's documentation claims -
+  so the check validated the wording rather than contradicting it.
+- Jarvis does not reach for the camera unprompted. Not an acceptance
+  criterion, but worth recording: it is the behavior the privacy model
+  assumes.
+
+Out-of-scope defect found while setting up the live checks: an explicitly
+selected microphone device never opens, because Windows exposes one
+physical microphone once per host API and the config stores only its name.
+Jarvis runs deaf with a healthy-looking console. Reported in
+`tasks/bug_reports/2026-07-24-microphone-device-name-ambiguous-across-host-apis.md`
+rather than fixed here - it needs a device-identity decision and its own
+hardware verification. The checklist itself was unblocked by typing in the
+Journal tab instead of speaking.
+
+Also fixed here, since this card rewrote the text anyway: the USB camera
+section had been sitting between the README title and the project's own
+introduction since `0ff5079`. It is now one "Camera" section covering both
+kinds, in document order.

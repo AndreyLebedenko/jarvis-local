@@ -272,6 +272,29 @@ system is intended to grow.
   "budget exhausted" message rather than a silently dropped frame. The
   budget is a general safeguard against runaway tool loops, not a camera
   setting, and raising it for one scenario would weaken it everywhere.
+- **LAN camera release verification, 2026-07-24 (owner-run, closes
+  v1.6.2).** All three sources capture by name through the module - the
+  C920 as `local` in about 3.8 s, both Imou lenses as `lan` in 2.1 and
+  2.3 s. With `[camera].enabled = false` no frame is obtainable at all,
+  and the model does not reach for the camera unprompted when it is on.
+  Attribution holds on real hardware: asked about a named camera, Jarvis
+  captures that camera, and the events panel shows the call with its
+  source argument and the right boundary. The partial-reachability rule
+  behaves as designed with one working camera out of three - the chip
+  stays DEGRADED instead of being cleared by the successful capture. Wrong
+  credentials fail in about 0.12 s and an unreachable host at the capture
+  timeout, neither exposing the password. Documentation of the LAN path,
+  its clear-text credentials, and the vision limits landed in both READMEs
+  and `config.example.toml` in the same card.
+- **Camera OCR remains poor on real hardware and is documented as such,
+  not treated as a defect (owner, 2026-07-24).** The release check
+  confirmed the 2026-07-22 spike finding at product level: the model
+  failed to read even relatively large text from a camera frame. This is
+  a vision-model limitation rather than an integration one, so it does not
+  block the release; revisiting the vision model stays deferred. Scene
+  description is the supported answer and both READMEs say so, including
+  that the failure mode is a confident wrong reading rather than an
+  admission of doubt.
 - **The native `RegisterHotKey` provider works globally without elevation.**
   Verified live on 2026-07-10: from a non-Administrator PowerShell process,
   `Ctrl+Alt+Q` fired while another application had focus. A second process
