@@ -192,10 +192,36 @@ function buildControls() {
     applyModelOptions({ options: ["gemma4:12b-it-qat", "llama3:8b"], current: "gemma4:12b-it-qat" });
   root.appendChild(modelOptionsButton);
 
+  // The sample deliberately repeats one name across host APIs: that is the
+  // case the selector exists to make distinguishable, and it is awkward to
+  // reproduce on a machine with one microphone. The last row is a real
+  // Bluetooth headset name as Windows reports it, newline included, so the
+  // label cleanup can be checked without pairing a headset.
   const micOptionsButton = document.createElement("button");
   micOptionsButton.textContent = "mic options";
   micOptionsButton.onclick = () =>
-    applyMicrophoneOptions({ options: ["", "USB Headset", "Built-in Microphone"], current: "" });
+    applyMicrophoneOptions({
+      options: [
+        { device: "", host_api: "", label: "" },
+        {
+          device: "Microphone (Yeti X)",
+          host_api: "MME",
+          label: "Microphone (Yeti X)",
+        },
+        {
+          device: "Microphone (Yeti X)",
+          host_api: "Windows WASAPI",
+          label: "Microphone (Yeti X)",
+        },
+        {
+          device:
+            "Headset (@System32\\drivers\\bthhfenum.sys,#2;%1 Hands-Free%0\n;(Galaxy Buds Live (2A04)))",
+          host_api: "Windows WDM-KS",
+          label: "Headset (Galaxy Buds Live (2A04))",
+        },
+      ],
+      current: { device: "Microphone (Yeti X)", host_api: "Windows WASAPI" },
+    });
   root.appendChild(micOptionsButton);
 
   const degradedOptionsButton = document.createElement("button");

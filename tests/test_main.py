@@ -26,6 +26,7 @@ from jarvis.app import (
     _microphone_health,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
+    _on_microphone_capture_failed,
     _on_reasoning_level_changed,
     build_app,
     create_live_status_console,
@@ -39,7 +40,12 @@ from jarvis.app import (
     wire,
     wire_status_console,
 )
-from jarvis.audio.input import AudioInput, MicSleepToggled, UtteranceChunk
+from jarvis.audio.input import (
+    AudioInput,
+    MicrophoneCaptureFailed,
+    MicSleepToggled,
+    UtteranceChunk,
+)
 from jarvis.audio.sound_cues import SoundCuePlayer
 from jarvis.audio.tts import BilingualTtsEngine
 from jarvis.core.bus import EventBus
@@ -55,6 +61,7 @@ from jarvis.core.config import (
     Settings,
     SileroTtsSettings,
     TtsSettings,
+    UiSettings,
     VadSettings,
 )
 from jarvis.core.lifecycle import (
@@ -1646,6 +1653,75 @@ async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui(sourc
     assert "medium" in received[0].message.lower()
 
 
+# --- microphone capture failure SystemEvent --------------------------------
+
+
+async def _capture_failure_event(language: str, reason: str) -> SystemEvent:
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = App(
+        bus=bus,
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
+        settings=Settings(
+            journal=JournalSettings(enabled=False), ui=UiSettings(language=language)
+        ),
+    )
+
+    await _on_microphone_capture_failed(app, MicrophoneCaptureFailed(reason=reason))
+
+    assert len(received) == 1
+    return received[0]
+
+
+async def test_microphone_capture_failure_is_reported_as_an_error_from_stt():
+    event = await _capture_failure_event(
+        "en", "Multiple input devices found for 'Microphone (Yeti X)'"
+    )
+
+    assert event.source == "STT"
+    assert event.level is EventLevel.ERROR
+
+
+async def test_microphone_capture_failure_message_is_localized():
+    event = await _capture_failure_event("ru", "device unplugged")
+
+    assert "Микрофон остановлен" in event.message
+
+
+async def test_microphone_capture_failure_panel_entry_carries_no_device_name():
+    """The content rule from the two-log contract: the system log gets the
+    driver's own reason, the panel entry gets the fact and the remedy. A
+    device name is payload-adjacent and stays out of the panel."""
+    event = await _capture_failure_event("en", "Microphone (Yeti X), MME")
+
+    assert "Yeti" not in event.message
+
+
+async def test_wire_subscribes_the_microphone_capture_failure_reporter():
+    """Without this subscription the event is published into nothing and
+    the failure is silent again - the exact regression this work fixed."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+    subscriptions = wire(app)
+
+    await bus.publish(
+        MicrophoneCaptureFailed, MicrophoneCaptureFailed(reason="device unplugged")
+    )
+
+    assert [event.source for event in received] == ["STT"]
+
+    unwire(app, subscriptions)
+
+
 # --- warm-up SystemEvent (task-ui-03) ---------------------------------------
 
 
@@ -1689,6 +1765,7 @@ async def test_warm_up_publishes_warn_system_event_and_still_logs_exception_on_f
 
 class _FakeAudioInput:
     is_awake = True
+    capture_failed = False
 
     async def stop(self) -> None:
         return None
@@ -1771,12 +1848,13 @@ def _collecting_subscriber(items: list) -> Callable:
     return on_event
 
 
-def _fake_app() -> App:
+def _fake_app(bus: EventBus | None = None) -> App:
     """build_app() with fakes for every hardware-touching module, plus a
     fake backend so a bug in unwire()/shutdown can never trigger a real
     network call - not just "shouldn't happen if the code is correct"."""
     return build_app(
         _settings(),
+        bus=bus,
         backend=_FakeBackend(),
         audio_input=_FakeAudioInput(),
         tts_output=_FakeTtsOutput(),
@@ -2469,19 +2547,33 @@ async def test_run_until_shutdown_cancels_real_hotkey_listeners():
 # --- mic sleep/wake sound cue (task-10) -------------------------------------
 
 
-async def test_on_mic_sleep_toggled_plays_mic_sleep_cue_when_asleep():
-    sound_cues = _FakeSoundCues()
-    app = App(
-        bus=EventBus(),
+def _app_for_mic_toggle(
+    *,
+    bus: EventBus | None = None,
+    sound_cues=None,
+    capture_failed: bool = False,
+    language: str = "en",
+) -> App:
+    audio_input = _FakeAudioInput()
+    audio_input.capture_failed = capture_failed
+    return App(
+        bus=bus or EventBus(),
         backend=None,
-        audio_input=None,
+        audio_input=audio_input,
         tts_output=None,
         capture_input=None,
         orchestrator=None,
-        sound_cues=sound_cues,
+        sound_cues=sound_cues or _FakeSoundCues(),
         thinking_mode=None,
-        settings=_settings(),
+        settings=Settings(
+            journal=JournalSettings(enabled=False), ui=UiSettings(language=language)
+        ),
     )
+
+
+async def test_on_mic_sleep_toggled_plays_mic_sleep_cue_when_asleep():
+    sound_cues = _FakeSoundCues()
+    app = _app_for_mic_toggle(sound_cues=sound_cues)
 
     await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
 
@@ -2490,17 +2582,7 @@ async def test_on_mic_sleep_toggled_plays_mic_sleep_cue_when_asleep():
 
 async def test_on_mic_sleep_toggled_plays_mic_wake_cue_when_awake():
     sound_cues = _FakeSoundCues()
-    app = App(
-        bus=EventBus(),
-        backend=None,
-        audio_input=None,
-        tts_output=None,
-        capture_input=None,
-        orchestrator=None,
-        sound_cues=sound_cues,
-        thinking_mode=None,
-        settings=_settings(),
-    )
+    app = _app_for_mic_toggle(sound_cues=sound_cues)
 
     await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=True))
 
@@ -2512,17 +2594,7 @@ async def test_on_mic_sleep_toggled_logs_an_info_message(caplog):
     logging was silently dropped everywhere (nothing in the process
     configured a handler for it), making state transitions like this one
     impossible to confirm from the console."""
-    app = App(
-        bus=EventBus(),
-        backend=None,
-        audio_input=None,
-        tts_output=None,
-        capture_input=None,
-        orchestrator=None,
-        sound_cues=_FakeSoundCues(),
-        thinking_mode=None,
-        settings=_settings(),
-    )
+    app = _app_for_mic_toggle()
 
     with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
         await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
@@ -2536,17 +2608,7 @@ async def test_on_mic_sleep_toggled_publishes_a_system_event_for_the_ui():
     bus = EventBus()
     received: list[SystemEvent] = []
     bus.subscribe(SystemEvent, _collecting_subscriber(received))
-    app = App(
-        bus=bus,
-        backend=None,
-        audio_input=None,
-        tts_output=None,
-        capture_input=None,
-        orchestrator=None,
-        sound_cues=_FakeSoundCues(),
-        thinking_mode=None,
-        settings=_settings(),
-    )
+    app = _app_for_mic_toggle(bus=bus)
 
     await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
 
@@ -2554,6 +2616,51 @@ async def test_on_mic_sleep_toggled_publishes_a_system_event_for_the_ui():
     assert received[0].source == "HOTKEY"
     assert received[0].level is EventLevel.INFO
     assert "sleep" in received[0].message
+
+
+# --- the sleep toggle after capture has died ---------------------------------
+# Grounded in the state machine pinned by tests/test_audio_in.py: nothing
+# restarts the loop within a session, and a restart never carries a mute
+# forward, so there is no "muted but available again" state to preserve.
+
+
+async def test_the_sleep_toggle_reports_the_stopped_microphone_instead_of_wake():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _app_for_mic_toggle(bus=bus, capture_failed=True)
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=True))
+
+    assert len(received) == 1
+    assert received[0].source == "HOTKEY"
+    assert received[0].level is EventLevel.WARN
+    assert "stopped" in received[0].message
+    assert "awake" not in received[0].message
+
+
+async def test_the_stopped_microphone_notice_is_localized():
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _app_for_mic_toggle(bus=bus, capture_failed=True, language="ru")
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=True))
+
+    assert "Микрофон остановлен" in received[0].message
+
+
+async def test_the_cue_after_a_capture_failure_never_claims_a_wake():
+    """ "Not capturing" is true in both directions once the loop is gone,
+    so the sleep cue is the only honest sound to answer the keypress
+    with - the wake cue would be the audible half of the same lie."""
+    sound_cues = _FakeSoundCues()
+    app = _app_for_mic_toggle(sound_cues=sound_cues, capture_failed=True)
+
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=True))
+    await _on_mic_sleep_toggled(app, MicSleepToggled(is_awake=False))
+
+    assert sound_cues.played == ["mic_sleep", "mic_sleep"]
 
 
 # --- ResponseComplete ordering (review finding) -----------------------------
@@ -2704,11 +2811,16 @@ def test_build_app_wires_the_configured_microphone_device_into_the_stream_factor
     AudioInput's stream_factory when audio_input is not injected. Never
     calls the resulting factory (would try to open a real device) -
     functools.partial inspection only, same as audio_in.py's own test."""
-    settings = Settings(microphone=MicrophoneSettings(device="USB Headset"))
+    settings = Settings(
+        microphone=MicrophoneSettings(device="USB Headset", host_api="MME")
+    )
 
     app = build_app(settings, backend=_FakeBackend())
 
-    assert app.audio_input._stream_factory.keywords == {"device": "USB Headset"}
+    assert app.audio_input._stream_factory.keywords == {
+        "device": "USB Headset",
+        "host_api": "MME",
+    }
 
 
 def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():

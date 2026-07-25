@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from jarvis.audio.input import MicSleepToggled
+from jarvis.audio.input import MicrophoneCaptureFailed, MicSleepToggled
 from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
@@ -48,6 +48,13 @@ class ModuleHealthTracker:
         # working camera would report the whole module ready while another
         # stayed unreachable.
         self._unreachable_camera_sources: set[str] = set()
+        # Capture failure is terminal for the session: run_microphone_loop()
+        # publishes and exits, and nothing restarts it. Sleep/wake still
+        # publishes MicSleepToggled - toggle_user_sleep() only sets an
+        # event a loop that already exited will never observe - so without
+        # this latch a mute/unmute would repaint a dead microphone as
+        # "listening", which is the exact class of lie this work removed.
+        self._microphone_capture_failed = False
 
     def subscribe(self) -> list[Subscription]:
         subscriptions: list[Subscription] = [
@@ -55,6 +62,7 @@ class ModuleHealthTracker:
             (BackendRequestFailed, self._on_backend_request_failed),
             (ResponseComplete, self._on_response_complete),
             (MicSleepToggled, self._on_mic_sleep_toggled),
+            (MicrophoneCaptureFailed, self._on_microphone_capture_failed),
             (TtsEngineLoadFailed, self._on_tts_engine_load_failed),
             (TtsSynthesisResult, self._on_tts_synthesis_result),
             (ScreenshotCaptured, self._on_screenshot_captured),
@@ -92,6 +100,8 @@ class ModuleHealthTracker:
         )
 
     async def _on_mic_sleep_toggled(self, event: MicSleepToggled) -> None:
+        if self._microphone_capture_failed:
+            return
         if event.is_awake:
             await self._transition(
                 ModuleId.MICROPHONE, HealthStatus.OK, "mic_detail_listening"
@@ -100,6 +110,18 @@ class ModuleHealthTracker:
             await self._transition(
                 ModuleId.MICROPHONE, HealthStatus.UNAVAILABLE, "mic_detail_muted"
             )
+
+    async def _on_microphone_capture_failed(
+        self, event: MicrophoneCaptureFailed
+    ) -> None:
+        # Terminal for the session, and latched: see the flag's comment in
+        # __init__ for why no later signal may lift it. Restart is the only
+        # recovery, and a restart builds a new tracker.
+        del event
+        self._microphone_capture_failed = True
+        await self._transition(
+            ModuleId.MICROPHONE, HealthStatus.ERROR, "mic_detail_capture_failed"
+        )
 
     async def _on_tts_synthesis_result(self, event: TtsSynthesisResult) -> None:
         # A failed unit is skipped but playback continues (see TtsOutput),

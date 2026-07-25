@@ -31,6 +31,8 @@ VAD_RESUME_COOLDOWN_RANGE = (0.0, 10.0)
 class UiConfigSelection:
     model: str
     microphone_device: str
+    # "" means "resolve the device by name alone"; see MicrophoneSettings.
+    microphone_host_api: str = ""
     ui_language: str | None = None
     vad: VadSettings | None = None
     # All-or-nothing: a customized route table must cover every supported

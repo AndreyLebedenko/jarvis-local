@@ -9,6 +9,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     LanCameraSource,
     McpSettings,
+    MicrophoneSettings,
     PiperTtsSettings,
     Settings,
     SileroTtsSettings,
@@ -48,6 +49,7 @@ from jarvis.ui.contract import (
 from jarvis.ui.status_console import (
     INDEX_HTML,
     UI_DIR,
+    MicrophoneOption,
     MicrophoneOptionsAvailable,
     ModelOptionsAvailable,
     StatusConsoleApi,
@@ -57,9 +59,9 @@ from jarvis.ui.status_console import (
     data_locality_payload,
     data_source_payload,
     mcp_state_payload,
+    microphone_option_payload,
     model_request_payload,
     module_health_payload,
-    options_payload,
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
@@ -1163,8 +1165,27 @@ def test_style_css_hidden_uses_violet_not_amber():
 # --- story-v1.2.4-task-3: configuration menu (model/microphone) ------------
 
 
-def test_options_payload_shape():
-    assert options_payload(["a", "b"], "a") == {"options": ["a", "b"], "current": "a"}
+def test_microphone_option_payload_carries_both_halves_of_the_identity():
+    assert microphone_option_payload(
+        MicrophoneOption(device="Microphone (Yeti X)", host_api="MME")
+    ) == {"device": "Microphone (Yeti X)", "host_api": "MME", "label": ""}
+
+
+def test_microphone_option_payload_carries_a_display_label_beside_identity():
+    """A configured value has no label; an enumerated one does. The front
+    end falls back to the raw name, so the two shapes are the same
+    payload."""
+    assert microphone_option_payload(
+        MicrophoneOption(
+            device="Headset (@System32...;(Galaxy Buds Live))",
+            host_api="Windows WDM-KS",
+            label="Headset (Galaxy Buds Live)",
+        )
+    ) == {
+        "device": "Headset (@System32...;(Galaxy Buds Live))",
+        "host_api": "Windows WDM-KS",
+        "label": "Headset (Galaxy Buds Live)",
+    }
 
 
 async def test_request_model_options_publishes_current_plus_fetched_options():
@@ -1249,8 +1270,11 @@ async def test_request_microphone_options_publishes_current_plus_fetched_options
 
     bus.subscribe(MicrophoneOptionsAvailable, on_event)
 
-    async def fake_source() -> list[str]:
-        return ["Built-in Microphone", "USB Headset"]
+    async def fake_source() -> list[MicrophoneOption]:
+        return [
+            MicrophoneOption(device="Built-in Microphone", host_api="MME"),
+            MicrophoneOption(device="USB Headset", host_api="MME"),
+        ]
 
     settings = Settings()
     api = StatusConsoleApi(
@@ -1267,8 +1291,100 @@ async def test_request_microphone_options_publishes_current_plus_fetched_options
     await asyncio.sleep(0.05)
 
     assert len(received) == 1
-    assert received[0].current == settings.microphone.device  # "" by default
-    assert received[0].options == ["", "Built-in Microphone", "USB Headset"]
+    assert received[0].current == MicrophoneOption(device="", host_api="")  # default
+    assert received[0].options == [
+        MicrophoneOption(device="", host_api=""),
+        MicrophoneOption(device="Built-in Microphone", host_api="MME"),
+        MicrophoneOption(device="USB Headset", host_api="MME"),
+    ]
+
+
+async def test_request_microphone_options_offers_one_entry_per_host_api_copy():
+    """The bug this contract exists for: four identical names for one
+    physical microphone. Each must arrive as its own selectable identity,
+    so the selection the user makes is one the capture path can resolve."""
+    bus = EventBus()
+    received: list[MicrophoneOptionsAvailable] = []
+
+    async def on_event(event: MicrophoneOptionsAvailable) -> None:
+        received.append(event)
+
+    bus.subscribe(MicrophoneOptionsAvailable, on_event)
+
+    async def fake_source() -> list[MicrophoneOption]:
+        return [
+            MicrophoneOption(device="Microphone (Yeti X)", host_api="MME"),
+            MicrophoneOption(device="Microphone (Yeti X)", host_api="Windows WASAPI"),
+        ]
+
+    settings = Settings(
+        microphone=MicrophoneSettings(
+            device="Microphone (Yeti X)", host_api="Windows WASAPI"
+        )
+    )
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=settings,
+        microphone_options_source=fake_source,
+    )
+
+    api.request_microphone_options()
+    await asyncio.sleep(0.05)
+
+    assert received[0].options == [
+        MicrophoneOption(device="Microphone (Yeti X)", host_api="MME"),
+        MicrophoneOption(device="Microphone (Yeti X)", host_api="Windows WASAPI"),
+    ]
+    # The configured pair is already among them, so it is not prepended
+    # a second time.
+    assert received[0].current == MicrophoneOption(
+        device="Microphone (Yeti X)", host_api="Windows WASAPI"
+    )
+
+
+async def test_a_labelled_option_still_matches_the_unlabelled_configured_value():
+    """Config stores identity and no label, enumeration produces both. A
+    Bluetooth headset would otherwise appear twice - once as the raw
+    configured name, once as its readable self."""
+    bus = EventBus()
+    received: list[MicrophoneOptionsAvailable] = []
+
+    async def on_event(event: MicrophoneOptionsAvailable) -> None:
+        received.append(event)
+
+    bus.subscribe(MicrophoneOptionsAvailable, on_event)
+    raw_name = "Headset (@System32...;(Galaxy Buds Live))"
+
+    async def fake_source() -> list[MicrophoneOption]:
+        return [
+            MicrophoneOption(
+                device=raw_name,
+                host_api="Windows WDM-KS",
+                label="Headset (Galaxy Buds Live)",
+            )
+        ]
+
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=Settings(
+            microphone=MicrophoneSettings(device=raw_name, host_api="Windows WDM-KS")
+        ),
+        microphone_options_source=fake_source,
+    )
+
+    api.request_microphone_options()
+    await asyncio.sleep(0.05)
+
+    assert len(received[0].options) == 1
+    assert received[0].options[0].label == "Headset (Galaxy Buds Live)"
 
 
 async def test_request_microphone_options_degrades_to_current_value_on_failure():
@@ -1280,7 +1396,7 @@ async def test_request_microphone_options_degrades_to_current_value_on_failure()
 
     bus.subscribe(MicrophoneOptionsAvailable, on_event)
 
-    async def failing_source() -> list[str]:
+    async def failing_source() -> list[MicrophoneOption]:
         raise OSError("no PortAudio backend")
 
     settings = Settings()
@@ -1297,11 +1413,10 @@ async def test_request_microphone_options_degrades_to_current_value_on_failure()
     api.request_microphone_options()
     await asyncio.sleep(0.05)
 
-    assert received == [
-        MicrophoneOptionsAvailable(
-            options=[settings.microphone.device], current=settings.microphone.device
-        )
-    ]
+    current = MicrophoneOption(
+        device=settings.microphone.device, host_api=settings.microphone.host_api
+    )
+    assert received == [MicrophoneOptionsAvailable(options=[current], current=current)]
 
 
 async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_event(

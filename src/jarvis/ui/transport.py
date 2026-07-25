@@ -78,6 +78,7 @@ from jarvis.ui.status_console import (
     journal_event_payload,
     journal_search_hit_payload,
     journal_session_payload,
+    microphone_option_payload,
     model_request_log_payload,
     model_request_payload,
     module_health_payload,
@@ -309,6 +310,7 @@ class ControlApi(Protocol):
         model: str,
         microphone_device: str,
         *,
+        microphone_host_api: str = "",
         ui_language: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
@@ -370,7 +372,10 @@ class UiStateStore:
             "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
             "visibility": cast(JsonObject, visibility_mode_payload(visibility_mode)),
             "model_options": {"options": [], "current": model_label},
-            "microphone_options": {"options": [], "current": ""},
+            "microphone_options": {
+                "options": [],
+                "current": {"device": "", "host_api": ""},
+            },
             "pending_restart": {"pending": False},
             "ui_language": {"language": language},
             "config_values": cast(
@@ -487,10 +492,15 @@ class UiStateStore:
         return self._replace("model_options", {"options": options, "current": current})
 
     def set_microphone_options(
-        self, options: list[str], current: str
+        self, options: list[JsonObject], current: JsonObject
     ) -> JsonObject | None:
+        """A microphone option is a (device, host_api) pair, not a string:
+        one physical microphone appears once per host API under the same
+        name, so a name alone cannot identify what the user picked (see
+        audio/devices.py)."""
         return self._replace(
-            "microphone_options", {"options": options, "current": current}
+            "microphone_options",
+            {"options": cast(JSONValue, options), "current": current},
         )
 
     def set_pending_restart(self, pending: bool) -> JsonObject | None:
@@ -757,7 +767,10 @@ class UiTransportServer:
         self, event: MicrophoneOptionsAvailable
     ) -> None:
         self._publish_delta(
-            self._state.set_microphone_options(event.options, event.current)
+            self._state.set_microphone_options(
+                [microphone_option_payload(option) for option in event.options],
+                microphone_option_payload(event.current),
+            )
         )
 
     async def _on_ui_config_saved(self, event: UiConfigSaved) -> None:
@@ -1568,9 +1581,18 @@ class UiTransportServer:
             raise ProtocolError(
                 "save_config_selection requires string model and microphone arguments"
             )
+        # Absent means "the front-end did not name a host API", which is
+        # the same thing an untouched pre-host_api config says: resolve by
+        # name and fail if that is ambiguous.
+        microphone_host_api = arguments.get("microphone_host_api", "")
+        if not isinstance(microphone_host_api, str):
+            raise ProtocolError(
+                "save_config_selection requires a string microphone_host_api argument"
+            )
         self._control_api.save_config_selection(
             model,
             microphone,
+            microphone_host_api=microphone_host_api,
             ui_language=_parse_ui_language(arguments.get("ui_language")),
             vad=_parse_vad(arguments.get("vad")),
             tts_routes=_parse_tts_routes(arguments.get("tts_routes")),

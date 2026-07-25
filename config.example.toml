@@ -197,6 +197,15 @@ capture_timeout_seconds = 5.0
 # section). Restart-to-apply either way: takes effect on the next
 # `python main.py` start, not live.
 device = ""
+# Windows lists one physical microphone once per host API ("MME",
+# "Windows DirectSound", "Windows WASAPI", "Windows WDM-KS"), all under
+# the same device name, so a name alone can match several devices. ""
+# resolves by name and refuses to guess when that is ambiguous; naming
+# the host API picks one copy. Selecting a microphone in the Status
+# Console writes both fields for you. Host API is not cosmetic here -
+# see PROJECT.md's microphone entries for MME's role in wake recovery
+# and post-mute capture quality.
+host_api = ""
 
 [clipboard]
 # 20000 chars (~5000 tokens at a rough 4 chars/token estimate): a

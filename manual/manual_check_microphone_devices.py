@@ -17,16 +17,15 @@ import argparse
 import asyncio
 import re
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from numbers import Integral, Real
 from pathlib import Path
-from typing import cast
 
 import sounddevice as sd
 import soundfile as sf
 
+from jarvis.audio.devices import InputDevice, enumerate_input_devices
 from jarvis.audio.input import (
     SAMPLE_RATE,
     AudioInput,
@@ -43,15 +42,6 @@ QUIET_REPLAY_WINDOW_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
-class DeviceInfo:
-    index: int
-    name: str
-    host_api: str
-    default_sample_rate: float
-    max_input_channels: int
-
-
-@dataclass(frozen=True)
 class RecordedChunk:
     number: int
     path: Path
@@ -61,7 +51,7 @@ class RecordedChunk:
 
 @dataclass(frozen=True)
 class MatrixResult:
-    device: DeviceInfo
+    device: InputDevice
     step: str
     status: str
     detail: str = ""
@@ -97,60 +87,6 @@ def format_result_line(result: MatrixResult) -> str:
     return "|".join(parts)
 
 
-def _mapping_text(raw: Mapping[str, object], key: str, default: str = "") -> str:
-    value = raw.get(key, default)
-    return value if isinstance(value, str) else default
-
-
-def _mapping_int(raw: Mapping[str, object], key: str, default: int = 0) -> int:
-    value = raw.get(key, default)
-    if isinstance(value, bool):
-        return default
-    return int(value) if isinstance(value, Integral) else default
-
-
-def _mapping_float(raw: Mapping[str, object], key: str, default: float = 0.0) -> float:
-    value = raw.get(key, default)
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, Real):
-        return float(value)
-    return default
-
-
-def device_info_from_sounddevice(
-    index: int,
-    raw_device: Mapping[str, object],
-    raw_hostapis: Sequence[Mapping[str, object]],
-) -> DeviceInfo | None:
-    max_input_channels = _mapping_int(raw_device, "max_input_channels")
-    if max_input_channels <= 0:
-        return None
-    hostapi_index = _mapping_int(raw_device, "hostapi", -1)
-    host_api = "unknown"
-    if 0 <= hostapi_index < len(raw_hostapis):
-        host_api = _mapping_text(raw_hostapis[hostapi_index], "name", "unknown")
-    return DeviceInfo(
-        index=index,
-        name=_mapping_text(raw_device, "name", f"device-{index}"),
-        host_api=host_api,
-        default_sample_rate=_mapping_float(raw_device, "default_samplerate"),
-        max_input_channels=max_input_channels,
-    )
-
-
-def input_devices_from_sounddevice(
-    raw_devices: Sequence[Mapping[str, object]],
-    raw_hostapis: Sequence[Mapping[str, object]],
-) -> list[DeviceInfo]:
-    devices = []
-    for index, raw_device in enumerate(raw_devices):
-        device = device_info_from_sounddevice(index, raw_device, raw_hostapis)
-        if device is not None:
-            devices.append(device)
-    return devices
-
-
 def _stream_factory_for_device_index(device_index: int):
     def make_stream(block_samples: int) -> InputStreamLike:
         return sd.InputStream(
@@ -164,7 +100,7 @@ def _stream_factory_for_device_index(device_index: int):
     return make_stream
 
 
-def _print_devices(devices: Sequence[DeviceInfo]) -> None:
+def _print_devices(devices: Sequence[InputDevice]) -> None:
     print("Input devices:")
     for device in devices:
         print(
@@ -179,8 +115,8 @@ async def _prompt(text: str) -> str:
 
 
 async def _choose_device(
-    devices: Sequence[DeviceInfo], requested_index: int | None
-) -> DeviceInfo:
+    devices: Sequence[InputDevice], requested_index: int | None
+) -> InputDevice:
     if requested_index is not None:
         for device in devices:
             if device.index == requested_index:
@@ -200,7 +136,7 @@ async def _choose_device(
         print("That index is not in the input-device list above.")
 
 
-def _output_dir(base_dir: Path, device: DeviceInfo) -> Path:
+def _output_dir(base_dir: Path, device: InputDevice) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     name = sanitize_filename(f"{device.index}-{device.name}")
     return base_dir / f"{timestamp}-{name}"
@@ -247,7 +183,7 @@ async def _wait_for_capture(prompt: str, chunks: list[RecordedChunk]) -> bool:
     return len(chunks) > before
 
 
-async def _run_matrix(device: DeviceInfo, output_dir: Path) -> None:
+async def _run_matrix(device: InputDevice, output_dir: Path) -> None:
     settings = load_settings()
     bus = EventBus()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -448,9 +384,7 @@ async def _run_matrix(device: DeviceInfo, output_dir: Path) -> None:
 
 
 async def _main_async(args: argparse.Namespace) -> None:
-    raw_devices = cast(Sequence[Mapping[str, object]], sd.query_devices())
-    raw_hostapis = cast(Sequence[Mapping[str, object]], sd.query_hostapis())
-    devices = input_devices_from_sounddevice(raw_devices, raw_hostapis)
+    devices = enumerate_input_devices()
     if not devices:
         raise SystemExit("No PortAudio input devices found.")
     _print_devices(devices)
@@ -458,7 +392,7 @@ async def _main_async(args: argparse.Namespace) -> None:
         return
     device = await _choose_device(devices, args.device_index)
     output_dir = _output_dir(args.output_dir, device)
-    print(f"\nTesting [{device.index}] {device.name} via {device.host_api}")
+    print(f"\nTesting [{device.index}] {device.label} via {device.host_api}")
     print(f"Output directory: {output_dir}\n")
     await _run_matrix(device, output_dir)
 

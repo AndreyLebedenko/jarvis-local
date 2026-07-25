@@ -16,6 +16,7 @@ import sounddevice as sd
 import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
+from jarvis.audio.devices import enumerate_input_devices, resolve_input_device
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings, VadSettings
@@ -48,25 +49,32 @@ class InputStreamLike(Protocol):
 StreamFactory = Callable[[int], InputStreamLike]
 
 
-def _default_stream_factory(block_samples: int, device: str = "") -> InputStreamLike:
+def _default_stream_factory(
+    block_samples: int, device: str = "", host_api: str = ""
+) -> InputStreamLike:
     return sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
         blocksize=block_samples,
-        device=device or None,
+        device=resolve_input_device(enumerate_input_devices(), device, host_api),
     )
 
 
-def stream_factory_for_device(device: str) -> StreamFactory:
-    """Binds a specific sounddevice device name (config.microphone.device,
-    "" for the system default - see config.py's MicrophoneSettings) into a
-    StreamFactory, so callers needing the real device selection (main.py's
-    build_app()) don't need to know _default_stream_factory's extra
-    parameter, and AudioInput's own constructor/StreamFactory type keep
-    their existing single-argument shape - no test-injection seam changes
-    for anything that already passes a fake stream_factory."""
-    return functools.partial(_default_stream_factory, device=device)
+def stream_factory_for_device(device: str, host_api: str = "") -> StreamFactory:
+    """Binds the configured microphone identity (config.microphone.device
+    and .host_api, "" for the system default - see config.py's
+    MicrophoneSettings) into a StreamFactory, so callers needing the real
+    device selection (app.py's build_app()) don't need to know
+    _default_stream_factory's extra parameters, and AudioInput's own
+    constructor/StreamFactory type keep their existing single-argument
+    shape - no test-injection seam changes for anything that already
+    passes a fake stream_factory.
+
+    Resolution runs per stream creation, not once at startup, because a
+    PortAudio index is stable only within one enumeration and this factory
+    is called again for every active period (see _run_microphone_loop)."""
+    return functools.partial(_default_stream_factory, device=device, host_api=host_api)
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,20 @@ class UtteranceChunk:
 @dataclass(frozen=True)
 class MicSleepToggled:
     is_awake: bool
+
+
+@dataclass(frozen=True)
+class MicrophoneCaptureFailed:
+    """The capture loop stopped on an error and will not resume.
+
+    Published instead of raising into the background task, where the
+    exception was observed only during shutdown teardown - a whole
+    session of a deaf assistant whose microphone chip still read
+    "listening" (see the microphone-device-name-ambiguous bug report).
+    reason is English diagnostic text for the system log; the UI renders
+    its own localized message from a catalog key."""
+
+    reason: str
 
 
 def _merge_close_segments(segments: list[dict], max_gap_seconds: float) -> list[dict]:
@@ -174,11 +196,25 @@ class AudioInput:
         # (see the shutdown-race bug report in tasks/bug_reports/).
         self._loop_exited = asyncio.Event()
         self._loop_exited.set()
+        # Latched by a capture error and never cleared: nothing restarts
+        # the loop within a session (verified by the sleep/wake tests in
+        # tests/test_audio_in.py), so this is the engine's own answer to
+        # "is anything actually capturing" - which the sleep toggle's UI
+        # feedback needs, or it announces a wake that cannot happen.
+        self._capture_failed = False
 
     @property
     def is_awake(self) -> bool:
-        """The actual, combined capture state - see module docstring."""
+        """The user/auto-pause state, not proof that capture is running -
+        see capture_failed."""
         return self._awake.is_set()
+
+    @property
+    def capture_failed(self) -> bool:
+        """True once the capture loop has stopped on an error. Terminal
+        for the session; only a restart builds a capturing AudioInput
+        again."""
+        return self._capture_failed
 
     async def toggle_user_sleep(self) -> None:
         self._user_wants_awake = not self._user_wants_awake
@@ -293,10 +329,23 @@ class AudioInput:
         return buffer, published_end_seconds
 
     async def run_microphone_loop(self, poll_interval_seconds: float = 0.3) -> None:
-        """Records microphone audio until cancelled or stopped."""
+        """Records microphone audio until cancelled or stopped.
+
+        An error ends capture for the rest of the session - there is no
+        retry here on purpose, because a loop that quietly reopens a
+        device hides the very signal this reporting exists to produce.
+        Cancellation is not an error and passes through untouched
+        (CancelledError is a BaseException, so `except Exception` cannot
+        swallow the shutdown path)."""
         self._loop_exited.clear()
         try:
             await self._run_microphone_loop(poll_interval_seconds)
+        except Exception as exc:
+            self._capture_failed = True
+            logger.error("Microphone capture stopped: %r", exc, exc_info=True)
+            await self._bus.publish(
+                MicrophoneCaptureFailed, MicrophoneCaptureFailed(reason=str(exc))
+            )
         finally:
             self._loop_exited.set()
 

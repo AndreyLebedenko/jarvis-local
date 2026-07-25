@@ -5,6 +5,17 @@
 needs a live Jarvis. Not caused by camera work; the camera path is
 unrelated and unaffected.
 **Reported by:** owner, 2026-07-24.
+**Status:** Fixed and verified 2026-07-25
+(`tasks/done/story-microphone-device-identity.md`). The owner selected
+Yeti X on MME, restarted, and the device opened and captured. Both halves
+are addressed: device identity is now (name, host API) resolved to an
+index by `src/jarvis/audio/devices.py`, and a capture loop that stops
+reports through `MicrophoneCaptureFailed` instead of raising into a
+background task. The design departs from this report on one point - an
+unresolvable device degrades the microphone module rather than failing
+startup, because the remedy lives in the console that a startup abort
+would prevent from opening (owner decision, 2026-07-25; recorded in
+PROJECT.md).
 
 ## Symptoms
 
