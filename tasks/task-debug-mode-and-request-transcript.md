@@ -1,6 +1,25 @@
 # Task: A debug launch that records what actually went to the model
 
-**Status:** Not started, ready to implement. No open questions.
+**Status:** In progress on `feature/debug-mode-gate`. Slice 1 of 4 (the
+gate) is implemented and green; slices 2-4 below are not started.
+
+## Implementation slices
+
+1. **The gate** - done, in two layers after a review finding. `--debug`
+   without `--status-console` exits 2 from `parse_args()` with a readable
+   message, and `run()` itself raises when `debug` is set without a live
+   console. The first layer is the friendly error for a person; the
+   second is the invariant, because `run()` is an entry point of its own
+   and the first version let a caller reach it directly and record
+   headlessly. `announce_debug_mode()` writes the WARNING line that says
+   privacy is not guaranteed, and cannot run before the refusal.
+   Deliberately first of the four: until the gate holds, every later
+   slice could be switched on without the banner. Nothing is recorded
+   yet, so the flag currently only announces itself.
+2. **The per-turn record** of what went to the model and what came back.
+3. **Utterance metrics** at debug level.
+4. **The console banner** and the events-panel entry, both languages.
+   `announce_debug_mode()` is the seam they join.
 **Raised by:** owner, 2026-07-25, after the voice-comprehension
 investigation: "вместо того, чтобы включить дебаг и повторить запуск с
 полным журналированием всего ввода-вывода, мы занимались

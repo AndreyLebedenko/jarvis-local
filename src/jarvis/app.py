@@ -132,6 +132,28 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # name for the built-in default.
 SYSTEM_PROMPT = PromptSettings().system
 
+# Debug mode is an explicit exception to the v1.6.4 content rule, which
+# both records otherwise keep and which README states to the user as a
+# promise. It is a CLI flag with no config key on purpose: a persisted
+# switch would outlive the session that needed it, while a flag dies at
+# the next start.
+DEBUG_MODE_LOG_MESSAGE = (
+    "DEBUG MODE: the model exchange is being recorded for this run. "
+    "Privacy is not guaranteed - logs may contain what you say and send."
+)
+
+
+def announce_debug_mode(enabled: bool) -> None:
+    """Says, everywhere it can, that the content rule is lifted.
+
+    Called first thing in run(), before anything could be recorded, so a
+    log carrying the exchange also carries the reason it was allowed to.
+    The console banner and the events-panel entry join this function when
+    they land; the warning level is deliberate - a normal run must never
+    print it, and this one must be impossible to miss in a log file."""
+    if enabled:
+        logger.warning(DEBUG_MODE_LOG_MESSAGE)
+
 
 @dataclass(frozen=True)
 class Turn:
@@ -1138,7 +1160,18 @@ async def run(
     app: App | None = None,
     live_console: LiveStatusConsole | None = None,
     shutdown_provider: HotkeyProvider | None = None,
+    debug: bool = False,
 ) -> None:
+    # The invariant lives here, not only in parse_args(): run() is an entry
+    # point of its own, and once a later slice keys transcript recording off
+    # this flag, a caller reaching run() directly could otherwise record an
+    # entire session with nothing on screen saying so. The CLI gate is the
+    # friendly error; this is the one that cannot be bypassed.
+    if debug and live_console is None:
+        raise ValueError(
+            "debug mode requires the Status Console: it is the surface that "
+            "warns privacy is not guaranteed while the exchange is recorded"
+        )
     # No logging was configured anywhere in the process before this (verified:
     # grep found no basicConfig/setLevel calls), so every existing INFO-level
     # log call (e.g. the busy-guard "ignoring ..." messages) was silently
@@ -1159,6 +1192,7 @@ async def run(
     # configured, not hardcoded.
     settings = settings or load_settings()
     configure_logging(settings.logging)
+    announce_debug_mode(debug)
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)
@@ -1234,7 +1268,10 @@ async def run(
 
 
 def run_with_status_console(
-    settings: Settings | None = None, *, include_touchstrip: bool = True
+    settings: Settings | None = None,
+    *,
+    include_touchstrip: bool = True,
+    debug: bool = False,
 ) -> None:
     settings = settings or load_settings()
     app = build_app(settings)
@@ -1293,7 +1330,9 @@ def run_with_status_console(
                 raise RuntimeError("Status Console transport was not created")
             transport_info = await live_console.transport.start()
             live_console.load_transport_urls(transport_info)
-            await run(settings=settings, app=app, live_console=live_console)
+            await run(
+                settings=settings, app=app, live_console=live_console, debug=debug
+            )
 
         try:
             asyncio.run(start())
@@ -1320,13 +1359,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="with --status-console, open only the desktop console window",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "record the model exchange for diagnosis; requires --status-console, "
+            "which is where the debug and privacy warnings are shown"
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.debug and not args.status_console:
+        # The console banner is the consent surface: debug lifts the
+        # content rule that both logs otherwise keep, so a run that
+        # records the exchange must also be a run that says so on screen.
+        # A headless debug session would be a recording with nobody told.
+        parser.error("--debug requires --status-console")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.status_console:
-        run_with_status_console(include_touchstrip=not args.no_touchstrip)
+        run_with_status_console(
+            include_touchstrip=not args.no_touchstrip, debug=args.debug
+        )
     else:
         asyncio.run(run())
 
