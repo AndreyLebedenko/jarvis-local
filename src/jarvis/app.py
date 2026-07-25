@@ -1162,6 +1162,16 @@ async def run(
     shutdown_provider: HotkeyProvider | None = None,
     debug: bool = False,
 ) -> None:
+    # The invariant lives here, not only in parse_args(): run() is an entry
+    # point of its own, and once a later slice keys transcript recording off
+    # this flag, a caller reaching run() directly could otherwise record an
+    # entire session with nothing on screen saying so. The CLI gate is the
+    # friendly error; this is the one that cannot be bypassed.
+    if debug and live_console is None:
+        raise ValueError(
+            "debug mode requires the Status Console: it is the surface that "
+            "warns privacy is not guaranteed while the exchange is recorded"
+        )
     # No logging was configured anywhere in the process before this (verified:
     # grep found no basicConfig/setLevel calls), so every existing INFO-level
     # log call (e.g. the busy-guard "ignoring ..." messages) was silently

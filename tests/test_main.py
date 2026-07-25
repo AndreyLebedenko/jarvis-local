@@ -2204,22 +2204,50 @@ def test_a_normal_run_says_nothing_about_debug(caplog):
     assert caplog.records == []
 
 
-def test_run_announces_debug_mode_at_startup(monkeypatch):
-    """The announcement is wired into run() itself, not left to callers -
-    every launch path that can set the flag goes through here."""
-    announced = []
-    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+def _stop_run_before_the_engine(monkeypatch) -> None:
     monkeypatch.setattr("jarvis.app.configure_logging", lambda settings: None)
     monkeypatch.setattr("jarvis.app.ensure_generated", lambda settings: None)
     monkeypatch.setattr(
         "jarvis.app.build_app", lambda settings: _raise(_StopBeforeEngine())
     )
 
-    for debug in (True, False):
+
+def test_run_announces_debug_mode_at_startup(monkeypatch):
+    """The announcement is wired into run() itself, not left to callers -
+    every launch path that can set the flag goes through here."""
+    announced = []
+    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+    _stop_run_before_the_engine(monkeypatch)
+
+    for debug, console in ((True, object()), (False, None)):
         with pytest.raises(_StopBeforeEngine):
-            asyncio.run(run(settings=_settings(), debug=debug))
+            asyncio.run(run(settings=_settings(), live_console=console, debug=debug))
 
     assert announced == [True, False]
+
+
+def test_run_refuses_a_headless_debug_launch(monkeypatch):
+    """Review finding (P1, 2026-07-25): the CLI gate is not the invariant.
+    run() is its own entry point, and a transcript recorded with nothing on
+    screen saying so is exactly what the console requirement exists to
+    prevent - so the refusal has to live where the flag is used."""
+    announced = []
+    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+    _stop_run_before_the_engine(monkeypatch)
+
+    with pytest.raises(ValueError, match="requires the Status Console"):
+        asyncio.run(run(settings=_settings(), live_console=None, debug=True))
+
+    assert announced == []
+
+
+def test_run_without_a_console_is_fine_when_debug_is_off(monkeypatch):
+    """The refusal is about debug, not about running headless: a normal
+    `python -m jarvis` has no console and must keep working."""
+    _stop_run_before_the_engine(monkeypatch)
+
+    with pytest.raises(_StopBeforeEngine):
+        asyncio.run(run(settings=_settings(), live_console=None))
 
 
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):

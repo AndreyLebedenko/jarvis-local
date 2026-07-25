@@ -5,14 +5,17 @@ gate) is implemented and green; slices 2-4 below are not started.
 
 ## Implementation slices
 
-1. **The gate** - done. `--debug` exists, `--debug` without
-   `--status-console` exits 2 with `--debug requires --status-console`,
-   the flag reaches `run()`, and `announce_debug_mode()` writes the
-   WARNING line that says privacy is not guaranteed. Deliberately first:
-   until the gate holds, every later slice could be switched on without
-   the banner. Nothing is recorded yet, so the flag currently only
-   announces itself - shipping it before the banner records nothing and
-   hides nothing.
+1. **The gate** - done, in two layers after a review finding. `--debug`
+   without `--status-console` exits 2 from `parse_args()` with a readable
+   message, and `run()` itself raises when `debug` is set without a live
+   console. The first layer is the friendly error for a person; the
+   second is the invariant, because `run()` is an entry point of its own
+   and the first version let a caller reach it directly and record
+   headlessly. `announce_debug_mode()` writes the WARNING line that says
+   privacy is not guaranteed, and cannot run before the refusal.
+   Deliberately first of the four: until the gate holds, every later
+   slice could be switched on without the banner. Nothing is recorded
+   yet, so the flag currently only announces itself.
 2. **The per-turn record** of what went to the model and what came back.
 3. **Utterance metrics** at debug level.
 4. **The console banner** and the events-panel entry, both languages.
