@@ -32,7 +32,9 @@ const UI_STRINGS = {
     tool_provider_builtin: "builtin",
     local_tools_title: "Local tools",
     local_tools_empty: "No local tools",
-    camera_tool_privacy_hint: "camera privacy switch",
+    tool_label_capture_camera_image: "Camera access",
+    tool_label_remember: "Memory writes",
+    tool_label_set_reasoning_level: "Reasoning level",
     chip_model: "Model",
     chip_microphone: "Microphone",
     chip_camera: "Camera",
@@ -224,7 +226,9 @@ const UI_STRINGS = {
     tool_provider_builtin: "встроенный",
     local_tools_title: "Локальные инструменты",
     local_tools_empty: "Нет локальных инструментов",
-    camera_tool_privacy_hint: "переключатель приватности камеры",
+    tool_label_capture_camera_image: "Доступ к камере",
+    tool_label_remember: "Запись в память",
+    tool_label_set_reasoning_level: "Уровень рассуждения",
     chip_model: "Модель",
     chip_microphone: "Микрофон",
     chip_camera: "Камера",
@@ -408,6 +412,15 @@ function uiString(key) {
     throw new Error("Unknown UI string key: " + key);
   }
   return text;
+}
+
+// For keys that legitimately may not exist, so a caller can fall back to
+// something true instead of inventing one. Absence is an answer here, not
+// the programming error uiString() rightly throws on.
+function optionalUiString(key) {
+  const catalog = UI_STRINGS[_uiLanguage] || UI_STRINGS[DEFAULT_UI_LANGUAGE];
+  const text = catalog[key];
+  return text === undefined ? null : text;
 }
 
 function currentUiLanguage() {
