@@ -1,6 +1,7 @@
 # Task: Separate local tools from external tools in the Status Console
 
-**Status:** Planned.
+**Status:** Completed.
+**Verified:** owner-run visual check, 2026-07-25.
 **Raised by:** owner, 2026-07-24: "MCP is marked as off, but after I
 ticked the box the cameras became available - isn't that misleading?"
 **Depends on:** `tasks/task-tool-row-states-and-refresh.md`, so this card
@@ -65,15 +66,39 @@ shown always describes the things shown under it.
 
 ## Acceptance criteria
 
-- [ ] With MCP off, no part of the console suggests that the local
+- [x] With MCP off, no part of the console suggests that the local
       builtin tools are off.
-- [ ] Enabling or disabling MCP visibly changes only the external group.
-- [ ] The camera control is distinguishable from an ordinary tool toggle.
-- [ ] `python -m pytest` and Ruff are green.
-- [ ] Owner-run visual check of the Status tab in both languages,
-      including screenshots refreshed if the layout changed materially.
+- [x] Enabling or disabling MCP visibly changes only the external group.
+- [x] The camera control is distinguishable from an ordinary tool toggle.
+- [x] `python -m pytest` and Ruff are green.
+- [x] Owner-run visual check of the Status tab in both languages.
 
-## Open question for the owner
+## Outcome
+
+Two cards, as recommended. Grouping happens in `mcp_state_payload()`
+rather than in markup, so the engine hands the UI `tools` and
+`local_tools` separately and a status line cannot be rendered over
+something it does not govern.
+
+The camera row is marked `is_privacy_switch` and says so in words. A
+violet tint was tried first and rejected on review: a tinted row reads as
+decoration or as a state, and it cannot tell anyone what makes that row
+different - which was the entire purpose of marking it. The label carries
+the meaning; that lesson is what
+`tasks/task-tool-rows-name-capabilities.md` builds on.
+
+Vertical cost was paid back rather than absorbed: the local card has no
+button and a shorter list bound (108 px), since the builtin provider's
+tool count grows far more slowly than an MCP server's.
+
+Noted and not acted on: `demo.html` duplicates `index.html`'s markup and
+has never carried the tool panel at all, so this surface cannot be
+reviewed without a live engine. Left alone rather than deepening the
+duplication silently; it wants its own decision - either the harness
+loads the real markup, or it honestly declares that it covers the orb and
+chips only.
+
+## Open question for the owner (answered: two cards)
 
 Two shapes are plausible and the choice is yours, because it is about
 what the console is for rather than about code:

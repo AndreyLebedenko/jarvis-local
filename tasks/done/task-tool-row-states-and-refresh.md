@@ -1,6 +1,7 @@
 # Task: Tool row states and refresh after a toggle
 
-**Status:** Planned.
+**Status:** Completed.
+**Verified:** owner-run visual check, 2026-07-25.
 **Raised by:** owner, 2026-07-24, reviewing the Status Console after
 v1.6.2 closed.
 **Related:** `tasks/task-local-and-external-tool-panels.md` does the
@@ -60,9 +61,28 @@ three states it actually has, and repaint it when a toggle lands.
 
 ## Acceptance criteria
 
-- [ ] A builtin tool that is simply switched off no longer reads as
+- [x] A builtin tool that is simply switched off no longer reads as
       "unavailable" in either language.
-- [ ] After ticking or unticking a tool, its label matches its checkbox
+- [x] After ticking or unticking a tool, its label matches its checkbox
       without a manual refresh.
-- [ ] `python -m pytest` and Ruff are green.
-- [ ] Owner-run visual check in both languages, since this is UI text.
+- [x] `python -m pytest` and Ruff are green.
+- [x] Owner-run visual check in both languages, since this is UI text.
+
+## Outcome
+
+The three-state wording this card asked for did not survive review, and
+should not have: on/off duplicates the checkbox, and writing it out was
+the original defect wearing a new hat - it is exactly what made an
+available tool the owner had switched off share a word with a dead
+provider. A row now states only unavailability, because that is the one
+thing the checkbox cannot explain: it refuses to move and does not say
+why. Two catalog strings were deleted rather than three added.
+
+The refresh half landed as designed. `ToolEnablementChanged` carries no
+payload deliberately: the UI re-reads the whole registry, so a row the
+event did not happen to name cannot drift out of step. It is published
+even when the engine rejects the toggle as stale, because the click has
+already moved the checkbox in the browser either way.
+
+Naming the rows in the user's language turned out to be its own question
+and became `tasks/task-tool-rows-name-capabilities.md`.

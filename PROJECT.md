@@ -2571,6 +2571,31 @@ the criterion that decides where a future control goes.
   belong on Status even though they look like configuration; the model and
   microphone selectors are cold configuration and belong on Settings even
   though they sit next to runtime chips historically.
+- **A status line may only be rendered over the things it governs
+  (decision, 2026-07-25).** The tool list applied that placement rule to
+  data but not to chrome: builtin tools sat inside the card headed
+  "External tools (MCP)" whose status read "Off", so ticking a row there
+  enabled the camera under a heading claiming it was off. Tools are now
+  grouped by provider kind in `mcp_state_payload()` - `tools` and
+  `local_tools` - and rendered as two cards, so the MCP status and its
+  button cannot be read as describing anything local. Grouping lives in
+  the payload rather than in markup because the honesty claim is the
+  engine's to make, not the template's. The camera row additionally
+  carries `is_privacy_switch`: it drives camera state rather than mere
+  availability, and cross-cutting rule 9's non-delegable privacy controls
+  are only genuinely held by a user who can read them correctly.
+- **A tool row states only what its checkbox cannot (decision,
+  2026-07-25).** Writing "on"/"off" beside a checkbox duplicates it, and
+  that duplication was the original defect: one word covered both "the
+  user switched this off" and "the provider cannot serve it", so a
+  perfectly available builtin tool read as unavailable. Only
+  unavailability is written now - the checkbox refuses to move and cannot
+  say why. The same review rejected a color accent on the camera row: a
+  tinted row reads as decoration or as a state and cannot say what makes
+  it different, so meaning belongs in the words. Toggling republishes the
+  whole registry through `ToolEnablementChanged`, which deliberately
+  carries no payload and fires even for a toggle the engine rejects as
+  stale, because the click has already moved the box in the browser.
 - Tabs are an unpersisted `data-view` attribute on `<html>`, the same
   mechanism the v1.5.0 journal switch already used. There is no stored tab
   preference and no engine-side view state.
