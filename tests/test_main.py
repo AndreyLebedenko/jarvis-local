@@ -56,6 +56,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
     JournalSettings,
+    LoggingSettings,
     McpServerSettings,
     McpSettings,
     MemorySettings,
@@ -68,6 +69,7 @@ from jarvis.core.config import (
     UiSettings,
     VadSettings,
 )
+from jarvis.core.debug_transcript import configure_debug_transcript, recording
 from jarvis.core.lifecycle import (
     AttachmentSubmissionReason,
     ModelRequestInput,
@@ -2240,6 +2242,21 @@ def test_run_announces_debug_mode_at_startup(monkeypatch):
             asyncio.run(run(settings=_settings(), live_console=console, debug=debug))
 
     assert announced == [True, False]
+
+
+def test_a_run_without_debug_turns_any_previous_recording_off(monkeypatch, tmp_path):
+    """Review finding (P2, 2026-07-26): the transcript logger is module
+    state, so a second run in the same process inherited the first one's
+    sink and kept writing request content with nothing announcing it.
+    Off has to be an action, not the absence of the enable call."""
+    configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+    assert recording() is True
+    _stop_run_before_the_engine(monkeypatch)
+
+    with pytest.raises(_StopBeforeEngine):
+        asyncio.run(run(settings=_settings(), live_console=None))
+
+    assert recording() is False
 
 
 def test_run_refuses_a_headless_debug_launch(monkeypatch):

@@ -17,6 +17,7 @@ from jarvis.core.debug_transcript import (
     Exchange,
     begin_exchange,
     configure_debug_transcript,
+    disable_debug_transcript,
     logger,
     media_descriptor,
     recording,
@@ -199,3 +200,64 @@ def test_redaction_leaves_messages_without_media_untouched():
     messages = [{"role": "user", "content": "текст"}]
 
     assert redacted_messages(messages) == messages
+
+
+# --- turning it off (review finding, 2026-07-26) ---------------------------
+# The logger is module state, so "debug is off" has to be an action. Every
+# case below is a way the previous run's sink could otherwise outlive the
+# flag that opened it.
+
+
+def test_disabling_stops_recording_and_closes_the_file(transcript):
+    begin_exchange(payload_with([{"role": "user", "content": "первый прогон"}])).write()
+
+    disable_debug_transcript()
+
+    assert recording() is False
+    assert begin_exchange(payload_with([])) is None
+    assert logger.handlers == []
+
+
+def test_a_second_run_without_debug_does_not_inherit_the_first_sink(tmp_path):
+    """The leak this finding names: run(debug=True) then run(debug=False)
+    in one process kept writing request content with nothing saying so."""
+    path = configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+    begin_exchange(payload_with([{"role": "user", "content": "первый"}])).write()
+
+    disable_debug_transcript()
+    assert begin_exchange(payload_with([{"role": "user", "content": "второй"}])) is None
+
+    assert "второй" not in path.read_text(encoding="utf-8")
+
+
+def test_a_failed_configure_leaves_nothing_recording(tmp_path):
+    """Otherwise the announcement says "records nothing" while writes
+    continue into the previous run's file."""
+    old = configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+    blocked = tmp_path / "file-not-a-directory"
+    blocked.write_text("", encoding="utf-8")
+
+    assert (
+        configure_debug_transcript(LoggingSettings(directory=str(blocked / "logs")))
+        is None
+    )
+    assert recording() is False
+    assert (
+        begin_exchange(payload_with([{"role": "user", "content": "после сбоя"}]))
+        is None
+    )
+    assert "после сбоя" not in old.read_text(encoding="utf-8")
+
+
+def test_a_debug_level_root_logger_alone_does_not_start_recording():
+    """recording() must mean "there is a sink", not "the level allows it":
+    the level is inherited, and a process that turns root to DEBUG must not
+    thereby start recording request content."""
+    disable_debug_transcript()
+    root = logging.getLogger()
+    previous = root.level
+    root.setLevel(logging.DEBUG)
+    try:
+        assert recording() is False
+    finally:
+        root.setLevel(previous)

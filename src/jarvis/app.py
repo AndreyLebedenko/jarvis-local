@@ -29,7 +29,10 @@ from jarvis.core.config import (
     Settings,
     load_settings,
 )
-from jarvis.core.debug_transcript import configure_debug_transcript
+from jarvis.core.debug_transcript import (
+    configure_debug_transcript,
+    disable_debug_transcript,
+)
 from jarvis.core.lifecycle import (
     VOICE_PLACEHOLDER_TEXT,
     AttachmentSubmissionReason,
@@ -1201,9 +1204,15 @@ async def run(
     # configured, not hardcoded.
     settings = settings or load_settings()
     configure_logging(settings.logging)
-    announce_debug_mode(
-        debug, configure_debug_transcript(settings.logging) if debug else None
-    )
+    if debug:
+        transcript_path = configure_debug_transcript(settings.logging)
+    else:
+        # Explicit, not implied by "we did not enable it": the transcript
+        # logger is module state that survives a run, so a second run in
+        # the same process would inherit the first one's sink.
+        disable_debug_transcript()
+        transcript_path = None
+    announce_debug_mode(debug, transcript_path)
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)

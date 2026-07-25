@@ -34,6 +34,14 @@ gate) is implemented and green; slices 2-4 below are not started.
    Verified against the live endpoint, not only MockTransport: one real
    request produced one record carrying the model, options, message list,
    answer, and token counts.
+   A review finding closed a leak in the same slice: the transcript logger
+   is module state, so a run without debug had to *disable* it rather than
+   merely not enable it, and a failed configure had to close the old sink
+   before reporting failure. Otherwise a second run in one process kept
+   recording silently, and an announcement saying "records nothing" could
+   coexist with writes continuing into the previous file. `recording()`
+   now means "there is a sink", not "the level allows it", since the level
+   alone is inherited from the root logger.
 3. **Utterance metrics** at debug level.
 4. **The console banner** and the events-panel entry, both languages.
    `announce_debug_mode()` is the seam they join.

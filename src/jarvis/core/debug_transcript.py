@@ -49,11 +49,29 @@ _MAGIC_NUMBERS = (
 logger = logging.getLogger(TRANSCRIPT_LOGGER_NAME)
 
 
+def disable_debug_transcript() -> None:
+    """Stop recording, closing whatever sink was open.
+
+    This logger is module state, so "debug is off" has to be an action
+    rather than an absence: without it, a second run() in the same process
+    would inherit the previous run's handler and keep writing request
+    content with nothing announcing it (review finding, 2026-07-26)."""
+    for handler in logger.handlers:
+        handler.close()
+    logger.handlers = []
+    logger.setLevel(logging.NOTSET)
+
+
 def configure_debug_transcript(settings: LoggingSettings) -> Path | None:
     """Install the transcript sink. Returns its path, or None if it could
     not be opened - a debug run must fail loudly rather than run silently
     without the recording it was started for, but that decision belongs to
-    the caller, which is why this reports instead of raising."""
+    the caller, which is why this reports instead of raising.
+
+    The old sink is closed first, so a failure here can never leave the
+    previous run's file being written to behind an announcement that says
+    nothing is being recorded."""
+    disable_debug_transcript()
     directory = Path(settings.directory)
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -73,7 +91,10 @@ def configure_debug_transcript(settings: LoggingSettings) -> Path | None:
 
 
 def recording() -> bool:
-    return logger.isEnabledFor(logging.DEBUG)
+    """A sink, not just a level: the level alone is inherited from the
+    root logger, so a process that turned root to DEBUG would otherwise
+    make this claim recording while nothing has anywhere to be written."""
+    return bool(logger.handlers) and logger.isEnabledFor(logging.DEBUG)
 
 
 def media_descriptor(encoded: str) -> dict[str, Any]:
