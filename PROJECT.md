@@ -2596,6 +2596,29 @@ the criterion that decides where a future control goes.
   whole registry through `ToolEnablementChanged`, which deliberately
   carries no payload and fires even for a toggle the engine rejects as
   stale, because the click has already moved the box in the browser.
+- **The console carries two vocabularies on purpose (decision,
+  2026-07-25).** The tool list is a list of permissions, so its rows name
+  capabilities in the interface language - "Camera access", not
+  `capture_camera_image`. The events panel keeps printing raw identifiers,
+  because it records what actually ran and an audit trail must not be
+  paraphrased. A mouse-only tooltip carrying the identifier and the tool's
+  description is the bridge between the two, rather than a reason to
+  rename either surface. Only tools Jarvis ships get a curated label:
+  inventing a friendly name for a third-party MCP tool that reaches the
+  network would be worse than showing an ugly true one - the same honesty
+  axis as the data-source badge - so a missing label falls back to the
+  real name and never to a guess.
+- **A tool's `description` now has two audiences, accepted deliberately
+  (decision, 2026-07-25).** It is written for the model, which reads it to
+  decide when to call the tool, and it is also what a human sees on hover.
+  A separate `ui_description` field was rejected as ceremony for a
+  single-user product whose owner writes his own config. The boundary that
+  keeps this honest: the text stays optimized for the model and the
+  tooltip shows whatever that happens to be. It never becomes the
+  accessible name either, or a screen reader would read a paragraph of
+  model instructions aloud. If the two audiences ever genuinely conflict,
+  the answer is the second field - never a rewrite of the model-facing
+  string into UI copy.
 - Tabs are an unpersisted `data-view` attribute on `<html>`, the same
   mechanism the v1.5.0 journal switch already used. There is no stored tab
   preference and no engine-side view state.

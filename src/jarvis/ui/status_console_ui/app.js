@@ -221,6 +221,16 @@ function applyMcpState(payload) {
   renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
 }
 
+// The visible label names a capability, because this list is a list of
+// permissions - a user hunting for the camera switch should not have to
+// read snake_case. Only tools we ship get a curated label: inventing a
+// friendly name for a third-party MCP tool that reaches the network
+// would be worse than showing an ugly true one, so those keep their real
+// name. A missing label falls back to that name, never to a guess.
+function toolLabel(tool) {
+  return optionalUiString("tool_label_" + tool.name) || tool.name;
+}
+
 // A row says only what the checkbox cannot. On/off is the checkbox's own
 // job, so naming it in text was both duplication and the original defect:
 // an available tool the user had switched off got labelled with the same
@@ -234,19 +244,23 @@ function renderToolList(listId, emptyId, tools) {
     const row = document.createElement("li");
     row.setAttribute("data-available", String(tool.available));
     row.setAttribute("data-provider-kind", tool.provider_kind || "mcp");
-    if (tool.is_privacy_switch === true) {
-      row.setAttribute("data-privacy-switch", "true");
-    }
+    const name = toolLabel(tool);
+    // Mouse-only by construction: the native title attribute needs no
+    // tooltip component. The description stays out of aria-label, or a
+    // screen reader would read a whole model instruction aloud.
+    row.title = tool.description
+      ? `${tool.name}\n${tool.description}`
+      : tool.name;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = tool.enabled === true;
     checkbox.disabled = tool.available !== true;
-    checkbox.setAttribute("aria-label", tool.name);
+    checkbox.setAttribute("aria-label", `${name} (${tool.name})`);
     checkbox.addEventListener("change", () => {
       _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
     });
     const label = document.createElement("span");
-    const parts = [tool.name];
+    const parts = [name];
     // The provider names which server answers; for a builtin tool the
     // card heading already said "local", so repeating it is noise.
     if (tool.provider_kind !== "builtin") {
@@ -254,9 +268,6 @@ function renderToolList(listId, emptyId, tools) {
     }
     if (tool.available !== true) {
       parts.push(uiString("mcp_tool_unavailable"));
-    }
-    if (tool.is_privacy_switch === true) {
-      parts.push(uiString("camera_tool_privacy_hint"));
     }
     label.textContent = parts.join(" - ");
     row.append(checkbox, label);

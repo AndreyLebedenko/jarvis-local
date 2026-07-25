@@ -336,12 +336,11 @@ body {
 .local-tools-card .mcp-tools { max-height: 108px; }
 .local-tools-card .mcp-header { min-height: 0; }
 
-/* The camera row is the camera's privacy switch rather than one
-   availability checkbox among equals (see mcp_state_payload's
-   is_privacy_switch). It says so in words: a color accent was tried and
-   rejected on review - a tinted row reads as decoration or as a state,
-   and it cannot tell anyone what makes that row different. */
-.mcp-tools li[data-privacy-switch="true"] { color: var(--text); }
+/* No marker on the camera row. Two were tried and both removed: a violet
+   tint, which reads as decoration or as a state without saying what it
+   means, and a brightened row, which is the same code in a quieter form.
+   The label carries it - "Camera access" is the statement a marker was
+   reaching for. */
 
 /* story-v1.2.10-task-5: keep the primary action in a stable row. The
    confirmation panel lives below it so opening it never moves the action.

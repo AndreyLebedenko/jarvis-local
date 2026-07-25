@@ -1835,7 +1835,18 @@ def test_live_status_console_closes_all_surfaces():
     assert touchstrip.close_calls == 2
 
 
-def _builtin_tool_payloads() -> list[dict[str, object]]:
+def _builtin_tool_payloads(app: App) -> list[dict[str, object]]:
+    """Descriptions are read from the app's own registry rather than
+    pinned here: the tooltip shows whatever the model-facing text happens
+    to be, and pinning the prose would turn an assertion about plumbing
+    into an assertion about wording (task-tool-rows-name-capabilities)."""
+
+    def description(name: str) -> str:
+        assert app.mcp_host is not None
+        tool = app.mcp_host.registry.get(name)
+        assert tool is not None
+        return tool.description
+
     return [
         {
             "name": "capture_camera_image",
@@ -1843,7 +1854,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": False,
             "available": True,
-            "is_privacy_switch": True,
+            "description": description("capture_camera_image"),
         },
         {
             "name": "remember",
@@ -1851,7 +1862,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": True,
             "available": True,
-            "is_privacy_switch": False,
+            "description": description("remember"),
         },
         {
             "name": "set_reasoning_level",
@@ -1859,7 +1870,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": True,
             "available": True,
-            "is_privacy_switch": False,
+            "description": description("set_reasoning_level"),
         },
     ]
 
@@ -1886,7 +1897,7 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
                 "status": "off",
                 "enabled": False,
                 "tools": [],
-                "local_tools": _builtin_tool_payloads(),
+                "local_tools": _builtin_tool_payloads(app),
             },
         ),
         ("thinking", ReasoningLevel.OFF),
@@ -1929,7 +1940,7 @@ async def test_wire_status_console_projects_authoritative_mcp_status_changes():
             "status": "connecting",
             "enabled": False,
             "tools": [],
-            "local_tools": _builtin_tool_payloads(),
+            "local_tools": _builtin_tool_payloads(app),
         },
     )
     unwire(app, subscriptions)

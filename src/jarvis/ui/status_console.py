@@ -138,11 +138,13 @@ def _tool_payload(tool: RegisteredTool, *, available: bool) -> dict:
         "provider_kind": tool.provider_kind,
         "enabled": tool.enabled,
         "available": available,
-        # The camera row is the module's privacy switch, not an ordinary
-        # availability checkbox: it probes sources and drives camera state
-        # (see StatusConsoleApi._set_camera_enabled). The UI marks it so a
-        # privacy control does not read as one toggle among equals.
-        "is_privacy_switch": tool.name == CAMERA_TOOL_NAME,
+        # Model-facing text, shown to a human only on hover. It keeps
+        # being written for the model; the tooltip shows whatever that
+        # happens to be, and is never the only thing identifying a row.
+        # If the two audiences ever genuinely conflict, the answer is a
+        # separate ui_description - not a rewrite of this one into UI
+        # copy (decision, task-tool-rows-name-capabilities).
+        "description": tool.description,
     }
 
 

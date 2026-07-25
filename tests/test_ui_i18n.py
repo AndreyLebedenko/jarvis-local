@@ -10,9 +10,14 @@ from dataclasses import fields
 
 import pytest
 
-from jarvis.core.config import TTS_ROUTE_TYPES
+from jarvis.core.bus import EventBus
+from jarvis.core.config import TTS_ROUTE_TYPES, MemorySettings
 from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.inputs.attachments import AttachmentClass
+from jarvis.memory.files import MemoryFileRepository, build_memory_file_specs
+from jarvis.tools.builtin import BuiltinToolProvider
+from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.status_console import UI_DIR
 
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
@@ -146,3 +151,38 @@ def test_the_unavailable_tool_label_exists_in_every_language():
     the owner had switched off "unavailable"."""
     for language, keys in _strings_js_keys().items():
         assert "mcp_tool_unavailable" in keys, language
+
+
+def test_every_builtin_tool_has_a_capability_label_in_every_language():
+    """app.js builds the key dynamically (optionalUiString("tool_label_" +
+    name)), so the static lookup test cannot resolve it. Absence is not an
+    error there - it is the deliberate fallback for third-party MCP tools,
+    which keep their real names rather than being given invented friendly
+    ones. That makes this the only guard that our own tools do get a
+    human label instead of silently falling back to snake_case."""
+    registry = ToolRegistry()
+    BuiltinToolProvider(
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        memory_file_repository=MemoryFileRepository(
+            build_memory_file_specs(MemorySettings())
+        ),
+    ).register_tools(registry)
+    expected = {f"tool_label_{tool.name}" for tool in registry.all()}
+
+    for language, keys in _strings_js_keys().items():
+        assert expected <= keys, language
+
+
+def test_the_tool_row_tooltip_never_becomes_the_accessible_name():
+    """The description is written for the model and can be a paragraph of
+    instructions. It belongs in the hover tooltip only; a screen reader
+    must get the capability label and the identifier instead."""
+    source = _read("app.js")
+    code_lines = [
+        line for line in source.splitlines() if not line.strip().startswith("//")
+    ]
+    aria_lines = [line for line in code_lines if "aria-label" in line]
+
+    assert "row.title = tool.description" in source
+    assert aria_lines
+    assert all("description" not in line for line in aria_lines)

@@ -170,33 +170,24 @@ def test_mcp_state_payload_keeps_builtin_tools_available_when_mcp_is_off():
     assert degraded["tools"][0]["available"] is True
 
 
-def test_mcp_state_payload_marks_the_camera_row_as_a_privacy_switch():
-    """It drives camera state rather than mere tool availability, so the
-    UI must be able to render it as a different kind of control."""
+def test_mcp_state_payload_carries_each_tool_description_for_the_tooltip():
+    """The row shows a capability label, so the identifier and the tool's
+    own description have to reach the UI to be shown on hover."""
     tools = (
         RegisteredTool(
             "capture_camera_image",
-            "Camera",
+            "Capture one image from a named camera.",
             {},
             "builtin",
             provider_kind="builtin",
             enabled=False,
         ),
-        RegisteredTool(
-            "remember",
-            "Remember",
-            {},
-            "builtin",
-            provider_kind="builtin",
-            enabled=True,
-        ),
     )
 
     local = mcp_state_payload(McpModuleStatus.OFF, tools)["local_tools"]
 
-    by_name = {tool["name"]: tool for tool in local}
-    assert by_name["capture_camera_image"]["is_privacy_switch"] is True
-    assert by_name["remember"]["is_privacy_switch"] is False
+    assert local[0]["name"] == "capture_camera_image"
+    assert local[0]["description"] == "Capture one image from a named camera."
 
 
 def test_model_request_payload_shape_contains_only_metadata():

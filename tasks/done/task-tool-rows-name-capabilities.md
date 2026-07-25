@@ -1,6 +1,7 @@
 # Task: Tool rows name capabilities, not identifiers
 
-**Status:** Planned.
+**Status:** Completed.
+**Verified:** owner-run visual check, 2026-07-25.
 **Raised by:** owner, 2026-07-25, reviewing the split tool panels: "why
 should a user know the option is called `capture_camera_image`, when all
 he needs is to find the checkbox for camera access?"
@@ -66,14 +67,39 @@ to a hover tooltip, alongside the tool's own description.
 
 ## Acceptance criteria
 
-- [ ] No raw identifier is visible in the Status tab's tool rows for
+- [x] No raw identifier is visible in the Status tab's tool rows for
       builtin tools; hovering a row still reveals it.
-- [ ] MCP rows are unchanged in naming and are never given an invented
+- [x] MCP rows are unchanged in naming and are never given an invented
       label.
-- [ ] `python -m pytest` and Ruff are green.
-- [ ] Owner-run visual check in both languages, hover included.
+- [x] `python -m pytest` and Ruff are green.
+- [x] Owner-run visual check in both languages, hover included.
 
-## Decision to record in PROJECT.md
+## Outcome
+
+Landed as specified. Labels are "Camera access", "Memory writes",
+"Reasoning level" in both languages; the identifier and the description
+travel in a native `title`, which is hover-only already, so no tooltip
+component was written.
+
+The fallback needed a new helper. `uiString()` throws on an unknown key,
+which is right for a programming error but wrong here, where a missing
+label is the expected answer for a third-party tool. `optionalUiString()`
+returns null instead, so the row falls back to the real name rather than
+to an invented one.
+
+`is_privacy_switch` was removed along with the last marker on the camera
+row. A violet tint went first, then a brightened row; both were codes that
+cannot say what they mean, and "Camera access" is the statement they were
+reaching for - which left the payload field with no consumer.
+
+Both decisions below are recorded in `PROJECT.md`.
+
+Not exercised live: MCP rows kept their real names in the code path, but
+no MCP server was connected during the check, so the fallback has only
+automated coverage so far. It will show itself the first time a server
+comes up.
+
+## Decision recorded in PROJECT.md
 
 The console deliberately carries two vocabularies: capability labels in
 the permission list, raw identifiers in the events panel. The audit
