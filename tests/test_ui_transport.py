@@ -109,12 +109,14 @@ class _FakeControlApi:
         model: str,
         microphone_device: str,
         *,
+        microphone_host_api: str = "",
         ui_language=None,
         vad=None,
         tts_routes=None,
     ) -> None:
         self.calls.append(("save_config_selection", f"{model}|{microphone_device}"))
         self.config_kwargs = {
+            "microphone_host_api": microphone_host_api,
             "ui_language": ui_language,
             "vad": vad,
             "tts_routes": tts_routes,
@@ -799,6 +801,7 @@ def _full_config_arguments() -> dict:
     return {
         "model": "demo",
         "microphone": "mic-1",
+        "microphone_host_api": "MME",
         "ui_language": "ru",
         "vad": {
             "threshold": 0.6,
@@ -840,6 +843,7 @@ def test_save_config_selection_parses_iteration_2_arguments():
 
     server._dispatch_control("save_config_selection", _full_config_arguments())
 
+    assert control_api.config_kwargs["microphone_host_api"] == "MME"
     assert control_api.config_kwargs["ui_language"] == "ru"
     assert control_api.config_kwargs["vad"] == VadSettings(
         threshold=0.6,
@@ -902,6 +906,9 @@ def test_save_config_selection_without_new_fields_passes_none():
     )
 
     assert control_api.config_kwargs == {
+        # Absent host API stays "", the pre-host_api meaning: resolve by
+        # name and fail if that is ambiguous, never pick a copy.
+        "microphone_host_api": "",
         "ui_language": None,
         "vad": None,
         "tts_routes": None,

@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
 
+from jarvis.audio.devices import enumerate_input_devices
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_UI_CONFIG_PATH,
@@ -271,9 +272,34 @@ class ModelOptionsAvailable:
 
 
 @dataclass(frozen=True)
+class MicrophoneOption:
+    """One selectable input device, in the shape config stores it.
+
+    A device name is not an identifier: Windows lists one physical
+    microphone once per host API under an identical name (see
+    audio/devices.py). The selector therefore offers pairs, and saving
+    writes both halves, so what the user picked is what gets opened."""
+
+    device: str
+    host_api: str = ""
+    # Display only, and absent from a configured value, since config
+    # stores identity rather than presentation. The front end falls back
+    # to `device` when it is empty.
+    label: str = ""
+
+
+def microphone_option_payload(option: MicrophoneOption) -> dict:
+    return {
+        "device": option.device,
+        "host_api": option.host_api,
+        "label": option.label,
+    }
+
+
+@dataclass(frozen=True)
 class MicrophoneOptionsAvailable:
-    options: list[str]
-    current: str
+    options: list[MicrophoneOption]
+    current: MicrophoneOption
 
 
 @dataclass(frozen=True)
@@ -282,13 +308,6 @@ class UiConfigSaved:
     main.py's wire_status_console() reacts by showing the desktop's
     pending-restart indicator. No payload: the indicator only needs to
     know a save happened, not what changed."""
-
-
-def options_payload(options: list[str], current: str) -> dict:
-    """Shared shape for both the model and microphone selectors - a
-    generic "selectable list + current value" contract, not two
-    independently-maintained copies of the same dict literal."""
-    return {"options": options, "current": current}
 
 
 def config_values_payload(settings: Settings) -> dict:
@@ -461,7 +480,7 @@ _MODULE_RESET_SOURCE: dict[ModuleId, str] = {
 }
 
 ModelOptionsSource = Callable[[], Awaitable[list[str]]]
-MicrophoneOptionsSource = Callable[[], Awaitable[list[str]]]
+MicrophoneOptionsSource = Callable[[], Awaitable[list["MicrophoneOption"]]]
 
 
 async def _default_model_options_source(endpoint: str) -> list[str]:
@@ -484,15 +503,17 @@ async def _default_model_options_source(endpoint: str) -> list[str]:
     ]
 
 
-async def _default_microphone_options_source() -> list[str]:
-    """Reads local input device names without blocking the asyncio loop.
-    sounddevice is imported here, not at module level - see
-    _default_model_options_source()."""
-    import sounddevice as sd
-
-    devices = await asyncio.to_thread(sd.query_devices)
+async def _default_microphone_options_source() -> list[MicrophoneOption]:
+    """Reads local input devices without blocking the asyncio loop.
+    Enumeration lives in audio/devices.py, which is also what the capture
+    path resolves through, so the selector cannot offer an identity the
+    capture path is unable to open."""
+    devices = await asyncio.to_thread(enumerate_input_devices)
     return [
-        device["name"] for device in devices if device.get("max_input_channels", 0) > 0
+        MicrophoneOption(
+            device=device.name, host_api=device.host_api, label=device.label
+        )
+        for device in devices
     ]
 
 
@@ -802,7 +823,10 @@ class StatusConsoleApi:
         self._schedule(self._request_microphone_options_async())
 
     async def _request_microphone_options_async(self) -> None:
-        current = self._settings.microphone.device
+        current = MicrophoneOption(
+            device=self._settings.microphone.device,
+            host_api=self._settings.microphone.host_api,
+        )
         try:
             options = await self._microphone_options_source()
         except Exception:
@@ -820,7 +844,11 @@ class StatusConsoleApi:
                 ui_message=ui_text("microphone_options_failed", self._language),
             )
             options = []
-        if current not in options:
+        # Identity, not the whole option: a configured device carries no
+        # label, so comparing the dataclasses would list the current
+        # microphone twice - once bare, once as enumerated.
+        identities = {(option.device, option.host_api) for option in options}
+        if (current.device, current.host_api) not in identities:
             options = [current, *options]
         await self._bus.publish(
             MicrophoneOptionsAvailable,
@@ -832,6 +860,7 @@ class StatusConsoleApi:
         model: str,
         microphone_device: str,
         *,
+        microphone_host_api: str = "",
         ui_language: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
@@ -839,6 +868,7 @@ class StatusConsoleApi:
         selection = UiConfigSelection(
             model=model,
             microphone_device=microphone_device,
+            microphone_host_api=microphone_host_api,
             ui_language=ui_language,
             vad=vad,
             tts_routes=tts_routes,
@@ -871,6 +901,7 @@ class StatusConsoleApi:
             self._ui_config_path,
             model=selection.model,
             microphone_device=selection.microphone_device,
+            microphone_host_api=selection.microphone_host_api,
             ui_language=selection.ui_language,
             vad=selection.vad,
             tts_routes=selection.tts_routes,
@@ -889,6 +920,7 @@ class StatusConsoleApi:
                 "Config menu saved "
                 f"(model={selection.model!r}, "
                 f"microphone={selection.microphone_device!r}, "
+                f"microphone_host_api={selection.microphone_host_api!r}, "
                 f"ui_language={selection.ui_language!r}, "
                 f"vad={'set' if selection.vad else 'default'}, "
                 f"tts_routes={'set' if selection.tts_routes else 'default'}); "

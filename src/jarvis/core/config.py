@@ -445,10 +445,17 @@ class McpSettings:
 class MicrophoneSettings:
     # "" means "use sounddevice's default input device" (audio_in.py's
     # existing behavior before this field existed - see
-    # stream_factory_for_device()). Any other value is matched against
-    # sounddevice device names (see status_console.py's Status Console
-    # microphone selector, story-v1.2.4-task-3-config-menu-iteration-1.md).
+    # stream_factory_for_device()). Any other value names a device that
+    # devices.py resolves to a PortAudio index (see status_console.py's
+    # Status Console microphone selector,
+    # story-v1.2.4-task-3-config-menu-iteration-1.md).
     device: str = ""
+    # Windows lists one physical microphone once per host API under an
+    # identical name, so a name alone can be ambiguous. "" resolves by
+    # name and fails when that is not unique, which keeps every existing
+    # single-match configuration working untouched; naming the host API
+    # ("MME", "Windows WASAPI", ...) picks one copy deliberately.
+    host_api: str = ""
 
 
 @dataclass(frozen=True)
@@ -1319,6 +1326,7 @@ def write_ui_config(
     *,
     model: str,
     microphone_device: str,
+    microphone_host_api: str = "",
     ui_language: str | None = None,
     vad: VadSettings | None = None,
     tts_routes: dict[str, TtsLanguageSettings] | None = None,
@@ -1347,6 +1355,7 @@ def write_ui_config(
         "",
         "[microphone]",
         f"device = {json.dumps(microphone_device)}",
+        f"host_api = {json.dumps(microphone_host_api)}",
     ]
     if ui_language is not None:
         lines += ["", "[ui]", f"language = {json.dumps(ui_language)}"]

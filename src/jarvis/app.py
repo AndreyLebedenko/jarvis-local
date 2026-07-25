@@ -12,6 +12,7 @@ from pathlib import Path
 
 from jarvis.audio.input import (
     AudioInput,
+    MicrophoneCaptureFailed,
     MicSleepToggled,
     UtteranceChunk,
     VadChunker,
@@ -640,7 +641,9 @@ def build_app(
     audio_input = audio_input or AudioInput(
         bus,
         VadChunker(settings.vad),
-        stream_factory=stream_factory_for_device(settings.microphone.device),
+        stream_factory=stream_factory_for_device(
+            settings.microphone.device, settings.microphone.host_api
+        ),
     )
     # Shared so a sound cue and a spoken sentence can never physically
     # overlap on the output device - see tts.py/sound_cues.py docstrings
@@ -913,6 +916,25 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
 async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
     """Publishes UI/log feedback and plays the sleep/wake cue."""
     awake = event.is_awake
+    if app.audio_input.capture_failed:
+        # The toggle still flips AudioInput's own state, but no loop is
+        # left to observe it, so announcing "awake" would restate the
+        # original lie: a healthy-looking microphone that hears nothing.
+        # WARN, not ERROR - the failure was already reported once when it
+        # happened; this only answers a keypress. The sleep cue plays in
+        # both directions because "not capturing" is true either way.
+        await publish_system_event(
+            app.bus,
+            logger,
+            source="HOTKEY",
+            level=EventLevel.WARN,
+            log_message="Microphone sleep toggle ignored: capture stopped",
+            ui_message=ui_text(
+                "mic_toggle_after_capture_failed", app.settings.ui.language
+            ),
+        )
+        await app.sound_cues.play("mic_sleep")
+        return
     await publish_system_event(
         app.bus,
         logger,
@@ -924,6 +946,25 @@ async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
         ),
     )
     await app.sound_cues.play("mic_wake" if awake else "mic_sleep")
+
+
+async def _on_microphone_capture_failed(
+    app: App, event: MicrophoneCaptureFailed
+) -> None:
+    """Says out loud that Jarvis has gone deaf.
+
+    The system log carries the driver's own reason, because that is what
+    a problem report needs; the events panel gets the localized fact plus
+    what to do about it, and no device name - a device name is
+    payload-adjacent under the two-log content rule."""
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="STT",
+        level=EventLevel.ERROR,
+        log_message=f"Microphone capture stopped: {event.reason}",
+        ui_message=ui_text("microphone_capture_failed", app.settings.ui.language),
+    )
 
 
 # cue: which sound_cues.py cue to play; plays: how many times, in order
@@ -979,6 +1020,9 @@ def wire(app: App) -> list[Subscription]:
     async def on_mic_sleep_toggled(event: MicSleepToggled) -> None:
         await _on_mic_sleep_toggled(app, event)
 
+    async def on_microphone_capture_failed(event: MicrophoneCaptureFailed) -> None:
+        await _on_microphone_capture_failed(app, event)
+
     async def on_reasoning_level_changed(event: ReasoningLevelChanged) -> None:
         await _on_reasoning_level_changed(app, event)
 
@@ -990,6 +1034,7 @@ def wire(app: App) -> list[Subscription]:
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),
         (MicSleepToggled, on_mic_sleep_toggled),
+        (MicrophoneCaptureFailed, on_microphone_capture_failed),
         (ReasoningLevelChanged, on_reasoning_level_changed),
     ]
     for event_type, handler in subscriptions:

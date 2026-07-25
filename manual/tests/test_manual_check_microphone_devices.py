@@ -1,17 +1,21 @@
+"""Result-line formatting for the human-run microphone matrix.
+
+Device enumeration itself is no longer this script's own logic - it uses
+jarvis.audio.devices, whose tests live in tests/test_audio_devices.py.
+"""
+
 from pathlib import Path
 
+from jarvis.audio.devices import InputDevice
 from manual.manual_check_microphone_devices import (
-    DeviceInfo,
     MatrixResult,
-    device_info_from_sounddevice,
     format_result_line,
-    input_devices_from_sounddevice,
     sanitize_filename,
 )
 
 
 def test_format_result_line_includes_explicit_device_identity_and_evidence():
-    device = DeviceInfo(
+    device = InputDevice(
         index=7,
         name="USB Headset",
         host_api="Windows WASAPI",
@@ -36,7 +40,7 @@ def test_format_result_line_includes_explicit_device_identity_and_evidence():
 
 
 def test_format_result_line_escapes_delimiters_and_multiline_detail():
-    device = DeviceInfo(
+    device = InputDevice(
         index=2,
         name="Bluetooth | Hands-Free",
         host_api="MME",
@@ -60,42 +64,3 @@ def test_format_result_line_escapes_delimiters_and_multiline_detail():
 def test_sanitize_filename_keeps_device_output_paths_stable():
     assert sanitize_filename("  USB Headset (MME)  ") == "USB_Headset_MME"
     assert sanitize_filename("...") == "device"
-
-
-def test_device_info_from_sounddevice_skips_output_only_devices():
-    raw_device = {
-        "name": "Speakers",
-        "hostapi": 0,
-        "default_samplerate": 48000.0,
-        "max_input_channels": 0,
-    }
-
-    assert device_info_from_sounddevice(0, raw_device, [{"name": "MME"}]) is None
-
-
-def test_input_devices_from_sounddevice_maps_host_api_names():
-    raw_devices = [
-        {
-            "name": "Speakers",
-            "hostapi": 0,
-            "default_samplerate": 48000.0,
-            "max_input_channels": 0,
-        },
-        {
-            "name": "USB Mic",
-            "hostapi": 1,
-            "default_samplerate": 44100.0,
-            "max_input_channels": 2,
-        },
-    ]
-    raw_hostapis = [{"name": "MME"}, {"name": "Windows WASAPI"}]
-
-    assert input_devices_from_sounddevice(raw_devices, raw_hostapis) == [
-        DeviceInfo(
-            index=1,
-            name="USB Mic",
-            host_api="Windows WASAPI",
-            default_sample_rate=44100.0,
-            max_input_channels=2,
-        )
-    ]

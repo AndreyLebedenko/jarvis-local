@@ -1140,6 +1140,40 @@ def test_microphone_device_defaults_to_empty_string_when_section_omitted(tmp_pat
     assert settings.microphone.device == ""
 
 
+def test_microphone_host_api_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [microphone]
+        device = "Microphone (Yeti X)"
+        host_api = "MME"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.microphone.host_api == "MME"
+
+
+def test_microphone_host_api_defaults_to_empty_for_a_pre_existing_config(tmp_path):
+    """A config written before host_api existed must keep meaning what it
+    meant: resolve by name, which still works wherever that name is
+    unique on the machine."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [microphone]
+        device = "USB Headset"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.microphone.host_api == ""
+
+
 def test_ui_language_defaults_to_english(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
@@ -1262,12 +1296,16 @@ def test_write_ui_config_then_load_settings_round_trips(tmp_path):
     ui_config_path = tmp_path / "config.ui.toml"
 
     write_ui_config(
-        ui_config_path, model="custom-model", microphone_device="USB Headset"
+        ui_config_path,
+        model="custom-model",
+        microphone_device="USB Headset",
+        microphone_host_api="Windows WASAPI",
     )
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
 
     assert settings.backend.model == "custom-model"
     assert settings.microphone.device == "USB Headset"
+    assert settings.microphone.host_api == "Windows WASAPI"
 
 
 def test_write_ui_config_never_touches_the_base_config_file(tmp_path):

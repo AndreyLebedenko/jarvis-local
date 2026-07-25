@@ -1,6 +1,6 @@
 """ModuleHealthTracker: authoritative module-health events only."""
 
-from jarvis.audio.input import MicSleepToggled
+from jarvis.audio.input import MicrophoneCaptureFailed, MicSleepToggled
 from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
@@ -88,6 +88,55 @@ async def test_mic_toggle_maps_to_the_existing_health_vocabulary():
     assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
         (ModuleId.MICROPHONE, HealthStatus.UNAVAILABLE, "mic_detail_muted"),
         (ModuleId.MICROPHONE, HealthStatus.OK, "mic_detail_listening"),
+    ]
+
+
+async def test_a_stopped_capture_loop_puts_the_microphone_chip_in_error():
+    """Before this, a capture loop that never started left the chip
+    reading "listening" for the whole session - the microphone was the
+    one module with no failure signal at all."""
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        MicrophoneCaptureFailed,
+        MicrophoneCaptureFailed(reason="Multiple input devices found"),
+    )
+
+    assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
+        (ModuleId.MICROPHONE, HealthStatus.ERROR, "mic_detail_capture_failed")
+    ]
+
+
+async def test_sleep_wake_after_a_capture_failure_never_says_listening_again():
+    """Review finding (P1, 2026-07-25): the loop does not restart on wake -
+    toggle_user_sleep() only sets an event the exited loop will never
+    observe - so an unmute must not repaint a dead microphone as healthy."""
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        MicrophoneCaptureFailed, MicrophoneCaptureFailed(reason="device unplugged")
+    )
+    await bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
+    await bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.ERROR, "mic_detail_capture_failed")
+    ]
+
+
+async def test_a_capture_failure_after_muting_still_reports_error():
+    """Dedup is per module, and "not in use" is a different state from
+    "stopped": a failure while muted must still change the chip."""
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
+    await bus.publish(
+        MicrophoneCaptureFailed, MicrophoneCaptureFailed(reason="device unplugged")
+    )
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.UNAVAILABLE, "mic_detail_muted"),
+        (HealthStatus.ERROR, "mic_detail_capture_failed"),
     ]
 
 

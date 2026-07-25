@@ -4,6 +4,7 @@ import io
 import logging
 import threading
 import time
+from dataclasses import fields
 from types import SimpleNamespace
 
 import numpy as np
@@ -15,6 +16,7 @@ from silero_vad import load_silero_vad, read_audio
 from jarvis.audio.input import (
     SAMPLE_RATE,
     AudioInput,
+    MicrophoneCaptureFailed,
     MicSleepToggled,
     UtteranceChunk,
     VadChunker,
@@ -23,7 +25,7 @@ from jarvis.audio.input import (
     stream_factory_for_device,
 )
 from jarvis.core.bus import EventBus
-from jarvis.core.config import HotkeySettings, VadSettings
+from jarvis.core.config import HotkeySettings, MicrophoneSettings, VadSettings
 
 
 @pytest.fixture(scope="module")
@@ -1254,10 +1256,284 @@ def test_stream_factory_for_device_binds_the_device_argument_without_opening_a_s
     factory = stream_factory_for_device("USB Headset")
 
     assert factory.func is _default_stream_factory
-    assert factory.keywords == {"device": "USB Headset"}
+    assert factory.keywords == {"device": "USB Headset", "host_api": ""}
 
 
 def test_stream_factory_for_device_with_empty_string_means_system_default():
     factory = stream_factory_for_device("")
 
-    assert factory.keywords == {"device": ""}
+    assert factory.keywords == {"device": "", "host_api": ""}
+
+
+def test_stream_factory_for_device_binds_the_host_api_half_of_the_identity():
+    """A name alone is ambiguous across host APIs, so the configured host
+    API has to reach the resolver - see the
+    microphone-device-name-ambiguous bug report."""
+    factory = stream_factory_for_device("Microphone (Yeti X)", "MME")
+
+    assert factory.keywords == {"device": "Microphone (Yeti X)", "host_api": "MME"}
+
+
+# --- task-microphone-failure-visibility: a deaf microphone says so ---------
+
+
+async def _collect(bus, event_type):
+    received = []
+
+    async def on_event(event):
+        received.append(event)
+
+    bus.subscribe(event_type, on_event)
+    return received
+
+
+async def test_a_stream_that_cannot_open_reports_instead_of_raising_into_the_task():
+    """The reported failure mode: PortAudio raised, the exception sat in a
+    background task until shutdown teardown, and the session ran deaf with
+    a microphone chip that still read "listening"."""
+    bus = EventBus()
+    received = await _collect(bus, MicrophoneCaptureFailed)
+
+    def failing_factory(block_samples):
+        raise ValueError("Multiple input devices found for 'Microphone (Yeti X)'")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+
+    assert len(received) == 1
+    assert "Multiple input devices found" in received[0].reason
+
+
+async def test_the_loop_exits_cleanly_after_a_capture_failure():
+    """Reporting must not cost the deterministic stop boundary stop()
+    waits on, or shutdown would hang on a microphone that already died."""
+    bus = EventBus()
+
+    def failing_factory(block_samples):
+        raise OSError("device disappeared")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+
+    await asyncio.wait_for(audio_input.stop(), timeout=1.0)
+
+
+class _RaisingAfterStopFakeStream(_FreeRunningFakeStream):
+    """Models the real interruption path: stop() makes the read that was
+    already in flight raise, which is how shutdown unblocks it (see the
+    stale-buffer-replay fix)."""
+
+    def __init__(self, block_samples: int) -> None:
+        super().__init__(block_samples)
+        self._stopped = False
+
+    def stop(self):
+        super().stop()
+        self._stopped = True
+
+    def read(self, block_samples):
+        if self._stopped:
+            raise OSError("PortAudio: stream is stopped")
+        return super().read(block_samples)
+
+
+async def test_a_read_interrupted_by_stop_is_not_reported_as_a_failure():
+    """That path was quiet before and must stay quiet, or every clean
+    shutdown would announce a microphone failure."""
+    bus = EventBus()
+    received = await _collect(bus, MicrophoneCaptureFailed)
+    fake_stream = _RaisingAfterStopFakeStream(block_samples=160)
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
+    await asyncio.sleep(0.05)
+
+    await audio_input.stop()
+    await task
+
+    assert received == []
+
+
+async def test_a_read_that_fails_while_awake_is_reported():
+    """The complement of the test above: the same exception with no stop
+    or sleep behind it is a real failure and must not be swallowed."""
+    bus = EventBus()
+    received = await _collect(bus, MicrophoneCaptureFailed)
+
+    class _FailingReadStream(_FreeRunningFakeStream):
+        def read(self, block_samples):
+            raise OSError("PortAudio: device unplugged")
+
+    audio_input = AudioInput(
+        bus=bus,
+        chunker=_FakeChunker(),
+        stream_factory=lambda bs: _FailingReadStream(bs),
+    )
+
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+
+    assert len(received) == 1
+    assert "device unplugged" in received[0].reason
+
+
+async def test_cancellation_is_not_reported_as_a_capture_failure():
+    bus = EventBus()
+    received = await _collect(bus, MicrophoneCaptureFailed)
+    fake_stream = _FreeRunningFakeStream(block_samples=160)
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
+    await asyncio.sleep(0.05)
+    await _run_until_cancelled(task)
+
+    assert received == []
+
+
+# --- what "unavailable" actually means for the sleep toggle ----------------
+# These pin the state machine the Ctrl+Alt+M decision depends on: whether a
+# microphone can become available again within a session, and what state it
+# is in if it does.
+
+
+async def test_a_failed_capture_loop_does_not_reopen_the_device_on_wake():
+    """The answer to "can it become available again": not in this session.
+    toggle_user_sleep() sets an asyncio.Event, and the only code that ever
+    observes it exited when capture failed, so no wake re-enters the
+    stream factory."""
+    bus = EventBus()
+    opened = []
+
+    def failing_factory(block_samples):
+        opened.append(block_samples)
+        raise OSError("PortAudio: device unplugged")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    assert len(opened) == 1
+
+    await audio_input.toggle_user_sleep()
+    await audio_input.toggle_user_sleep()
+    await asyncio.sleep(0.05)
+
+    assert len(opened) == 1
+
+
+async def test_a_muted_microphone_never_touches_a_broken_device_until_wake():
+    """The mirror case: muting *before* the failing open defers the whole
+    failure. A device is only proven broken at the moment capture tries to
+    open it, so a muted session reports nothing at all."""
+    bus = EventBus()
+    received = await _collect(bus, MicrophoneCaptureFailed)
+    opened = []
+
+    def failing_factory(block_samples):
+        opened.append(block_samples)
+        raise OSError("PortAudio: device unplugged")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+    await audio_input.toggle_user_sleep()
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
+    await asyncio.sleep(0.05)
+
+    assert opened == []
+    assert received == []
+
+    await audio_input.toggle_user_sleep()
+    await asyncio.wait_for(task, timeout=1.0)
+
+    assert len(received) == 1
+
+
+async def test_the_sleep_toggle_still_flips_state_after_capture_has_died():
+    """Why the hotkey's feedback is a lie rather than merely redundant:
+    the toggle keeps flipping AudioInput's own state and publishing
+    MicSleepToggled, while nothing is capturing either way."""
+    bus = EventBus()
+    toggles = await _collect(bus, MicSleepToggled)
+
+    def failing_factory(block_samples):
+        raise OSError("PortAudio: device unplugged")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+
+    assert audio_input.is_awake is True
+
+    await audio_input.toggle_user_sleep()
+
+    assert audio_input.is_awake is False
+    assert [event.is_awake for event in toggles] == [False]
+
+
+def test_no_sleep_state_survives_the_restart_that_recovers_a_microphone():
+    """Restart is the only recovery, and it always comes back awake:
+    nothing persists the sleep toggle, so a mute pressed while the
+    microphone was dead cannot outlive the failure it responded to."""
+    assert {field.name for field in fields(MicrophoneSettings)} == {
+        "device",
+        "host_api",
+    }
+    assert AudioInput(bus=EventBus(), chunker=_FakeChunker()).is_awake is True
+
+
+async def test_capture_failed_starts_false_and_latches_on_failure():
+    """The engine's own answer to "is anything capturing", which app.py's
+    sleep-toggle feedback reads instead of guessing from is_awake."""
+    bus = EventBus()
+
+    def failing_factory(block_samples):
+        raise OSError("PortAudio: device unplugged")
+
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=failing_factory
+    )
+    assert audio_input.capture_failed is False
+
+    await audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+
+    assert audio_input.capture_failed is True
+
+    await audio_input.toggle_user_sleep()
+
+    assert audio_input.capture_failed is True
+
+
+async def test_a_clean_stop_does_not_latch_capture_failed():
+    bus = EventBus()
+    fake_stream = _RaisingAfterStopFakeStream(block_samples=160)
+    audio_input = AudioInput(
+        bus=bus, chunker=_FakeChunker(), stream_factory=lambda bs: fake_stream
+    )
+
+    task = asyncio.create_task(
+        audio_input.run_microphone_loop(poll_interval_seconds=0.01)
+    )
+    await asyncio.sleep(0.05)
+    await audio_input.stop()
+    await task
+
+    assert audio_input.capture_failed is False

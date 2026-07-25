@@ -80,6 +80,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         # the wording settled by story-v1.2.10-task-5-ui-cosmetic-polish.md.
         "mic_detail_listening": "listening",
         "mic_detail_muted": "not in use",
+        "mic_detail_capture_failed": "capture stopped",
         # Module-health details published by ModuleHealthTracker.
         "backend_detail_ready": "responding",
         "backend_detail_warmup_failed": "warm-up failed",
@@ -107,6 +108,13 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "microphone_options_failed": (
             "Failed to fetch the microphone list - showing the current value"
+        ),
+        "microphone_capture_failed": (
+            "The microphone stopped: Jarvis no longer hears you. Check the "
+            "microphone in Settings and restart."
+        ),
+        "mic_toggle_after_capture_failed": (
+            "The microphone is stopped: sleep/wake changes nothing until restart"
         ),
         "config_save_rejected_no_model": "Save cancelled: no model selected",
         "config_save_rejected_invalid": (
@@ -159,6 +167,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "speaking_response": "Произношу ответ...",
         "mic_detail_listening": "слушает",
         "mic_detail_muted": "не используется",
+        "mic_detail_capture_failed": "захват остановлен",
         "backend_detail_ready": "отвечает",
         "backend_detail_warmup_failed": "прогрев не удался",
         "backend_detail_request_failed": "сбой запроса",
@@ -184,6 +193,13 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "microphone_options_failed": (
             "Не удалось получить список микрофонов - показано текущее значение"
+        ),
+        "microphone_capture_failed": (
+            "Микрофон остановлен: Jarvis вас больше не слышит. Проверьте "
+            "микрофон в настройках и перезапустите."
+        ),
+        "mic_toggle_after_capture_failed": (
+            "Микрофон остановлен: сон/пробуждение ничего не меняет до перезапуска"
         ),
         "config_save_rejected_no_model": "Сохранение отменено: модель не выбрана",
         "config_save_rejected_invalid": (

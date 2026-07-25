@@ -470,10 +470,52 @@ function applyModelOptions(payload, markLoaded = true) {
   _updateApplyButtonEnabled();
 }
 
+// A microphone option is a {device, host_api} pair, not a string: one
+// physical microphone is listed once per host API under an identical
+// name, so the name alone cannot say which copy the user picked (see
+// audio/devices.py). The <option> value is the index into this list,
+// because neither half is unique on its own and a delimiter joining them
+// could occur inside a device name.
+let _microphoneOptions = [];
+
+// label is the device name made readable (Windows hands PortAudio a raw
+// resource string, newline included, for Bluetooth headsets - see
+// audio/devices.py). It is absent from a configured value, which carries
+// identity only, so the raw name is the fallback.
+function _microphoneOptionLabel(option) {
+  if (option.device === "") return uiString("default_microphone_option");
+  const name = option.label || option.device;
+  if (!option.host_api) return name;
+  return `${name} - ${option.host_api}`;
+}
+
 function applyMicrophoneOptions(payload, markLoaded = true) {
-  _renderOptions(document.getElementById("micSelect"), payload.options, payload.current);
+  const select = document.getElementById("micSelect");
+  _microphoneOptions = payload.options;
+  select.innerHTML = "";
+  payload.options.forEach((option, index) => {
+    const el = document.createElement("option");
+    el.value = String(index);
+    el.textContent = _microphoneOptionLabel(option);
+    if (
+      option.device === payload.current.device &&
+      option.host_api === payload.current.host_api
+    ) {
+      el.selected = true;
+    }
+    select.appendChild(el);
+  });
   if (markLoaded) _microphoneOptionsLoaded = true;
   _updateApplyButtonEnabled();
+}
+
+function _selectedMicrophoneOption() {
+  // Falls back to the system default rather than to a guessed device:
+  // the Apply button is disabled until options load, and if that guard
+  // is ever bypassed, "" is the one value that cannot open the wrong
+  // microphone.
+  const index = Number.parseInt(document.getElementById("micSelect").value, 10);
+  return _microphoneOptions[index] || { device: "", host_api: "" };
 }
 
 function applyPendingRestart(payload) {
@@ -670,10 +712,11 @@ function _readTtsField(input, spec) {
 
 function applyConfigSelection() {
   const model = document.getElementById("modelSelect").value;
-  const microphone = document.getElementById("micSelect").value;
+  const microphone = _selectedMicrophoneOption();
   _sendControl("save_config_selection", {
     model,
-    microphone,
+    microphone: microphone.device,
+    microphone_host_api: microphone.host_api,
     ui_language: document.getElementById("uiLangSelect").value,
     vad: {
       threshold: Number(document.getElementById("vadThreshold").value),

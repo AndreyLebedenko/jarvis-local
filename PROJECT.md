@@ -2732,6 +2732,93 @@ by the rule below, not by which surface is easier to reach.**
   ever needs to say something more specific, the Hidden rules must be
   revisited first - that is a stop-and-ask, not an inline decision.
 
+## Architecture (microphone device identity and capture failure)
+
+Added 2026-07-25 by `tasks/done/story-microphone-device-identity.md`, closing
+`tasks/bug_reports/2026-07-24-microphone-device-name-ambiguous-across-host-apis.md`.
+Two decisions, one per half of that report.
+
+- **A device name is not an identifier; the pair (name, host API) is.**
+  Windows exposes one physical microphone once per host API and PortAudio
+  lists each copy under the same `name`, so asking PortAudio to resolve a
+  name raises `ValueError` on a machine where the user owns a Yeti. The
+  product now resolves identity itself, in `audio/devices.py`, and passes
+  PortAudio an index. No code path may hand a device *name* to
+  `sd.InputStream` again - that is the defect, not the symptom.
+- **Config carries two fields, not one encoded string.** `[microphone]`
+  keeps `device` and gains `host_api`, defaulting to `""`. Empty host API
+  means "resolve by name, and fail if that is ambiguous": it keeps every
+  pre-existing configuration working untouched wherever the name is
+  unique, which is why no migration exists. Rejected alternatives: a
+  delimited single string (the delimiter can occur inside a device name)
+  and a PortAudio index (stable only within one enumeration).
+- **A device has a name and a label, and only the name is identity.**
+  Windows hands PortAudio the raw MMDevice resource string for Bluetooth
+  hands-free endpoints - `Headset (@System32\drivers\bthhfenum.sys,#2;%1
+  Hands-Free%0\n;(Galaxy Buds Live (2A04)))`, embedded newline included.
+  `InputDevice.label` is a derived property, never a stored field, so
+  what is shown can never drift from what is opened: the selector, the
+  manual check's listing, and every resolution error message use the
+  label, while config and PortAudio keep the raw name. A label is
+  therefore not accepted as a config value - the name is what the driver
+  answers to, and one string with two meanings is how this whole class of
+  bug started. If hand-writing a Bluetooth name into `config.toml` ever
+  becomes a real complaint, the answer is accepting the label as an alias
+  with its own ambiguity rules, not blurring the two.
+- **Resolution never picks among candidates.** An ambiguous name, an
+  unknown name, and a host API that matches nothing are all errors naming
+  what was found. Silently taking the first match would choose a host API
+  on the user's behalf, and host API choice is not cosmetic here: the
+  2026-07-11 wake-recovery fix and the 2026-07-18 post-mute
+  degraded-capture finding are both MME-specific.
+- **Resolution runs per stream creation.** The loop opens a fresh stream
+  for every active period (the MME wake constraint), and a PortAudio index
+  is only valid within one enumeration, so resolving once at startup would
+  reintroduce staleness on the first reconnect.
+- **An unresolvable microphone degrades the module; it does not stop
+  startup.** This deliberately departs from the bug report's own
+  suggestion of a startup config error. The remedy is the Settings tab,
+  which lives inside the console a startup abort would prevent from
+  opening. The failure is instead made loud: `MicrophoneCaptureFailed`
+  moves the chip to ERROR, one `publish_system_event()` at ERROR from
+  source `STT` reaches both the events panel (localized, with the remedy)
+  and the system log (the driver's own reason). The device name stays out
+  of the panel entry under the v1.6.4 content rule and appears only in the
+  file log.
+- **There is no retry, and the error state is latched.** A capture loop
+  that quietly reopens a device would hide exactly the signal this
+  reporting exists to produce; a failed microphone stays failed until
+  restart. Sleep/wake does *not* restart it - `toggle_user_sleep()` only
+  sets an event that a loop which already exited will never observe - but
+  it does keep publishing `MicSleepToggled`. `ModuleHealthTracker`
+  therefore latches the failure and ignores later sleep/wake signals for
+  the microphone, or an unmute would repaint a dead microphone as
+  "listening" and restore the very lie this work removed. The latch is
+  per tracker instance, so a restart clears it by construction.
+- **There is no "muted but available again" state, and that is what
+  settles the sleep toggle's feedback.** Pinned by tests rather than
+  argued: a failed loop never re-enters the stream factory on wake, and
+  no sleep state is persisted anywhere (`MicrophoneSettings` has exactly
+  `device` and `host_api`), so the only transition from unavailable to
+  available is a restart, which always comes back awake. A mute pressed
+  while the microphone was dead therefore cannot survive to the moment it
+  works again - there is nothing to preserve. `AudioInput.capture_failed`
+  exposes the latch, and the sleep toggle answers a keypress with the
+  stopped-microphone notice (WARN, source `HOTKEY`) plus the sleep cue in
+  both directions, because "not capturing" is true either way. The
+  original failure keeps its single ERROR report; repeating ERROR per
+  keypress would turn the panel into noise.
+- A related consequence, verified the same way: muting *before* the first
+  stream open defers the whole failure. Capture only proves a device
+  broken at the moment it opens one, so a session that starts muted
+  reports nothing until the first wake. The error chip can therefore
+  appear long after startup, which is honest rather than late - nothing
+  was being captured in between.
+- **Cancellation is not failure.** `CancelledError` is a `BaseException`,
+  so the loop's `except Exception` cannot swallow the shutdown path, and
+  reads interrupted by `stop()` or by sleep keep their existing quiet
+  returns. A clean shutdown must never announce a microphone failure.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:
