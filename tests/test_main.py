@@ -9,6 +9,7 @@ import time
 import types
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -2189,12 +2190,23 @@ def test_announcing_debug_mode_warns_that_privacy_is_not_guaranteed(caplog):
     containing the exchange would not say why it was allowed to. WARNING,
     not INFO: it must stand out in a file that is mostly INFO."""
     with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
-        announce_debug_mode(True)
+        announce_debug_mode(True, Path("logs/jarvis-debug.jsonl"))
 
-    [record] = caplog.records
-    assert record.levelno == logging.WARNING
-    assert "DEBUG MODE" in record.message
-    assert "Privacy is not guaranteed" in record.message
+    assert all(record.levelno == logging.WARNING for record in caplog.records)
+    announced = " ".join(record.getMessage() for record in caplog.records)
+    assert "DEBUG MODE" in announced
+    assert "Privacy is not guaranteed" in announced
+    assert "jarvis-debug.jsonl" in announced
+
+
+def test_a_debug_run_that_cannot_record_says_so(caplog):
+    """Starting for a recording and silently not getting one is the worst
+    of both: the privacy cost is paid and no evidence is collected."""
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
+        announce_debug_mode(True, None)
+
+    announced = " ".join(record.getMessage() for record in caplog.records)
+    assert "records nothing" in announced
 
 
 def test_a_normal_run_says_nothing_about_debug(caplog):
@@ -2216,7 +2228,11 @@ def test_run_announces_debug_mode_at_startup(monkeypatch):
     """The announcement is wired into run() itself, not left to callers -
     every launch path that can set the flag goes through here."""
     announced = []
-    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+    monkeypatch.setattr(
+        "jarvis.app.announce_debug_mode",
+        lambda enabled, path=None: announced.append(enabled),
+    )
+    monkeypatch.setattr("jarvis.app.configure_debug_transcript", lambda settings: None)
     _stop_run_before_the_engine(monkeypatch)
 
     for debug, console in ((True, object()), (False, None)):

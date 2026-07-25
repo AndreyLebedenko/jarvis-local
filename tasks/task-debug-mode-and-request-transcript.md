@@ -16,7 +16,24 @@ gate) is implemented and green; slices 2-4 below are not started.
    Deliberately first of the four: until the gate holds, every later
    slice could be switched on without the banner. Nothing is recorded
    yet, so the flag currently only announces itself.
-2. **The per-turn record** of what went to the model and what came back.
+2. **The per-turn record** - done. Taken in `OllamaBackend.iter_chat()`,
+   the one seam every request passes through: plain turns, each pass of
+   the tool loop, the forced-final pass, and the warm-up. Recording any
+   higher would have missed some of them, which is how the 2026-07-25
+   investigation lost the tool-loop follow-ups. `core/debug_transcript.py`
+   owns the sink; `begin_exchange()` returns None when nothing is
+   recording, so an ordinary run pays one level check and does no
+   redaction work. Written in a `finally`, so a call that fails, hangs,
+   or whose consumer stops reading still leaves a record - those being
+   the cases a transcript is wanted for.
+   Three boundaries survived the exception and have tests: the sink does
+   not propagate to the root logger, so `jarvis.log` keeps its promise;
+   media becomes a kind and a byte count, never base64; and reasoning
+   traces stay out, because debug lifts the content rule and not
+   PROJECT.md's separate isolation rule for `message.thinking`.
+   Verified against the live endpoint, not only MockTransport: one real
+   request produced one record carrying the model, options, message list,
+   answer, and token counts.
 3. **Utterance metrics** at debug level.
 4. **The console banner** and the events-panel entry, both languages.
    `announce_debug_mode()` is the seam they join.

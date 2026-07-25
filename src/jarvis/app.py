@@ -29,6 +29,7 @@ from jarvis.core.config import (
     Settings,
     load_settings,
 )
+from jarvis.core.debug_transcript import configure_debug_transcript
 from jarvis.core.lifecycle import (
     VOICE_PLACEHOLDER_TEXT,
     AttachmentSubmissionReason,
@@ -143,7 +144,7 @@ DEBUG_MODE_LOG_MESSAGE = (
 )
 
 
-def announce_debug_mode(enabled: bool) -> None:
+def announce_debug_mode(enabled: bool, transcript_path: Path | None = None) -> None:
     """Says, everywhere it can, that the content rule is lifted.
 
     Called first thing in run(), before anything could be recorded, so a
@@ -151,8 +152,16 @@ def announce_debug_mode(enabled: bool) -> None:
     The console banner and the events-panel entry join this function when
     they land; the warning level is deliberate - a normal run must never
     print it, and this one must be impossible to miss in a log file."""
-    if enabled:
-        logger.warning(DEBUG_MODE_LOG_MESSAGE)
+    if not enabled:
+        return
+    logger.warning(DEBUG_MODE_LOG_MESSAGE)
+    if transcript_path is None:
+        logger.warning(
+            "DEBUG MODE: the transcript file could not be opened, so this run "
+            "records nothing - fix the logging directory and start again"
+        )
+    else:
+        logger.warning("DEBUG MODE: recording the exchange to %s", transcript_path)
 
 
 @dataclass(frozen=True)
@@ -1192,7 +1201,9 @@ async def run(
     # configured, not hardcoded.
     settings = settings or load_settings()
     configure_logging(settings.logging)
-    announce_debug_mode(debug)
+    announce_debug_mode(
+        debug, configure_debug_transcript(settings.logging) if debug else None
+    )
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)

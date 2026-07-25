@@ -1,13 +1,17 @@
 import base64
 import io
 import json
+import logging
 
 import httpx
 import numpy as np
+import pytest
 import soundfile as sf
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import BackendSettings, LoggingSettings
+from jarvis.core.debug_transcript import configure_debug_transcript
+from jarvis.core.debug_transcript import logger as transcript_logger
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
@@ -337,6 +341,13 @@ async def test_latency_metrics_parsed_and_published_on_completion():
     ]
 
 
+def _close_transcript() -> None:
+    for handler in transcript_logger.handlers:
+        handler.close()
+    transcript_logger.handlers = []
+    transcript_logger.setLevel(logging.NOTSET)
+
+
 def _client_with_ndjson_body(lines: list[dict]) -> httpx.AsyncClient:
     body = "\n".join(json.dumps(line) for line in lines).encode() + b"\n"
 
@@ -441,3 +452,76 @@ async def test_stream_ending_without_done_still_republishes_seen_tokens():
     await backend.chat(messages=[{"role": "user", "content": "hi"}])
 
     assert received == ["Hello"]
+
+
+# --- debug transcript wiring ------------------------------------------------
+# Taken at iter_chat() because every request the engine makes goes through
+# it: plain turns, each pass of the tool loop, the forced-final pass, and
+# the warm-up. Recording higher up would miss some of them.
+
+
+async def test_every_request_is_recorded_when_the_transcript_is_installed(tmp_path):
+    path = configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+    lines = [
+        {"message": {"content": "Слышу вас"}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 7},
+    ]
+    backend = OllamaBackend(
+        bus=EventBus(),
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body(lines),
+    )
+
+    try:
+        await backend.chat(
+            messages=[{"role": "user", "content": "[голосовое сообщение]"}],
+            images_b64=[base64.b64encode(b"RIFF____WAVEfmt ").decode()],
+        )
+        record = json.loads(path.read_text(encoding="utf-8").strip())
+    finally:
+        _close_transcript()
+
+    assert record["request"]["messages"][0]["media"] == [{"kind": "wav", "bytes": 16}]
+    assert record["response"]["content"] == "Слышу вас"
+    assert record["response"]["eval_count"] == 7
+
+
+async def test_a_request_records_nothing_without_the_transcript(tmp_path):
+    """The default path for every ordinary run: no sink, no record, and no
+    redaction work either."""
+    backend = OllamaBackend(
+        bus=EventBus(),
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body([{"message": {"content": "hi"}, "done": True}]),
+    )
+
+    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_a_failed_request_still_leaves_a_record(tmp_path):
+    """The case the transcript exists for. A backend error must not also
+    cost the evidence of what was sent."""
+    path = configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Ollama is not running")
+
+    backend = OllamaBackend(
+        bus=EventBus(),
+        settings=BackendSettings(),
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://localhost:11434"
+        ),
+    )
+
+    try:
+        with pytest.raises(httpx.ConnectError):
+            await backend.chat(messages=[{"role": "user", "content": "hi"}])
+        record = json.loads(path.read_text(encoding="utf-8").strip())
+    finally:
+        _close_transcript()
+
+    assert record["request"]["messages"][0]["content"] == "hi"
+    assert record["response"]["completed"] is False
