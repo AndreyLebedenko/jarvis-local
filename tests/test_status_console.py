@@ -30,7 +30,7 @@ from jarvis.inputs.camera import (
     CameraStateChanged,
 )
 from jarvis.journal import JournalEvent, JournalStore
-from jarvis.tools.host import McpModuleStatus
+from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import (
     DataLocality,
@@ -126,6 +126,29 @@ def test_data_source_payload_shape():
     assert data_source_payload(DataSource.INTERNET) == {"source": "internet"}
 
 
+def test_mcp_state_payload_groups_local_tools_apart_from_external_ones():
+    """The MCP status line and button describe the MCP module, so only
+    the tools that module governs may travel under them."""
+    tools = (
+        RegisteredTool("web_search", "Search", {}, "search", enabled=True),
+        RegisteredTool(
+            "remember",
+            "Remember",
+            {},
+            "builtin",
+            provider_kind="builtin",
+            enabled=True,
+        ),
+    )
+
+    payload = mcp_state_payload(McpModuleStatus.OFF, tools)
+
+    assert payload["status"] == "off"
+    assert payload["enabled"] is False
+    assert [tool["name"] for tool in payload["tools"]] == ["web_search"]
+    assert [tool["name"] for tool in payload["local_tools"]] == ["remember"]
+
+
 def test_mcp_state_payload_keeps_builtin_tools_available_when_mcp_is_off():
     tools = (
         RegisteredTool("web_search", "Search", {}, "search", enabled=True),
@@ -139,46 +162,41 @@ def test_mcp_state_payload_keeps_builtin_tools_available_when_mcp_is_off():
         ),
     )
 
-    assert mcp_state_payload(McpModuleStatus.OFF, tools) == {
-        "status": "off",
-        "enabled": False,
-        "tools": [
-            {
-                "name": "remember",
-                "provider": "builtin",
-                "provider_kind": "builtin",
-                "enabled": True,
-                "available": True,
-            },
-            {
-                "name": "web_search",
-                "provider": "search",
-                "provider_kind": "mcp",
-                "enabled": True,
-                "available": False,
-            },
-        ],
-    }
-    assert mcp_state_payload(McpModuleStatus.DEGRADED, tools) == {
-        "status": "degraded",
-        "enabled": True,
-        "tools": [
-            {
-                "name": "remember",
-                "provider": "builtin",
-                "provider_kind": "builtin",
-                "enabled": True,
-                "available": True,
-            },
-            {
-                "name": "web_search",
-                "provider": "search",
-                "provider_kind": "mcp",
-                "enabled": True,
-                "available": True,
-            },
-        ],
-    }
+    off = mcp_state_payload(McpModuleStatus.OFF, tools)
+    degraded = mcp_state_payload(McpModuleStatus.DEGRADED, tools)
+
+    assert off["local_tools"][0]["available"] is True
+    assert off["tools"][0]["available"] is False
+    assert degraded["tools"][0]["available"] is True
+
+
+def test_mcp_state_payload_marks_the_camera_row_as_a_privacy_switch():
+    """It drives camera state rather than mere tool availability, so the
+    UI must be able to render it as a different kind of control."""
+    tools = (
+        RegisteredTool(
+            "capture_camera_image",
+            "Camera",
+            {},
+            "builtin",
+            provider_kind="builtin",
+            enabled=False,
+        ),
+        RegisteredTool(
+            "remember",
+            "Remember",
+            {},
+            "builtin",
+            provider_kind="builtin",
+            enabled=True,
+        ),
+    )
+
+    local = mcp_state_payload(McpModuleStatus.OFF, tools)["local_tools"]
+
+    by_name = {tool["name"]: tool for tool in local}
+    assert by_name["capture_camera_image"]["is_privacy_switch"] is True
+    assert by_name["remember"]["is_privacy_switch"] is False
 
 
 def test_model_request_payload_shape_contains_only_metadata():
@@ -1906,3 +1924,81 @@ async def test_camera_toggle_refuses_when_no_source_answers_at_all():
     assert state.enabled is False
     assert host.tool_toggles == [("capture_camera_image", False)]
     assert failures == [CameraCaptureFailed()]
+
+
+@pytest.mark.asyncio
+async def test_toggling_a_tool_asks_the_ui_to_repaint_from_engine_state():
+    """The click already moved the checkbox in the browser, so the engine
+    must publish regardless - otherwise a row keeps a label that
+    contradicts its own box."""
+    bus = EventBus()
+    events: list[ToolEnablementChanged] = []
+    bus.subscribe(ToolEnablementChanged, lambda event: events.append(event))
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=_FakeMcpHost(),
+    )
+
+    api.set_tool_enabled("remember", False)
+    await asyncio.sleep(0.05)
+
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_stale_tool_toggle_still_repaints_the_row():
+    class RejectingHost(_FakeMcpHost):
+        def set_tool_enabled(self, name: str, enabled: bool) -> bool:
+            super().set_tool_enabled(name, enabled)
+            return False
+
+    bus = EventBus()
+    events: list[ToolEnablementChanged] = []
+    bus.subscribe(ToolEnablementChanged, lambda event: events.append(event))
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=RejectingHost(),
+    )
+
+    api.set_tool_enabled("gone", True)
+    await asyncio.sleep(0.05)
+
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_camera_toggle_also_repaints_the_tool_rows():
+    class ProbeBackend:
+        def probe_usb(self, device_index: int) -> None:
+            del device_index
+
+        def capture_usb(self, *args: object) -> bytes:
+            raise AssertionError("toggle must probe, not capture")
+
+    bus = EventBus()
+    events: list[ToolEnablementChanged] = []
+    bus.subscribe(ToolEnablementChanged, lambda event: events.append(event))
+    state = CameraState()
+    api = StatusConsoleApi(
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        loop=asyncio.get_running_loop(),
+        mcp_host=_FakeMcpHost(),
+        camera_state=state,
+        camera_capture=CameraCapture(Settings().camera, state, ProbeBackend()),
+    )
+
+    api.set_tool_enabled("capture_camera_image", True)
+    await asyncio.sleep(0.05)
+
+    assert len(events) == 1

@@ -93,7 +93,11 @@ from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.journal import JournalEvent, JournalRecorder, JournalStore
 from jarvis.journal.fork import ForkSessionReason
-from jarvis.tools.host import McpModuleStatus, McpModuleStatusChanged
+from jarvis.tools.host import (
+    McpModuleStatus,
+    McpModuleStatusChanged,
+    ToolEnablementChanged,
+)
 from jarvis.ui.contract import (
     DataLocality,
     EventLevel,
@@ -1839,6 +1843,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": False,
             "available": True,
+            "is_privacy_switch": True,
         },
         {
             "name": "remember",
@@ -1846,6 +1851,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": True,
             "available": True,
+            "is_privacy_switch": False,
         },
         {
             "name": "set_reasoning_level",
@@ -1853,6 +1859,7 @@ def _builtin_tool_payloads() -> list[dict[str, object]]:
             "provider_kind": "builtin",
             "enabled": True,
             "available": True,
+            "is_privacy_switch": False,
         },
     ]
 
@@ -1875,7 +1882,12 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
         ("locality", DataLocality.LOCAL),
         (
             "mcp",
-            {"status": "off", "enabled": False, "tools": _builtin_tool_payloads()},
+            {
+                "status": "off",
+                "enabled": False,
+                "tools": [],
+                "local_tools": _builtin_tool_payloads(),
+            },
         ),
         ("thinking", ReasoningLevel.OFF),
         ("visibility", VisibilityMode.OPEN),
@@ -1916,7 +1928,8 @@ async def test_wire_status_console_projects_authoritative_mcp_status_changes():
         {
             "status": "connecting",
             "enabled": False,
-            "tools": _builtin_tool_payloads(),
+            "tools": [],
+            "local_tools": _builtin_tool_payloads(),
         },
     )
     unwire(app, subscriptions)
@@ -2977,3 +2990,25 @@ def test_desktop_console_native_close_is_wired_to_shutdown_request():
     assert console.created_with_on_closed == live_console.api.request_shutdown
     assert console.loaded_url.endswith("/?token=token")
     assert touchstrip.loaded_url.endswith("/touchstrip.html?token=token")
+
+
+async def test_wire_status_console_repaints_tool_rows_after_a_toggle():
+    """A toggle already moved the checkbox in the browser, so the engine
+    republishes the whole tool state - the row must never keep a label
+    the engine no longer holds."""
+    app = _fake_app()
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    await app.bus.publish(ToolEnablementChanged, ToolEnablementChanged())
+
+    kind, payload = transport.calls[-1]
+    assert kind == "mcp"
+    assert [tool["name"] for tool in payload["local_tools"]] == [
+        "capture_camera_image",
+        "remember",
+        "set_reasoning_level",
+    ]
+    unwire(app, subscriptions)

@@ -328,6 +328,21 @@ body {
 .mcp-tools li[data-available="false"] { color: var(--text-faint); }
 .mcp-tools-empty { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
 
+/* Local builtin tools are their own card so the MCP status line and
+   button can only be read as describing MCP. The second card costs
+   vertical space on a column v1.6.3 fitted to 900 px, so it earns it
+   back: no button in the header, and a shorter list bound - the builtin
+   provider's tool count grows far more slowly than an MCP server's. */
+.local-tools-card .mcp-tools { max-height: 108px; }
+.local-tools-card .mcp-header { min-height: 0; }
+
+/* The camera row is the camera's privacy switch rather than one
+   availability checkbox among equals (see mcp_state_payload's
+   is_privacy_switch). It says so in words: a color accent was tried and
+   rejected on review - a tinted row reads as decoration or as a state,
+   and it cannot tell anyone what makes that row different. */
+.mcp-tools li[data-privacy-switch="true"] { color: var(--text); }
+
 /* story-v1.2.10-task-5: keep the primary action in a stable row. The
    confirmation panel lives below it so opening it never moves the action.
    task-v1.6.3-4 tried pinning this row to the bottom with margin-top:

@@ -137,3 +137,12 @@ def test_served_pages_load_strings_js_before_the_scripts_that_use_it():
 def test_pages_default_to_english_lang_attribute():
     for filename in ["index.html", "touchstrip.html", "demo.html"]:
         assert '<html lang="en"' in _read(filename)
+
+
+def test_the_unavailable_tool_label_exists_in_every_language():
+    """app.js writes only this one state on a tool row: on/off is the
+    checkbox's job. A missing key throws inside uiString() and blanks the
+    row - the surface that already misled a user once by calling a tool
+    the owner had switched off "unavailable"."""
+    for language, keys in _strings_js_keys().items():
+        assert "mcp_tool_unavailable" in keys, language

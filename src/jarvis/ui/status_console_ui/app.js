@@ -217,15 +217,26 @@ function applyMcpState(payload) {
   button.textContent = uiString(_mcpEnabled ? "mcp_disable" : "mcp_enable");
   button.disabled = payload.status === "connecting" || payload.status === "disconnecting";
 
-  const list = document.getElementById("mcpTools");
+  renderToolList("mcpTools", "mcpToolsEmpty", payload.tools || []);
+  renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
+}
+
+// A row says only what the checkbox cannot. On/off is the checkbox's own
+// job, so naming it in text was both duplication and the original defect:
+// an available tool the user had switched off got labelled with the same
+// word as a dead provider. Only unavailability is written out now, since
+// nothing else on the row explains why the box refuses to move.
+function renderToolList(listId, emptyId, tools) {
+  const list = document.getElementById(listId);
+  if (!list) return;
   list.replaceChildren();
-  for (const tool of payload.tools || []) {
+  for (const tool of tools) {
     const row = document.createElement("li");
     row.setAttribute("data-available", String(tool.available));
     row.setAttribute("data-provider-kind", tool.provider_kind || "mcp");
-    const stateKey = tool.available && tool.enabled
-      ? "mcp_tool_available"
-      : "mcp_tool_unavailable";
+    if (tool.is_privacy_switch === true) {
+      row.setAttribute("data-privacy-switch", "true");
+    }
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = tool.enabled === true;
@@ -235,14 +246,23 @@ function applyMcpState(payload) {
       _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
     });
     const label = document.createElement("span");
-    const providerKind = tool.provider_kind === "builtin"
-      ? uiString("tool_provider_builtin")
-      : tool.provider;
-    label.textContent = `${tool.name} - ${providerKind} - ${uiString(stateKey)}`;
+    const parts = [tool.name];
+    // The provider names which server answers; for a builtin tool the
+    // card heading already said "local", so repeating it is noise.
+    if (tool.provider_kind !== "builtin") {
+      parts.push(tool.provider);
+    }
+    if (tool.available !== true) {
+      parts.push(uiString("mcp_tool_unavailable"));
+    }
+    if (tool.is_privacy_switch === true) {
+      parts.push(uiString("camera_tool_privacy_hint"));
+    }
+    label.textContent = parts.join(" - ");
     row.append(checkbox, label);
     list.appendChild(row);
   }
-  document.getElementById("mcpToolsEmpty").hidden = list.children.length !== 0;
+  document.getElementById(emptyId).hidden = list.children.length !== 0;
 }
 
 function setMcpEnabled() {

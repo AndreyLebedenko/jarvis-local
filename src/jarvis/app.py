@@ -96,7 +96,11 @@ from jarvis.memory.files import (
     build_memory_file_specs,
 )
 from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
-from jarvis.tools.host import McpHost, McpModuleStatusChanged
+from jarvis.tools.host import (
+    McpHost,
+    McpModuleStatusChanged,
+    ToolEnablementChanged,
+)
 from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.contract import (
     DataLocality,
@@ -853,6 +857,16 @@ def wire_status_console(
             substatus = ui_text(event.substatus_key, app.settings.ui.language)
         _push_runtime_state(live_console, event.state, substatus)
 
+    async def on_tool_enablement_changed(event: ToolEnablementChanged) -> None:
+        # No payload on the event: the whole registry is re-read, so a row
+        # can never keep a state the engine no longer holds.
+        del event
+        if app.mcp_host is None or live_console.transport is None:
+            return
+        live_console.transport.set_mcp_state(
+            mcp_state_payload(app.mcp_host.status, app.mcp_host.registry.all())
+        )
+
     async def on_mcp_status_changed(event: McpModuleStatusChanged) -> None:
         if app.mcp_host is None or live_console.transport is None:
             return
@@ -871,6 +885,8 @@ def wire_status_console(
     if app.mcp_host is not None:
         subscriptions.append((McpModuleStatusChanged, on_mcp_status_changed))
         app.bus.subscribe(McpModuleStatusChanged, on_mcp_status_changed)
+        subscriptions.append((ToolEnablementChanged, on_tool_enablement_changed))
+        app.bus.subscribe(ToolEnablementChanged, on_tool_enablement_changed)
     return subscriptions
 
 
