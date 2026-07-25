@@ -45,6 +45,7 @@ from pathlib import Path
 
 import httpx
 
+from jarvis.audio.input import SAMPLE_RATE
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
 from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
@@ -106,6 +107,24 @@ def encoded(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode()
 
 
+def synthetic_silence(seconds: float) -> str:
+    """A wav with literally nothing in it, as the engine would encode one.
+
+    The model tokenizes audio directly rather than transcribing it first
+    (owner, 2026-07-25), so silence, noise without intelligible speech,
+    and no audio at all are three different inputs and need not produce
+    the same answer. This is the first of the three."""
+    import io
+
+    import numpy as np
+    import soundfile as sf
+
+    buffer = io.BytesIO()
+    samples = np.zeros(int(SAMPLE_RATE * seconds), dtype=np.float32)
+    sf.write(buffer, samples, SAMPLE_RATE, format="WAV", subtype="PCM_16")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
 async def main_async(args: argparse.Namespace) -> None:
     settings = load_settings(args.config)
     print(f"model:    {settings.backend.model}")
@@ -116,7 +135,7 @@ async def main_async(args: argparse.Namespace) -> None:
         base_url=settings.backend.endpoint,
         timeout=httpx.Timeout(10.0, read=settings.backend.read_timeout_seconds),
     ) as client:
-        for wav, july_answer in KNOWN_GOOD:
+        for wav, july_answer in [] if args.skip_replays else KNOWN_GOOD:
             audio_b64 = encoded(Path(wav))
             print(f"--- {wav}")
             print(f"    2026-07-17: {july_answer}")
@@ -127,6 +146,19 @@ async def main_async(args: argparse.Namespace) -> None:
             )
             print(f"RESULT|case=after a refusal |answer={poisoned[:300]}\n")
 
+        if args.silence_seconds:
+            print(
+                f"--- synthetic silence, {args.silence_seconds:g}s "
+                "(control: nothing at all in the audio)"
+            )
+            answer = await ask(
+                backend,
+                client,
+                settings.prompts.system,
+                synthetic_silence(args.silence_seconds),
+            )
+            print(f"RESULT|case=silence        |answer={answer[:300]}\n")
+
         if args.quiet_wav:
             audio_b64 = encoded(Path(args.quiet_wav))
             print(f"--- {args.quiet_wav} (negative control: nothing intelligible)")
@@ -134,14 +166,27 @@ async def main_async(args: argparse.Namespace) -> None:
             print(f"RESULT|case=unintelligible |answer={answer[:300]}\n")
 
     print(
-        "Comprehension means today's answer is about July's subject. A polite\n"
-        "offer to help, or a claim to hear you well, is not comprehension -\n"
-        "the negative control produces those from an empty recording."
+        "Comprehension means today's answer is about July's subject. A claim\n"
+        "to hear you well is not comprehension - a barely-audible recording\n"
+        "produces one too. The refusal wording ('I cannot listen to audio')\n"
+        "is what digital silence produces, so read it as 'there was nothing\n"
+        "in this audio', not as the model denying it can hear at all."
     )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--silence-seconds",
+        type=float,
+        default=0.0,
+        help="also send a synthesized silent wav of this length",
+    )
+    parser.add_argument(
+        "--skip-replays",
+        action="store_true",
+        help="run only the controls, without the three known-good replays",
+    )
     parser.add_argument(
         "--quiet-wav",
         help="a recording with nothing intelligible in it, e.g. the zero-gain one",

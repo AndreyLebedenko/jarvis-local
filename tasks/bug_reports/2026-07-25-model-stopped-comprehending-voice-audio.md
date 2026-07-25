@@ -4,7 +4,11 @@
 tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
-**Status:** Open, one mechanism confirmed and the main question reopened.
+**Status:** Open, blocked on the debug mode
+(`tasks/task-debug-mode-and-request-transcript.md`). One mechanism
+confirmed, one input taxonomy established, and the live first refusal not
+reproducible from anything that can be reconstructed - which is the
+argument for stopping reconstruction here.
 Confirmed: the model follows its own previous answer, so one refusal in
 conversation history makes every later voice turn in that session a
 refusal. Reopened by the owner's zero-gain control: a non-refusal is not
@@ -197,6 +201,42 @@ effect is the whole bug. If they come back generic while the negative
 control produces the same confidence, then comprehension is gone
 entirely, the refusals were the honest answers, and the history effect is
 a second-order finding rather than the cause.
+
+## Fifth experiment: what each kind of input actually produces (2026-07-25)
+
+The owner pointed out that this model tokenizes audio directly, with no
+built-in transcription step, so silence, noise without intelligible
+speech, and no audio at all are three different inputs that need not
+produce the same answer. Measured, agent-run against the live endpoint
+with the owner's authorization:
+
+| input | runs | refusals | typical answer |
+|---|---|---|---|
+| synthesized digital silence, 2 s | 3 | 2 | "не могу прослушать аудиофайлы напрямую" |
+| the weak 22:00 utterance (speech -28 dB, 1.1 s) | 5 | 0 | "Да, я вас слышу и готов помочь" |
+| the loud 22:16 utterance (speech -21 dB, 2.1 s) | 5 | 0 | "Да, я вас отлично слышу" |
+| the weak utterance again, `stream=true` | 5 | 0 | same |
+| heavy interference, live (owner) | 1 | 0 | "аудиосообщение не было распознано должным образом" |
+
+**The refusal wording means "there was nothing in this audio".** It is
+what digital silence produces, not a denial of the capability. That is a
+different failure from "не было распознано", which is what audio
+carrying unintelligible sound produces - the model distinguishes the two,
+which is what direct tokenization would predict.
+
+**And the reproduction gap is now explicit.** Eighteen requests carrying
+the real recordings - including the exact utterance the engine refused
+live, non-streamed and streamed - produced no refusal at all. So the live
+first-turn refusal is not reproducible from the recorded audio plus any
+payload variable that can be reconstructed: tools, memory, placeholder,
+time context, streaming, and history have each been varied and none of
+them turns that wav into a refusal.
+
+What differs between the engine's request and every reconstruction is
+whatever the engine actually sent, and nothing records it. This is
+exactly the gap `tasks/task-debug-mode-and-request-transcript.md` exists
+to close, and further reconstruction is not the way to close it: the next
+step on this bug is a debug run, not another script.
 
 ## Earlier suspected cause (superseded by the run above)
 
