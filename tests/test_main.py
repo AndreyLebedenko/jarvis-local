@@ -28,9 +28,12 @@ from jarvis.app import (
     _on_mic_sleep_toggled,
     _on_microphone_capture_failed,
     _on_reasoning_level_changed,
+    announce_debug_mode,
     build_app,
     create_live_status_console,
+    main,
     parse_args,
+    run,
     run_clipboard_hotkey_listener,
     run_mic_sleep_hotkey_listener,
     run_thinking_hotkey_listener,
@@ -2133,6 +2136,92 @@ def test_parse_args_enables_status_console_without_touchstrip():
     assert args.no_touchstrip is True
 
 
+class _StopBeforeEngine(Exception):
+    """Aborts run() after its startup announcements, before build_app()
+    would construct real hardware-touching modules."""
+
+
+def _raise(error: Exception):
+    raise error
+
+
+# --- debug mode gate --------------------------------------------------------
+# Debug lifts the content rule both records otherwise keep, so the console
+# banner is the consent surface and a headless debug run must not exist.
+
+
+def test_debug_requires_the_status_console(capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        parse_args(["--debug"])
+
+    assert exit_info.value.code != 0
+    assert "--debug requires --status-console" in capsys.readouterr().err
+
+
+def test_debug_is_accepted_with_the_status_console():
+    args = parse_args(["--status-console", "--debug"])
+
+    assert args.debug is True
+
+
+def test_debug_is_off_unless_asked_for():
+    assert parse_args([]).debug is False
+    assert parse_args(["--status-console"]).debug is False
+
+
+def test_main_carries_the_debug_flag_into_the_console_launch(monkeypatch):
+    calls = {}
+
+    def fake_run_with_status_console(**kwargs):
+        calls.update(kwargs)
+
+    monkeypatch.setattr(
+        "jarvis.app.run_with_status_console", fake_run_with_status_console
+    )
+
+    main(["--status-console", "--debug"])
+
+    assert calls["debug"] is True
+
+
+def test_announcing_debug_mode_warns_that_privacy_is_not_guaranteed(caplog):
+    """The warning has to be in the file a problem report carries, or a log
+    containing the exchange would not say why it was allowed to. WARNING,
+    not INFO: it must stand out in a file that is mostly INFO."""
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
+        announce_debug_mode(True)
+
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "DEBUG MODE" in record.message
+    assert "Privacy is not guaranteed" in record.message
+
+
+def test_a_normal_run_says_nothing_about_debug(caplog):
+    with caplog.at_level(logging.DEBUG, logger=APP_LOGGER_NAME):
+        announce_debug_mode(False)
+
+    assert caplog.records == []
+
+
+def test_run_announces_debug_mode_at_startup(monkeypatch):
+    """The announcement is wired into run() itself, not left to callers -
+    every launch path that can set the flag goes through here."""
+    announced = []
+    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+    monkeypatch.setattr("jarvis.app.configure_logging", lambda settings: None)
+    monkeypatch.setattr("jarvis.app.ensure_generated", lambda settings: None)
+    monkeypatch.setattr(
+        "jarvis.app.build_app", lambda settings: _raise(_StopBeforeEngine())
+    )
+
+    for debug in (True, False):
+        with pytest.raises(_StopBeforeEngine):
+            asyncio.run(run(settings=_settings(), debug=debug))
+
+    assert announced == [True, False]
+
+
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     journal_store = object()
     journal_search_index = object()
@@ -2178,7 +2267,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeTransportServer)
 
-    async def fake_run(settings=None, app=None, live_console=None) -> None:
+    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
         del settings, app, live_console
 
     monkeypatch.setattr(main_module, "run", fake_run)
@@ -2221,7 +2310,7 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
 
-    async def fake_run(settings=None, app=None, live_console=None) -> None:
+    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
         del settings, app, live_console
 
     monkeypatch.setattr(main_module, "run", fake_run)
@@ -2278,7 +2367,7 @@ def test_run_with_status_console_waits_for_a_delayed_engine_callback(monkeypatch
     app = _fake_app()
     engine_finished = threading.Event()
 
-    async def fake_run(settings=None, app=None, live_console=None) -> None:
+    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
         del settings, app, live_console
         await asyncio.sleep(0.05)
         engine_finished.set()
@@ -2308,7 +2397,9 @@ def test_run_with_status_console_reraises_an_engine_callback_failure(monkeypatch
     unjoined thread."""
     app = _fake_app()
 
-    async def failing_run(settings=None, app=None, live_console=None) -> None:
+    async def failing_run(
+        settings=None, app=None, live_console=None, debug=False
+    ) -> None:
         del settings, app, live_console
         raise RuntimeError("engine exploded")
 
