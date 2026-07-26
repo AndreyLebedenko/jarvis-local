@@ -114,6 +114,33 @@ branch, pending review and merge.
    before a cache-busting fetch surfaced the real behavior - a tooling
    artifact of the preview pane, not a product defect; worth remembering
    next time a file:// edit "doesn't seem to apply".)
+
+   **Scope extension (owner review, 2026-07-26): the touchstrip window
+   gets the same banner.** The card's own wording tied the requirement to
+   "the console header" (`index.html:22`), and touchstrip is documented
+   elsewhere as its own surface, not a compressed desktop - so its absence
+   there did not read as an obvious gap. But touchstrip receives the exact
+   same state snapshot the desktop console does, and the owner's rule is
+   the right one: touchstrip is optional (`--no-touchstrip`), but if it is
+   open, the same fact must be visible on it too - a debug session cannot
+   be quietly less announced on one of two windows showing it.
+   Added a dedicated `.g-debug` element (`touchstrip.html`), not folded
+   into the existing model/locality line (`_renderModelLine()`) the way
+   touchstrip normally compresses badges into text: that line is
+   deliberately quiet (`--text-faint`), and this needs to be the opposite
+   of quiet, so it gets the same solid-red/bold/white treatment as the
+   desktop banner. `touchstrip.js` gained its own `applyDebugMode()`,
+   wired into both the snapshot and delta paths exactly like the desktop
+   one - same reconnect guarantee, independent implementation, since
+   `app.js` and `touchstrip.js` are two separate documents that happen to
+   share a state contract, not two consumers of shared code. Reused the
+   same `debug_mode_banner_label`/`debug_mode_banner_privacy` keys, so no
+   new i18n surface was needed.
+   Verified in the browser the same way as the desktop banner, at the
+   window's real 900x230 size: hidden by default, solid red with white
+   text on toggle, both languages, and confirmed the element's bounding
+   box stays within the real window bounds rather than assuming a larger
+   preview viewport would hide an overflow.
 **Raised by:** owner, 2026-07-25, after the voice-comprehension
 investigation: "вместо того, чтобы включить дебаг и повторить запуск с
 полным журналированием всего ввода-вывода, мы занимались
@@ -252,11 +279,13 @@ it is ever needed; deliberately not in this one.
 - [x] `python -m jarvis --debug` without the console refuses to start.
       Verified live: exit code 2, "--debug requires --status-console".
 - [x] With the console, the header carries the red debug and privacy
-      warnings in both interface languages, on every tab. Verified in the
-      browser against the real files (both `index.html` and `demo.html`):
-      solid red, white bold text, correct wording in both languages,
-      hidden by default, shown/hidden via both the snapshot and delta
-      paths.
+      warnings in both interface languages, on every tab, and on the
+      touchstrip window too if it is open (scope extended 2026-07-26).
+      Verified in the browser against the real files (`index.html`,
+      `demo.html`, and `touchstrip.html`, the last at its real 900x230
+      size): solid red, white bold text, correct wording in both
+      languages, hidden by default, shown/hidden via both the snapshot
+      and delta paths.
 - [~] One turn of each kind (voice, screenshot, clipboard, typed,
       attachment) produces one or more readable records - one per backend
       request that turn made - of exactly what went to the model and what
