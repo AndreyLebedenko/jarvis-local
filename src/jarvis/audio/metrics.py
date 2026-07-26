@@ -58,8 +58,12 @@ def _frame_rms(samples: np.ndarray, frame_len: int) -> np.ndarray:
 def compute_utterance_metrics(
     samples: np.ndarray, sample_rate: int
 ) -> UtteranceMetrics:
-    """samples: mono, any float or int dtype in the sample's native range
-    (callers decode with soundfile's default float64 normalization)."""
+    """samples: mono, normalized float in [-1, 1] - full scale is 1.0, so
+    dBFS is computed directly against it. This is what soundfile.read()
+    returns by default (utterance_metrics_from_wav_bytes()'s path), not
+    what a raw int16 PCM buffer looks like: an unnormalized int16 array
+    would report a peak around +90 dBFS instead of ~0. Do not widen this
+    contract to accept raw integer PCM without normalizing first."""
     sample_count = len(samples)
     if sample_count == 0:
         floor = _dbfs(0.0)
