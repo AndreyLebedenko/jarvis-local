@@ -44,6 +44,7 @@ from jarvis.app import (
     wire,
     wire_status_console,
 )
+from jarvis.audio.debug_metrics import on_utterance_captured
 from jarvis.audio.input import (
     AudioInput,
     MicrophoneCaptureFailed,
@@ -1874,7 +1875,10 @@ def test_wire_registers_expected_subscriptions():
     subscriptions = wire(app)
     event_types = [event_type for event_type, _handler in subscriptions]
 
-    assert event_types.count(UtteranceChunk) == 1
+    # Two: the orchestrator's own turn handling, plus the debug-transcript
+    # metrics bridge (on_utterance_captured), which is unconditional and
+    # a no-op unless debug is on.
+    assert event_types.count(UtteranceChunk) == 2
     assert event_types.count(ScreenshotCaptured) == 1
     assert event_types.count(ClipboardSubmitted) == 1
     assert event_types.count(ResponseToken) == 2  # tts_output + orchestrator
@@ -1886,6 +1890,7 @@ def test_wire_registers_expected_subscriptions():
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
+    assert on_utterance_captured in handlers
     assert app.orchestrator.on_screenshot in handlers
     assert app.orchestrator.on_clipboard in handlers
 

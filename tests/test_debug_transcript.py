@@ -261,3 +261,43 @@ def test_a_debug_level_root_logger_alone_does_not_start_recording():
         assert recording() is False
     finally:
         root.setLevel(previous)
+
+
+# --- one discriminant, two record kinds ------------------------------------
+
+
+def test_an_exchange_record_is_discriminated_by_kind(transcript):
+    begin_exchange(payload_with([{"role": "user", "content": "hi"}])).write()
+
+    [record] = records(transcript)
+    assert record["kind"] == "exchange"
+
+
+def test_write_record_does_nothing_without_a_sink():
+    """The same do-nothing-when-off property as begin_exchange(), for the
+    generic path the utterance bridge uses directly."""
+    from jarvis.core.debug_transcript import write_record
+
+    write_record("utterance", {"peak_dbfs": -1.0})  # must not raise
+
+
+def test_write_record_stamps_the_kind_and_a_timestamp(transcript):
+    from jarvis.core.debug_transcript import write_record
+
+    write_record("utterance", {"peak_dbfs": -12.5})
+
+    [record] = records(transcript)
+    assert record["kind"] == "utterance"
+    assert record["peak_dbfs"] == -12.5
+    assert "timestamp" in record
+
+
+def test_two_record_kinds_coexist_in_one_file_without_ambiguity(transcript):
+    from jarvis.core.debug_transcript import write_record
+
+    write_record("utterance", {"peak_dbfs": -12.5})
+    begin_exchange(payload_with([{"role": "user", "content": "hi"}])).write()
+    write_record("utterance", {"peak_dbfs": -8.0})
+
+    kinds = [record["kind"] for record in records(transcript)]
+    assert kinds == ["utterance", "exchange", "utterance"]

@@ -109,6 +109,29 @@ def media_descriptor(encoded: str) -> dict[str, Any]:
     return {"kind": kind, "bytes": len(encoded) // 4 * 3 - padding}
 
 
+def write_record(
+    kind: str, fields: dict[str, Any], *, started: float | None = None
+) -> None:
+    """Writes one JSONL line, or does nothing if no sink is installed.
+
+    Every record carries a "kind" discriminant and a timestamp, so one
+    file can hold exchanges and utterance metrics - interleaved, since
+    each is written independently - without ambiguity about which is
+    which. Checked here even though callers already gate on recording()
+    before doing the work to produce fields: debug could in principle be
+    turned off between that gate and this call, and a line must never be
+    written after the sink it would go to has been closed."""
+    if not recording():
+        return
+    timestamp = time.time() if started is None else started
+    record = {
+        "kind": kind,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(timestamp)),
+        **fields,
+    }
+    logger.debug(json.dumps(record, ensure_ascii=False))
+
+
 def redacted_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     redacted = []
     for message in messages:
@@ -158,20 +181,20 @@ class Exchange:
             }
 
     def write(self) -> None:
-        record = {
-            "timestamp": time.strftime(
-                "%Y-%m-%dT%H:%M:%S", time.localtime(self._started)
-            ),
-            "elapsed_seconds": round(time.time() - self._started, 3),
-            "request": self._request,
-            "response": {
-                "content": "".join(self._content),
-                "tool_calls": self._tool_calls,
-                "completed": bool(self._done),
-                **self._done,
+        write_record(
+            "exchange",
+            {
+                "elapsed_seconds": round(time.time() - self._started, 3),
+                "request": self._request,
+                "response": {
+                    "content": "".join(self._content),
+                    "tool_calls": self._tool_calls,
+                    "completed": bool(self._done),
+                    **self._done,
+                },
             },
-        }
-        logger.debug(json.dumps(record, ensure_ascii=False))
+            started=self._started,
+        )
 
 
 def begin_exchange(payload: dict[str, Any]) -> Exchange | None:

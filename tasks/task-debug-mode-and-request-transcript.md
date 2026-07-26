@@ -1,8 +1,9 @@
 # Task: A debug launch that records what actually went to the model
 
-**Status:** In progress on `feature/debug-transcript`. Slices 1 (the gate)
-and 2 (the per-request record) are implemented, reviewed, and merged to
-`main` / pending merge respectively; slices 3-4 below are not started.
+**Status:** In progress on `feature/debug-transcript`. Slice 1 (the gate)
+is merged to `main`; slices 2 (the per-request record) and 3 (utterance
+metrics) are implemented and reviewed on this branch; slice 4 (the
+console banner) is not started.
 
 ## Implementation slices
 
@@ -51,7 +52,28 @@ and 2 (the per-request record) are implemented, reviewed, and merged to
    coexist with writes continuing into the previous file. `recording()`
    now means "there is a sink", not "the level allows it", since the level
    alone is inherited from the root logger.
-3. **Utterance metrics** at debug level.
+3. **Utterance metrics** - done. `audio/metrics.py` is pure numeric
+   analysis (no project-module dependencies, matching `audio/utils.py`'s
+   own rule): duration, peak dBFS, RMS dBFS, and the 95th/20th percentile
+   of 20 ms frame RMS as speech level and noise floor - the same
+   measurements a throwaway script computed by hand during the
+   2026-07-25 investigation, and the ones that actually separated a
+   comprehended utterance from an unintelligible one there (peak and RMS
+   alone did not).
+   `audio/debug_metrics.py` bridges every `UtteranceChunk` on the bus into
+   one `write_record("utterance", ...)` call, gated on `recording()` so an
+   ordinary run never decodes a wav or computes anything - the same
+   do-nothing-when-off property as `begin_exchange()`. Subscribed
+   unconditionally in `wire()`, like every other bus listener; `wire()`'s
+   own subscription-count test now pins two `UtteranceChunk` handlers
+   instead of one, so a future edit cannot silently drop this one.
+   `debug_transcript.py` gained a shared `write_record(kind, fields)`,
+   used by both this and `Exchange.write()`, so exchanges and utterance
+   metrics coexist in one file under one discriminant (`"kind"`) instead
+   of two ad hoc JSON shapes.
+   Verified against a real journal wav, not only synthetic tones: numbers
+   landed in the range the manual measurements during the investigation
+   found, on the first try.
 4. **The console banner** and the events-panel entry, both languages.
    `announce_debug_mode()` is the seam they join.
 **Raised by:** owner, 2026-07-25, after the voice-comprehension

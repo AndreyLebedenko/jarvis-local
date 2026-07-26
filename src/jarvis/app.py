@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from jarvis.audio.debug_metrics import on_utterance_captured
 from jarvis.audio.input import (
     AudioInput,
     MicrophoneCaptureFailed,
@@ -1062,6 +1063,10 @@ def wire(app: App) -> list[Subscription]:
 
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
+        # Unconditional, like every subscription here: on_utterance_captured
+        # checks recording() itself and does nothing in a normal run, so
+        # wiring it does not need to know whether debug is on.
+        (UtteranceChunk, on_utterance_captured),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
         (ClipboardSubmitted, app.orchestrator.on_clipboard),
         (ResponseToken, app.tts_output.on_token),
