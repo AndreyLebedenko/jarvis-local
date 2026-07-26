@@ -361,7 +361,7 @@ first real diagnosis made with these logs still had to be reconstructed
 from journal wav files (see
 `tasks/bug_reports/2026-07-22-quiet-microphone-capture-and-unselectable-device.md`).
 
-## v1.7.0 - Interruption of playback and voice call (barge-in)
+## v1.7.0 - Interrupting Jarvis (hotkey default, experimental voice barge-in for headphones)
 
 **Resequenced from the unversioned v1.7.x "Conversational fluidity" list
 to v1.7.0 (owner decision, 2026-07-26)**, ahead of memory
@@ -369,37 +369,51 @@ consolidation/retrieval below, which shift to v1.7.1 and v1.7.2
 accordingly. Wake-word addressing, the emotion2vec+ side channel, and the
 MCP egress watchdog stay in the unversioned v1.7.x list.
 
-Purpose: speaking while Jarvis is talking interrupts it, the way
-interrupting a person works - TTS playback and the in-flight backend
-response stop, and Jarvis starts listening to the new request as a fresh
-voice call. Replaces the v1.0/v1.1 timing-window mitigations
-(busy-cooldown, mic auto-pause during speech).
+**Re-scoped 2026-07-26 after task 1's spike came back no-go for
+general-hardware AEC** (see `PROJECT.md`'s "Architecture v1.7.0 spike"
+section and the story card's pivot note): Bluetooth headphones already
+show near-zero self-hearing without any echo cancellation, but desktop
+speakers kept producing VAD false positives on self-heard TTS across
+every tested condition, even after fixing a real bug in the check script
+and tuning the candidate. Owner decision: a hotkey becomes the primary,
+hardware-independent interruption mechanism; voice-triggered
+interruption survives only as an opt-in, default-off, headphones-only
+experimental feature. General-hardware AEC is parked, not pursued
+further - free software shipping to arbitrary user hardware has no
+equivalent of a commercial smart speaker's fixed, lab-tuned acoustic
+path, and ambient noise compounds with imperfect echo cancellation into
+a harder problem than either alone.
+
+Purpose: give the user a reliable way to interrupt Jarvis mid-response -
+TTS playback and the in-flight backend response stop, and Jarvis starts
+listening for the next request.
 
 Scope:
 
-- AEC spike (hard gate, precedent v1.3.1/v1.4.0/v1.6.2): candidate
-  echo-cancellation approaches tried against live TTS playback on
-  Windows, with suppression quality, latency, CPU cost, and dependency
-  choice recorded in `PROJECT.md` before any module code.
-- If the spike is a go: a mechanism keeping the mic capturing during
-  Jarvis's own speech, detecting genuine user speech distinct from
-  self-heard TTS, and on detection cancelling in-flight TTS playback and
-  the in-flight backend stream, then starting a new turn.
+- A hotkey (default-available, no opt-in) that cancels in-flight TTS
+  playback and the in-flight backend stream unconditionally, on any
+  hardware.
 - Interrupted-turn representation in history/journal (append-only
-  invariant, cross-cutting rule 6): a barged-in turn is recorded as
-  interrupted, never silently dropped.
+  invariant, cross-cutting rule 6): an interrupted turn is recorded as
+  interrupted, never silently dropped - for either trigger path.
+- An opt-in, default-off, headphones-only experimental voice-triggered
+  interruption, reusing the hotkey's cancellation mechanism, with a
+  prominent config warning that it is unsupported outside headphone
+  playback. No AEC.
 
 Boundary:
 
+- No general-hardware / desktop-speaker AEC path.
 - Wake-word addressing, the emotion2vec+ side channel, and the MCP
   egress watchdog are separate future stories, not part of this one.
 - No change to the user's mic-sleep/privacy toggle contract; the toggle
   stays non-delegable (cross-cutting rule 9).
-- No resuming an interrupted turn - once barged in on, that turn is over.
+- No resuming an interrupted turn - once interrupted, that turn is over.
 
 Story/task readiness: story card exists at
-`tasks/story-v1.7.0-barge-in.md`. Only the AEC spike task card should be
-opened first; later task cards depend on its outcome.
+`tasks/story-v1.7.0-barge-in.md`. Task 1 (AEC spike) is completed and
+closed (`tasks/done/task-v1.7.0-1-aec-spike.md`); task 2 (hotkey and
+cancellation core) is the next to open.
 
 ## v1.7.1 - Memory layer B, part 1: consolidation (near/far journal)
 

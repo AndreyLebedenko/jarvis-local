@@ -2819,6 +2819,69 @@ Two decisions, one per half of that report.
   reads interrupted by `stop()` or by sleep keep their existing quiet
   returns. A clean shutdown must never announce a microphone failure.
 
+## Architecture v1.7.0 spike (interrupting Jarvis: hotkey default, voice barge-in parked to headphones-only)
+
+Added 2026-07-26 by `tasks/done/task-v1.7.0-1-aec-spike.md` (spike) and
+`tasks/story-v1.7.0-barge-in.md` (story, revised the same day after the
+spike's result). Roadmap: `tasks/roadmap-v1.5.1-v1.7.md`, v1.7.0 section.
+
+**Spike verified facts**, human-run on the owner's machine
+(`manual/manual_check_aec_spike.py`, `tasks/aec-spike-handoff.md`):
+
+- **Bluetooth headphone playback leaks essentially nothing into the
+  microphone.** Eight runs (4 room/distance conditions x silent/interrupt
+  scenario) played back through BT headphones - the owner's normal daily
+  listening setup - showed near-zero far-end/near-end cross-correlation
+  in every run (peaks 0.01-0.05, no stable lag; a real echo path shows
+  peaks in the 0.15-0.3+ range with a stable positive lag). Self-hearing
+  is already a non-issue for that output path, with no echo cancellation
+  of any kind.
+- **Desktop speakers on this machine (PC -> NVIDIA HDMI -> TV -> HDMI ARC
+  -> soundbar) carry 310-335 ms of far-end/near-end delay**, consistent
+  across all four conditions - device/chain buffering latency, not
+  acoustic travel time. The spike script's first NLMS implementation
+  assumed near-zero latency (a fixed 1024-tap/64 ms window with no delay
+  compensation), so it could not see an echo arriving 300+ ms later and
+  reported negative "suppression" - a measurement bug in the check
+  script, not necessarily a property of the candidate. Fixed by adding a
+  cross-correlation delay estimate (`estimate_delay_samples()`) that
+  aligns the adaptive filter's window to the true delay before it starts
+  adapting.
+- **Even after that fix, and after a tuning sweep (taps up to 8192, mu
+  down to 0.1), the pure-numpy NLMS candidate suppressed desktop-speaker
+  echo inconsistently (-11.29 to +8.37 dB across conditions) and Silero
+  VAD still fired on self-heard TTS in all four desktop-speaker
+  conditions with no exceptions.** No-go for this candidate on this
+  hardware chain. Not retested with a production-grade AEC library
+  (e.g. WebRTC's AEC3) - the architectural decision below made that
+  unnecessary for this story, not because the candidate was proven to be
+  the ceiling of what is achievable.
+
+**Architectural decision (2026-07-26, owner), replacing this story's
+original AEC-hard-gate premise:**
+
+- **A hotkey becomes the primary interruption mechanism**, not
+  voice-triggered barge-in. It is deterministic and hardware-independent:
+  it does not care about acoustics, room, or microphone/speaker
+  combination, and needs no echo cancellation of any kind.
+- **Voice-triggered interruption is scoped to an opt-in, default-off,
+  headphones-only experimental feature**, justified specifically by the
+  near-zero-echo finding above - it is not offered for desktop speakers
+  or any other output path, and the config carries an explicit,
+  prominent warning to that effect (precedent: config.example.toml's
+  camera `[[camera.sources]]` clear-text credential warning).
+- **General-hardware AEC is parked, not pursued further**, for reasons
+  beyond this one candidate's result: unlike a commercial smart speaker
+  (fixed, lab-characterized hardware its detector is tuned against),
+  this project ships to arbitrary user hardware with no equivalent
+  calibration lab, and ambient noise (a washing machine, traffic, birds)
+  compounds with imperfect echo cancellation into a strictly harder joint
+  problem than noise alone - it does not reduce to the project's existing
+  not-currently-speaking noise-robustness problem even when AEC nominally
+  "works," because real AEC residual carries its own artifacts. If
+  revisited, the natural next step is a production-grade AEC library
+  against real hardware, not further tuning of the pure-numpy NLMS spike.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

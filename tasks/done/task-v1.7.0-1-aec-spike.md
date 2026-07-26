@@ -1,10 +1,12 @@
 # Task v1.7.0-1: AEC spike (hard gate)
 
-**Status:** Proposed.
+**Status:** Completed. No-go for desktop-speaker/general-hardware voice
+barge-in; see closure note below. Verified facts recorded in
+`PROJECT.md` ("Architecture v1.7.0 spike" section).
 **Story:** `tasks/story-v1.7.0-barge-in.md`
-**Depends on:** nothing in this story; must complete before tasks 2-4
-begin. Tasks 2-4 are not opened yet and may be re-scoped or the whole
-story stopped if this card comes back no-go.
+**Depends on:** nothing in this story; gated tasks 2-4 as originally
+planned. The story has since been re-scoped around this card's result -
+see the story card for the current task sequence.
 
 ## Summary
 
@@ -94,10 +96,46 @@ choice - are recorded in `PROJECT.md` before any module code exists.
 
 ## Acceptance criteria
 
-- [ ] Check script and handoff instructions exist and are reproducible
+- [x] Check script and handoff instructions exist and are reproducible
       on the owner's machine.
-- [ ] The human has run all required room/distance conditions and
-      reported the filled result table.
-- [ ] `PROJECT.md` records the verified facts and an explicit go/no-go
+- [x] The human has run all required room/distance conditions (both BT
+      headphones and desktop speakers, close/far x quiet/reverb x
+      silent/interrupt) and reported results.
+- [x] `PROJECT.md` records the verified facts and an explicit go/no-go
       outcome.
-- [ ] No changes to `src/jarvis` or `requirements.txt`.
+- [x] No changes to `src/jarvis` or `requirements.txt`.
+
+## Closure note (2026-07-26)
+
+No-go for voice barge-in over desktop speakers / arbitrary hardware.
+Full verified facts are in `PROJECT.md`'s "Architecture v1.7.0 spike"
+section; summary:
+
+- BT headphones (the owner's normal daily setup): near-zero self-hearing
+  by measurement, no AEC needed.
+- Desktop speakers, on this machine's PC -> HDMI -> TV -> HDMI ARC ->
+  soundbar chain: a real 310-335 ms device/chain latency was found and
+  fixed in the check script (cross-correlation delay estimation added),
+  but even after the fix and a tuning sweep, the pure-numpy NLMS
+  candidate left Silero VAD false-positiving on self-heard TTS in every
+  one of the four desktop-speaker conditions.
+
+This did not stay a narrow "try a better library" conclusion. Discussing
+the result surfaced a wider architectural problem with the story's
+original premise: Jarvis ships to arbitrary user hardware with no
+per-device calibration lab (unlike commercial smart speakers, whose
+detectors are tuned against known fixed hardware), and ambient noise
+compounds with imperfect echo cancellation into a harder joint problem
+than either alone - it does not reduce to the project's existing
+noise-robustness problem even when AEC nominally works. Owner decision
+(2026-07-26): voice-triggered interruption is scoped to an opt-in,
+default-off, headphones-only experimental feature, justified by the
+headphone finding above; a hotkey becomes the primary,
+hardware-independent interruption mechanism. See the revised
+`tasks/story-v1.7.0-barge-in.md` for the new task sequence.
+
+Not tried: a production-grade AEC library (WebRTC's AEC3, speexdsp) on
+the desktop-speaker path. The candidate here was deliberately the
+lowest-packaging-risk option first; the architectural decision above
+made further AEC investigation unnecessary for this story rather than
+proving the ceiling of what any AEC candidate could achieve.
