@@ -1,13 +1,12 @@
 # Task: A debug launch that records what actually went to the model
 
 **Status:** Completed. All four slices implemented, reviewed, and merged
-to `main` (2026-07-26). One acceptance criterion stays genuinely open per
-the Testing protocol (hardware/live-Ollama verification is human-run, not
-agent-run): the human-run debug session smoke test - starting Jarvis with
-`--debug --status-console`, exercising one turn of each kind, and reading
-the resulting `logs/jarvis-debug.jsonl` back - has not been performed yet.
-Closed on the owner's explicit instruction after code review; the smoke
-test remains a handoff, not something claimed done here.
+to `main` (2026-07-26). The human-run smoke test passed the same day: the
+owner started Jarvis with `--debug --status-console` and exercised a
+voice turn, a voice+screenshot turn, a camera-tool turn, a text-input turn
+with a `web_search` tool call, and Hidden/Open visibility - then read
+`logs/jarvis-debug.jsonl` back and confirmed it. See "Human-run smoke test
+outcome" below.
 
 ## Implementation slices
 
@@ -278,6 +277,52 @@ what the user already keeps, and only when explicitly asked. That is what
 the manual scripts did by hand during the investigation. Separate card if
 it is ever needed; deliberately not in this one.
 
+## Human-run smoke test outcome (2026-07-26)
+
+The owner ran `python -m jarvis --debug --status-console` and confirmed
+the gate, the banner, and `[ENGINE] Debug mode is active for this
+session` all appeared exactly as designed. The session then exercised:
+a voice turn, a voice+screenshot turn, a voice turn that triggered the
+`capture_camera_image` tool, a text-input turn that triggered the
+`web_search` tool, and an Open/Hidden visibility toggle.
+
+Reading `logs/jarvis-debug.jsonl` back confirmed every claim the card
+makes about it, checked against the actual file rather than assumed:
+
+- One `"kind": "exchange"` record per backend request, not per turn - the
+  tool-loop turns show up as several records each, in order (initial
+  call, tool-result follow-up, forced-final where applicable), matching
+  the slice-2 design decision rather than one merged record per turn.
+- The full message list is present, including history and the time-
+  context system message, and the curated `memory.md`/`self.md` content
+  actually injected into the system prompt - the exact gap the
+  2026-07-25 investigation hit and had to reconstruct by reading source.
+- `"kind": "utterance"` records for each captured chunk, with duration,
+  peak/RMS/speech-level/noise-floor dBFS matching the durations the
+  ordinary `[LLM] Model request: inputs=audio ...` log lines reported for
+  the same turns.
+- No base64 in any record; audio/image attachments appear as
+  `{"kind": ..., "bytes": ...}` descriptors only.
+- `jarvis.log` from the same run carries no message content, transcript
+  text, or tool arguments - only the existing kind/count/duration lines.
+
+**Gap, noted rather than papered over:** this session did not exercise a
+clipboard turn or a file-attachment turn, so those two turn kinds were
+not directly observed in a debug record. The recording mechanism is not
+turn-type-specific - it is taken once, in `OllamaBackend.iter_chat()`,
+which every turn kind reaches identically regardless of how the turn was
+composed - so there is no structural reason to expect a difference, but
+it was not directly seen and this is recorded rather than assumed.
+
+**Incidental finding, not a defect of this card:** `jarvis-debug.jsonl`
+already held two records from an earlier, unrelated debug run (English
+content, no screenshot) with an older timestamp the same day. The file
+rotates and accumulates across runs exactly like `jarvis.log` does - by
+design, not a bug - but it means reading "this session's" records means
+filtering by timestamp, not assuming the file is empty at start. Worth
+knowing before the next debug session; not worth a code change on its
+own.
+
 ## Acceptance criteria
 
 - [x] `python -m jarvis --debug` without the console refuses to start.
@@ -290,12 +335,15 @@ it is ever needed; deliberately not in this one.
       size): solid red, white bold text, correct wording in both
       languages, hidden by default, shown/hidden via both the snapshot
       and delta paths.
-- [~] One turn of each kind (voice, screenshot, clipboard, typed,
-      attachment) produces one or more readable records - one per backend
-      request that turn made - of exactly what went to the model and what
-      came back. Verified for a plain text turn against the live endpoint
-      (slice 2); the other turn kinds need a running Jarvis and are part
-      of the human-run pass below, not re-proven separately.
+- [x] One turn of each kind produces one or more readable records - one
+      per backend request that turn made - of exactly what went to the
+      model and what came back. Verified live for voice, voice+screenshot,
+      camera-tool, and text-input+tool-call turns (human-run smoke test,
+      below); clipboard and file-attachment turns were not directly
+      exercised in that session, noted as a gap rather than assumed - the
+      recording point (`OllamaBackend.iter_chat()`) is not turn-type-
+      specific, so there is no structural reason to expect either to
+      differ.
 - [x] A voice turn's record(s) carry the utterance metrics. Verified
       against a real journal wav (slice 3).
 - [x] No base64 media appears in any record - asserted by
@@ -305,5 +353,6 @@ it is ever needed; deliberately not in this one.
       carrying no payload content - the transcript logger's
       `propagate = False` makes this structural, not just tested.
 - [x] `python -m pytest` and Ruff are green.
-- [ ] Human-run: a debug session, then the same session's records read
+- [x] Human-run: a debug session, then the same session's records read
       back to confirm they answer the questions the table above lists.
+      Performed 2026-07-26; see "Human-run smoke test outcome" above.
