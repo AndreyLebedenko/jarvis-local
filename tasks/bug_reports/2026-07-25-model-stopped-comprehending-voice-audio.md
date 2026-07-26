@@ -5,7 +5,7 @@ tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
 **Status:** Open, blocked on the debug mode
-(`tasks/task-debug-mode-and-request-transcript.md`). One mechanism
+(`tasks/done/task-debug-mode-and-request-transcript.md`). One mechanism
 confirmed, one input taxonomy established, and the live first refusal not
 reproducible from anything that can be reconstructed - which is the
 argument for stopping reconstruction here.
@@ -234,7 +234,7 @@ them turns that wav into a refusal.
 
 What differs between the engine's request and every reconstruction is
 whatever the engine actually sent, and nothing records it. This is
-exactly the gap `tasks/task-debug-mode-and-request-transcript.md` exists
+exactly the gap `tasks/done/task-debug-mode-and-request-transcript.md` exists
 to close, and further reconstruction is not the way to close it: the next
 step on this bug is a debug run, not another script.
 

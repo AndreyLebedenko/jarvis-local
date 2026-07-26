@@ -1,9 +1,13 @@
 # Task: A debug launch that records what actually went to the model
 
-**Status:** All four slices implemented on `feature/debug-transcript`.
-Slice 1 (the gate) is merged to `main`; slices 2 (the per-request
-record), 3 (utterance metrics), and 4 (the console banner) are on this
-branch, pending review and merge.
+**Status:** Completed. All four slices implemented, reviewed, and merged
+to `main` (2026-07-26). One acceptance criterion stays genuinely open per
+the Testing protocol (hardware/live-Ollama verification is human-run, not
+agent-run): the human-run debug session smoke test - starting Jarvis with
+`--debug --status-console`, exercising one turn of each kind, and reading
+the resulting `logs/jarvis-debug.jsonl` back - has not been performed yet.
+Closed on the owner's explicit instruction after code review; the smoke
+test remains a handoff, not something claimed done here.
 
 ## Implementation slices
 
