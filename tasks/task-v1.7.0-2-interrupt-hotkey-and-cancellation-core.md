@@ -1,6 +1,7 @@
 # Task v1.7.0-2: Interrupt hotkey and cancellation core
 
-**Status:** Proposed.
+**Status:** Implemented, automated tests green. Awaiting the human-run
+end-to-end handoff (`tasks/interrupt-hotkey-handoff.md`) before closing.
 **Story:** `tasks/story-v1.7.0-barge-in.md`
 **Depends on:** `tasks/done/task-v1.7.0-1-aec-spike.md` (completed; drove
 the pivot to a hotkey as the primary mechanism). Gates task 4
@@ -110,14 +111,175 @@ mechanism from VAD-during-playback instead of a keypress.
 ## Acceptance criteria
 
 - [ ] Pressing the hotkey mid-response stops TTS playback and the
-      backend stream within a short, measured latency.
-- [ ] `_busy` always clears after an interrupt and a following turn is
+      backend stream within a short, measured latency. *(implemented;
+      real-hardware latency is the human handoff's job)*
+- [x] `_busy` always clears after an interrupt and a following turn is
       accepted normally - proven by an automated regression test, not
-      only manual observation.
-- [ ] Pressing the hotkey while Jarvis is not speaking or generating is
-      a no-op.
-- [ ] `python -m pytest` and Ruff checks are green; the end-to-end
-      hotkey check is a prepared human-run handoff with exact steps.
+      only manual observation
+      (`test_interrupt_while_busy_cancels_tts_and_backend_and_resumes_listening`,
+      `test_cancel_active_turn_cancels_the_in_flight_backend_call`).
+- [x] Pressing the hotkey while Jarvis is not speaking or generating is
+      a no-op (`test_interrupt_while_idle_is_a_no_op`).
+- [x] `python -m pytest` and Ruff checks are green; the end-to-end
+      hotkey check is a prepared human-run handoff with exact steps
+      (`tasks/interrupt-hotkey-handoff.md`).
+
+## Implementation notes
+
+- `src/jarvis/inputs/interrupt.py` - new `InterruptRequested` event and
+  `run_hotkey_listener()`, mirroring `clipboard.py`'s shape exactly (bus
+  publish only, no direct access to Orchestrator/TtsOutput).
+- `src/jarvis/audio/tts.py` - `OrderedPlayback.cancel()` (flag stops
+  anything still queued from playing) and `TtsOutput.cancel()`.
+  **Real bug found and fixed during implementation, not just anticipated
+  by the task card**: cancelling a synthesis task before it calls
+  `submit()` for its index leaves `OrderedPlayback._next_index` stuck
+  forever, since every later unit (this turn's and *all future turns'*,
+  since indices only ever increase) waits for an index that will never
+  arrive - silently killing all speech for the rest of the session, not
+  just the interrupted turn. Fixed by having `cancel()` replace
+  `self._playback` with a fresh `OrderedPlayback` (and reset
+  `self._next_index` to match) rather than trying to make every
+  cancelled task still submit its gap. `TtsOutput._pending_tasks` is
+  reset the same way, for the same reason (a stale cancelled task
+  otherwise poisons the *next* turn's `wait_for_pending()` with an
+  unrelated `CancelledError`). See `tts.py`'s `cancel()` docstring and
+  `test_cancel_does_not_wedge_a_later_turns_playback`.
+- `src/jarvis/app.py` - `Orchestrator._active_chat_task` +
+  `cancel_active_turn()`; `_start_turn()` split into itself (turn setup)
+  and `_dispatch_backend_request()` (the cancellable dispatch, extracted
+  to keep cyclomatic complexity under Ruff's C901 limit); `_start_turn()`
+  now wraps `self._backend.chat(...)` in an `asyncio.Task` and treats its
+  own `CancelledError` as "return quietly, the interrupt handler owns
+  cleanup" rather than touching `_busy` itself. `_on_interrupt_requested()`
+  is the cleanup sequence, subscribed to `InterruptRequested` in `wire()`
+  and wired via a new `run_interrupt_hotkey_listener()` background task in
+  `run_with_status_console()`.
+- `HotkeySettings.interrupt = "ctrl+alt+i"`, documented in
+  `config.example.toml`.
+- Existing busy-gating tests in `tests/test_main.py` needed one extra
+  `await asyncio.sleep(0)` each: wrapping the backend call in a real
+  `asyncio.Task` means `chat()`'s body now starts one event-loop tick
+  later than a direct `await` did (verified empirically, not guessed) -
+  an accurate, unavoidable timing change from the feature itself, not a
+  regression to work around.
+
+## Post-implementation review (2026-07-26): two more real races found
+
+An independent review of the first implementation found two genuine
+races beyond what the task card anticipated, plus confirmed the
+speech-buffer gap below. All three are fixed and covered by new
+regression tests; verified each one actually reproduces against the
+pre-fix code, not just inferred from reading.
+
+- **Finding 1 - interrupt racing normal completion.**
+  `OllamaBackend.chat()` publishes `ResponseComplete` while its own task
+  is still technically active, and `_on_full_response_complete()` can
+  still be awaiting trailing TTS (`wait_for_pending()`) when a hotkey
+  interrupt lands. Both paths used to independently clear busy, publish
+  `TurnCompleted`, and play a cue - worse, `_on_full_response_complete`
+  could go on to record history for a turn the interrupt had already
+  ended, potentially against state a *new* turn had since started using.
+  Fixed with `Orchestrator.claim_turn_end()`: an atomic (no `await`
+  between check and set) single-use gate both
+  `_on_full_response_complete()` and the new shared `_cancel_current_turn()`
+  must pass before doing anything else. Deliberately does not itself
+  touch busy/mic/`TurnCompleted` - the winner still runs the existing
+  `finish_turn()` sequence exactly as before, so the many pre-existing
+  tests that call `finish_turn()` directly needed no changes. See
+  `test_interrupt_racing_full_response_complete_only_finishes_once` and
+  `test_stale_response_complete_after_interrupt_is_a_no_op` (both
+  orderings of the race).
+- **Finding 2 - interrupt before `_active_chat_task` exists.**
+  `_start_turn()` sets `_busy = True`, then awaits journal/bus/cue work
+  *before* `_dispatch_backend_request()` creates `_active_chat_task`. An
+  interrupt landing in that window found `cancel_active_turn()` with
+  nothing to cancel, so `_start_turn()` went on to dispatch the backend
+  call anyway - right after `_cancel_current_turn()` had already told the
+  rest of the app the turn was over. Fixed with a latched
+  `Orchestrator._interrupt_requested` flag: `cancel_active_turn()` now
+  always sets it (in addition to cancelling the task if one exists), and
+  `_dispatch_backend_request()` checks it before dispatching anything,
+  skipping the call entirely if set. See
+  `test_interrupt_before_backend_dispatch_prevents_the_call_entirely`.
+- **Finding 3 - `TtsOutput.cancel()` left `_units` untouched.**
+  `SpeechUnitBuffer` carries an unterminated sentence across `on_token()`
+  calls by design (a sentence split across streamed tokens still buffers
+  correctly) - but `cancel()` reset `_playback`/`_pending_tasks` without
+  resetting `_units`, so an interrupted turn's dangling partial sentence
+  got concatenated onto the *next* turn's first tokens and spoken as one
+  unit. Fixed by also replacing `_units` with a fresh `SpeechUnitBuffer`
+  in `cancel()` (not via `flush()`, which returns units meant for
+  playback - exactly what must not happen for an interrupted turn's
+  leftovers). Verified the regression test actually catches this: ran it
+  against the pre-fix code first and confirmed it failed with the exact
+  concatenated text, not just a passing test taken on faith. See
+  `test_cancel_resets_the_speech_unit_buffer`.
+
+## Second review round (2026-07-26): the round-1 fix for finding 1 broke the feature
+
+A second independent review, run against the round-1 fixes above, found
+that the `claim_turn_end()` fix for finding 1 introduced a worse bug than
+it solved, plus a second gap in the finding-2 fix. Both confirmed by
+reverting the fix and rerunning the new test before trusting it.
+
+- **Finding 1, round 2 - gating `tts_output.cancel()` on `claim_turn_end()`
+  silently broke the hotkey for the most common case.** Round 1's fix
+  made `_cancel_current_turn()` check `claim_turn_end()` *before* doing
+  anything else, including stopping TTS. But `EventBus.publish()`
+  (`core/bus.py`) awaits every subscriber via `gather()` before
+  returning, so `OllamaBackend.chat()`'s own task stays "in flight" for
+  as long as `_on_full_response_complete()` takes to run - including its
+  `wait_for_pending()` wait for trailing speech. `_on_full_response_complete()`
+  claims the turn first almost every time a real answer is more than one
+  sentence, since it starts running the instant generation finishes,
+  well before a human can physically react and press a key. Once it had
+  claimed, `_cancel_current_turn()`'s claim attempt always lost and
+  returned before calling `app.tts_output.cancel()` at all - the hotkey
+  did nothing while Jarvis read out an answer, which is the single most
+  common moment someone wants to interrupt. Confirmed by reverting the
+  fix: the existing test's own `cancel_calls == 0` assertion is what had
+  been silently locking the broken behavior in.
+
+  Fixed by decoupling "stop now" from "who does the bookkeeping":
+  `_cancel_current_turn()` cancels the backend task and TTS unconditionally
+  whenever busy, *then* attempts `claim_turn_end()` - losing the claim
+  only skips `finish_turn()`/`TurnCompleted`/the cue, which the
+  already-running normal path still owns. This works because cancelling
+  the same pending tasks `wait_for_pending()` is gathering makes that
+  `gather()` raise `CancelledError`, and `bus.py`'s `publish()`
+  deliberately re-raises a subscriber's `CancelledError` rather than
+  swallowing it - so the normal path's own `finally` still runs promptly
+  instead of waiting out the rest of the speech.
+
+  That surfaced a second, smaller gap: when `wait_for_pending()` raises
+  `CancelledError` this way, it isn't caught by `_on_full_response_complete()`'s
+  `except Exception:` (`CancelledError` is a `BaseException`), so it
+  skipped the trailing `await app.sound_cues.play("listening")` entirely
+  - the turn ended correctly (busy cleared, `TurnCompleted` published via
+  `finally`) but with *no* cue from either path. Added a dedicated
+  `except asyncio.CancelledError: pass` branch (falls through to the
+  same `finally` + listening-cue path a normal completion takes) rather
+  than reworking the existing error-cue structure. See the rewritten
+  `test_interrupt_racing_full_response_complete_only_finishes_once`
+  (verified failing against the reverted fix first) and its docstring.
+- **Finding 2, round 2 - the round-1 fix stopped the backend call but not
+  `_start_turn()`'s other side effects.** `_dispatch_backend_request()`'s
+  `_interrupt_requested` check (round 1) only guards the backend
+  dispatch. An interrupt landing earlier - during the journal-recording
+  await, before `_dispatch_backend_request()` even runs - let `_start_turn()`
+  go on to publish `TurnAccepted` and play the "thinking" cue *after*
+  `_cancel_current_turn()` had already published `TurnCompleted`: a
+  UI-visible `TurnCompleted -> TurnAccepted` with nothing to follow,
+  since the backend call itself was still correctly skipped, leaving the
+  console showing THINKING indefinitely. Fixed with two more
+  `if self._interrupt_requested: return` checks in `_start_turn()`, right
+  after the journal-recording block and right after the `TurnAccepted`
+  publish - both real windows the flag can be set in. Extended
+  `test_interrupt_before_backend_dispatch_prevents_the_call_entirely`
+  (rather than adding a near-duplicate test) to assert `TurnAccepted`
+  and the "thinking" cue never fire, and confirmed it fails without the
+  fix.
 
 ## Stop conditions
 
@@ -125,8 +287,14 @@ mechanism from VAD-during-playback instead of a keypress.
   cleanly through `iter_chat()`'s `finally` block (e.g. leaves the
   `httpx` connection/session in a bad state) - that is a wider
   backend-layer problem needing its own decision, per the story's stop
-  condition.
+  condition. *(not triggered: `FakeBackend`/real `OllamaBackend` both
+  rely on the same `finally`-guarded async-generator shape; automated
+  tests exercise the fake, the human handoff exercises the real one.)*
 - Stop if `sounddevice.stop()` interrupts unrelated audio sharing the
   same output stream (e.g. a sound cue mid-playback) in a surprising or
   unsafe way - verify the interaction with `TtsOutput`/`SoundCuePlayer`'s
-  shared playback lock before shipping, do not assume it is fine.
+  shared playback lock before shipping, do not assume it is fine. *(not
+  yet verified live - this is exactly what the human handoff's step 2/3
+  needs to confirm; `cancel()` only calls `sd.stop()` when
+  `_uses_default_play` is true, so injected-play test doubles never
+  touch real hardware.)*

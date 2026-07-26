@@ -126,6 +126,10 @@ class HotkeySettings:
     # thinking_mode.py. Real listener wired here; main.py wiring is
     # task-13's job.
     thinking_toggle: str = "ctrl+alt+t"
+    # interrupt added for task-v1.7.0-2: cancels the in-flight turn (TTS
+    # playback and the backend stream) unconditionally, on any hardware -
+    # the primary interruption mechanism, see story-v1.7.0-barge-in.md.
+    interrupt: str = "ctrl+alt+i"
 
 
 @dataclass(frozen=True)

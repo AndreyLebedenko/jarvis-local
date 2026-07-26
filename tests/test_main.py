@@ -25,8 +25,10 @@ from jarvis.app import (
     ConversationHistory,
     Orchestrator,
     _announce_debug_mode_to_panel,
+    _cancel_current_turn,
     _microphone_health,
     _on_full_response_complete,
+    _on_interrupt_requested,
     _on_mic_sleep_toggled,
     _on_microphone_capture_failed,
     _on_reasoning_level_changed,
@@ -37,6 +39,7 @@ from jarvis.app import (
     parse_args,
     run,
     run_clipboard_hotkey_listener,
+    run_interrupt_hotkey_listener,
     run_mic_sleep_hotkey_listener,
     run_thinking_hotkey_listener,
     run_until_shutdown,
@@ -106,6 +109,7 @@ from jarvis.inputs.attachments import (
 )
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
+from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.journal import JournalEvent, JournalRecorder, JournalStore
 from jarvis.journal.fork import ForkSessionReason
 from jarvis.tools.host import (
@@ -604,6 +608,7 @@ async def test_clipboard_turn_is_ignored_while_busy_same_as_audio():
         )
     )
     await asyncio.sleep(0)
+    await asyncio.sleep(0)  # task-v1.7.0-2: chat() now runs one hop later
     await orchestrator.on_clipboard(
         ClipboardSubmitted(text="ignored while busy", truncated=False, is_empty=False)
     )
@@ -668,6 +673,7 @@ async def test_submit_text_input_rejections_are_structured_and_do_not_start_turn
         )
     )
     await asyncio.sleep(0)
+    await asyncio.sleep(0)  # task-v1.7.0-2: chat() now runs one hop later
 
     busy = await orchestrator.submit_text_input("busy")
     empty = await orchestrator.submit_text_input(" \n\t ")
@@ -908,6 +914,7 @@ async def test_attachment_submission_is_ignored_while_busy():
         )
     )
     await asyncio.sleep(0)  # let the first call start and set _busy
+    await asyncio.sleep(0)  # task-v1.7.0-2: chat() now runs one hop later
 
     await orchestrator.on_screenshot(
         ScreenshotCaptured(png_bytes=b"png", mode="full", width=1, height=1)
@@ -1271,6 +1278,7 @@ async def test_busy_utterance_is_ignored_until_previous_turn_completes():
         )
     )
     await asyncio.sleep(0)  # let the first call start and set _busy
+    await asyncio.sleep(0)  # task-v1.7.0-2: chat() now runs one hop later
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )
@@ -1435,6 +1443,223 @@ async def test_error_during_chat_plays_error_cue_and_clears_busy():
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )
     assert len(backend.calls) == 2
+
+
+# --- cancel_active_turn() (task-v1.7.0-2 interrupt) -------------------------
+
+
+async def test_cancel_active_turn_is_a_no_op_when_idle():
+    orchestrator, _backend, _sound_cues = _orchestrator()
+
+    orchestrator.cancel_active_turn()  # must not raise
+
+    assert orchestrator.is_busy is False
+
+
+async def test_cancel_active_turn_cancels_the_in_flight_backend_call():
+    still_busy = asyncio.Event()
+
+    async def hanging_chat() -> None:
+        await still_busy.wait()
+        raise AssertionError("should have been cancelled first")
+
+    orchestrator, _backend, sound_cues = _orchestrator(chat_impl=hanging_chat)
+
+    turn_task = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)  # let _start_turn create the active chat task
+
+    orchestrator.cancel_active_turn()
+    await turn_task  # returns quietly - see _start_turn's CancelledError handling
+
+    # _start_turn() deliberately does not clear busy or play a cue on
+    # cancellation - that is the interrupt handler's job (app.py), so it
+    # cannot race a concurrently-running normal completion path.
+    assert orchestrator.is_busy is True
+    assert sound_cues.played == ["thinking"]
+    assert orchestrator._active_chat_task is None
+
+
+def test_claim_turn_end_is_a_single_use_gate():
+    """Review finding 1: exactly one caller may ever win claim_turn_end()
+    per turn - the mechanism _on_full_response_complete() and
+    _cancel_current_turn() both rely on to avoid double-finishing the
+    same turn."""
+    orchestrator, _backend, _sound_cues = _orchestrator()
+    orchestrator._busy = True
+
+    assert orchestrator.claim_turn_end() is True
+    assert orchestrator.claim_turn_end() is False
+    assert orchestrator.claim_turn_end() is False  # stays lost, not just once
+
+
+def test_claim_turn_end_is_false_when_idle():
+    orchestrator, _backend, _sound_cues = _orchestrator()
+
+    assert orchestrator.claim_turn_end() is False
+
+
+async def test_interrupt_racing_full_response_complete_only_finishes_once():
+    """Regression for review finding 1 (both rounds). Round 1: a hotkey
+    interrupt landing while _on_full_response_complete() is still
+    awaiting trailing TTS (wait_for_pending()) used to independently
+    clear busy, publish TurnCompleted, and play a cue - this proves the
+    finish sequence itself still runs exactly once. Round 2: gating
+    tts_output.cancel() itself on the same claim meant the hotkey did
+    nothing at all once the normal path had already claimed - the single
+    most common moment someone wants to interrupt (right after
+    generation finishes, while Jarvis is still reading a long answer
+    aloud) - so stopping playback must happen regardless of who wins."""
+    orchestrator, backend, sound_cues = _orchestrator()
+    orchestrator._busy = True
+    still_playing = asyncio.Event()
+
+    class _SlowTts:
+        def __init__(self) -> None:
+            self.cancel_calls = 0
+            self._cancelled_while_waiting = False
+
+        async def on_response_complete(self, event) -> None:
+            pass
+
+        async def wait_for_pending(self) -> None:
+            await still_playing.wait()
+            if self._cancelled_while_waiting:
+                # Mirrors the real TtsOutput: cancel() cancels the same
+                # pending tasks this is gathering, so the gather() call
+                # raises CancelledError instead of returning cleanly.
+                raise asyncio.CancelledError()
+
+        def cancel(self) -> None:
+            self.cancel_calls += 1
+            self._cancelled_while_waiting = True
+            still_playing.set()
+
+    tts_output = _SlowTts()
+    app = _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output)
+
+    normal_path_task = asyncio.create_task(
+        _on_full_response_complete(app, _complete_event())
+    )
+    await asyncio.sleep(0)  # let it claim and block on wait_for_pending()
+
+    interrupted = await _cancel_current_turn(app)  # loses the finish-sequence claim
+
+    # TTS stops immediately even though the claim was lost
+    assert tts_output.cancel_calls == 1
+    assert interrupted is True  # a turn *was* cancelled, even without claiming
+
+    await normal_path_task  # its own finally still runs, exactly once
+
+    assert orchestrator.is_busy is False
+    assert sound_cues.played[-1] == "listening"
+
+
+async def test_stale_response_complete_after_interrupt_is_a_no_op():
+    """Reverse ordering of the same race: the interrupt claims first; a
+    ResponseComplete for that now-ended turn arriving afterward (the
+    backend task finishing just after cancellation was requested) must
+    not record history, flush TTS, or run its own finish sequence."""
+    orchestrator, backend, sound_cues = _orchestrator()
+    orchestrator._busy = True
+
+    class _RecordingTts:
+        def __init__(self) -> None:
+            self.on_response_complete_calls = 0
+
+        async def on_response_complete(self, event) -> None:
+            self.on_response_complete_calls += 1
+
+        async def wait_for_pending(self) -> None:
+            pass
+
+        def cancel(self) -> None:
+            pass
+
+    tts_output = _RecordingTts()
+    app = _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output)
+
+    interrupted = await _cancel_current_turn(app)
+    assert interrupted is True
+    sound_cues.played.clear()  # isolate what the stale event does next
+
+    await _on_full_response_complete(app, _complete_event())
+
+    assert tts_output.on_response_complete_calls == 0
+    assert sound_cues.played == []
+
+
+async def test_interrupt_before_backend_dispatch_prevents_the_call_entirely():
+    """Regression for review finding 2 (both rounds): an interrupt
+    landing between _busy=True and _active_chat_task's creation (during
+    journal/bus/cue work) used to be silently dropped -
+    cancel_active_turn() had no task to cancel yet, so _start_turn() went
+    on to dispatch the backend call anyway, right after the interrupt had
+    already told the rest of the app the turn was over. Round 2: even
+    with that fixed, _start_turn() still went on to publish TurnAccepted
+    and play the "thinking" cue after the interrupt had already published
+    TurnCompleted - a UI-visible TurnCompleted -> TurnAccepted with
+    nothing to follow, since the backend call itself was correctly
+    skipped. This proves _start_turn() stops producing *any* further
+    visible side effect, not just the backend call."""
+    journal_recorder = _FakeJournalRecorder()
+    real_record_voice_user = journal_recorder.record_voice_user
+    interrupt_landed = asyncio.Event()
+
+    async def slow_record_voice_user(*args, **kwargs):
+        await interrupt_landed.wait()  # the interrupt fires during this call
+        return await real_record_voice_user(*args, **kwargs)
+
+    journal_recorder.record_voice_user = slow_record_voice_user
+
+    bus = EventBus()
+    turn_accepted_events = []
+
+    async def on_turn_accepted(event) -> None:
+        turn_accepted_events.append(event)
+
+    bus.subscribe(TurnAccepted, on_turn_accepted)
+
+    orchestrator, backend, sound_cues = _orchestrator(
+        journal_recorder=journal_recorder, bus=bus
+    )
+    tts_output = _RecordingTtsOutputForInterrupt()
+    app = App(
+        bus=bus,
+        backend=backend,
+        audio_input=None,
+        tts_output=tts_output,
+        capture_input=None,
+        orchestrator=orchestrator,
+        sound_cues=sound_cues,
+        thinking_mode=None,
+        settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
+    )
+
+    turn_task = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)  # let _start_turn set busy and reach the journal call
+
+    assert orchestrator.is_busy is True
+    assert orchestrator._active_chat_task is None  # confirms the right window
+
+    interrupted = await _cancel_current_turn(app)
+    assert sound_cues.played == ["listening"]  # nothing from _start_turn yet
+
+    interrupt_landed.set()
+    await turn_task
+
+    assert interrupted is True
+    assert len(backend.calls) == 0  # the backend was never actually called
+    assert orchestrator.is_busy is False
+    assert turn_accepted_events == []  # TurnAccepted never published
+    assert sound_cues.played == ["listening"]  # "thinking" never played either
 
 
 # --- current-turn time context (v1.3.2) -------------------------------------
@@ -1888,6 +2113,7 @@ def test_wire_registers_expected_subscriptions():
     assert event_types.count(ResponseComplete) == 1
     assert event_types.count(MicSleepToggled) == 1
     assert event_types.count(ReasoningLevelChanged) == 1
+    assert event_types.count(InterruptRequested) == 1
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
@@ -2128,6 +2354,13 @@ async def test_wire_pushes_listening_state_after_response_complete():
     wire_status_console(app, live_console, asyncio.get_running_loop())
     wire(app)
 
+    # A real ResponseComplete only ever fires for a turn that set busy
+    # (task-v1.7.0-2's claim_turn_end() requires it - see review finding
+    # 1); publishing it without one is not a scenario this handler needs
+    # to support. Setting busy directly, not via on_utterance(): this
+    # test's _FakeBackend has no iter_chat() (build_app() wraps it in
+    # ToolAwareDialog, which needs it), so a real turn would just fail.
+    app.orchestrator._busy = True
     await app.bus.publish(
         ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
     )
@@ -2713,9 +2946,10 @@ class _FakeKeyboardModuleForShutdownTest:
 async def test_run_until_shutdown_cancels_real_hotkey_listeners():
     """Same shape as test_run_until_shutdown_cancels_tasks_and_unsubscribes,
     but with the real listener coroutines (task-10's clipboard/mic-sleep,
-    task-13's thinking-mode) instead of arbitrary fake tasks - confirms
-    run()'s pattern of handing these to run_until_shutdown actually cancels
-    them and stops each provider during cleanup."""
+    task-13's thinking-mode, task-v1.7.0-2's interrupt) instead of
+    arbitrary fake tasks - confirms run()'s pattern of handing these to
+    run_until_shutdown actually cancels them and stops each provider
+    during cleanup."""
     app = _fake_app()
     subscriptions = wire(app)
     shutdown_event = asyncio.Event()
@@ -2723,6 +2957,7 @@ async def test_run_until_shutdown_cancels_real_hotkey_listeners():
     fake_kb_clipboard = _FakeKeyboardModuleForShutdownTest()
     fake_kb_mic_sleep = _FakeKeyboardModuleForShutdownTest()
     fake_kb_thinking = _FakeKeyboardModuleForShutdownTest()
+    fake_kb_interrupt = _FakeKeyboardModuleForShutdownTest()
     mic_sleep_audio_input = AudioInput(bus=app.bus, chunker=None)
 
     background_tasks = [
@@ -2744,6 +2979,11 @@ async def test_run_until_shutdown_cancels_real_hotkey_listeners():
                 app.thinking_mode, app.settings.hotkeys, provider=fake_kb_thinking
             )
         ),
+        asyncio.create_task(
+            run_interrupt_hotkey_listener(
+                app.bus, app.settings.hotkeys, provider=fake_kb_interrupt
+            )
+        ),
     ]
     await asyncio.sleep(0)  # let all listeners register their hotkeys
 
@@ -2756,6 +2996,7 @@ async def test_run_until_shutdown_cancels_real_hotkey_listeners():
     assert all(task.cancelled() for task in background_tasks)
     assert len(fake_kb_clipboard.removed_handles) == 1
     assert len(fake_kb_mic_sleep.removed_handles) == 1
+    assert len(fake_kb_interrupt.removed_handles) == 1
     assert len(fake_kb_thinking.removed_handles) == 1
 
 
@@ -2911,6 +3152,9 @@ async def test_on_full_response_complete_plays_listening_only_after_trailing_spe
                 await self._task
 
     class _FakeOrchestrator:
+        def claim_turn_end(self) -> bool:
+            return True
+
         async def on_response_complete(self, event) -> None:
             events.append("history_recorded")
 
@@ -2984,6 +3228,80 @@ async def test_on_full_response_complete_clears_busy_and_plays_error_when_tts_fa
     assert sound_cues.played[-1] == "error"
 
     # busy was cleared despite the failure - a subsequent utterance is not ignored
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
+    )
+    assert len(backend.calls) == 2
+
+
+# --- _on_interrupt_requested (task-v1.7.0-2 interrupt hotkey) ---------------
+
+
+class _RecordingTtsOutputForInterrupt:
+    def __init__(self) -> None:
+        self.cancel_calls = 0
+
+    def cancel(self) -> None:
+        self.cancel_calls += 1
+
+
+def _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output) -> App:
+    return App(
+        bus=EventBus(),
+        backend=backend,
+        audio_input=None,
+        tts_output=tts_output,
+        capture_input=None,
+        orchestrator=orchestrator,
+        sound_cues=sound_cues,
+        thinking_mode=None,
+        settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
+    )
+
+
+async def test_interrupt_while_idle_is_a_no_op():
+    orchestrator, backend, sound_cues = _orchestrator()
+    tts_output = _RecordingTtsOutputForInterrupt()
+    app = _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output)
+
+    await _on_interrupt_requested(app, InterruptRequested())
+
+    assert tts_output.cancel_calls == 0
+    assert sound_cues.played == []
+    assert orchestrator.is_busy is False
+
+
+async def test_interrupt_while_busy_cancels_tts_and_backend_and_resumes_listening():
+    still_busy = asyncio.Event()
+
+    async def hanging_chat() -> None:
+        # Only the first (interrupted) call should ever actually wait
+        # here - by the second call below, still_busy is already set, so
+        # this returns immediately like a normal, uneventful turn.
+        await still_busy.wait()
+
+    orchestrator, backend, sound_cues = _orchestrator(chat_impl=hanging_chat)
+    tts_output = _RecordingTtsOutputForInterrupt()
+    app = _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output)
+
+    turn_task = asyncio.create_task(
+        orchestrator.on_utterance(
+            UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+        )
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # let chat() actually start (task-v1.7.0-2 timing)
+
+    await _on_interrupt_requested(app, InterruptRequested())
+    await turn_task  # _start_turn() returns quietly on cancellation
+
+    assert tts_output.cancel_calls == 1
+    assert orchestrator.is_busy is False
+    assert sound_cues.played[-1] == "listening"
+
+    # a following turn is accepted normally, not silently swallowed by a
+    # stuck busy flag
+    still_busy.set()
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )

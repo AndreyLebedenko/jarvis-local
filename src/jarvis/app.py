@@ -86,6 +86,8 @@ from jarvis.inputs.capture import run_hotkey_listener as run_capture_hotkey_list
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_listener
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
+from jarvis.inputs.interrupt import InterruptRequested
+from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
 from jarvis.journal.events import parse_journal_timestamp
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
@@ -256,10 +258,64 @@ class Orchestrator:
         self._busy = False
         self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
         self._journal_turn_started = False
+        # Set for the duration of the backend call only (task-v1.7.0-2
+        # interrupt) - see cancel_active_turn() and _start_turn().
+        self._active_chat_task: asyncio.Task | None = None
+        # Latched per turn (task-v1.7.0-2 interrupt, review finding 2):
+        # cancel_active_turn() can be called before _active_chat_task
+        # exists yet (interrupt arriving during journal/bus/cue work,
+        # before _dispatch_backend_request() even starts) - this flag
+        # lets that method notice and skip dispatching instead of
+        # starting a backend request for a turn already declared over.
+        self._interrupt_requested = False
+        # Latched per turn (task-v1.7.0-2 interrupt, review finding 1) -
+        # see claim_turn_end().
+        self._turn_end_claimed = False
 
     @property
     def is_busy(self) -> bool:
         return self._busy
+
+    def claim_turn_end(self) -> bool:
+        """Returns True exactly once per turn, to whichever caller (the
+        normal ResponseComplete path or an interrupt) gets here first;
+        every other caller - including one that arrives while idle, since
+        this also requires busy - must treat False as "this turn is
+        already being ended elsewhere, do nothing more for it."
+
+        Deliberately does not itself touch busy, the mic, or
+        TurnCompleted: only one caller can ever win this claim per turn,
+        so the winner still runs finish_turn() etc. exactly as before -
+        this method's only job is making sure there is exactly one
+        winner, not replacing what the winner does.
+
+        task-v1.7.0-2 review finding 1: a turn's backend call can finish
+        (publishing ResponseComplete) while its trailing TTS is still
+        playing, i.e. while _on_full_response_complete() is still
+        running - if a hotkey interrupt lands in that window, both paths
+        would otherwise independently clear busy, publish TurnCompleted,
+        and (worse) _on_full_response_complete could go on to record
+        history for a turn the interrupt already ended, possibly
+        overwriting state a *new* turn has since started using.
+
+        No `await` between the check and the set, so this is atomic by
+        construction - asyncio's cooperative scheduling cannot interleave
+        another coroutine between them."""
+        if not self._busy or self._turn_end_claimed:
+            return False
+        self._turn_end_claimed = True
+        return True
+
+    def cancel_active_turn(self) -> None:
+        """Requests cancellation of the current turn: arms the latched
+        interrupt flag (see _interrupt_requested above) and cancels the
+        backend task if one already exists. Callers must gate this on a
+        successful claim_turn_end() themselves - this method does not
+        check busy, so calling it without that guard could arm the flag
+        for whatever turn starts next instead of the one intended."""
+        self._interrupt_requested = True
+        if self._active_chat_task is not None:
+            self._active_chat_task.cancel()
 
     def clear(self) -> None:
         self._history.clear()
@@ -516,6 +572,8 @@ class Orchestrator:
             logger.info("Ignoring new turn: previous request still in flight")
             return
         self._busy = True
+        self._interrupt_requested = False
+        self._turn_end_claimed = False
         self._journal_turn_started = False
         if self._journal_recorder is not None:
             if source is TurnSource.VOICE and voice_wav_bytes is not None:
@@ -537,8 +595,22 @@ class Orchestrator:
                     history_text, source="attachment"
                 )
                 self._journal_turn_started = True
+        # Checked here and again after TurnAccepted (review finding 2,
+        # round 2): an interrupt can be requested while still inside the
+        # journal-recording await above, before _dispatch_backend_request()
+        # exists to catch it. Without this, _cancel_current_turn() would
+        # already have published TurnCompleted and returned Jarvis to
+        # listening, only for this method to go on and publish
+        # TurnAccepted plus play the thinking cue right afterward -
+        # UI-visible "TurnCompleted -> TurnAccepted" with nothing to
+        # follow, since _dispatch_backend_request()'s own check (below)
+        # would then skip the backend call entirely.
+        if self._interrupt_requested:
+            return
         if self._bus is not None:
             await self._bus.publish(TurnAccepted, TurnAccepted(source=source))
+        if self._interrupt_requested:
+            return
         await self._sound_cues.play("thinking")
 
         messages: list[dict[str, object]] = [
@@ -566,6 +638,35 @@ class Orchestrator:
         reasoning_level = (
             self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
         )
+        await self._dispatch_backend_request(
+            messages, media_b64, reasoning_level, inputs, audio_duration_seconds
+        )
+
+    async def _dispatch_backend_request(
+        self,
+        messages: list[dict[str, object]],
+        media_b64: list[str] | None,
+        reasoning_level: ReasoningLevel,
+        inputs: tuple[ModelRequestInput, ...],
+        audio_duration_seconds: float | None,
+    ) -> None:
+        """Runs the backend call as a cancellable task and handles its
+        three outcomes: normal completion (nothing further to do here -
+        ResponseComplete drives the rest), interruption (cancel_active_turn()
+        cancelled it; app.py's _cancel_current_turn() owns busy-clearing,
+        mic resume, and TurnCompleted via claim_turn_end(), so this returns
+        quietly rather than racing it), and failure (this turn's own
+        responsibility to clean up).
+
+        Checks _interrupt_requested before dispatching anything (review
+        finding 2): an interrupt landing during the journal/bus/cue work
+        above, before this method even runs, would otherwise be
+        forgotten - cancel_active_turn() has no task to cancel yet at
+        that point, so without this check the backend call would start
+        anyway, right after _cancel_current_turn() already told the rest
+        of the app the turn was over."""
+        if self._interrupt_requested:
+            return
         try:
             if self._bus is not None:
                 request_started = ModelRequestStarted(
@@ -584,9 +685,14 @@ class Orchestrator:
                     model_request_log_message(request_started),
                 )
                 await self._bus.publish(ModelRequestStarted, request_started)
-            await self._backend.chat(
-                messages, images_b64=media_b64, reasoning_level=reasoning_level
+            self._active_chat_task = asyncio.create_task(
+                self._backend.chat(
+                    messages, images_b64=media_b64, reasoning_level=reasoning_level
+                )
             )
+            await self._active_chat_task
+        except asyncio.CancelledError:
+            return
         except Exception:
             logger.exception("Request failed")
             if self._bus is not None:
@@ -594,6 +700,8 @@ class Orchestrator:
             await self._sound_cues.play("error")
             self._journal_turn_started = False
             self._busy = False
+        finally:
+            self._active_chat_task = None
 
     async def on_response_token(self, event: ResponseToken) -> None:
         self._response_tokens.append(event.text)
@@ -949,11 +1057,30 @@ def wire_status_console(
 
 
 async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
-    """Finishes a response in the order required by the audio pipeline."""
+    """Finishes a response in the order required by the audio pipeline.
+
+    Gated on claim_turn_end() (task-v1.7.0-2 review finding 1): the
+    backend task can finish - publishing this very event - while trailing
+    TTS is still playing, i.e. while this handler would still be running;
+    if a hotkey interrupt lands in that window, _cancel_current_turn()
+    may already have ended the turn by the time this runs. Recording
+    history or scheduling more speech for an already-ended turn would be
+    wrong, so a lost claim means this whole handler is a no-op, not just
+    its finish sequence."""
+    if not app.orchestrator.claim_turn_end():
+        return
     try:
         await app.tts_output.on_response_complete(event)  # flushes trailing sentence
         await app.orchestrator.on_response_complete(event)  # records history
         await app.tts_output.wait_for_pending()  # waits for ALL of this turn's speech
+    except asyncio.CancelledError:
+        # An interrupt's tts_output.cancel() (task-v1.7.0-2) cancelled the
+        # same pending tasks wait_for_pending() was gathering, which
+        # bus.py's publish() re-raises rather than swallows - not a
+        # failure, the turn legitimately ended via interrupt. Falls
+        # through to finally and the listening cue below exactly like a
+        # normal completion, instead of leaving neither cue played.
+        pass
     except Exception:
         logger.exception("Response completion failed")
         await app.sound_cues.play("error")
@@ -966,6 +1093,55 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
         )
         await app.bus.publish(TurnCompleted, TurnCompleted())
     await app.sound_cues.play("listening")
+
+
+async def _cancel_current_turn(app: App) -> bool:
+    """The shared cancellation core (task-v1.7.0-2 story design decision
+    "both mechanisms share one cancellation core"): stops the in-flight
+    backend request and TTS playback and returns Jarvis to listening.
+    Both the interrupt hotkey and task 4's future experimental voice
+    trigger call this directly.
+
+    Stopping playback/generation is unconditional on being busy - it is
+    NOT gated on claim_turn_end() (review finding 1, round 2): gating it
+    meant that once ResponseComplete had fired and
+    _on_full_response_complete() was already draining trailing TTS via
+    wait_for_pending() - the single most common moment someone actually
+    wants to interrupt - _on_full_response_complete() had already won the
+    claim, so the hotkey did nothing at all until Jarvis finished talking
+    on its own. Cancelling first and claiming after fixes this: even when
+    the claim is lost, tts_output.cancel() has already cancelled the same
+    pending tasks _on_full_response_complete() may be blocked on in
+    wait_for_pending(), which is what lets its own finally block (and
+    thus finish_turn()/TurnCompleted) complete promptly instead of
+    waiting out the rest of the speech - see bus.py's publish(), which
+    re-raises a subscriber's CancelledError rather than swallowing it.
+
+    claim_turn_end() still decides who runs the finish sequence itself
+    (busy-clear/TurnCompleted/cue) exactly once (review finding 1, round
+    1) - only the stopping action moved outside that gate.
+
+    Returns whether there was actually a turn to cancel, mostly useful
+    for tests/logging - callers do not need to act on it. Requiring busy
+    first is also what makes pressing the hotkey while idle a true
+    no-op."""
+    if not app.orchestrator.is_busy:
+        return False
+    app.orchestrator.cancel_active_turn()
+    app.tts_output.cancel()
+    if not app.orchestrator.claim_turn_end():
+        return True
+    await app.orchestrator.finish_turn(
+        cooldown_seconds=app.settings.vad.resume_cooldown_seconds
+    )
+    await app.bus.publish(TurnCompleted, TurnCompleted())
+    await app.sound_cues.play("listening")
+    return True
+
+
+async def _on_interrupt_requested(app: App, event: InterruptRequested) -> None:
+    """The hotkey's handler (task-v1.7.0-2) - see _cancel_current_turn()."""
+    await _cancel_current_turn(app)
 
 
 async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
@@ -1081,6 +1257,9 @@ def wire(app: App) -> list[Subscription]:
     async def on_reasoning_level_changed(event: ReasoningLevelChanged) -> None:
         await _on_reasoning_level_changed(app, event)
 
+    async def on_interrupt_requested(event: InterruptRequested) -> None:
+        await _on_interrupt_requested(app, event)
+
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
         # Unconditional, like every subscription here: on_utterance_captured
@@ -1095,6 +1274,7 @@ def wire(app: App) -> list[Subscription]:
         (MicSleepToggled, on_mic_sleep_toggled),
         (MicrophoneCaptureFailed, on_microphone_capture_failed),
         (ReasoningLevelChanged, on_reasoning_level_changed),
+        (InterruptRequested, on_interrupt_requested),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -1291,6 +1471,9 @@ async def run(
             ),
             asyncio.create_task(
                 run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
+            ),
+            asyncio.create_task(
+                run_interrupt_hotkey_listener(app.bus, settings.hotkeys)
             ),
         ]
 

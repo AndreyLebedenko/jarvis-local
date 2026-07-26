@@ -287,15 +287,26 @@ class OrderedPlayback:
         self._pending: dict[int, bytes | None] = {}
         self._next_index = 0
         self._lock = asyncio.Lock()
+        self._cancelled = False
 
     async def submit(self, index: int, audio: bytes | None) -> None:
         async with self._lock:
             self._pending[index] = audio
             while self._next_index in self._pending:
                 ready = self._pending.pop(self._next_index)
-                if ready is not None:
+                if ready is not None and not self._cancelled:
                     await self._player(self._next_index, ready)
                 self._next_index += 1
+
+    def cancel(self) -> None:
+        """Stops any further unit from playing (task-v1.7.0-2 interrupt).
+
+        Does not touch a unit already inside self._player() - a caller
+        wanting that to stop too (TtsOutput.cancel() does) must halt the
+        output device itself; this flag only takes effect at submit()'s
+        next loop iteration, i.e. for every unit still queued behind the
+        currently playing one."""
+        self._cancelled = True
 
 
 class BilingualTtsEngine:
@@ -366,6 +377,55 @@ class TtsOutput:
         speech finish rather than cutting it off mid-sentence."""
         if self._pending_tasks:
             await asyncio.gather(*self._pending_tasks)
+
+    def cancel(self) -> None:
+        """Stops speech for the current turn (task-v1.7.0-2 interrupt):
+        halts whatever is on the output device right now, drops every
+        already-synthesized unit still waiting for its turn to play, and
+        cancels in-flight synthesis so it stops spending CPU/GPU on
+        speech nobody will hear. Safe to call when nothing is playing.
+
+        Replaces self._playback with a fresh OrderedPlayback (index reset
+        to 0, matching self._next_index below) rather than trying to make
+        every cancelled synthesis task still submit its index on the old
+        one: OrderedPlayback requires every scheduled index to eventually
+        arrive or every later one stays buffered forever, and a task
+        cancelled between synthesizing and submitting cannot reliably
+        guarantee that. The old instance is simply abandoned - its
+        cancel() call below still stops anything already queued on it
+        from playing, and nothing will schedule against it again.
+
+        Also replaces self._units (review finding 3): SpeechUnitBuffer
+        carries an unterminated sentence/language-segmentation buffer
+        across on_token() calls by design, so it can flush a trailing
+        partial sentence at on_response_complete() - but an interrupt
+        means that trailing text was never going to be finished, and
+        leaving it in place would concatenate it onto the *next* turn's
+        first tokens instead. flush() itself is not used here - it
+        returns units meant to be scheduled for playback, which is
+        exactly what must not happen for an interrupted turn's leftovers.
+
+        Only stops the *default* output device - a caller that injected
+        its own `play` callable owns stopping it, since this class has
+        no way to reach into an arbitrary playback implementation."""
+        self._playback.cancel()
+        self._playback = OrderedPlayback(self._play_unit)
+        self._next_index = 0
+        self._units = SpeechUnitBuffer(
+            carry_connectives=_routes_share_one_engine(self._settings)
+        )
+        for task in self._pending_tasks:
+            task.cancel()
+        # Replaced wholesale, not just cancelled-and-left-in-place: a
+        # cancelled task's done_callback only discards it from this set
+        # once the event loop actually runs its continuation, which is
+        # not guaranteed before the next turn schedules new tasks into
+        # the same set - wait_for_pending() would then gather a stale
+        # cancelled task alongside the new turn's real ones and raise a
+        # CancelledError that has nothing to do with it.
+        self._pending_tasks = set()
+        if self._uses_default_play:
+            sd.stop()
 
     def _schedule(self, text: str, language: str) -> None:
         index = self._next_index

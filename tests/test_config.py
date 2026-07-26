@@ -575,6 +575,31 @@ def test_hotkeys_thinking_toggle_defaults_when_section_omitted(tmp_path):
     assert settings.hotkeys.thinking_toggle == "ctrl+alt+t"
 
 
+# --- task-v1.7.0-2: interrupt hotkey -----------------------------------------
+
+
+def test_hotkeys_interrupt_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [hotkeys]
+        interrupt = "ctrl+alt+x"
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.hotkeys.interrupt == "ctrl+alt+x"
+
+
+def test_hotkeys_interrupt_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.hotkeys == HotkeySettings()
+    assert settings.hotkeys.interrupt == "ctrl+alt+i"
+
+
 def test_sound_cues_thinking_on_and_thinking_off_fields_parse(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

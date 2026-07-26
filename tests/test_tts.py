@@ -797,6 +797,49 @@ async def test_playback_reorders_under_concurrent_completion():
     assert played == [b"A", b"B"]
 
 
+async def test_cancel_stops_a_unit_still_queued_behind_the_playing_one():
+    played = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def player(index: int, audio: bytes) -> None:
+        started.set()
+        await release.wait()
+        played.append(audio)
+
+    playback = OrderedPlayback(player)
+    playing_task = asyncio.create_task(playback.submit(0, b"A"))
+    await started.wait()
+
+    # unit 1 arrives while unit 0 is still "playing" (blocked in player());
+    # submit(1, ...) blocks on the same lock, so it must be its own task.
+    queued_task = asyncio.create_task(playback.submit(1, b"B"))
+    await asyncio.sleep(0)
+    playback.cancel()
+    release.set()
+    await playing_task
+    await queued_task
+
+    # unit 0 was already inside player() when cancel() ran, so it finishes;
+    # unit 1 was only queued and must not start.
+    assert played == [b"A"]
+
+
+async def test_cancel_before_any_submit_prevents_all_future_playback():
+    played = []
+
+    async def player(index: int, audio: bytes) -> None:
+        played.append(audio)
+
+    playback = OrderedPlayback(player)
+    playback.cancel()
+
+    await playback.submit(0, b"A")
+    await playback.submit(1, b"B")
+
+    assert played == []
+
+
 # --- TtsOutput ------------------------------------------------------------
 
 
@@ -1011,6 +1054,151 @@ async def test_tts_output_uses_injected_engine_for_synthesis():
 
     assert engine.seen == [("Фраза готова.", "ru")]
     assert played == ["Фраза готова."]
+
+
+# --- TtsOutput.cancel() (task-v1.7.0-2 interrupt) ---------------------------
+
+
+async def test_cancel_cancels_in_flight_synthesis():
+    never_returns = asyncio.Event()
+
+    class _HangingEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            await never_returns.wait()
+            raise AssertionError("should have been cancelled first")
+
+    async def fake_play(audio: bytes) -> None:
+        pass
+
+    tts = TtsOutput(TtsSettings(), engine=_HangingEngine(), play=fake_play)
+    await tts.on_token(ResponseToken(text="Никогда не договорит. "))
+    await asyncio.sleep(0)  # let the synthesis task actually start
+    [in_flight_task] = tts._pending_tasks
+
+    tts.cancel()
+    await asyncio.sleep(0)
+
+    assert in_flight_task.cancelled()
+    # cancel() also drops the task from tracking outright (see its own
+    # docstring) - wait_for_pending() must not gather this stale task and
+    # raise a CancelledError that has nothing to do with a later turn.
+    assert tts._pending_tasks == set()
+
+
+async def test_cancel_prevents_an_already_synthesized_unit_from_playing():
+    played = []
+    release = asyncio.Event()
+
+    class _ControlledEngine:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                await release.wait()  # first unit: hold the playback lock open
+            return text.encode()
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_ControlledEngine(), play=fake_play)
+    await tts.on_token(ResponseToken(text="Первое. Второе. "))
+    await asyncio.sleep(0)  # both synthesis tasks start; unit 1 finishes first
+
+    tts.cancel()
+    release.set()
+    await asyncio.sleep(0.05)
+
+    # unit 0 was cancelled before finishing synthesis, unit 1 (already
+    # synthesized, queued behind it) must not play either
+    assert played == []
+
+
+async def test_cancel_does_not_wedge_a_later_turns_playback():
+    """Regression test: if a cancelled unit's index is never submitted,
+    OrderedPlayback waits for it forever and every later turn's speech -
+    scheduled at ever-increasing indices - stays buffered and silent.
+    cancel() must leave TtsOutput able to actually play the next turn."""
+    played = []
+    stuck = asyncio.Event()
+
+    class _EngineThatHangsOnce:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                await stuck.wait()  # this call is the one that gets cancelled
+            return text.encode()
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_EngineThatHangsOnce(), play=fake_play)
+    await tts.on_token(ResponseToken(text="Первый ход. "))
+    await asyncio.sleep(0)
+
+    tts.cancel()
+    await asyncio.sleep(0)
+
+    # a new turn's speech, scheduled after cancel(), must still play
+    await tts.on_token(ResponseToken(text="Второй ход. "))
+    await tts.wait_for_pending()
+
+    assert played == ["Второй ход."]
+
+
+async def test_cancel_stops_the_default_output_device(monkeypatch):
+    stopped = []
+    monkeypatch.setattr("jarvis.audio.tts.sd.stop", lambda: stopped.append(True))
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine())
+
+    tts.cancel()
+
+    assert stopped == [True]
+
+
+async def test_cancel_does_not_touch_the_device_when_play_is_injected(monkeypatch):
+    stopped = []
+    monkeypatch.setattr("jarvis.audio.tts.sd.stop", lambda: stopped.append(True))
+
+    async def fake_play(audio: bytes) -> None:
+        pass
+
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
+
+    tts.cancel()
+
+    assert stopped == []
+
+
+async def test_cancel_resets_the_speech_unit_buffer():
+    """Regression for review finding 3: SpeechUnitBuffer carries a
+    partial, unterminated sentence across on_token() calls by design (so
+    a sentence split across streamed tokens still buffers correctly) -
+    but an interrupt means that partial text was abandoned, not merely
+    paused. Without resetting it, the next turn's first tokens would be
+    concatenated onto the interrupted turn's leftover fragment and spoken
+    as one unit."""
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
+
+    await tts.on_token(ResponseToken(text="Незаконченная мысль без точки"))
+    await tts.wait_for_pending()
+    assert played == []  # no sentence boundary yet, nothing scheduled
+
+    tts.cancel()
+
+    await tts.on_token(ResponseToken(text="Новая фраза. "))
+    await tts.wait_for_pending()
+
+    assert played == ["Новая фраза."]
 
 
 # --- charset language segmentation (story-v1.2.8 pivot) ---------------------

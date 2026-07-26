@@ -53,6 +53,11 @@ clipboard_submit = "ctrl+alt+v"
 # turns (not the current in-flight one). Off by default - see PROJECT.md's
 # thinking-mode architecture section.
 thinking_toggle = "ctrl+alt+t"
+# v1.7.0: cancels the in-flight turn (TTS playback and the backend
+# stream) and returns Jarvis to listening. Works on any hardware - no
+# acoustic detection, unlike the separate experimental voice barge-in
+# option. See PROJECT.md's v1.7.0 architecture section.
+interrupt = "ctrl+alt+i"
 
 [vad]
 threshold = 0.5
