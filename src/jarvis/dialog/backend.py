@@ -37,6 +37,7 @@ import httpx
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
+from jarvis.core.debug_transcript import begin_exchange
 from jarvis.dialog.thinking_mode import ReasoningLevel
 
 logger = logging.getLogger(__name__)
@@ -126,12 +127,31 @@ class OllamaBackend:
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[dict[str, object]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yields raw chunks while carrying only prepared declarations."""
+        """Yields raw chunks while carrying only prepared declarations.
+
+        Every request the engine makes passes through here - plain turns,
+        each pass of the tool loop, the forced-final pass, and the warm-up
+        - which is why the debug transcript is taken at this seam and
+        nowhere higher up. It costs one level check when debug is off."""
         payload = self.build_payload(messages, images_b64, reasoning_level, tools)
-        async with self._client.stream("POST", "/api/chat", json=payload) as response:
-            async for line in response.aiter_lines():
-                if line.strip():
-                    yield json.loads(line)
+        exchange = begin_exchange(payload)
+        try:
+            async with self._client.stream(
+                "POST", "/api/chat", json=payload
+            ) as response:
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        chunk = json.loads(line)
+                        if exchange is not None:
+                            exchange.observe(chunk)
+                        yield chunk
+        finally:
+            # In the finally, so a call that raises, hangs into
+            # cancellation, or whose consumer stops reading early still
+            # leaves a record. Those are the cases a transcript is wanted
+            # for; only recording clean completions would hide them.
+            if exchange is not None:
+                exchange.write()
 
     async def chat(
         self,

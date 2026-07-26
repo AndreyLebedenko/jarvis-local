@@ -9,6 +9,7 @@ import time
 import types
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -23,6 +24,7 @@ from jarvis.app import (
     App,
     ConversationHistory,
     Orchestrator,
+    _announce_debug_mode_to_panel,
     _microphone_health,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
@@ -43,6 +45,7 @@ from jarvis.app import (
     wire,
     wire_status_console,
 )
+from jarvis.audio.debug_metrics import on_utterance_captured
 from jarvis.audio.input import (
     AudioInput,
     MicrophoneCaptureFailed,
@@ -55,6 +58,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
     JournalSettings,
+    LoggingSettings,
     McpServerSettings,
     McpSettings,
     MemorySettings,
@@ -67,6 +71,7 @@ from jarvis.core.config import (
     UiSettings,
     VadSettings,
 )
+from jarvis.core.debug_transcript import configure_debug_transcript, recording
 from jarvis.core.lifecycle import (
     AttachmentSubmissionReason,
     ModelRequestInput,
@@ -1871,7 +1876,10 @@ def test_wire_registers_expected_subscriptions():
     subscriptions = wire(app)
     event_types = [event_type for event_type, _handler in subscriptions]
 
-    assert event_types.count(UtteranceChunk) == 1
+    # Two: the orchestrator's own turn handling, plus the debug-transcript
+    # metrics bridge (on_utterance_captured), which is unconditional and
+    # a no-op unless debug is on.
+    assert event_types.count(UtteranceChunk) == 2
     assert event_types.count(ScreenshotCaptured) == 1
     assert event_types.count(ClipboardSubmitted) == 1
     assert event_types.count(ResponseToken) == 2  # tts_output + orchestrator
@@ -1883,6 +1891,7 @@ def test_wire_registers_expected_subscriptions():
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
+    assert on_utterance_captured in handlers
     assert app.orchestrator.on_screenshot in handlers
     assert app.orchestrator.on_clipboard in handlers
 
@@ -2189,12 +2198,23 @@ def test_announcing_debug_mode_warns_that_privacy_is_not_guaranteed(caplog):
     containing the exchange would not say why it was allowed to. WARNING,
     not INFO: it must stand out in a file that is mostly INFO."""
     with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
-        announce_debug_mode(True)
+        announce_debug_mode(True, Path("logs/jarvis-debug.jsonl"))
 
-    [record] = caplog.records
-    assert record.levelno == logging.WARNING
-    assert "DEBUG MODE" in record.message
-    assert "Privacy is not guaranteed" in record.message
+    assert all(record.levelno == logging.WARNING for record in caplog.records)
+    announced = " ".join(record.getMessage() for record in caplog.records)
+    assert "DEBUG MODE" in announced
+    assert "Privacy is not guaranteed" in announced
+    assert "jarvis-debug.jsonl" in announced
+
+
+def test_a_debug_run_that_cannot_record_says_so(caplog):
+    """Starting for a recording and silently not getting one is the worst
+    of both: the privacy cost is paid and no evidence is collected."""
+    with caplog.at_level(logging.WARNING, logger=APP_LOGGER_NAME):
+        announce_debug_mode(True, None)
+
+    announced = " ".join(record.getMessage() for record in caplog.records)
+    assert "records nothing" in announced
 
 
 def test_a_normal_run_says_nothing_about_debug(caplog):
@@ -2216,7 +2236,11 @@ def test_run_announces_debug_mode_at_startup(monkeypatch):
     """The announcement is wired into run() itself, not left to callers -
     every launch path that can set the flag goes through here."""
     announced = []
-    monkeypatch.setattr("jarvis.app.announce_debug_mode", announced.append)
+    monkeypatch.setattr(
+        "jarvis.app.announce_debug_mode",
+        lambda enabled, path=None: announced.append(enabled),
+    )
+    monkeypatch.setattr("jarvis.app.configure_debug_transcript", lambda settings: None)
     _stop_run_before_the_engine(monkeypatch)
 
     for debug, console in ((True, object()), (False, None)):
@@ -2224,6 +2248,78 @@ def test_run_announces_debug_mode_at_startup(monkeypatch):
             asyncio.run(run(settings=_settings(), live_console=console, debug=debug))
 
     assert announced == [True, False]
+
+
+def test_a_run_without_debug_turns_any_previous_recording_off(monkeypatch, tmp_path):
+    """Review finding (P2, 2026-07-26): the transcript logger is module
+    state, so a second run in the same process inherited the first one's
+    sink and kept writing request content with nothing announcing it.
+    Off has to be an action, not the absence of the enable call."""
+    configure_debug_transcript(LoggingSettings(directory=str(tmp_path)))
+    assert recording() is True
+    _stop_run_before_the_engine(monkeypatch)
+
+    with pytest.raises(_StopBeforeEngine):
+        asyncio.run(run(settings=_settings(), live_console=None))
+
+    assert recording() is False
+
+
+async def test_run_publishes_the_debug_panel_notice_when_debug_is_on(monkeypatch):
+    """The panel/log half of slice 4: announce_debug_mode() guarantees the
+    file log even without a bus, but the events panel needs one, so this
+    fires once app.bus exists - through publish_system_event(), the same
+    call every other user-facing fact in this file goes through."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+    fake_console = types.SimpleNamespace(
+        api=types.SimpleNamespace(set_shutdown_event=lambda event: None)
+    )
+    monkeypatch.setattr(
+        "jarvis.app.wire_status_console",
+        lambda *args, **kwargs: _raise(_StopBeforeEngine()),
+    )
+
+    with pytest.raises(_StopBeforeEngine):
+        await run(settings=_settings(), app=app, live_console=fake_console, debug=True)
+
+    assert len(received) == 1
+    assert received[0].source == "ENGINE"
+    assert received[0].level is EventLevel.WARN
+    assert "Debug mode is active" in received[0].message
+
+
+async def test_run_does_not_publish_the_debug_panel_notice_when_debug_is_off(
+    monkeypatch,
+):
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+    monkeypatch.setattr(
+        "jarvis.app.warm_up", lambda *args, **kwargs: _raise(_StopBeforeEngine())
+    )
+
+    with pytest.raises(_StopBeforeEngine):
+        await run(settings=_settings(), app=app, live_console=None, debug=False)
+
+    assert received == []
+
+
+async def test_debug_panel_notice_is_localized():
+    """Direct test of the helper, independent of run()'s wiring - the
+    events panel is a Russian-language, end-user surface (per
+    system_log.py's own docstring), so ui_message must actually localize."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+
+    await _announce_debug_mode_to_panel(app, "ru")
+
+    assert "Режим отладки активен" in received[0].message
 
 
 def test_run_refuses_a_headless_debug_launch(monkeypatch):

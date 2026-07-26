@@ -128,6 +128,15 @@
    parts of the source tree.
    Do not run graph extraction in CI or treat missing graph output as a test
    failure.
+7. The Browser pane's preview caches `file://` sub-resources (JS/CSS) per
+   tab across navigations, independently of the parent HTML URL. Editing
+   `status_console_ui/*.js` or `*.css` and reloading the same tab can
+   silently keep serving the pre-edit version — `fetch(url)` may show the
+   new content while the already-loaded `<script>`/`<link>` did not
+   re-run. If a UI change "doesn't seem to apply" after an edit, verify
+   with `fetch(url, {cache: "no-store"})` before assuming the code is
+   wrong; a fresh tab (`tabs_create`) or a cache-busted query string on
+   the resource URL also forces a real reload.
 
 ## Git protocol
 

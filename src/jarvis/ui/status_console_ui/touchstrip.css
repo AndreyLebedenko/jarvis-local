@@ -119,6 +119,25 @@ html, body {
 }
 html[data-visibility="hidden"] .g-visibility { background: var(--violet-tint); color: var(--violet); border-color: var(--violet-dim); }
 
+/* Debug transcript recording (task-debug-mode-and-request-transcript).
+   Touchstrip normally folds a status like this into the quiet
+   model/locality text line (_renderModelLine()) rather than a dedicated
+   element - but that line is deliberately low-emphasis (--text-faint),
+   and "unmissable" is the actual requirement here, same as the desktop
+   header's banner it mirrors. Solid, bold, the only red pill on this
+   surface. This window is optional (--no-touchstrip), but if it is open
+   the same fact must be visible on it, not just on the desktop console. */
+.g-debug {
+  display: none;
+  align-items: center; gap: 6px; margin-top: 8px;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.3px; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 12px;
+  background: var(--red); color: #FFFFFF; border: 1px solid var(--red);
+}
+.g-debug.show { display: inline-flex; }
+.g-debug-sep { opacity: 0.7; }
+
 .g-chips { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
 .g-chip { display: flex; align-items: center; gap: 8px; font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; color: var(--text-dim); }
 .g-dot { width: 7px; height: 7px; border-radius: 50%; }

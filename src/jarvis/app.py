@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from jarvis.audio.debug_metrics import on_utterance_captured
 from jarvis.audio.input import (
     AudioInput,
     MicrophoneCaptureFailed,
@@ -28,6 +29,10 @@ from jarvis.core.config import (
     PromptSettings,
     Settings,
     load_settings,
+)
+from jarvis.core.debug_transcript import (
+    configure_debug_transcript,
+    disable_debug_transcript,
 )
 from jarvis.core.lifecycle import (
     VOICE_PLACEHOLDER_TEXT,
@@ -143,7 +148,7 @@ DEBUG_MODE_LOG_MESSAGE = (
 )
 
 
-def announce_debug_mode(enabled: bool) -> None:
+def announce_debug_mode(enabled: bool, transcript_path: Path | None = None) -> None:
     """Says, everywhere it can, that the content rule is lifted.
 
     Called first thing in run(), before anything could be recorded, so a
@@ -151,8 +156,36 @@ def announce_debug_mode(enabled: bool) -> None:
     The console banner and the events-panel entry join this function when
     they land; the warning level is deliberate - a normal run must never
     print it, and this one must be impossible to miss in a log file."""
-    if enabled:
-        logger.warning(DEBUG_MODE_LOG_MESSAGE)
+    if not enabled:
+        return
+    logger.warning(DEBUG_MODE_LOG_MESSAGE)
+    if transcript_path is None:
+        logger.warning(
+            "DEBUG MODE: the transcript file could not be opened, so this run "
+            "records nothing - fix the logging directory and start again"
+        )
+    else:
+        logger.warning("DEBUG MODE: recording the exchange to %s", transcript_path)
+
+
+async def _announce_debug_mode_to_panel(app: "App", language: str) -> None:
+    """The events-panel half of the debug announcement.
+
+    announce_debug_mode() runs before app.bus exists and guarantees the
+    file log says debug is on even if a bus were never available; this is
+    the second, independent notice, using the same publish_system_event()
+    call every other user-facing fact in this file goes through - the
+    panel entry and the file log can never disagree about whether debug
+    was announced. Called from run() once app is built, on every tab via
+    the console's shared header/events-panel state."""
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="ENGINE",
+        level=EventLevel.WARN,
+        log_message="Debug mode is active for this session",
+        ui_message=ui_text("debug_mode_active", language),
+    )
 
 
 @dataclass(frozen=True)
@@ -1050,6 +1083,10 @@ def wire(app: App) -> list[Subscription]:
 
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
+        # Unconditional, like every subscription here: on_utterance_captured
+        # checks recording() itself and does nothing in a normal run, so
+        # wiring it does not need to know whether debug is on.
+        (UtteranceChunk, on_utterance_captured),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
         (ClipboardSubmitted, app.orchestrator.on_clipboard),
         (ResponseToken, app.tts_output.on_token),
@@ -1192,10 +1229,20 @@ async def run(
     # configured, not hardcoded.
     settings = settings or load_settings()
     configure_logging(settings.logging)
-    announce_debug_mode(debug)
+    if debug:
+        transcript_path = configure_debug_transcript(settings.logging)
+    else:
+        # Explicit, not implied by "we did not enable it": the transcript
+        # logger is module state that survives a run, so a second run in
+        # the same process would inherit the first one's sink.
+        disable_debug_transcript()
+        transcript_path = None
+    announce_debug_mode(debug, transcript_path)
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)
+    if debug:
+        await _announce_debug_mode_to_panel(app, settings.ui.language)
     # One shutdown signal feeds both the hotkey and the Status Console.
     shutdown_event = asyncio.Event()
     if live_console is not None:
@@ -1292,6 +1339,7 @@ def run_with_status_console(
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,
             config_values=config_values_payload(settings),
+            debug=debug,
         ),
         logger=logger,
         journal_store=app.journal_store,

@@ -146,6 +146,21 @@ body {
 }
 .data-source-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+/* Debug transcript recording (task-debug-mode-and-request-transcript).
+   Deliberately not styled like the badges above: those are calm, tinted
+   pills reporting normal states; this reports an active exception to the
+   privacy promise the badges make, so it is solid, bold, and the only red
+   thing in the header - "unmissable" is the requirement, not "consistent". */
+.debug-banner {
+  display: none;
+  align-items: center; gap: 8px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+  border: 1px solid var(--red); background: var(--red); color: #FFFFFF;
+  border-radius: 20px; padding: 5px 12px;
+}
+.debug-banner.show { display: flex; }
+.debug-banner-sep { opacity: 0.7; }
+
 /* task-ui-05: system visibility mode. Open reuses cyan (calm/default,
    shared with data locality's "local" color by design - both represent the
    unremarkable case, per the privacy doc's color plan); Hidden uses violet

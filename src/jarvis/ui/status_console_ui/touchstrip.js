@@ -27,6 +27,7 @@ function _applyStateSnapshot(state) {
   Object.values(state.modules || {}).forEach(applyModuleHealth);
   applyModelLabel(state.model);
   applyDataLocality(state.data_locality);
+  applyDebugMode(state.debug || { enabled: false });
   applyThinkingMode(state.thinking);
   applyVisibilityMode(state.visibility);
 }
@@ -37,6 +38,7 @@ function _applyStateDelta(payload) {
     modules: (value) => Object.values(value).forEach(applyModuleHealth),
     model: applyModelLabel,
     data_locality: applyDataLocality,
+    debug: applyDebugMode,
     thinking: applyThinkingMode,
     visibility: applyVisibilityMode,
     ui_language: applyUiLanguage,
@@ -88,6 +90,17 @@ function _renderModelLine() {
   document.getElementById("gModel").textContent = [_lastModelLabel, _lastLocalityText]
     .filter(Boolean)
     .join(" · ");
+}
+
+// Fixed for the whole process run, same as the desktop shell's
+// applyDebugMode() - routed through the snapshot/delta path rather than a
+// one-time push so a reconnect still shows it. A dedicated element, not
+// folded into _renderModelLine(): that line is deliberately quiet
+// (--text-faint), and this has to be the opposite of quiet.
+function applyDebugMode(payload) {
+  const banner = document.getElementById("gDebug");
+  if (!banner) return;
+  banner.classList.toggle("show", Boolean(payload && payload.enabled));
 }
 
 function applyThinkingMode(payload) {
