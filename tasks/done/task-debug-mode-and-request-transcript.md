@@ -1,12 +1,13 @@
 # Task: A debug launch that records what actually went to the model
 
 **Status:** Completed. All four slices implemented, reviewed, and merged
-to `main` (2026-07-26). The human-run smoke test passed the same day: the
-owner started Jarvis with `--debug --status-console` and exercised a
-voice turn, a voice+screenshot turn, a camera-tool turn, a text-input turn
-with a `web_search` tool call, and Hidden/Open visibility - then read
-`logs/jarvis-debug.jsonl` back and confirmed it. See "Human-run smoke test
-outcome" below.
+to `main` (2026-07-26). The human-run smoke test passed the same day, in
+two passes: voice, voice+screenshot, camera-tool, text-input+`web_search`,
+and Hidden/Open visibility in the first; `Ctrl+Alt+V` clipboard and
+drag-and-drop file attachment in the second, closing the one gap the
+first pass left. Every turn kind the product has is now directly
+confirmed in a real `logs/jarvis-debug.jsonl` record. See "Human-run
+smoke test outcome" below.
 
 ## Implementation slices
 
@@ -306,13 +307,19 @@ makes about it, checked against the actual file rather than assumed:
 - `jarvis.log` from the same run carries no message content, transcript
   text, or tool arguments - only the existing kind/count/duration lines.
 
-**Gap, noted rather than papered over:** this session did not exercise a
-clipboard turn or a file-attachment turn, so those two turn kinds were
-not directly observed in a debug record. The recording mechanism is not
-turn-type-specific - it is taken once, in `OllamaBackend.iter_chat()`,
-which every turn kind reaches identically regardless of how the turn was
-composed - so there is no structural reason to expect a difference, but
-it was not directly seen and this is recorded rather than assumed.
+**Gap closed (2026-07-26, second pass):** the owner ran a follow-up
+session covering exactly the two kinds the first pass missed - `Ctrl+Alt+V`
+(clipboard) and drag-and-drop file attachment - and this was checked
+against the file, not assumed. The clipboard turn's record carries the
+clipboard text as the `user` message, no `media` field (correct - a
+clipboard turn has no attachment). The attachment turn's record carries
+the prompt text plus `[Attached image: End2.png]`, and its `media` field
+is `{"kind": "png", "bytes": 1866365}` - the file described, not embedded.
+Both records' raw lines were scanned for any base64-length run
+(200+ characters, no whitespace) and found none. Every turn kind the
+product has - voice, screenshot, camera-tool, text-input+tool-call,
+clipboard, and attachment - is now directly confirmed in a real debug
+record, not inferred from the mechanism being turn-agnostic.
 
 **Incidental finding, not a defect of this card:** `jarvis-debug.jsonl`
 already held two records from an earlier, unrelated debug run (English
@@ -338,12 +345,9 @@ own.
 - [x] One turn of each kind produces one or more readable records - one
       per backend request that turn made - of exactly what went to the
       model and what came back. Verified live for voice, voice+screenshot,
-      camera-tool, and text-input+tool-call turns (human-run smoke test,
-      below); clipboard and file-attachment turns were not directly
-      exercised in that session, noted as a gap rather than assumed - the
-      recording point (`OllamaBackend.iter_chat()`) is not turn-type-
-      specific, so there is no structural reason to expect either to
-      differ.
+      camera-tool, text-input+tool-call, clipboard, and file-attachment
+      turns (human-run smoke test, below, in two passes) - every turn
+      kind the product has, directly confirmed.
 - [x] A voice turn's record(s) carry the utterance metrics. Verified
       against a real journal wav (slice 3).
 - [x] No base64 media appears in any record - asserted by
