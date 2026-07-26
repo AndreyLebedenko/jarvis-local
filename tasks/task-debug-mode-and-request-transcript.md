@@ -1,9 +1,9 @@
 # Task: A debug launch that records what actually went to the model
 
-**Status:** In progress on `feature/debug-transcript`. Slice 1 (the gate)
-is merged to `main`; slices 2 (the per-request record) and 3 (utterance
-metrics) are implemented and reviewed on this branch; slice 4 (the
-console banner) is not started.
+**Status:** All four slices implemented on `feature/debug-transcript`.
+Slice 1 (the gate) is merged to `main`; slices 2 (the per-request
+record), 3 (utterance metrics), and 4 (the console banner) are on this
+branch, pending review and merge.
 
 ## Implementation slices
 
@@ -74,8 +74,46 @@ console banner) is not started.
    Verified against a real journal wav, not only synthetic tones: numbers
    landed in the range the manual measurements during the investigation
    found, on the first try.
-4. **The console banner** and the events-panel entry, both languages.
-   `announce_debug_mode()` is the seam they join.
+4. **The console banner** and the events-panel entry, both languages -
+   done. Two independent notices, deliberately not merged into one:
+   `announce_debug_mode()` (slice 1) writes the pre-app WARNING line that
+   guarantees the file log says it even if a bus were never available;
+   `_announce_debug_mode_to_panel(app, language)`, called once `app.bus`
+   exists, uses `publish_system_event()` - the same call every other
+   user-facing fact in this file goes through - so the panel entry and
+   the file log can never disagree about whether debug was announced.
+   The banner itself sits in the topbar next to the locality/data-source
+   badges (`index.html`), styled deliberately unlike them: solid red,
+   bold, white text, not a calm tinted pill - "unmissable" is the
+   requirement, not visual consistency with the honesty indicators it
+   sits beside. Hidden by default (`display: none`); `applyDebugMode()`
+   toggles a `.show` class, wired into both the snapshot and the delta
+   dispatch table in `app.js`, mirroring `applyDataLocality()`.
+   `UiStateStore` gained a `debug: bool = False` constructor parameter
+   folded into the snapshot as `{"enabled": ...}` - fixed for the whole
+   process run, never mutated after construction, but still part of the
+   snapshot rather than a one-time push, so a reconnect or a second
+   client sees it. `run_with_status_console()` passes its own `debug`
+   argument through.
+   Both string catalogs gained `debug_mode_banner_label` /
+   `debug_mode_banner_privacy` (the banner, in `strings.js`) and
+   `debug_mode_active` (the panel/log sentence, in `text.py`) -
+   deliberately in two different files, matching the existing split
+   between front-end chrome strings and Python-produced system-event
+   text elsewhere in this codebase.
+   `demo.html`/`demo.js` gained an on/off control pair, since the banner
+   only ever appears during a real `--debug` session (gated behind the
+   console) that the harness cannot start - otherwise neither language
+   could be checked without one.
+   Verified in the browser against the real files, not only unit tests:
+   toggling the banner on renders solid red with white bold text in both
+   languages, toggling off hides it (`display: none`), and both the
+   snapshot path and the delta path independently show it - confirming
+   the reconnect guarantee. (The browser cached `demo.js`/`style.css`
+   across edits during this verification, serving stale code twice
+   before a cache-busting fetch surfaced the real behavior - a tooling
+   artifact of the preview pane, not a product defect; worth remembering
+   next time a file:// edit "doesn't seem to apply".)
 **Raised by:** owner, 2026-07-25, after the voice-comprehension
 investigation: "вместо того, чтобы включить дебаг и повторить запуск с
 полным журналированием всего ввода-вывода, мы занимались
@@ -211,17 +249,28 @@ it is ever needed; deliberately not in this one.
 
 ## Acceptance criteria
 
-- [ ] `python -m jarvis --debug` without the console refuses to start.
-- [ ] With the console, the header carries the red debug and privacy
-      warnings in both interface languages, on every tab.
-- [ ] One turn of each kind (voice, screenshot, clipboard, typed,
+- [x] `python -m jarvis --debug` without the console refuses to start.
+      Verified live: exit code 2, "--debug requires --status-console".
+- [x] With the console, the header carries the red debug and privacy
+      warnings in both interface languages, on every tab. Verified in the
+      browser against the real files (both `index.html` and `demo.html`):
+      solid red, white bold text, correct wording in both languages,
+      hidden by default, shown/hidden via both the snapshot and delta
+      paths.
+- [~] One turn of each kind (voice, screenshot, clipboard, typed,
       attachment) produces one or more readable records - one per backend
       request that turn made - of exactly what went to the model and what
-      came back.
-- [ ] A voice turn's record(s) carry the utterance metrics.
-- [ ] No base64 media appears in any record.
-- [ ] `logs/jarvis.log` in a normal (non-debug) run is unchanged, still
-      carrying no payload content.
-- [ ] `python -m pytest` and Ruff are green.
+      came back. Verified for a plain text turn against the live endpoint
+      (slice 2); the other turn kinds need a running Jarvis and are part
+      of the human-run pass below, not re-proven separately.
+- [x] A voice turn's record(s) carry the utterance metrics. Verified
+      against a real journal wav (slice 3).
+- [x] No base64 media appears in any record - asserted by
+      `test_media_is_described_rather_than_embedded` and its equivalent
+      in the live-endpoint check.
+- [x] `logs/jarvis.log` in a normal (non-debug) run is unchanged, still
+      carrying no payload content - the transcript logger's
+      `propagate = False` makes this structural, not just tested.
+- [x] `python -m pytest` and Ruff are green.
 - [ ] Human-run: a debug session, then the same session's records read
       back to confirm they answer the questions the table above lists.

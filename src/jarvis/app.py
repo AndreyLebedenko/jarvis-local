@@ -168,6 +168,26 @@ def announce_debug_mode(enabled: bool, transcript_path: Path | None = None) -> N
         logger.warning("DEBUG MODE: recording the exchange to %s", transcript_path)
 
 
+async def _announce_debug_mode_to_panel(app: "App", language: str) -> None:
+    """The events-panel half of the debug announcement.
+
+    announce_debug_mode() runs before app.bus exists and guarantees the
+    file log says debug is on even if a bus were never available; this is
+    the second, independent notice, using the same publish_system_event()
+    call every other user-facing fact in this file goes through - the
+    panel entry and the file log can never disagree about whether debug
+    was announced. Called from run() once app is built, on every tab via
+    the console's shared header/events-panel state."""
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="ENGINE",
+        level=EventLevel.WARN,
+        log_message="Debug mode is active for this session",
+        ui_message=ui_text("debug_mode_active", language),
+    )
+
+
 @dataclass(frozen=True)
 class Turn:
     role: str
@@ -1221,6 +1241,8 @@ async def run(
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)
+    if debug:
+        await _announce_debug_mode_to_panel(app, settings.ui.language)
     # One shutdown signal feeds both the hotkey and the Status Console.
     shutdown_event = asyncio.Event()
     if live_console is not None:
@@ -1317,6 +1339,7 @@ def run_with_status_console(
             visibility_mode=app.visibility_mode.mode,
             language=settings.ui.language,
             config_values=config_values_payload(settings),
+            debug=debug,
         ),
         logger=logger,
         journal_store=app.journal_store,

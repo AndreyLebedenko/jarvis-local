@@ -356,6 +356,7 @@ class UiStateStore:
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         language: str = DEFAULT_UI_LANGUAGE,
         config_values: JsonObject | None = None,
+        debug: bool = False,
     ) -> None:
         self._language = language
         self._state: JsonObject = {
@@ -366,6 +367,11 @@ class UiStateStore:
             "last_model_request": {"timestamp": None, "items": []},
             "data_locality": cast(JsonObject, data_locality_payload(data_locality)),
             "data_source": cast(JsonObject, data_source_payload(data_source)),
+            # Fixed for the process's whole run - set once here from the
+            # CLI flag, never mutated - but still part of the snapshot, not
+            # a one-time push, so a reconnect (or a second client) sees it
+            # without depending on catching the original announcement.
+            "debug": {"enabled": debug},
             "mcp": {"status": "off", "enabled": False, "tools": []},
             "model": {"label": model_label},
             "system_events": [],

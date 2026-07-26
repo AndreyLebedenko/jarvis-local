@@ -47,6 +47,20 @@ function buildControls() {
     root.appendChild(button);
   }
 
+  // task-debug-mode-and-request-transcript: the banner only ever appears
+  // during a real --debug session (gated behind the console, off by
+  // default), which this harness cannot start - these buttons are the
+  // only way to see it, in both languages, without one.
+  const debugGroup = document.createElement("span");
+  debugGroup.textContent = "debug banner:";
+  root.appendChild(debugGroup);
+  for (const [label, enabled] of [["on", true], ["off", false]]) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.onclick = () => applyDebugMode({ enabled });
+    root.appendChild(button);
+  }
+
   const requestGroup = document.createElement("span");
   requestGroup.textContent = "last request:";
   root.appendChild(requestGroup);

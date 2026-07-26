@@ -59,6 +59,7 @@ function _applyStateSnapshot(state) {
   applyLastModelRequest(state.last_model_request || { timestamp: null, items: [] });
   applyDataLocality(state.data_locality);
   applyDataSource(state.data_source || { source: "local_only" });
+  applyDebugMode(state.debug || { enabled: false });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
   applyModelLabel(state.model);
   _clearSystemEvents();
@@ -78,6 +79,7 @@ function _applyStateDelta(payload) {
     last_model_request: applyLastModelRequest,
     data_locality: applyDataLocality,
     data_source: applyDataSource,
+    debug: applyDebugMode,
     mcp: applyMcpState,
     model: applyModelLabel,
     system_event: appendSystemEvent,
@@ -191,6 +193,17 @@ function applyDataLocality(payload) {
   badge.setAttribute("data-locality", payload.locality);
   badge.querySelector(".locality-label").textContent =
     uiString(payload.locality === "local" ? "locality_local" : "locality_external");
+}
+
+// Fixed for the whole process run - set once from state.debug at connect
+// time, never pushed as a delta in practice - but still routed through the
+// same snapshot/delta path as every other header indicator, so a
+// reconnecting client (or a second one) sees it without depending on
+// having been present for the original announcement.
+function applyDebugMode(payload) {
+  const banner = document.getElementById("debugBanner");
+  if (!banner) return;
+  banner.classList.toggle("show", Boolean(payload && payload.enabled));
 }
 
 function applyDataSource(payload) {

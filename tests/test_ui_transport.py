@@ -743,6 +743,21 @@ def test_turn_data_source_keeps_the_widest_declared_boundary():
     assert state.snapshot()["data_source"] == {"source": "internet"}
 
 
+def test_debug_is_off_by_default_in_the_snapshot():
+    state = UiStateStore()
+
+    assert state.snapshot()["debug"] == {"enabled": False}
+
+
+def test_debug_flag_reaches_the_snapshot_when_the_run_is_started_with_it():
+    """The state snapshot is what a reconnecting client (or a second one)
+    reads, so the banner must survive that without depending on having
+    been present for the original announce_debug_mode() call."""
+    state = UiStateStore(debug=True)
+
+    assert state.snapshot()["debug"] == {"enabled": True}
+
+
 def test_set_mcp_enabled_control_requires_boolean_target():
     control_api = _FakeControlApi()
     server = UiTransportServer(EventBus(), control_api)

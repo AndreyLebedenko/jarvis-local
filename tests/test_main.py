@@ -24,6 +24,7 @@ from jarvis.app import (
     App,
     ConversationHistory,
     Orchestrator,
+    _announce_debug_mode_to_panel,
     _microphone_health,
     _on_full_response_complete,
     _on_mic_sleep_toggled,
@@ -2262,6 +2263,63 @@ def test_a_run_without_debug_turns_any_previous_recording_off(monkeypatch, tmp_p
         asyncio.run(run(settings=_settings(), live_console=None))
 
     assert recording() is False
+
+
+async def test_run_publishes_the_debug_panel_notice_when_debug_is_on(monkeypatch):
+    """The panel/log half of slice 4: announce_debug_mode() guarantees the
+    file log even without a bus, but the events panel needs one, so this
+    fires once app.bus exists - through publish_system_event(), the same
+    call every other user-facing fact in this file goes through."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+    fake_console = types.SimpleNamespace(
+        api=types.SimpleNamespace(set_shutdown_event=lambda event: None)
+    )
+    monkeypatch.setattr(
+        "jarvis.app.wire_status_console",
+        lambda *args, **kwargs: _raise(_StopBeforeEngine()),
+    )
+
+    with pytest.raises(_StopBeforeEngine):
+        await run(settings=_settings(), app=app, live_console=fake_console, debug=True)
+
+    assert len(received) == 1
+    assert received[0].source == "ENGINE"
+    assert received[0].level is EventLevel.WARN
+    assert "Debug mode is active" in received[0].message
+
+
+async def test_run_does_not_publish_the_debug_panel_notice_when_debug_is_off(
+    monkeypatch,
+):
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+    monkeypatch.setattr(
+        "jarvis.app.warm_up", lambda *args, **kwargs: _raise(_StopBeforeEngine())
+    )
+
+    with pytest.raises(_StopBeforeEngine):
+        await run(settings=_settings(), app=app, live_console=None, debug=False)
+
+    assert received == []
+
+
+async def test_debug_panel_notice_is_localized():
+    """Direct test of the helper, independent of run()'s wiring - the
+    events panel is a Russian-language, end-user surface (per
+    system_log.py's own docstring), so ui_message must actually localize."""
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = _fake_app(bus=bus)
+
+    await _announce_debug_mode_to_panel(app, "ru")
+
+    assert "Режим отладки активен" in received[0].message
 
 
 def test_run_refuses_a_headless_debug_launch(monkeypatch):

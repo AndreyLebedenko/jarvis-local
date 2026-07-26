@@ -103,6 +103,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "hidden_mode_enabled": "Hidden mode activated: screen preview is hidden",
         "open_mode_restored": "Open mode restored",
         "shutdown_requested": "Jarvis shutdown requested",
+        "debug_mode_active": (
+            "Debug mode is active: this session's model exchange is being "
+            "recorded and privacy is not guaranteed"
+        ),
         "model_options_failed": (
             "Failed to fetch the Ollama model list - showing the current value"
         ),
@@ -188,6 +192,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "hidden_mode_enabled": "Режим Hidden активирован: превью экрана скрыто",
         "open_mode_restored": "Режим Open восстановлен",
         "shutdown_requested": "Запрошено завершение работы Jarvis",
+        "debug_mode_active": (
+            "Режим отладки активен: обмен с моделью в этой сессии записывается, "
+            "приватность не гарантируется"
+        ),
         "model_options_failed": (
             "Не удалось получить список моделей Ollama - показано текущее значение"
         ),
