@@ -361,7 +361,47 @@ first real diagnosis made with these logs still had to be reconstructed
 from journal wav files (see
 `tasks/bug_reports/2026-07-22-quiet-microphone-capture-and-unselectable-device.md`).
 
-## v1.7.0 - Memory layer B, part 1: consolidation (near/far journal)
+## v1.7.0 - Interruption of playback and voice call (barge-in)
+
+**Resequenced from the unversioned v1.7.x "Conversational fluidity" list
+to v1.7.0 (owner decision, 2026-07-26)**, ahead of memory
+consolidation/retrieval below, which shift to v1.7.1 and v1.7.2
+accordingly. Wake-word addressing, the emotion2vec+ side channel, and the
+MCP egress watchdog stay in the unversioned v1.7.x list.
+
+Purpose: speaking while Jarvis is talking interrupts it, the way
+interrupting a person works - TTS playback and the in-flight backend
+response stop, and Jarvis starts listening to the new request as a fresh
+voice call. Replaces the v1.0/v1.1 timing-window mitigations
+(busy-cooldown, mic auto-pause during speech).
+
+Scope:
+
+- AEC spike (hard gate, precedent v1.3.1/v1.4.0/v1.6.2): candidate
+  echo-cancellation approaches tried against live TTS playback on
+  Windows, with suppression quality, latency, CPU cost, and dependency
+  choice recorded in `PROJECT.md` before any module code.
+- If the spike is a go: a mechanism keeping the mic capturing during
+  Jarvis's own speech, detecting genuine user speech distinct from
+  self-heard TTS, and on detection cancelling in-flight TTS playback and
+  the in-flight backend stream, then starting a new turn.
+- Interrupted-turn representation in history/journal (append-only
+  invariant, cross-cutting rule 6): a barged-in turn is recorded as
+  interrupted, never silently dropped.
+
+Boundary:
+
+- Wake-word addressing, the emotion2vec+ side channel, and the MCP
+  egress watchdog are separate future stories, not part of this one.
+- No change to the user's mic-sleep/privacy toggle contract; the toggle
+  stays non-delegable (cross-cutting rule 9).
+- No resuming an interrupted turn - once barged in on, that turn is over.
+
+Story/task readiness: story card exists at
+`tasks/story-v1.7.0-barge-in.md`. Only the AEC spike task card should be
+opened first; later task cards depend on its outcome.
+
+## v1.7.1 - Memory layer B, part 1: consolidation (near/far journal)
 
 Purpose: human-modeled long-term memory. The journal splits into a "near
 log" (recent sessions, full media, replayable) and a "far log" (archive):
@@ -403,7 +443,7 @@ Boundary:
 Story/task readiness: needs a story card; boundary age and image
 compression parameters are story-card decisions.
 
-## v1.7.1 - Memory layer B, part 2: retrieval
+## v1.7.2 - Memory layer B, part 2: retrieval
 
 Purpose: "remember when we discussed X" - on-demand enrichment of the
 current turn's context from the journal and archive.
@@ -423,18 +463,14 @@ Boundary:
 - Retrieval augments the current turn; it never silently rewrites
   memory.md or history.
 
-Story/task readiness: needs a story card after v1.7.0 lands.
+Story/task readiness: needs a story card after v1.7.1 lands.
 
-## v1.7.x - Conversational fluidity
+## v1.7.x - Conversational fluidity (remaining candidates)
 
-Purpose: turn request-response into conversation. Ordered candidates, each
-its own story:
+Purpose: turn request-response into conversation. Barge-in was pulled
+forward as v1.7.0 above (owner decision, 2026-07-26). The rest stay
+unversioned candidates, each its own story:
 
-- **AEC spike, then barge-in.** Echo cancellation on Windows so the
-  microphone stays open while Jarvis speaks; user speech interrupts TTS
-  and the response stream. Replaces the v1.0/v1.1 timing-window
-  mitigations (busy-cooldown, mic auto-pause). The spike is a genuine
-  research task; no timeline promises until it lands.
 - **Wake word / addressing** (local openWakeWord or similar): Jarvis
   distinguishes being addressed from ambient speech, prerequisite for
   always-on room presence. Deliberately separate from the deferred
