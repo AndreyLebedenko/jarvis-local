@@ -1,7 +1,8 @@
 # Task: A debug launch that records what actually went to the model
 
-**Status:** In progress on `feature/debug-mode-gate`. Slice 1 of 4 (the
-gate) is implemented and green; slices 2-4 below are not started.
+**Status:** In progress on `feature/debug-transcript`. Slices 1 (the gate)
+and 2 (the per-request record) are implemented, reviewed, and merged to
+`main` / pending merge respectively; slices 3-4 below are not started.
 
 ## Implementation slices
 
@@ -16,12 +17,20 @@ gate) is implemented and green; slices 2-4 below are not started.
    Deliberately first of the four: until the gate holds, every later
    slice could be switched on without the banner. Nothing is recorded
    yet, so the flag currently only announces itself.
-2. **The per-turn record** - done. Taken in `OllamaBackend.iter_chat()`,
-   the one seam every request passes through: plain turns, each pass of
-   the tool loop, the forced-final pass, and the warm-up. Recording any
-   higher would have missed some of them, which is how the 2026-07-25
-   investigation lost the tool-loop follow-ups. `core/debug_transcript.py`
-   owns the sink; `begin_exchange()` returns None when nothing is
+2. **The per-request record** - done. Granularity is one record per
+   backend request, not per user-facing turn: taken in
+   `OllamaBackend.iter_chat()`, the one seam every request passes through,
+   so a turn that runs the tool loop produces one record per pass - the
+   initial call, each tool-result follow-up, and the forced-final call -
+   each showing exactly what that call sent and got back, in the order
+   they happened. This is a deliberate narrowing from an earlier draft of
+   this card, which described one merged record per turn with tool calls
+   folded in; that would have hidden precisely the tool-loop follow-ups
+   the 2026-07-25 investigation lost, since each follow-up is its own
+   request with its own message list. Reconstructing a turn from its
+   records is a matter of reading them in file order - no correlation id
+   was added because nothing so far has needed one.
+   `core/debug_transcript.py` owns the sink; `begin_exchange()` returns None when nothing is
    recording, so an ordinary run pays one level check and does no
    redaction work. Written in a `finally`, so a call that fails, hangs,
    or whose consumer stops reading still leaves a record - those being
@@ -107,11 +116,14 @@ being displayed.
 
 - `--debug` flag; `--debug` without `--status-console` exits non-zero with
   a message naming the requirement.
-- While debug is on, each turn writes one record containing: the full
-  message list as sent (roles and text, including history and the time
-  context), a media descriptor per attachment, the tool declarations
-  attached, the reasoning level, and the model's complete answer. Tool
-  calls and their results belong in the same record, in order.
+- While debug is on, each backend request writes one record containing:
+  the full message list as sent (roles and text, including history and
+  the time context), a media descriptor per attachment, the tool
+  declarations attached, the reasoning level, and the model's complete
+  answer for that request, including any tool calls it made. A turn that
+  runs the tool loop therefore produces several records - one per pass -
+  rather than one merged record with the calls and results folded in;
+  reading them in file order reconstructs the turn.
 - Records go under the configured logging directory, separate from
   `jarvis.log`, and are bounded the way the system log is - a debug run
   must not fill a disk either.
@@ -181,9 +193,10 @@ it is ever needed; deliberately not in this one.
 - [ ] With the console, the header carries the red debug and privacy
       warnings in both interface languages, on every tab.
 - [ ] One turn of each kind (voice, screenshot, clipboard, typed,
-      attachment) produces a readable record of exactly what went to the
-      model and what came back.
-- [ ] A voice turn's record carries the utterance metrics.
+      attachment) produces one or more readable records - one per backend
+      request that turn made - of exactly what went to the model and what
+      came back.
+- [ ] A voice turn's record(s) carry the utterance metrics.
 - [ ] No base64 media appears in any record.
 - [ ] `logs/jarvis.log` in a normal (non-debug) run is unchanged, still
       carrying no payload content.
