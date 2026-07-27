@@ -725,7 +725,12 @@ class Orchestrator:
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
         """Clears the busy flag, optionally after a cooldown, and resumes
-        the mic from its auto-pause (see on_response_token()).
+        the mic from its auto-pause (see on_response_token()). The single
+        place both a normal completion (_on_full_response_complete()) and
+        an interrupt (_cancel_current_turn()) converge to end a turn, so
+        anything that must hold true "by the time a turn is over,
+        whichever way it ended" belongs here, not duplicated in each
+        caller.
 
         Historical note: the cooldown originally had to mirror
         vad.request_end_pause_seconds (2.0 s), because audio_in.py's
@@ -737,7 +742,23 @@ class Orchestrator:
         so nothing heard during a turn can be published after resume. The
         cooldown is now just a short grace period before capture resumes,
         configurable as vad.resume_cooldown_seconds (default 1.0 s).
+
+        Waits for any journal writes still in flight in the background
+        (task-v1.7.0-2 review): JournalRecorder.record_voice_user()/
+        record_text_user() schedule the actual disk write as a background
+        task rather than blocking on it (JournalRecorder._schedule()), so
+        the live Journal panel's update (JournalEventAppended) can lag
+        behind it. A turn that runs its normal, multi-second course
+        (generation + TTS) gives that write plenty of time to finish
+        first, which is why this went unnoticed before interrupts existed
+        - a turn cancelled during the "thinking" phase can end in a
+        fraction of a second, well before the write completes, making a
+        just-spoken utterance appear briefly missing from the live view
+        (confirmed empirically: 0 of 1 pending journal tasks had
+        completed at the moment finish_turn() used to return).
         """
+        if self._journal_recorder is not None:
+            await self._journal_recorder.wait_for_pending()
         if cooldown_seconds > 0:
             await asyncio.sleep(cooldown_seconds)
         if self._audio_input is not None:

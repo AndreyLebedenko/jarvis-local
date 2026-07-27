@@ -281,6 +281,52 @@ reverting the fix and rerunning the new test before trusting it.
   and the "thinking" cue never fire, and confirmed it fails without the
   fix.
 
+## Human handoff run (2026-07-27): passed, with one real finding
+
+The owner ran `tasks/interrupt-hotkey-handoff.md` on real hardware: "Всё
+проверил. Всё работает по сути." (hotkey stops TTS/backend promptly,
+returns to listening, a following turn works normally, idle press is a
+no-op) - the `sd.stop()`/shared-playback-lock stop condition below did
+not trigger.
+
+One real gap surfaced from live use, not from the scripted steps:
+**interrupting during the "thinking" phase, the just-spoken voice
+request did not appear in the live Journal panel** (it *did* appear
+after restarting Jarvis, i.e. re-reading the store fresh - so this was
+never data loss). Root-caused and fixed rather than assumed:
+
+- `JournalRecorder.record_voice_user()`/`record_text_user()` schedule
+  their actual disk write as a background task
+  (`JournalRecorder._schedule()`) rather than blocking on it; the live
+  Journal panel updates off `JournalEventAppended`
+  (`ui/transport.py:786`), published only once that background task
+  completes.
+- Confirmed empirically with a direct reproduction (real
+  `JournalRecorder`, temp store, no fakes): immediately after
+  `_cancel_current_turn()` returned, 0 of 1 pending journal tasks had
+  completed and `JournalEventAppended` had not fired yet. A normal turn
+  never showed this because generation + TTS take several seconds,
+  plenty of time for the background write to finish first - an interrupt
+  during "thinking" can end a turn in a fraction of a second, well
+  before that write completes.
+- Fixed at the point both completion paths already converge -
+  `Orchestrator.finish_turn()` - rather than patching
+  `_cancel_current_turn()` alone: `finish_turn()` now awaits
+  `journal_recorder.wait_for_pending()` first (when a recorder is
+  configured), so the fix is symmetric for both the interrupt and the
+  normal-completion path without duplicating it in each caller. This was
+  a deliberate architectural call (owner's steer, not the first
+  instinct) - the initial plan was to patch only `_cancel_current_turn()`,
+  which would have left the identical latent race in
+  `_on_full_response_complete()`'s path, just still masked by turn
+  duration there.
+- Re-ran the same direct reproduction against the fix: `JournalEventAppended`
+  pushed = 1 and `recorder._tasks` empty immediately after
+  `_cancel_current_turn()` returns. See
+  `test_finish_turn_waits_for_pending_journal_writes` (confirmed failing
+  against the reverted fix first, same discipline as every other
+  regression test in this card).
+
 ## Stop conditions
 
 - Stop if cancelling `self._backend.chat(...)`'s task does not propagate
@@ -293,8 +339,5 @@ reverting the fix and rerunning the new test before trusting it.
 - Stop if `sounddevice.stop()` interrupts unrelated audio sharing the
   same output stream (e.g. a sound cue mid-playback) in a surprising or
   unsafe way - verify the interaction with `TtsOutput`/`SoundCuePlayer`'s
-  shared playback lock before shipping, do not assume it is fine. *(not
-  yet verified live - this is exactly what the human handoff's step 2/3
-  needs to confirm; `cancel()` only calls `sd.stop()` when
-  `_uses_default_play` is true, so injected-play test doubles never
-  touch real hardware.)*
+  shared playback lock before shipping, do not assume it is fine.
+  *(verified live in the 2026-07-27 handoff run above - not triggered.)*

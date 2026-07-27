@@ -278,6 +278,9 @@ class _FakeJournalRecorder:
     async def record_assistant(self, text: str) -> None:
         self.assistant_texts.append(text)
 
+    async def wait_for_pending(self) -> None:
+        pass
+
     async def start_fork_session(
         self, *, source_session_id, provenance_text, seed_drop_report
     ) -> str:
@@ -1362,6 +1365,46 @@ async def test_finish_turn_cooldown_rejects_a_self_heard_echo():
         UtteranceChunk(wav_bytes=b"b", start_seconds=0, end_seconds=1)
     )
     assert len(backend.calls) == 2
+
+
+async def test_finish_turn_waits_for_pending_journal_writes():
+    """Regression (task-v1.7.0-2 review): JournalRecorder schedules its
+    actual disk write as a background task rather than blocking on it
+    (JournalRecorder._schedule()), so finish_turn() returning - and the
+    caller announcing the turn is over - used to race ahead of it. Masked
+    for a normal turn's multi-second duration (generation + TTS gives the
+    write plenty of time), but a turn ending very quickly - an interrupt
+    during the "thinking" phase, confirmed live - could return before the
+    write, and the live Journal panel's update, had happened at all.
+    finish_turn() is the one place both a normal completion and an
+    interrupt converge to end a turn, so the fix belongs here rather than
+    duplicated in each caller."""
+    write_finished = asyncio.Event()
+
+    class _SlowJournalRecorder:
+        def __init__(self) -> None:
+            self.wait_calls = 0
+
+        async def wait_for_pending(self) -> None:
+            self.wait_calls += 1
+            await write_finished.wait()
+
+    journal_recorder = _SlowJournalRecorder()
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        journal_recorder=journal_recorder
+    )
+    orchestrator._busy = True
+
+    finish_task = asyncio.create_task(orchestrator.finish_turn())
+    await asyncio.sleep(0)
+
+    assert journal_recorder.wait_calls == 1
+    assert orchestrator.is_busy is True  # finish_turn() has not returned yet
+
+    write_finished.set()
+    await finish_task
+
+    assert orchestrator.is_busy is False
 
 
 # --- mic auto-pause during speech (task-10, layered on the cooldown above) --
