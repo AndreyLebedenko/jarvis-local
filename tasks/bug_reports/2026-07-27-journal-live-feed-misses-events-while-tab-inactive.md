@@ -2,6 +2,10 @@
 
 **Commit where detected:** `24615bf` (task-v1.7.0-2, interrupt hotkey and
 cancellation core).
+**Backlog task:** `tasks/backlog/journal-live-feed-stale-on-tab-reactivation.md`
+(filed 2026-07-29 after the bug was cleanly re-demonstrated during the
+task-v1.7.0-3 live verification). This report stays the full diagnosis; the
+backlog card carries the fix boundary and acceptance criteria.
 
 ## Symptoms
 
