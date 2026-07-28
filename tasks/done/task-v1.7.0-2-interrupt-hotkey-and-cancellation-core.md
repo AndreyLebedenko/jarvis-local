@@ -1,7 +1,10 @@
 # Task v1.7.0-2: Interrupt hotkey and cancellation core
 
-**Status:** Implemented, automated tests green. Awaiting the human-run
-end-to-end handoff (`tasks/interrupt-hotkey-handoff.md`) before closing.
+**Status:** Completed. Automated tests green, human handoff run and
+passed on real hardware (2026-07-27). One unrelated Journal UI bug
+found along the way is filed separately - see
+`tasks/bug_reports/2026-07-27-journal-live-feed-misses-events-while-tab-inactive.md`
+- and does not block this card.
 **Story:** `tasks/story-v1.7.0-barge-in.md`
 **Depends on:** `tasks/done/task-v1.7.0-1-aec-spike.md` (completed; drove
 the pivot to a hotkey as the primary mechanism). Gates task 4
@@ -110,9 +113,10 @@ mechanism from VAD-during-playback instead of a keypress.
 
 ## Acceptance criteria
 
-- [ ] Pressing the hotkey mid-response stops TTS playback and the
-      backend stream within a short, measured latency. *(implemented;
-      real-hardware latency is the human handoff's job)*
+- [x] Pressing the hotkey mid-response stops TTS playback and the
+      backend stream within a short, measured latency. *(verified live
+      in the 2026-07-27 handoff run: "Всё проверил. Всё работает по
+      сути.")*
 - [x] `_busy` always clears after an interrupt and a following turn is
       accepted normally - proven by an automated regression test, not
       only manual observation
