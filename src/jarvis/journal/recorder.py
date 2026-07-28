@@ -10,6 +10,7 @@ from jarvis.journal.events import (
     JournalEvent,
     JournalEventAppended,
     JSONValue,
+    TurnOutcome,
     new_session_id,
 )
 from jarvis.journal.fork import ForkSeedDropReport
@@ -84,11 +85,16 @@ class JournalRecorder:
             )
         )
 
-    async def record_assistant(self, text: str) -> None:
+    async def record_assistant(
+        self, text: str, *, outcome: TurnOutcome | None = None
+    ) -> None:
         if not self._enabled:
             return
         timestamp = self._now()
         session_id = self._session(timestamp)
+        metadata: dict[str, JSONValue] = (
+            {"outcome": outcome.value} if outcome is not None else {}
+        )
         self._schedule(
             self._append_event(
                 session_id=session_id,
@@ -97,6 +103,7 @@ class JournalRecorder:
                 role="assistant",
                 text=text,
                 media=(),
+                metadata=metadata,
             )
         )
 

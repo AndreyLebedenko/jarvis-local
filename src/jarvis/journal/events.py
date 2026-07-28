@@ -5,6 +5,7 @@ import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
@@ -13,6 +14,29 @@ _VALID_ROLES = frozenset({"user", "assistant", "system"})
 
 JSONScalar = str | int | float | bool | None
 JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
+
+
+class TurnOutcome(Enum):
+    """How a turn ended without a normal completed answer (task-v1.7.0-3).
+    Stored as ``metadata["outcome"]`` on an assistant JournalEvent, and used
+    to pick the ConversationHistory system note - see
+    Orchestrator.record_aborted_turn() in app.py.
+
+    FAILED specifically means no response was ever produced (the
+    backend/dispatch call itself failed) - deliberately not a generic
+    "something went wrong" value, so the journal never tells a user "no
+    response - backend error" for a turn the model actually answered.
+
+    A third outcome for "the model answered but TTS failed to flush/play
+    it" was considered and rejected (task-v1.7.0-3 review, second round):
+    the real TtsOutput.on_response_complete() only performs synchronous,
+    in-memory buffer operations and cannot raise, and every real
+    synthesis/playback failure surfaces later, through wait_for_pending(),
+    by which point the turn is already fully and correctly recorded - there
+    is no reachable gap to label."""
+
+    INTERRUPTED = "interrupted"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)

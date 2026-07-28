@@ -1983,6 +1983,8 @@ function _journalEventElement(event, position = null) {
   }
   const provenanceDetail = _journalProvenanceDetail(event);
   if (provenanceDetail !== null) message.appendChild(provenanceDetail);
+  const outcomeDetail = _journalOutcomeDetail(event);
+  if (outcomeDetail !== null) message.appendChild(outcomeDetail);
   return message;
 }
 
@@ -1996,6 +1998,22 @@ function _journalProvenanceDetail(event) {
   detail.className = "journal-provenance-detail";
   detail.textContent = uiString("journal_fork_truncated").replace(
     "{count}", String(seed.dropped_turns || 0));
+  return detail;
+}
+
+// task-v1.7.0-3: an assistant entry that never got a normal completed
+// answer (hotkey interrupt or a hard backend failure) is tagged
+// event.metadata.outcome by JournalRecorder.record_assistant() - shown the
+// same way fork's seed-truncation note is, so it reads as an explicit
+// recorded outcome rather than a silently unanswered turn.
+function _journalOutcomeDetail(event) {
+  if (event.role !== "assistant" || !event.metadata || !event.metadata.outcome) {
+    return null;
+  }
+  const key = "journal_outcome_" + event.metadata.outcome;
+  const detail = document.createElement("div");
+  detail.className = "journal-provenance-detail";
+  detail.textContent = uiString(key);
   return detail;
 }
 

@@ -88,7 +88,7 @@ from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
-from jarvis.journal.events import parse_journal_timestamp
+from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
     ForkSessionReason,
@@ -222,6 +222,17 @@ class ConversationHistory:
 
 DEFAULT_TEXT_INPUT_MAX_CHARS = 20000
 
+# ConversationHistory notes for a turn ended by record_aborted_turn()
+# (task-v1.7.0-3) rather than a normal ResponseComplete. A separate
+# system-role Turn, not text appended to whatever partial answer was
+# recorded - see record_aborted_turn()'s docstring for why. Russian: this is
+# dialog data sent to the model, like the system prompt and time-context
+# injection, not documentation (CLAUDE.md rule 9's runtime-string exception).
+_INTERRUPTED_HISTORY_NOTE = (
+    "Пользователь прервал этот ответ до того, как он был закончен."
+)
+_FAILED_HISTORY_NOTE = "Ответ не был получен из-за технической ошибки бэкенда."
+
 
 class Orchestrator:
     """Owns per-turn orchestration across input, backend, history, and cues."""
@@ -258,6 +269,17 @@ class Orchestrator:
         self._busy = False
         self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
         self._journal_turn_started = False
+        # Set once record_voice_user()/record_text_user() actually returns
+        # (task-v1.7.0-3 review) - see record_aborted_turn(). Replaced with
+        # a fresh Event every turn in _start_turn(), same reason
+        # _response_tokens etc. are: a stale, already-set Event left over
+        # from a previous turn must never be mistaken for this turn's.
+        self._journal_recording_done = asyncio.Event()
+        # Test-introspection only (mirrors _active_chat_task's existing
+        # pattern): the background task record_aborted_turn() creates when
+        # it must defer the outcome write - see its docstring. Not read by
+        # any production code path.
+        self._pending_aborted_journal_write: asyncio.Task[None] | None = None
         # Set for the duration of the backend call only (task-v1.7.0-2
         # interrupt) - see cancel_active_turn() and _start_turn().
         self._active_chat_task: asyncio.Task | None = None
@@ -267,7 +289,16 @@ class Orchestrator:
         # before _dispatch_backend_request() even starts) - this flag
         # lets that method notice and skip dispatching instead of
         # starting a backend request for a turn already declared over.
-        self._interrupt_requested = False
+        # An Event, not a bool (task-v1.7.0-3 review, third round): a new
+        # turn B replaces this attribute with its own fresh Event in
+        # _start_turn() the moment it is accepted, which can happen while
+        # turn A's own _start_turn() invocation is still suspended
+        # somewhere (e.g. a slow journal-recording call) - turn A's own
+        # resumption must keep checking *its own* Event object (captured
+        # locally when created), not whatever this attribute currently
+        # points to, or it would see B's fresh "not interrupted" Event and
+        # wrongly conclude it is safe to keep going.
+        self._interrupt_requested = asyncio.Event()
         # Latched per turn (task-v1.7.0-2 interrupt, review finding 1) -
         # see claim_turn_end().
         self._turn_end_claimed = False
@@ -313,7 +344,7 @@ class Orchestrator:
         successful claim_turn_end() themselves - this method does not
         check busy, so calling it without that guard could arm the flag
         for whatever turn starts next instead of the one intended."""
-        self._interrupt_requested = True
+        self._interrupt_requested.set()
         if self._active_chat_task is not None:
             self._active_chat_task.cancel()
 
@@ -572,29 +603,75 @@ class Orchestrator:
             logger.info("Ignoring new turn: previous request still in flight")
             return
         self._busy = True
-        self._interrupt_requested = False
+        # Captured locally, not just assigned to self.xxx (task-v1.7.0-3
+        # review, third round): a later turn B can start - and rebind both
+        # of these attributes to its own fresh objects - while *this*
+        # invocation is still suspended somewhere below (e.g. a slow
+        # journal-recording call), since _cancel_current_turn() clears busy
+        # without waiting for this coroutine to actually exit. Every check
+        # or `.set()` against these two signals further down in this method
+        # (and in _dispatch_backend_request(), which receives
+        # interrupt_requested as a parameter for the same reason) uses these
+        # local names instead of re-reading self._interrupt_requested/
+        # self._journal_recording_done, so this turn always observes and
+        # signals *its own* state even after a later turn has moved on.
+        interrupt_requested = asyncio.Event()
+        journal_recording_done = asyncio.Event()
+        self._interrupt_requested = interrupt_requested
+        self._journal_recording_done = journal_recording_done
         self._turn_end_claimed = False
         self._journal_turn_started = False
+        # Set here, before the journal-recording await below can yield to a
+        # concurrent interrupt (task-v1.7.0-3): record_aborted_turn() reads
+        # these to describe *this* turn if it never completes normally, and
+        # must never see the *previous* turn's leftover text/tokens because
+        # this turn's own assignment had not happened yet. No `await` runs
+        # between _busy = True above and this point, so there is no window
+        # for a concurrent cancel_active_turn() to observe a half-updated
+        # state here.
+        self._current_turn_history_text = history_text
+        self._response_tokens = []
+        self._spoke_this_turn = False
         if self._journal_recorder is not None:
+            # _journal_turn_started is set *before* each await, not after
+            # (task-v1.7.0-3 review): record_aborted_turn() reads this flag
+            # to decide whether to write a journal entry for a turn that
+            # never completes normally. Setting it only after the await
+            # returned left a window - reachable by an interrupt landing
+            # during the await itself - where the write had already been
+            # decided on (and, in a slower JournalRecorder implementation,
+            # already scheduled) but the flag still read False, so a
+            # concurrent record_aborted_turn() silently skipped the journal
+            # side entirely. Setting it here also removes a second, subtler
+            # bug: the old post-await assignment ran even after an
+            # interrupt had already ended this turn (and already reset the
+            # flag to False for it) - resurrecting a stale True left over
+            # from an ended turn until the next _start_turn() call reset it.
             if source is TurnSource.VOICE and voice_wav_bytes is not None:
+                self._journal_turn_started = True
                 await self._journal_recorder.record_voice_user(
                     voice_wav_bytes, screenshot_png_bytes=screenshot_png_bytes
                 )
-                self._journal_turn_started = True
             elif source in {TurnSource.TEXT, TurnSource.TEXT_INPUT}:
+                self._journal_turn_started = True
                 await self._journal_recorder.record_text_user(
                     history_text, source=journal_source or "text"
                 )
-                self._journal_turn_started = True
             elif source is TurnSource.ATTACHMENT:
                 # No media reference is recorded, matching record_text_user()'s
                 # existing text-only contract (only record_voice_user() ever
                 # writes a journal media file) - the journal-recording policy
                 # does not extend to attachment media.
+                self._journal_turn_started = True
                 await self._journal_recorder.record_text_user(
                     history_text, source="attachment"
                 )
-                self._journal_turn_started = True
+        # Marks that whichever journal-recording decision above was made
+        # (including "none") has been carried out - record_aborted_turn()
+        # waits on this before writing the assistant/outcome side, so it
+        # never races ahead of the user's own entry in the append-only
+        # journal (task-v1.7.0-3 review, second round).
+        journal_recording_done.set()
         # Checked here and again after TurnAccepted (review finding 2,
         # round 2): an interrupt can be requested while still inside the
         # journal-recording await above, before _dispatch_backend_request()
@@ -605,11 +682,11 @@ class Orchestrator:
         # UI-visible "TurnCompleted -> TurnAccepted" with nothing to
         # follow, since _dispatch_backend_request()'s own check (below)
         # would then skip the backend call entirely.
-        if self._interrupt_requested:
+        if interrupt_requested.is_set():
             return
         if self._bus is not None:
             await self._bus.publish(TurnAccepted, TurnAccepted(source=source))
-        if self._interrupt_requested:
+        if interrupt_requested.is_set():
             return
         await self._sound_cues.play("thinking")
 
@@ -626,9 +703,6 @@ class Orchestrator:
         )
         messages.append({"role": "user", "content": history_text})
 
-        self._current_turn_history_text = history_text
-        self._response_tokens = []
-        self._spoke_this_turn = False
         # Sampled here, synchronously, with no `await` before it reaches
         # backend.chat()'s argument list: a hotkey/UI change that lands
         # while this turn's request is already in flight cannot
@@ -639,7 +713,12 @@ class Orchestrator:
             self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
         )
         await self._dispatch_backend_request(
-            messages, media_b64, reasoning_level, inputs, audio_duration_seconds
+            messages,
+            media_b64,
+            reasoning_level,
+            inputs,
+            audio_duration_seconds,
+            interrupt_requested,
         )
 
     async def _dispatch_backend_request(
@@ -649,6 +728,7 @@ class Orchestrator:
         reasoning_level: ReasoningLevel,
         inputs: tuple[ModelRequestInput, ...],
         audio_duration_seconds: float | None,
+        interrupt_requested: asyncio.Event,
     ) -> None:
         """Runs the backend call as a cancellable task and handles its
         three outcomes: normal completion (nothing further to do here -
@@ -658,15 +738,28 @@ class Orchestrator:
         quietly rather than racing it), and failure (this turn's own
         responsibility to clean up).
 
-        Checks _interrupt_requested before dispatching anything (review
+        Checks interrupt_requested before dispatching anything (review
         finding 2): an interrupt landing during the journal/bus/cue work
         above, before this method even runs, would otherwise be
         forgotten - cancel_active_turn() has no task to cancel yet at
         that point, so without this check the backend call would start
         anyway, right after _cancel_current_turn() already told the rest
-        of the app the turn was over."""
-        if self._interrupt_requested:
+        of the app the turn was over. Takes this as a parameter rather than
+        reading self._interrupt_requested (task-v1.7.0-3 review, third
+        round): a later turn can replace that attribute with its own fresh
+        Event while this call is still suspended below (e.g. still awaiting
+        ModelRequestStarted's publish) - reading the parameter instead means
+        this call keeps checking *this* turn's own signal even then."""
+        if interrupt_requested.is_set():
             return
+        # Ownership guard (task-v1.7.0-3 review, fifth round): this dispatch
+        # may only ever clear the task *it* created. A stale invocation from
+        # an interrupted turn A can resume (from the ModelRequestStarted
+        # publish below) after a later turn B has already stored its own
+        # task in self._active_chat_task - A's finally must then leave B's
+        # reference alone, or the next interrupt would find nothing to
+        # cancel while B's backend request keeps running.
+        own_chat_task: asyncio.Task | None = None
         try:
             if self._bus is not None:
                 request_started = ModelRequestStarted(
@@ -685,12 +778,25 @@ class Orchestrator:
                     model_request_log_message(request_started),
                 )
                 await self._bus.publish(ModelRequestStarted, request_started)
-            self._active_chat_task = asyncio.create_task(
+                # Re-checked here (task-v1.7.0-3 review, fourth round): the
+                # single check above this `try` is not enough by itself -
+                # EventBus.publish() awaits every subscriber, a real
+                # suspension point, and an interrupt landing during it finds
+                # no _active_chat_task yet to cancel (created only below).
+                # Without this second check, resuming here after the
+                # interrupt already ran _cancel_current_turn()'s full
+                # cleanup (busy cleared, TurnCompleted published) would
+                # still go on to dispatch a stale backend request - into a
+                # later turn's own state, if one has since started.
+                if interrupt_requested.is_set():
+                    return
+            own_chat_task = asyncio.create_task(
                 self._backend.chat(
                     messages, images_b64=media_b64, reasoning_level=reasoning_level
                 )
             )
-            await self._active_chat_task
+            self._active_chat_task = own_chat_task
+            await own_chat_task
         except asyncio.CancelledError:
             return
         except Exception:
@@ -698,10 +804,18 @@ class Orchestrator:
             if self._bus is not None:
                 await self._bus.publish(BackendRequestFailed, BackendRequestFailed())
             await self._sound_cues.play("error")
-            self._journal_turn_started = False
+            # Gated on claim_turn_end() purely to avoid double-recording if a
+            # hotkey interrupt races this same failure (task-v1.7.0-3): a lost
+            # claim means _cancel_current_turn() already recorded this turn as
+            # interrupted. Everything else below (busy-clearing) is
+            # unconditional, exactly as before - only the new recording call
+            # is guarded.
+            if self.claim_turn_end():
+                await self.record_aborted_turn(outcome=TurnOutcome.FAILED)
             self._busy = False
         finally:
-            self._active_chat_task = None
+            if self._active_chat_task is own_chat_task:
+                self._active_chat_task = None
 
     async def on_response_token(self, event: ResponseToken) -> None:
         self._response_tokens.append(event.text)
@@ -722,6 +836,77 @@ class Orchestrator:
         if self._journal_recorder is not None and self._journal_turn_started:
             await self._journal_recorder.record_assistant(full_text)
             self._journal_turn_started = False
+
+    async def record_aborted_turn(self, *, outcome: TurnOutcome) -> None:
+        """Records a turn that ends without its answer being recorded
+        through the normal on_response_complete() path above - cancelled by
+        an interrupt (TurnOutcome.INTERRUPTED, from _cancel_current_turn())
+        or ended by a hard dispatch failure before any answer existed
+        (TurnOutcome.FAILED, from _dispatch_backend_request()'s except
+        clause). Whatever text had been generated so far - empty or partial
+        - is recorded in ConversationHistory and the journal instead of
+        being silently discarded, per the story's append-only invariant - a
+        later turn must not find this exchange missing outright.
+
+        Callers must only invoke this once per turn and only when certain
+        on_response_complete() has not already recorded it - claim_turn_end()
+        is the guard both current callers use (_cancel_current_turn(),
+        _dispatch_backend_request()).
+
+        A separate system-role Turn carries the outcome rather than a
+        marker appended to the assistant's own text: this reuses the
+        pattern already established - and verified against the real model -
+        by the per-turn time-context injection (format_time_context) of
+        interleaving system-role content into the message list (see
+        PROJECT.md's v1.3.2 architecture note), keeps the assistant's
+        recorded words literal, and means an empty response never has to
+        become an empty assistant Turn.
+
+        Journal-write ordering (task-v1.7.0-3 review, second round): if the
+        user's own record_voice_user()/record_text_user() call for this turn
+        has already returned (_journal_recording_done already set - true for
+        every real call today, since neither method has an internal `await`
+        before scheduling its own write), the outcome is written immediately,
+        exactly as before, so finish_turn()'s wait_for_pending() still waits
+        for it. If it has *not* yet returned - not reachable with the real
+        JournalRecorder, but reachable if a future implementation gains a
+        real await before scheduling - writing immediately would race ahead
+        of the user's own entry in the append-only journal. Deferred instead
+        to a background task that waits for it first, so the write always
+        lands in the correct order; deliberately not awaited here, since
+        blocking would make the interrupt itself wait on however long that
+        write takes - the same trade-off _cancel_current_turn() already
+        makes by not gating tts_output.cancel()/backend cancellation on
+        claim_turn_end(). Accepted cost of that (currently unreachable)
+        branch: the deferred write may land after finish_turn() returns,
+        same class of eventual-consistency gap already accepted for the
+        Journal tab-inactive case (see
+        tasks/bug_reports/2026-07-27-journal-live-feed-misses-events-while-tab-inactive.md),
+        not a new one."""
+        text = "".join(self._response_tokens)
+        self._history.add("user", self._current_turn_history_text)
+        if text:
+            self._history.add("assistant", text)
+        notes = {
+            TurnOutcome.INTERRUPTED: _INTERRUPTED_HISTORY_NOTE,
+            TurnOutcome.FAILED: _FAILED_HISTORY_NOTE,
+        }
+        self._history.add("system", notes[outcome])
+        if self._journal_recorder is not None and self._journal_turn_started:
+            journal_recorder = self._journal_recorder
+            if self._journal_recording_done.is_set():
+                await journal_recorder.record_assistant(text, outcome=outcome)
+            else:
+                recording_done = self._journal_recording_done
+
+                async def _write_after_user_recorded() -> None:
+                    await recording_done.wait()
+                    await journal_recorder.record_assistant(text, outcome=outcome)
+
+                self._pending_aborted_journal_write = asyncio.create_task(
+                    _write_after_user_recorded()
+                )
+        self._journal_turn_started = False
 
     async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
         """Clears the busy flag, optionally after a cooldown, and resumes
@@ -1103,6 +1288,14 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
         # normal completion, instead of leaving neither cue played.
         pass
     except Exception:
+        # task-v1.7.0-3 (review, second round): considered and rejected
+        # calling record_aborted_turn() here. The real TtsOutput.on_response_
+        # complete() only performs synchronous, in-memory buffer operations
+        # and cannot raise; every real synthesis/playback failure surfaces
+        # later, through wait_for_pending() - by which point orchestrator.
+        # on_response_complete() above has already recorded this turn
+        # normally, so calling record_aborted_turn() here would double it.
+        # There is no reachable sub-case left to record.
         logger.exception("Response completion failed")
         await app.sound_cues.play("error")
         return
@@ -1152,6 +1345,12 @@ async def _cancel_current_turn(app: App) -> bool:
     app.tts_output.cancel()
     if not app.orchestrator.claim_turn_end():
         return True
+    # task-v1.7.0-3: record what this turn had produced (possibly nothing)
+    # before finishing it - the loser of claim_turn_end() (a concurrent
+    # _on_full_response_complete()) would have recorded the turn normally
+    # instead, so this only ever runs for a turn that genuinely never
+    # completed on its own.
+    await app.orchestrator.record_aborted_turn(outcome=TurnOutcome.INTERRUPTED)
     await app.orchestrator.finish_turn(
         cooldown_seconds=app.settings.vad.resume_cooldown_seconds
     )

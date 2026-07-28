@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from jarvis.journal import JournalEvent, JournalRecorder, JournalStore, new_session_id
+from jarvis.journal import (
+    JournalEvent,
+    JournalRecorder,
+    JournalStore,
+    TurnOutcome,
+    new_session_id,
+)
 from jarvis.journal.fork import ForkSeedDropReport
 
 
@@ -374,6 +380,44 @@ async def test_recorder_writes_voice_clipboard_and_assistant_events(
     assert (
         session_dir / "utterance-20260716-153000-0001.wav"
     ).read_bytes() == b"same wav bytes sent to model"
+
+
+async def test_record_assistant_with_outcome_stores_it_in_metadata(
+    tmp_path: Path,
+) -> None:
+    """task-v1.7.0-3: an interrupted or failed turn's assistant entry is
+    tagged with its outcome rather than looking like an ordinary, silently
+    unanswered turn."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_text_user("what happened")
+    await recorder.record_assistant("partial answer", outcome=TurnOutcome.INTERRUPTED)
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [_user_event, assistant_event] = replay.events
+    assert assistant_event.metadata == {"outcome": "interrupted"}
+
+
+async def test_record_assistant_without_outcome_keeps_metadata_empty(
+    tmp_path: Path,
+) -> None:
+    """Regression guard: a normal completion's recorded event must stay
+    byte-for-byte the same as before outcome existed."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_assistant("final answer")
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert event.metadata == {}
 
 
 async def test_recorder_writes_voice_event_with_screenshot_media(
