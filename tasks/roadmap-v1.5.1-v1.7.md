@@ -415,9 +415,10 @@ Story/task readiness: story card exists at
 cancellation core), and task 3 (turn and journal handling) are completed
 and closed. Task 4 (experimental voice barge-in) is deferred to backlog
 (`tasks/backlog/experimental-voice-barge-in.md`, owner decision,
-2026-07-29, not a technical blocker) - not scheduled next. Task 5 (docs
-and release verification) depends on task 4 for its voice-path portion
-and needs its scope re-checked once task 4 is picked back up.
+2026-07-29, not a technical blocker) - not scheduled next. Task 5 (hotkey
+docs and release verification) is completed and closed. When task 4 is
+picked back up, its voice-path docs and verification need a new task or an
+explicit reopening of the completed card.
 
 ## v1.7.1 - Memory layer B, part 1: consolidation (near/far journal)
 

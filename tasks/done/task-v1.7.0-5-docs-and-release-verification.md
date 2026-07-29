@@ -1,6 +1,9 @@
 # Task v1.7.0-5: Docs and release verification
 
-**Status:** Proposed. Not yet started.
+**Status:** Completed. Automated checks green; the owner confirmed the hotkey
+cancellation feature works as expected on 2026-07-29. The known stale Journal
+feed when its tab is inactive remains a separate backlog item, not a loss of
+the interrupted turn or a cancellation-core failure.
 **Story:** `tasks/story-v1.7.0-barge-in.md`
 **Depends on:** tasks v1.7.0-2 and v1.7.0-3, both completed and closed.
 
@@ -60,14 +63,9 @@ docs, and prepare the human-run end-to-end verification checklist.
   project's other hotkeys wherever they are already listed for users
   (README.md / README.ru.md and/or `config.example.toml`, matching
   existing precedent for how the other five hotkeys are documented).
-- **Fix the stale forward reference already in `config.example.toml`
-  (line 56-59, `[hotkeys]` block).** The comment above `interrupt =
-  "ctrl+alt+i"` currently reads "unlike the separate experimental voice
-  barge-in option", worded as if that option exists today. It does not -
-  task 4 is deferred to backlog, unopened. Correct the comment (already
-  patched provisionally as part of this review pass; verify it still
-  reads accurately once this task's other doc changes land) so it does
-  not claim or imply a voice option is configurable.
+- **Keep the `config.example.toml` comment above `interrupt = "ctrl+alt+i"`
+  limited to the implemented hotkey.** It must not claim or imply that a
+  voice option is configurable; task 4 is deferred to backlog and unopened.
 - Human-run end-to-end checklist for the hotkey path, extending
   `tasks/interrupt-hotkey-handoff.md` rather than replacing it. The
   existing handoff covers mid-speech (TTS) and pre-speech ("thinking",
@@ -93,13 +91,26 @@ docs, and prepare the human-run end-to-end verification checklist.
 
 ## Acceptance criteria
 
-- [ ] `PROJECT.md` documents the hotkey architecture, the shared
+- [x] `PROJECT.md` documents the hotkey architecture, the shared
       cancellation core, and the interrupted-turn journal/history
       contract, with an explicit note that voice barge-in is deferred.
-- [ ] User-facing docs list the interrupt hotkey binding.
-- [ ] The human-run end-to-end checklist for the hotkey path is prepared
+- [x] User-facing docs list the interrupt hotkey binding.
+- [x] The human-run end-to-end checklist for the hotkey path is prepared
       and handed off; verified outcome is recorded before the story
       treats the hotkey mechanism as release-ready.
-- [ ] `python -m pytest` and Ruff checks are green.
-- [ ] Nothing in this task's output claims voice barge-in is documented,
+- [x] `python -m pytest` and Ruff checks are green.
+- [x] Nothing in this task's output claims voice barge-in is documented,
       configured, or verified.
+
+## Verification outcome (2026-07-29)
+
+- Automated checks: `python -m ruff format --check .`, `python -m ruff
+  check .`, and `python -m pytest` passed (1438 passed, 1 skipped).
+- Owner-run hotkey verification: confirmed the interruption feature works as
+  expected.
+- Known non-blocking UI limitation: if a `journal_event` arrives while the
+  Journal tab is inactive, the already-selected feed can remain stale until
+  a reload. The event is already stored and is not lost. This is the
+  pre-existing browser-side issue recorded in
+  `tasks/backlog/journal-live-feed-stale-on-tab-reactivation.md`; it is
+  outside this cancellation-core/docs task.

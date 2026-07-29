@@ -179,6 +179,8 @@ Default hotkeys:
 - `Ctrl+Alt+V`: submit clipboard text as a turn.
 - `Ctrl+Alt+M`: toggle microphone sleep/wake.
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
+- `Ctrl+Alt+I`: interrupt the active response, stopping speech playback and
+  backend generation, then return Jarvis to listening.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
 ## Logs and diagnostics

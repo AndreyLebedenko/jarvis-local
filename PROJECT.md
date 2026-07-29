@@ -2864,12 +2864,11 @@ original AEC-hard-gate premise:**
   voice-triggered barge-in. It is deterministic and hardware-independent:
   it does not care about acoustics, room, or microphone/speaker
   combination, and needs no echo cancellation of any kind.
-- **Voice-triggered interruption is scoped to an opt-in, default-off,
-  headphones-only experimental feature**, justified specifically by the
-  near-zero-echo finding above - it is not offered for desktop speakers
-  or any other output path, and the config carries an explicit,
-  prominent warning to that effect (precedent: config.example.toml's
-  camera `[[camera.sources]]` clear-text credential warning).
+- **Voice-triggered interruption is deferred to backlog.** The headphone
+  finding still justifies investigating a future opt-in, default-off,
+  headphones-only experimental path, but task 4 was deferred on 2026-07-29
+  before implementation. There is no voice-barge-in setting, warning, or
+  release verification in v1.7.0's hotkey-only slice.
 - **General-hardware AEC is parked, not pursued further**, for reasons
   beyond this one candidate's result: unlike a commercial smart speaker
   (fixed, lab-characterized hardware its detector is tuned against),
@@ -2881,6 +2880,26 @@ original AEC-hard-gate premise:**
   "works," because real AEC residual carries its own artifacts. If
   revisited, the natural next step is a production-grade AEC library
   against real hardware, not further tuning of the pure-numpy NLMS spike.
+
+**Implemented hotkey architecture (tasks v1.7.0-2 and v1.7.0-3):**
+
+- `HotkeySettings.interrupt` defaults to `ctrl+alt+i`. Its listener publishes
+  `InterruptRequested`; it does not decide engine state from the hotkey
+  callback thread. The hotkey is a no-op while no turn is active.
+- `Orchestrator.cancel_active_turn()` and `_cancel_current_turn()` are the
+  single cancellation path. They stop the backend task and call
+  `TtsOutput.cancel()` before resolving the turn end, so queued speech and
+  unfinished sentence state cannot leak into a later turn. `claim_turn_end()`
+  makes the completion bookkeeping single-owner when normal completion,
+  backend failure, and interruption race. This is the path a future voice
+  trigger must reuse rather than duplicate.
+- An interrupted turn is retained rather than silently dropped. History gets
+  the user's turn, any text actually streamed as an assistant turn, and a
+  system outcome note; the journal gets the matching assistant record with
+  `outcome: interrupted`. Hard backend failures use the same additive shape
+  with `outcome: failed`. Per-turn state and journal ordering guards ensure
+  an outcome record belongs to its own user entry and cannot be written twice
+  or attributed to a later turn.
 
 ## Project verification contract (v1.2.2)
 
