@@ -713,12 +713,6 @@ class Orchestrator:
             return
         await self._sound_cues.play("thinking")
 
-        # Sampled here, synchronously, with no `await` before it reaches
-        # backend.chat()'s argument list: a hotkey/UI change that lands
-        # while this turn's request is already in flight cannot
-        # retroactively change what was already passed - see
-        # thinking_mode.py and the story's "sampled at turn start, not the
-        # live stream" decision.
         reasoning_level = (
             self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
         )
