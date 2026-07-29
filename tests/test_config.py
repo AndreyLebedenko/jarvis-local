@@ -1449,6 +1449,22 @@ def test_empty_prompt_raises_config_error_naming_the_field(tmp_path, field_name)
         load_settings(config_path)
 
 
+def test_empty_system_prompt_preserves_the_existing_config_error_message(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[prompts]\nsystem = ""\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError) as error:
+        load_settings(config_path)
+
+    assert str(error.value) == (
+        "[prompts].system must be a non-empty string; an empty prompt is "
+        "almost certainly a config mistake"
+    )
+
+
 def test_prompt_of_wrong_type_raises_config_error(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

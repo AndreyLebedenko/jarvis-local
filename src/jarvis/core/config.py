@@ -797,11 +797,7 @@ def _build_prompts_section(
 ) -> "PromptSettings":
     settings = _build_plain_section(section_name, PromptSettings, raw)
     for name in ("system", "warmup"):
-        if not getattr(settings, name).strip():
-            raise ConfigError(
-                f"[{section_name}].{name} must be a non-empty string; an empty "
-                "prompt is almost certainly a config mistake"
-            )
+        _require_non_empty_prompt(section_name, name, getattr(settings, name))
     resolved = {
         name: _resolve_reasoning_prompt(
             section_name, name, getattr(settings, name), prompt_root
@@ -829,8 +825,6 @@ def _resolve_reasoning_prompt(
 
     prompt_path = prompt_root.joinpath(*path_parts)
     try:
-        if not prompt_path.is_file():
-            raise OSError("prompt reference is not a readable file")
         prompt = prompt_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(
