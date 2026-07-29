@@ -38,7 +38,7 @@ import json
 import re
 import tomllib
 from dataclasses import MISSING, dataclass, field, fields, replace
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, get_args, get_origin
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
@@ -529,6 +529,9 @@ class PromptSettings:
 
     system: str = _DEFAULT_SYSTEM_PROMPT
     warmup: str = _DEFAULT_WARMUP_PROMPT
+    reasoning_low: str | None = None
+    reasoning_medium: str | None = None
+    reasoning_high: str | None = None
 
 
 @dataclass(frozen=True)
@@ -616,13 +619,19 @@ def _describe_type(expected_type: type) -> str:
     )
 
 
-def _build_section(section_name: str, cls: type, raw: dict[str, Any]) -> Any:
+def _build_section(
+    section_name: str,
+    cls: type,
+    raw: dict[str, Any],
+    *,
+    prompt_root: Path,
+) -> Any:
     if cls is TtsSettings:
         return _build_tts_section(section_name, raw)
     if cls is UiSettings:
         return _build_ui_section(section_name, raw)
     if cls is PromptSettings:
-        return _build_prompts_section(section_name, raw)
+        return _build_prompts_section(section_name, raw, prompt_root)
     if cls is McpSettings:
         return _build_mcp_section(section_name, raw)
     if cls is MemorySettings:
@@ -783,7 +792,9 @@ def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
     return settings
 
 
-def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSettings":
+def _build_prompts_section(
+    section_name: str, raw: dict[str, Any], prompt_root: Path
+) -> "PromptSettings":
     settings = _build_plain_section(section_name, PromptSettings, raw)
     for name in ("system", "warmup"):
         if not getattr(settings, name).strip():
@@ -791,7 +802,50 @@ def _build_prompts_section(section_name: str, raw: dict[str, Any]) -> "PromptSet
                 f"[{section_name}].{name} must be a non-empty string; an empty "
                 "prompt is almost certainly a config mistake"
             )
-    return settings
+    resolved = {
+        name: _resolve_reasoning_prompt(
+            section_name, name, getattr(settings, name), prompt_root
+        )
+        for name in ("reasoning_low", "reasoning_medium", "reasoning_high")
+    }
+    return replace(settings, **resolved)
+
+
+def _resolve_reasoning_prompt(
+    section_name: str, field_name: str, value: str | None, prompt_root: Path
+) -> str | None:
+    if value is None:
+        return None
+    if not value.startswith("@"):
+        _require_non_empty_prompt(section_name, field_name, value)
+        return value
+
+    referenced_path = PureWindowsPath(value[1:])
+    path_parts = referenced_path.parts
+    if referenced_path.anchor:
+        path_parts = path_parts[1:]
+    if ".." in path_parts:
+        raise ConfigError(f"[{section_name}].{field_name} must stay inside .jarvis")
+
+    prompt_path = prompt_root.joinpath(*path_parts)
+    try:
+        if not prompt_path.is_file():
+            raise OSError("prompt reference is not a readable file")
+        prompt = prompt_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(
+            f"[{section_name}].{field_name} could not read prompt reference"
+        ) from exc
+    _require_non_empty_prompt(section_name, field_name, prompt)
+    return prompt
+
+
+def _require_non_empty_prompt(section_name: str, field_name: str, value: str) -> None:
+    if not value.strip():
+        raise ConfigError(
+            f"[{section_name}].{field_name} must be a non-empty string; an empty "
+            "prompt is almost certainly a config mistake"
+        )
 
 
 def _build_logging_section(section_name: str, raw: dict[str, Any]) -> "LoggingSettings":
@@ -1319,6 +1373,7 @@ def load_settings(
             name,
             cls,
             _merge_raw_section(name, base_raw.get(name, {}), ui_raw.get(name, {})),
+            prompt_root=path.parent / ".jarvis",
         )
         for name, cls in _SECTIONS.items()
     }

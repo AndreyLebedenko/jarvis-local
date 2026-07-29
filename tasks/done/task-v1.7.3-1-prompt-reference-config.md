@@ -1,6 +1,6 @@
 # Task v1.7.3-1: Prompt reference config
 
-**Status:** Proposed.
+**Status:** Completed.
 **Story:** `tasks/story-v1.7.3-reasoning-mode-prompts.md`
 **Depends on:** story approval.
 **Complexity:** Medium. The implementation should be small, but it sits in
