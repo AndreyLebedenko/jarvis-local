@@ -1253,6 +1253,9 @@ def test_prompts_default_to_the_russian_dialog_prompts(tmp_path):
 
     assert settings.prompts.system.startswith("Ты - Джарвис")
     assert settings.prompts.warmup == "Привет"
+    assert settings.prompts.reasoning_low is None
+    assert settings.prompts.reasoning_medium is None
+    assert settings.prompts.reasoning_high is None
 
 
 def test_prompts_parse_from_config(tmp_path):
@@ -1286,6 +1289,149 @@ def test_prompts_allow_partial_override_keeping_other_default(tmp_path):
 
     assert settings.prompts.warmup == "Hello"
     assert settings.prompts.system.startswith("Ты - Джарвис")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "prompt"),
+    [
+        ("reasoning_low", "Use short internal planning."),
+        ("reasoning_medium", "Compare the likely explanations."),
+        ("reasoning_high", "Check assumptions before answering."),
+    ],
+)
+def test_reasoning_prompts_preserve_literal_text(tmp_path, field_name, prompt):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"[prompts]\n{field_name} = {prompt!r}\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert getattr(settings.prompts, field_name) == prompt
+
+
+@pytest.mark.parametrize(
+    ("field_name", "reference", "relative_path", "prompt"),
+    [
+        ("reasoning_low", "@low.md", "low.md", "Plan briefly."),
+        (
+            "reasoning_medium",
+            "@/modes/medium.md",
+            "modes/medium.md",
+            "Consider alternatives.",
+        ),
+        (
+            "reasoning_high",
+            "@C:/modes/high.md",
+            "modes/high.md",
+            "Verify every conclusion.",
+        ),
+    ],
+)
+def test_reasoning_prompt_references_resolve_under_config_local_jarvis_directory(
+    tmp_path, field_name, reference, relative_path, prompt
+):
+    config_path = tmp_path / "config.toml"
+    prompt_path = tmp_path / ".jarvis" / relative_path
+    prompt_path.parent.mkdir(parents=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    config_path.write_text(
+        f"[prompts]\n{field_name} = {reference!r}\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert getattr(settings.prompts, field_name) == prompt
+
+
+@pytest.mark.parametrize(
+    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
+)
+def test_reasoning_prompt_reference_rejects_parent_directory_traversal(
+    tmp_path, field_name
+):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"[prompts]\n{field_name} = '@nested/../prompt.md'\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    ("reference", "prepare_prompt"),
+    [
+        ("@missing.md", lambda prompt_root: None),
+        ("@directory", lambda prompt_root: (prompt_root / "directory").mkdir()),
+        (
+            "@invalid-utf8.md",
+            lambda prompt_root: (prompt_root / "invalid-utf8.md").write_bytes(b"\x80"),
+        ),
+        (
+            "@blank.md",
+            lambda prompt_root: (prompt_root / "blank.md").write_text(
+                " \n\t", encoding="utf-8"
+            ),
+        ),
+    ],
+)
+def test_invalid_reasoning_prompt_reference_raises_config_error_naming_field(
+    tmp_path, reference, prepare_prompt
+):
+    config_path = tmp_path / "config.toml"
+    prompt_root = tmp_path / ".jarvis"
+    prompt_root.mkdir()
+    prepare_prompt(prompt_root)
+    config_path.write_text(
+        f"[prompts]\nreasoning_low = {reference!r}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"\[prompts\].reasoning_low"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
+)
+def test_reasoning_prompt_of_wrong_type_raises_config_error(tmp_path, field_name):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"[prompts]\n{field_name} = 5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize(
+    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
+)
+def test_empty_literal_reasoning_prompt_raises_config_error(tmp_path, field_name):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f'[prompts]\n{field_name} = ""\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
+def test_unknown_prompt_key_still_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "[prompts]\nunknown = 'prompt'\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=r"Unknown key\(s\) in \[prompts\].*unknown"):
+        load_settings(config_path)
 
 
 @pytest.mark.parametrize("field_name", ["system", "warmup"])
