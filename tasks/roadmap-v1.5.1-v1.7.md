@@ -1,12 +1,15 @@
-# Roadmap: v1.5.1 stabilization toward memory, delegated control, camera, and conversational fluidity (v1.7.x)
+# Roadmap: v1.5.1 stabilization through unlimited conversation history (v1.8.0)
 
-**Status:** Accepted roadmap (planning dialog, 2026-07-18).
+**Status:** Accepted roadmap (planning dialogs, 2026-07-18 and 2026-07-29).
 **Branch:** roadmap-v1.5.1-v1.7.
 **Predecessor:** `tasks/done/roadmap-v1.2-v1.4.md` (extends through v1.6.0;
 this roadmap re-plans v1.5.1+ and supersedes that file's forward-looking
 notes about "v1.5.1 or later" journal follow-ups).
 **Context:** v1.5.0 (dialog journal) is released. Open bug reports from its
-release verification are the starting point of this roadmap.
+release verification are the starting point of this roadmap. The 2026-07-29
+extension replaces the separate v1.7.1 consolidation and v1.7.2 retrieval
+plan with one v1.8.0 architecture: an unbounded journal-backed history and a
+bounded model-facing working context.
 
 ## Goal
 
@@ -15,8 +18,9 @@ small, dependency-ordered releases. The companion qualities targeted by this
 roadmap, in priority order agreed with the owner:
 
 1. **Memory across sessions** - the journal becomes the substrate of
-   long-term memory: session continuation, curated fact files, and later a
-   consolidation/retrieval pipeline modeled on human long-term memory.
+   long-term memory: session continuation, curated fact files, and an
+   unlimited conversation history that Jarvis can search and read without
+   growing the normal Ollama request with the journal.
 2. **New senses on command** - a camera module (local USB and LAN/RTSP),
    captured by Jarvis's own tool call, not only by hotkey.
 3. **Delegated control** - Jarvis can switch a strict allowlist of its own
@@ -75,7 +79,7 @@ Scope:
   (`tasks/backlog/status-console-api-stale-pywebview-crash-guard.md`):
   either remove the silent-reject pattern or re-document its real reason.
 - Triage the two non-code reports from 2026-07-17: annotate the retention
-  report with the near/far consolidation decision (see v1.7.0) and define
+  report with the near/far consolidation decision (now part of v1.8.0) and define
   a recurrence protocol for the distorted-capture report (no blind fix).
 - Microphone device-type quality and stability matrix (owner addition,
   2026-07-18): a human-run check script covering USB and Bluetooth
@@ -364,10 +368,11 @@ from journal wav files (see
 ## v1.7.0 - Interrupting Jarvis (hotkey default, experimental voice barge-in for headphones)
 
 **Resequenced from the unversioned v1.7.x "Conversational fluidity" list
-to v1.7.0 (owner decision, 2026-07-26)**, ahead of memory
-consolidation/retrieval below, which shift to v1.7.1 and v1.7.2
-accordingly. Wake-word addressing, the emotion2vec+ side channel, and the
-MCP egress watchdog stay in the unversioned v1.7.x list.
+to v1.7.0 (owner decision, 2026-07-26)**. Consolidation and retrieval were
+first shifted to v1.7.1 and v1.7.2, then superseded by the unified v1.8.0
+history architecture on 2026-07-29. Wake-word addressing, the emotion2vec+
+side channel, and the MCP egress watchdog stay in the unversioned v1.7.x
+list.
 
 **Re-scoped 2026-07-26 after task 1's spike came back no-go for
 general-hardware AEC** (see `PROJECT.md`'s "Architecture v1.7.0 spike"
@@ -420,69 +425,34 @@ docs and release verification) is completed and closed. When task 4 is
 picked back up, its voice-path docs and verification need a new task or an
 explicit reopening of the completed card.
 
-## v1.7.1 - Memory layer B, part 1: consolidation (near/far journal)
+## v1.7.1 and v1.7.2 - Superseded memory-layer split
 
-Purpose: human-modeled long-term memory. The journal splits into a "near
-log" (recent sessions, full media, replayable) and a "far log" (archive):
-text only, voice transcribed to text, images heavily compressed, and -
-central to the design - every archived session carries a model-written
-annotation of what was discussed, which points matter, and why.
-Consolidation is a comprehension step, not mechanical compression (owner
-design, 2026-07-18).
+The original roadmap split long-term history into two releases:
 
-Scope:
+- v1.7.1 built a near/far consolidation pipeline with voice transcription,
+  session annotations, media reduction, and searchable derived text;
+- v1.7.2 added a model-facing retrieval tool over that substrate.
 
-- Archiver pipeline: transcription of voice turns (gemma4's verified
-  verbatim transcription; fills the journal schema's reserved
-  `transcript` field), image downscaling, annotation generation, and the
-  near-to-far transition by session age (configurable boundary; the
-  active session is never archived).
-- Explicit trigger first (owner decision, 2026-07-18): archiving runs on
-  command or schedule ("Jarvis, process the archive"), never silently in
-  the background. A background idle mode is a later, separate decision
-  once an idle concept exists - this is the first workload where Jarvis
-  uses the GPU outside a user turn, and VRAM/turn-latency contention must
-  stay predictable.
-- Annotations and transcripts are visible and editable in the Journal
-  view; raw archived text is preserved in full (cross-cutting rule 7 -
-  the annotation is an overlay, drift is always checkable against the
-  source). Audio files are removed only after their transcript exists
-  (rule 8).
-- Extend the FTS index over transcripts and annotations (currently
-  assistant answers only).
-- Resolves the retention-policy report: this pipeline is the retention
-  policy.
+Owner decision, 2026-07-29: do not implement that split. It described storage
+and search mechanisms separately, but neither release delivered the actual
+user-facing result on its own, and it left the unbounded in-memory
+`ConversationHistory` unchanged. Both entries are superseded by v1.8.0 below.
 
-Boundary:
+The settled decisions from the old entries remain binding in v1.8.0:
 
-- No retrieval tool yet; this story produces the substrate.
-- No change to the near log's fidelity guarantees: near sessions keep
-  bit-identical audio.
-
-Story/task readiness: needs a story card; boundary age and image
-compression parameters are story-card decisions.
-
-## v1.7.2 - Memory layer B, part 2: retrieval
-
-Purpose: "remember when we discussed X" - on-demand enrichment of the
-current turn's context from the journal and archive.
-
-Scope:
-
-- A retrieval builtin tool searching annotations and transcripts: FTS
-  first; local embeddings with a Qdrant write path as a second step if
-  exact/prefix matching proves insufficient (Russian morphology is the
-  known FTS5 weakness).
-- Retrieved passages enter the current turn's context with explicit
-  provenance (which session, when), within a budget.
-
-Boundary:
-
-- Local inference/embedding only; no external services.
-- Retrieval augments the current turn; it never silently rewrites
-  memory.md or history.
-
-Story/task readiness: needs a story card after v1.7.1 lands.
+- the journal is the immutable source of truth and derived data lives beside
+  it;
+- voice is transcribed before any automatic audio deletion;
+- the active session is never archived and the near log keeps its original
+  media;
+- consolidation starts explicitly, not as silent background GPU work;
+- model-written annotations remain size-capped, visible, editable, and
+  traceable to source events;
+- retrieval is local, provenance-bearing, and bounded;
+- exact FTS retrieval is implemented and measured before a local semantic
+  index is selected;
+- retrieval never silently rewrites `memory.md`, `self.md`, or raw journal
+  events.
 
 ## v1.7.3 - Reasoning-mode prompt sections
 
@@ -513,11 +483,63 @@ Story/task readiness: story card exists as
 `tasks/story-v1.7.3-reasoning-mode-prompts.md` with task cards
 `tasks/task-v1.7.3-1..4-*.md` (created 2026-07-29).
 
-## v1.7.x - Conversational fluidity (remaining candidates)
+Dependency note: complete this story before v1.8.0 replaces the current
+message assembly. v1.8.0 consumes its effective system-prompt composition
+contract; it must not reimplement reasoning-level prompt selection.
+
+## v1.8.0 - Unlimited conversation history
+
+Purpose: separate the complete conversation record from the finite working
+context sent to Ollama. Jarvis retains a journal-backed history whose size is
+limited by local storage and retention policy, while each model request stays
+within a measured budget and can read relevant past events through local
+Jarvis APIs and native tools.
+
+Scope:
+
+- An immutable raw journal plus a rebuildable, incrementally maintained
+  derived history corpus for transcripts, annotations, exact search, event
+  ranges, and provenance.
+- Voice transcription and near/far consolidation as supporting mechanisms of
+  unlimited history, not independent user-facing memory layers.
+- Typed local read APIs and a dedicated read-only history tool provider.
+  Common search-and-read operations are batchable so they remain useful
+  inside the bounded tool loop.
+- A working-context assembler that combines the effective system prompt,
+  recent verbatim turns, bounded automatically retrieved passages, the
+  current-turn time context, and the current request while reserving capacity
+  for thinking, tool results, and the final answer.
+- Prompt/context observability including Ollama prompt-token metrics, context
+  composition metrics, index latency, and deterministic degraded behavior.
+- FTS first. A measured Russian-language retrieval gate decides whether a
+  later task inside the story adds local embeddings and which local index it
+  uses.
+- The existing retention-policy report is resolved by the consolidation and
+  media lifecycle delivered inside this story.
+
+Boundary:
+
+- Jarvis-native APIs and tools only. No MCP history server or MCP adapter.
+- No active-task planner, autonomous initiative, graph memory, or general
+  agent runtime.
+- No silent writes to curated memory files, raw journal events, transcripts,
+  or annotations.
+- No cloud inference, embedding, storage, or external service dependency.
+- No change to the verified Ollama media transport, reasoning-trace isolation,
+  current-turn-only media rule, or current-turn time-context semantics.
+- "Unlimited" means independent of the Ollama context window, not infinite
+  disk capacity. Storage use remains visible and governed by explicit
+  retention rules.
+
+Story/task readiness: umbrella story card exists at
+`tasks/story-v1.8.0-unlimited-conversation-history.md`. Implementation task
+cards are opened one at a time in the dependency order recorded there.
+
+## Unversioned - Conversational fluidity candidates
 
 Purpose: turn request-response into conversation. Barge-in was pulled
 forward as v1.7.0 above (owner decision, 2026-07-26). The rest stay
-unversioned candidates, each its own story:
+unversioned candidates after v1.8.0, each its own story:
 
 - **Wake word / addressing** (local openWakeWord or similar): Jarvis
   distinguishes being addressed from ambient speech, prerequisite for
