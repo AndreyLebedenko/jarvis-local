@@ -821,7 +821,7 @@ function setActiveView(view) {
     .querySelectorAll("#viewToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.view === view));
   if (view === "journal" && !_isHiddenActive()) {
-    refreshJournalSessions();
+    refreshJournalSessions(true);
   } else if (view === "settings") {
     refreshSettingsOptions();
   }
@@ -834,6 +834,8 @@ function _onJournalVisibilityChanged(mode) {
   if (mode === "hidden") {
     _clearJournalContent();
   } else if (_isJournalActive()) {
+    // Hidden clears the selection deliberately, so reopening selects the
+    // newest available session instead of restoring a stale feed.
     refreshJournalSessions();
   }
   _syncJournalInputControls();
@@ -1424,7 +1426,7 @@ function _journalUrl(path) {
   return path + separator + "token=" + encodeURIComponent(token);
 }
 
-async function refreshJournalSessions() {
+async function refreshJournalSessions(refetchSelectedFeed = false) {
   const generation = _journalContentGeneration;
   const [payload, usage] = await Promise.all([
     _fetchJournalJson("/api/journal/sessions"),
@@ -1447,6 +1449,12 @@ async function refreshJournalSessions() {
   }
   if (_journalSelectedSessionId === null && sessions.length !== 0) {
     selectJournalSession(sessions[0].id);
+  } else if (refetchSelectedFeed && _journalSelectedSessionId !== null) {
+    if (_isJournalSearchActive()) {
+      _scheduleJournalSearch();
+    } else {
+      selectJournalSession(_journalSelectedSessionId);
+    }
   }
 }
 

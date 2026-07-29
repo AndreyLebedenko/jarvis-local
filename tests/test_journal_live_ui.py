@@ -64,6 +64,31 @@ def test_journal_event_is_ignored_while_hidden_or_off_view():
     assert "if (!_isJournalActive()) return;" in body
 
 
+def test_journal_reactivation_refetches_an_already_selected_feed_once():
+    """An event that arrived while Journal was inactive was intentionally
+    ignored by the live path. Reopening Journal must reconcile that selected
+    feed, without changing refreshes triggered by active-view live events."""
+    set_view_body = _function_body("setActiveView")
+    visibility_body = _function_body("_onJournalVisibilityChanged")
+    refresh_body = _function_body("refreshJournalSessions", prefix="async function ")
+    apply_body = _function_body("applyJournalEvent")
+
+    assert "refreshJournalSessions(true);" in set_view_body
+    assert "refreshJournalSessions();" in visibility_body
+    assert "refreshJournalSessions(true);" not in visibility_body
+    assert (
+        "async function refreshJournalSessions(refetchSelectedFeed = false)" in APP_JS
+    )
+    assert (
+        "else if (refetchSelectedFeed && _journalSelectedSessionId !== null)"
+        in refresh_body
+    )
+    assert "if (_isJournalSearchActive())" in refresh_body
+    assert "_scheduleJournalSearch();" in refresh_body
+    assert "selectJournalSession(_journalSelectedSessionId);" in refresh_body
+    assert "refreshJournalSessions(true);" not in apply_body
+
+
 def test_append_keeps_bottom_anchor_only_when_pinned():
     """Pinned-to-bottom stays pinned as turns append; a user who scrolled
     up keeps their position (scrollTop is only touched behind the pinned

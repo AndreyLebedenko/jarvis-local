@@ -1,6 +1,6 @@
-# Backlog: Journal live feed stays stale when the tab is reactivated
+# Task: Journal live feed stays stale when the tab is reactivated
 
-**Status:** Backlog.
+**Status:** Completed.
 **Source:** Bug report
 `tasks/bug_reports/2026-07-27-journal-live-feed-misses-events-while-tab-inactive.md`
 (full diagnosis and repro history there). Surfaced again and cleanly
@@ -70,6 +70,18 @@ freshness gap, a pre-existing debt from the v1.5.x journal UX work.
   reconcile on activation) is acceptable if it turns out cleaner; either way
   the trap above stands.
 
+## Implementation note
+
+- `refreshJournalSessions()` keeps the reactivation choice inline: the only
+  pure predicate is whether an existing selection needs reconciliation, and
+  extracting a one-use boolean helper would add indirection without making the
+  DOM interaction more testable. The structural UI test instead pins both
+  activation callers and the selected-session branch.
+- Hidden deliberately clears `_journalSelectedSessionId`, so reopening it
+  rebuilds around the newest session rather than claiming to restore a prior
+  selection. A reactivated Journal with an active search reruns that search
+  instead of clearing it through `selectJournalSession()`.
+
 ## Acceptance Criteria
 
 - [ ] Reactivating the Journal tab (or bringing it back from Hidden) with a
@@ -90,3 +102,31 @@ freshness gap, a pre-existing debt from the v1.5.x journal UX work.
       reactivation-refetch decision logic if it can be separated from the
       DOM.
 - [ ] `python -m pytest` and Ruff stay green.
+
+## Manual verification handoff
+
+Run from the repository root:
+
+```powershell
+python -m jarvis --status-console
+```
+
+1. Open Journal and select a session that already has at least one turn.
+2. Switch to Status, submit a text or voice turn, and wait until it is
+   recorded. An interrupted turn is also a valid repro.
+3. Return to Journal. Confirm the selected session immediately contains the
+   new event without restarting Jarvis or selecting the session again.
+4. With Journal active, play an existing audio tile. Submit another turn and
+   confirm its event appends once, while the audio continues playing.
+5. Switch away and back again. Confirm no event is duplicated. Delete or
+   start a new session while away if practical; returning must not crash.
+6. Enter a Journal search query, switch to Status, then return to Journal.
+   Confirm the query and its filtered results remain active.
+
+## Verification result
+
+- Automated: `python -m ruff format --check .`, `python -m ruff check .`,
+  and `python -m pytest` passed (1439 passed, 1 skipped).
+- Manual: the reactivation, interrupted-turn, duplicate-prevention,
+  active-audio, and search-preservation scenarios were verified by the human
+  on 2026-07-29.
