@@ -1,6 +1,6 @@
 # Task v1.7.3-2: Effective reasoning prompt composition
 
-**Status:** Proposed.
+**Status:** Completed.
 **Story:** `tasks/story-v1.7.3-reasoning-mode-prompts.md`
 **Depends on:** `tasks/task-v1.7.3-1-prompt-reference-config.md`
 **Complexity:** Medium. The change is narrow, but it must preserve the
