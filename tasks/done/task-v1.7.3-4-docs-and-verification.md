@@ -1,6 +1,6 @@
 # Task v1.7.3-4: Docs and verification
 
-**Status:** Proposed.
+**Status:** Completed.
 **Story:** `tasks/story-v1.7.3-reasoning-mode-prompts.md`
 **Depends on:** `tasks/task-v1.7.3-1-prompt-reference-config.md`,
 `tasks/task-v1.7.3-2-effective-reasoning-prompt.md`, and
