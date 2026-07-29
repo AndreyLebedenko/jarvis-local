@@ -1,6 +1,6 @@
 # Story v1.7.3: Reasoning-mode prompt sections
 
-**Status:** Proposed.
+**Status:** Completed.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.7.3 section). Version
 chosen 2026-07-29: v1.7.1 and v1.7.2 are already reserved for memory
 consolidation and retrieval, and this story is small enough to follow them

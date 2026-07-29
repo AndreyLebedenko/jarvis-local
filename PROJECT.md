@@ -1920,6 +1920,26 @@ logs/cues/transport, task 4 replaced the UI and completed live handoff.
   and fixed the two bugs recorded above (source tagging, optimistic
   initial selection).
 
+## Architecture v1.7.3 (reasoning-mode prompt sections)
+
+Optional `[prompts].reasoning_low`, `reasoning_medium`, and `reasoning_high`
+provide level-specific system-prompt material. `off` intentionally has no
+matching field and uses the base prompt only.
+
+- Each optional field is either non-empty literal text or a prompt-only
+  `@file-path` reference. References are always resolved under the base
+  config's `./.jarvis/` directory; a leading slash remains inside that root,
+  `..` is rejected before resolution, and unreadable, non-UTF-8, directory, or
+  blank targets fail startup with `ConfigError`. `@` always denotes a
+  reference, so a literal beginning with it is unsupported.
+- `MemoryFileLoader` remains responsible only for the session-sampled base
+  prompt and its `self.md`/`memory.md` material. At an accepted turn,
+  `Orchestrator` samples `ReasoningLevel` once, uses that same value for the
+  Ollama `think` request and for selecting the optional section, then appends
+  the section after the session prompt. Therefore a level change cannot alter
+  an in-flight request, while a context reset still resamples the base and
+  memory prompt material as before.
+
 ## Architecture v1.3.2 (current-turn time context)
 
 See [tasks/done/task-v1.3.2-time-context.md](tasks/done/task-v1.3.2-time-context.md).

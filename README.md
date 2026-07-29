@@ -148,6 +148,34 @@ Optionally create a local config:
 copy config.example.toml config.toml
 ```
 
+## Dialog and reasoning prompts
+
+`[prompts].system` is the base dialog prompt and `[prompts].warmup` is the
+one-off startup request. Optional `reasoning_low`, `reasoning_medium`, and
+`reasoning_high` sections add guidance only when the selected reasoning level
+is Low, Medium, or High. Off has no separate section.
+
+Each reasoning section can be inline text or an `@file-path` reference:
+
+```toml
+[prompts]
+reasoning_low = "Think briefly, then answer directly."
+reasoning_medium = "@/reasoning/medium.md"
+reasoning_high = "@reasoning/high.md"
+```
+
+`@` is prompt-only syntax: references are always rooted under `./.jarvis/`,
+not the filesystem root. For example, `@/reasoning/medium.md` reads
+`./.jarvis/reasoning/medium.md`. `..` is rejected, and a missing, unreadable,
+non-UTF-8, directory, or blank referenced file stops startup with a config
+error. A literal beginning with `@` is not supported because `@` always means
+a file reference.
+
+For each accepted turn, Jarvis composes the base system prompt, then the
+session's `self.md` and `memory.md` material, then the section for that turn's
+sampled reasoning level. Switching levels during an in-flight turn affects
+only the next turn.
+
 ## Usage
 
 Run from the repository root:

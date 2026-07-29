@@ -289,6 +289,19 @@ language = "en"
 # warmup = "Hello"
 system = """Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай по-русски, если пользователь явно не попросил другой язык. Отвечай коротко и по существу: одно-два предложения, если не попросили подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока он прозвучит. Не используй Markdown, если пользователь явно не просит форматирование. Английские термины, API names, identifiers, короткие английские фразы и цитаты можно писать обычным текстом там, где они уместны; языковую разметку добавлять не нужно. Если вместе с голосовым сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, что на нём видно."""
 warmup = "Привет"
+# Optional reasoning-mode prompt sections. Off has no separate section. At
+# low, medium, or high, the selected section follows the base system prompt
+# and any self.md/memory.md material for that turn.
+#
+# Each value is either a non-empty literal or a prompt-only @file reference.
+# References always resolve under ./.jarvis/, even when they start with /:
+# @/reasoning/medium.md means ./.jarvis/reasoning/medium.md. Parent traversal
+# (..) is rejected. A literal that begins with @ is not supported because @
+# always denotes a file reference; a missing, unreadable, or blank file stops
+# startup with a config error.
+# reasoning_low = "Think briefly, then answer directly."
+# reasoning_medium = "@/reasoning/medium.md"
+# reasoning_high = "@reasoning/high.md"
 
 [mcp]
 # Off by default (two-tier locality contract, PROJECT.md): with enabled =
