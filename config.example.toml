@@ -55,8 +55,10 @@ clipboard_submit = "ctrl+alt+v"
 thinking_toggle = "ctrl+alt+t"
 # v1.7.0: cancels the in-flight turn (TTS playback and the backend
 # stream) and returns Jarvis to listening. Works on any hardware - no
-# acoustic detection, unlike the separate experimental voice barge-in
-# option. See PROJECT.md's v1.7.0 architecture section.
+# acoustic detection required. See PROJECT.md's v1.7.0 architecture
+# section. (An experimental voice-triggered interruption for headphones
+# was planned as a follow-on but is deferred to backlog, not built yet -
+# see tasks/backlog/experimental-voice-barge-in.md.)
 interrupt = "ctrl+alt+i"
 
 [vad]

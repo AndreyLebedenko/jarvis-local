@@ -1,7 +1,11 @@
 # Story v1.7.0: Interrupting Jarvis (hotkey default, experimental voice barge-in for headphones)
 
-**Status:** Proposed. Task 1 (spike) completed and closed; tasks 2+ not
-opened yet.
+**Status:** Proposed. Task 1 (spike), task 2 (hotkey and cancellation
+core), and task 3 (turn and journal handling) completed and closed.
+Task 4 (experimental voice barge-in) deferred to backlog 2026-07-29
+(owner decision, not a technical blocker) - see
+`tasks/backlog/experimental-voice-barge-in.md`. Task 5 is created and
+proposed, not yet started.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.7.0 section). Resequenced
 from the unversioned v1.7.x "Conversational fluidity" list to v1.7.0
 (owner decision, 2026-07-26), ahead of memory consolidation/retrieval,
@@ -156,12 +160,14 @@ Out of scope:
    representation in history and the journal, for both trigger paths.
 4. `task-v1.7.0-4-experimental-voice-barge-in.md` - the opt-in,
    default-off, headphones-only config option and its VAD-during-playback
-   trigger, reusing task 2's cancellation core.
-5. `task-v1.7.0-5-docs-and-release-verification.md` - PROJECT.md
-   architecture update, config docs (including the headphones-only
-   warning text), human-run end-to-end checklist for both mechanisms.
+   trigger, reusing task 2's cancellation core. **Deferred to backlog,
+   2026-07-29** - see `tasks/backlog/experimental-voice-barge-in.md`.
+5. `task-v1.7.0-5-docs-and-release-verification.md` - created and
+   proposed 2026-07-29, not yet started, adapted to the hotkey mechanism
+   only (tasks 2 and 3); voice-path docs/config-warning/checklist
+   deferred along with task 4, see the card's "Scope note" section.
 
-Only task 2 should be opened now.
+Tasks 2 and 3 are closed. Task 4 is in backlog, not scheduled next.
 
 ## Acceptance criteria
 

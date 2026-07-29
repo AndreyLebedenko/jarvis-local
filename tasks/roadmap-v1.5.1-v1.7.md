@@ -411,9 +411,13 @@ Boundary:
 - No resuming an interrupted turn - once interrupted, that turn is over.
 
 Story/task readiness: story card exists at
-`tasks/story-v1.7.0-barge-in.md`. Task 1 (AEC spike) is completed and
-closed (`tasks/done/task-v1.7.0-1-aec-spike.md`); task 2 (hotkey and
-cancellation core) is the next to open.
+`tasks/story-v1.7.0-barge-in.md`. Task 1 (AEC spike), task 2 (hotkey and
+cancellation core), and task 3 (turn and journal handling) are completed
+and closed. Task 4 (experimental voice barge-in) is deferred to backlog
+(`tasks/backlog/experimental-voice-barge-in.md`, owner decision,
+2026-07-29, not a technical blocker) - not scheduled next. Task 5 (docs
+and release verification) depends on task 4 for its voice-path portion
+and needs its scope re-checked once task 4 is picked back up.
 
 ## v1.7.1 - Memory layer B, part 1: consolidation (near/far journal)
 
