@@ -145,6 +145,21 @@ class _FakeBackend:
             await self._chat_impl()
 
 
+class _FakeStreamingBackend:
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[dict], ReasoningLevel]] = []
+
+    async def iter_chat(
+        self,
+        messages,
+        images_b64=None,
+        reasoning_level=ReasoningLevel.OFF,
+        tools=None,
+    ):
+        self.calls.append((list(messages), reasoning_level))
+        yield {"message": {"content": ""}, "done": True}
+
+
 class _FakeSoundCues:
     def __init__(self) -> None:
         self.played: list[str] = []
@@ -225,6 +240,7 @@ def _orchestrator(
     chat_impl=None,
     audio_input=None,
     thinking_mode=None,
+    reasoning_prompt_settings=None,
     bus=None,
     clock=None,
     journal_recorder=None,
@@ -238,6 +254,7 @@ def _orchestrator(
         sound_cues,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
+        reasoning_prompt_settings=reasoning_prompt_settings,
         bus=bus,
         journal_recorder=journal_recorder,
         clock=clock,
@@ -2219,6 +2236,80 @@ async def test_start_turn_passes_the_sampled_level_after_a_cycle():
     assert backend.reasoning_level_calls == [ReasoningLevel.LOW]
 
 
+@pytest.mark.parametrize(
+    ("level", "field_name", "section"),
+    [
+        (ReasoningLevel.LOW, "reasoning_low", "reason briefly"),
+        (ReasoningLevel.MEDIUM, "reasoning_medium", "compare alternatives"),
+        (ReasoningLevel.HIGH, "reasoning_high", "verify conclusions"),
+    ],
+)
+async def test_reasoning_turn_appends_the_active_section_after_memory_material(
+    level, field_name, section
+):
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    await thinking_mode.set_level(level, source="TEST")
+    prompts = PromptSettings(**{field_name: section})
+    orchestrator, backend, _sound_cues = _orchestrator(
+        thinking_mode=thinking_mode,
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt\n\nmemory material"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": f"base prompt\n\nmemory material\n\n{section}",
+    }
+    assert backend.reasoning_level_calls == [level]
+
+
+async def test_off_turn_does_not_append_any_reasoning_prompt_section():
+    prompts = PromptSettings(
+        reasoning_low="low section",
+        reasoning_medium="medium section",
+        reasoning_high="high section",
+    )
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    orchestrator, backend, _sound_cues = _orchestrator(
+        thinking_mode=thinking_mode,
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt\n\nmemory material"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": "base prompt\n\nmemory material",
+    }
+
+
+async def test_level_with_no_configured_section_uses_base_and_memory_only():
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    await thinking_mode.set_level(ReasoningLevel.MEDIUM, source="TEST")
+    orchestrator, backend, _sound_cues = _orchestrator(
+        thinking_mode=thinking_mode,
+        reasoning_prompt_settings=PromptSettings(reasoning_low="low section"),
+    )
+    orchestrator._system_prompt = "base prompt\n\nmemory material"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": "base prompt\n\nmemory material",
+    }
+    assert backend.reasoning_level_calls == [ReasoningLevel.MEDIUM]
+
+
 async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
     """Regression guard for the story's explicit boundary: changing a live
     Ollama stream mid-response is out of scope. A level change that lands
@@ -2232,7 +2323,9 @@ async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
 
     thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(
-        chat_impl=slow_chat, thinking_mode=thinking_mode
+        chat_impl=slow_chat,
+        thinking_mode=thinking_mode,
+        reasoning_prompt_settings=PromptSettings(reasoning_low="low section"),
     )
 
     first = asyncio.create_task(
@@ -2252,6 +2345,7 @@ async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
     assert backend.reasoning_level_calls == [
         ReasoningLevel.OFF
     ]  # the in-flight call was unaffected
+    assert backend.calls[0][0][0]["content"] == SYSTEM_PROMPT
 
     await orchestrator.on_response_complete(_complete_event())
     await orchestrator.finish_turn()
@@ -2263,6 +2357,7 @@ async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
         ReasoningLevel.OFF,
         ReasoningLevel.LOW,
     ]  # next accepted turn sees the new value
+    assert backend.calls[1][0][0]["content"] == f"{SYSTEM_PROMPT}\n\nlow section"
 
 
 async def test_start_turn_with_no_thinking_mode_defaults_to_off():
@@ -3821,6 +3916,44 @@ def test_build_app_wires_the_configured_system_prompt_into_the_orchestrator(tmp_
     app = build_app(settings, backend=_FakeBackend())
 
     assert app.orchestrator._system_prompt == "You are Jarvis."
+
+
+async def test_build_app_appends_reasoning_section_after_loaded_memory(tmp_path):
+    memory_root = tmp_path / "memory"
+    memory_root.mkdir()
+    (memory_root / "self.md").write_text("persona", encoding="utf-8")
+    (memory_root / "memory.md").write_text("durable facts", encoding="utf-8")
+    settings = Settings(
+        prompts=PromptSettings(
+            system="base prompt",
+            warmup="Hi",
+            reasoning_low="reason briefly",
+        ),
+        memory=MemorySettings(root=str(memory_root)),
+        journal=JournalSettings(enabled=False),
+    )
+    backend = _FakeStreamingBackend()
+    app = build_app(settings, backend=backend)
+    await app.thinking_mode.set_level(ReasoningLevel.LOW, source="TEST")
+
+    await app.orchestrator.submit_text_input("hello")
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": (
+            "base prompt\n\n"
+            "[Jarvis curated self.md]\n"
+            "persona\n"
+            "[/Jarvis curated self.md]\n\n"
+            "[Jarvis curated memory.md]\n"
+            "durable facts\n"
+            "[/Jarvis curated memory.md]\n\n"
+            "reason briefly"
+        ),
+    }
+    assert [reasoning_level for _messages, reasoning_level in backend.calls] == [
+        ReasoningLevel.LOW
+    ]
 
 
 async def test_warm_up_sends_the_configured_warmup_prompt():

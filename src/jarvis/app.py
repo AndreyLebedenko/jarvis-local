@@ -139,6 +139,27 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # name for the built-in default.
 SYSTEM_PROMPT = PromptSettings().system
 
+_REASONING_PROMPT_FIELD_BY_LEVEL: dict[ReasoningLevel, str] = {
+    ReasoningLevel.LOW: "reasoning_low",
+    ReasoningLevel.MEDIUM: "reasoning_medium",
+    ReasoningLevel.HIGH: "reasoning_high",
+}
+
+
+def _compose_effective_system_prompt(
+    base_prompt: str,
+    reasoning_level: ReasoningLevel,
+    reasoning_prompt_settings: PromptSettings,
+) -> str:
+    field_name = _REASONING_PROMPT_FIELD_BY_LEVEL.get(reasoning_level)
+    if field_name is None:
+        return base_prompt
+    section = getattr(reasoning_prompt_settings, field_name)
+    if section is None:
+        return base_prompt
+    return f"{base_prompt}\n\n{section}"
+
+
 # Debug mode is an explicit exception to the v1.6.4 content rule, which
 # both records otherwise keep and which README states to the user as a
 # promise. It is a CLI flag with no config key on purpose: a persisted
@@ -250,12 +271,14 @@ class Orchestrator:
         clock: Callable[[], float] | None = None,
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
         system_prompt_provider: Callable[[], str] | None = None,
+        reasoning_prompt_settings: PromptSettings | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
         self._sound_cues = sound_cues
         self._system_prompt_provider = system_prompt_provider or (lambda: system_prompt)
         self._system_prompt = self._system_prompt_provider()
+        self._reasoning_prompt_settings = reasoning_prompt_settings or PromptSettings()
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
         self._bus = bus
@@ -690,8 +713,22 @@ class Orchestrator:
             return
         await self._sound_cues.play("thinking")
 
+        # Sampled here, synchronously, with no `await` before it reaches
+        # backend.chat()'s argument list: a hotkey/UI change that lands
+        # while this turn's request is already in flight cannot
+        # retroactively change what was already passed - see
+        # thinking_mode.py and the story's "sampled at turn start, not the
+        # live stream" decision.
+        reasoning_level = (
+            self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
+        )
+        effective_system_prompt = _compose_effective_system_prompt(
+            self._system_prompt,
+            reasoning_level,
+            self._reasoning_prompt_settings,
+        )
         messages: list[dict[str, object]] = [
-            {"role": "system", "content": self._system_prompt}
+            {"role": "system", "content": effective_system_prompt}
         ]
         messages.extend(self._history.as_messages())
         # Current-turn only, mirroring the media_b64 pattern: this never
@@ -702,16 +739,6 @@ class Orchestrator:
             {"role": "system", "content": format_time_context(self._clock())}
         )
         messages.append({"role": "user", "content": history_text})
-
-        # Sampled here, synchronously, with no `await` before it reaches
-        # backend.chat()'s argument list: a hotkey/UI change that lands
-        # while this turn's request is already in flight cannot
-        # retroactively change what was already passed - see
-        # thinking_mode.py and the story's "sampled at turn start, not the
-        # live stream" decision.
-        reasoning_level = (
-            self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
-        )
         await self._dispatch_backend_request(
             messages,
             media_b64,
@@ -1091,6 +1118,7 @@ def build_app(
         system_prompt_provider=(
             lambda: memory_loader.compose_system_prompt(settings.prompts.system)
         ),
+        reasoning_prompt_settings=settings.prompts,
     )
     return App(
         bus=bus,
