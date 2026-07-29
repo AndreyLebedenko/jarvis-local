@@ -484,6 +484,35 @@ Boundary:
 
 Story/task readiness: needs a story card after v1.7.1 lands.
 
+## v1.7.3 - Reasoning-mode prompt sections
+
+Purpose: let the user attach optional system-prompt guidance to the active
+reasoning level without changing Ollama's existing `think` mapping or exposing
+reasoning traces.
+
+Scope:
+
+- Optional `[prompts].reasoning_low`, `[prompts].reasoning_medium`, and
+  `[prompts].reasoning_high` sections.
+- Prompt values may be inline strings or prompt-file references using
+  `@<file-path>`, resolved only under `./.jarvis/`.
+- Effective prompt composition at turn start: base system prompt, memory/self
+  material, then the sampled reasoning-level prompt section.
+- A code optimization pass after implementation, focused on keeping config
+  parsing, memory loading, and prompt composition responsibilities separate.
+
+Boundary:
+
+- No `reasoning_off` prompt. Off mode remains the base prompt only.
+- No live reload, UI prompt editor, backend message-shape change, or exposure
+  of `message.thinking`.
+- Bad prompt references are startup config errors; they are not silently
+  ignored.
+
+Story/task readiness: story card exists as
+`tasks/story-v1.7.3-reasoning-mode-prompts.md` with task cards
+`tasks/task-v1.7.3-1..4-*.md` (created 2026-07-29).
+
 ## v1.7.x - Conversational fluidity (remaining candidates)
 
 Purpose: turn request-response into conversation. Barge-in was pulled

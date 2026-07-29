@@ -1,10 +1,10 @@
-# Story v1.7.x: Reasoning-mode prompt sections
+# Story v1.7.3: Reasoning-mode prompt sections
 
 **Status:** Proposed.
-**Roadmap:** v1.7.x planning track. This is a small prompt-architecture
-story that can slot into v1.7.x independently of the larger memory
-consolidation/retrieval stories, because it changes only config parsing and
-per-turn prompt composition.
+**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.7.3 section). Version
+chosen 2026-07-29: v1.7.1 and v1.7.2 are already reserved for memory
+consolidation and retrieval, and this story is small enough to follow them
+without disturbing that sequence.
 **Created:** 2026-07-29.
 
 ## User-facing goal
@@ -32,6 +32,18 @@ Jarvis already has three relevant contracts:
 This story keeps those contracts. It adds optional prompt material to the
 same turn-start sampling point; it does not expose reasoning traces, change
 Ollama's `think` payload values, or alter the reasoning-token isolation rule.
+
+## Complexity estimate
+
+Small-to-medium. The code volume should be modest, but the implementation
+crosses a strict boundary between config parsing, file loading, memory prompt
+composition, and per-turn orchestration. The task split below is designed to
+keep those seams visible for the coder agent:
+
+- task 1 owns config shape and prompt-reference resolution only;
+- task 2 owns runtime prompt composition only;
+- task 3 is a code-optimization pass after the behavior is working;
+- task 4 owns documentation and final verification.
 
 ## Boundaries
 
@@ -84,17 +96,21 @@ Out of scope:
 
 ## Scope (ordered task cards, to be opened one at a time)
 
-1. `task-v1.7.x-1-prompt-reference-config.md` - extend `PromptSettings`
+1. `task-v1.7.3-1-prompt-reference-config.md` - extend `PromptSettings`
    with optional reasoning prompt fields and prompt-file references; add pure
    config tests for literals, file reads, `./.jarvis/` anchoring, traversal
    rejection, unreadable/missing files, and empty resolved prompts.
-2. `task-v1.7.x-2-effective-reasoning-prompt.md` - compose the effective
+2. `task-v1.7.3-2-effective-reasoning-prompt.md` - compose the effective
    system prompt at turn start from base prompt, memory files, and the sampled
    reasoning level; add orchestration tests proving the selected section is
    included only for the active level and only for that turn.
-3. `task-v1.7.x-3-docs-and-verification.md` - document the new `[prompts]`
-   fields, `@` reference semantics, `.jarvis` root, and off-mode behavior in
-   config and user docs; run the standard pure checks.
+3. `task-v1.7.3-3-code-optimization.md` - read the touched config/runtime
+   prompt code for duplicated logic, misplaced responsibility, and avoidable
+   complexity; make only behavior-preserving cleanup with tests kept green.
+4. `task-v1.7.3-4-docs-and-verification.md` - document the new `[prompts]`
+   fields, `@` reference semantics, `.jarvis` root, off-mode behavior, and
+   final verification state in config and user docs; run the standard pure
+   checks.
 
 ## Acceptance criteria
 
