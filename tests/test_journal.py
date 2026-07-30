@@ -5,8 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from jarvis.core.bus import EventBus
 from jarvis.journal import (
     JournalEvent,
+    JournalEventAppended,
+    JournalEventRecord,
+    JournalEventRef,
     JournalRecorder,
     JournalStore,
     TurnOutcome,
@@ -131,6 +135,33 @@ def test_journal_event_rejects_session_id_that_cannot_be_a_session_directory() -
         )
 
 
+@pytest.mark.parametrize(
+    ("session_id", "event_position"),
+    [
+        ("not-a-session", 0),
+        ("20260716-153000-ab12", -1),
+        ("20260716-153000-ab12", True),
+    ],
+)
+def test_journal_event_ref_rejects_invalid_identity(
+    session_id: str, event_position: int
+) -> None:
+    with pytest.raises(ValueError):
+        JournalEventRef(session_id=session_id, event_position=event_position)
+
+
+def test_journal_event_record_requires_matching_session_identity() -> None:
+    event = _event(
+        session_id="20260716-153000-ab12",
+        timestamp="2026-07-16T15:30:00+01:00",
+    )
+
+    with pytest.raises(ValueError, match="session_id"):
+        JournalEventRecord(
+            reference=JournalEventRef("20260716-153001-cd34", 0), event=event
+        )
+
+
 def test_journal_event_rejects_media_paths_outside_session_directory() -> None:
     for media_path in ("C:\\temp\\audio.wav", "/tmp/audio.wav", "../audio.wav"):
         with pytest.raises(ValueError, match="media paths"):
@@ -180,14 +211,18 @@ def test_append_then_read_session_preserves_order_across_reopened_store(
         text="hi",
     )
 
-    JournalStore(tmp_path).append(first)
+    first_reference = JournalStore(tmp_path).append(first)
     reopened = JournalStore(tmp_path)
-    reopened.append(second)
+    second_reference = reopened.append(second)
 
     replay = JournalStore(tmp_path).read_session("20260716-153000-ab12")
 
     assert replay.corrupt_lines == 0
     assert replay.events == [first, second]
+    assert [record.reference for record in replay.records] == [
+        first_reference,
+        second_reference,
+    ]
 
 
 def test_read_session_skips_and_counts_corrupt_lines(tmp_path: Path) -> None:
@@ -211,6 +246,57 @@ def test_read_session_skips_and_counts_corrupt_lines(tmp_path: Path) -> None:
 
     assert replay.corrupt_lines == 1
     assert replay.events == [first, second]
+    assert [record.reference.event_position for record in replay.records] == [0, 1]
+
+
+def test_append_assigns_consecutive_references_without_rescanning_active_session(
+    tmp_path: Path,
+) -> None:
+    session_id = "20260716-153000-ab12"
+    store = _ReferenceCountingStore(tmp_path)
+
+    first_reference = store.append(
+        _event(session_id=session_id, timestamp="2026-07-16T15:30:00+01:00")
+    )
+    second_reference = store.append(
+        _event(session_id=session_id, timestamp="2026-07-16T15:30:01+01:00")
+    )
+
+    assert [first_reference.event_position, second_reference.event_position] == [0, 1]
+    assert store.reference_initializations == 1
+
+    reopened = _ReferenceCountingStore(tmp_path)
+    third_reference = reopened.append(
+        _event(session_id=session_id, timestamp="2026-07-16T15:30:02+01:00")
+    )
+
+    assert third_reference.event_position == 2
+    assert reopened.reference_initializations == 1
+
+
+async def test_recorder_publishes_the_reference_assigned_by_the_store(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    appended: list[JournalEventAppended] = []
+
+    async def record(event: JournalEventAppended) -> None:
+        appended.append(event)
+
+    bus.subscribe(JournalEventAppended, record)
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        bus=bus,
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_text_user("recorded")
+    await recorder.wait_for_pending()
+
+    assert recorder.session_id is not None
+    assert len(appended) == 1
+    assert appended[0].reference == JournalEventRef(recorder.session_id, 0)
+    assert appended[0].event.text == "recorded"
 
 
 def test_list_sessions_returns_timestamps_sorted_by_first_event(tmp_path: Path) -> None:
@@ -326,6 +412,26 @@ def test_store_delete_session_removes_log_and_media(tmp_path: Path) -> None:
 
     assert not (tmp_path / session_id).exists()
     assert store.list_sessions() == []
+
+
+def test_store_delete_session_resets_the_event_position_for_a_reused_id(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    session_id = "20260716-153000-ab12"
+    store.append(_event(session_id=session_id, timestamp="2026-07-16T15:30:00+01:00"))
+
+    store.delete_session(session_id)
+
+    reference = store.append(
+        _event(session_id=session_id, timestamp="2026-07-16T15:30:01+01:00")
+    )
+
+    assert reference == JournalEventRef(session_id, 0)
+    assert (
+        JournalStore(tmp_path).read_session(session_id).records[0].reference
+        == reference
+    )
 
 
 def test_store_delete_session_rejects_unknown_and_traversal_ids(
@@ -629,3 +735,13 @@ class _CountingJournalStore(JournalStore):
     def list_sessions(self):
         self.list_sessions_calls += 1
         return super().list_sessions()
+
+
+class _ReferenceCountingStore(JournalStore):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.reference_initializations = 0
+
+    def _count_valid_events(self, session_id: str) -> int:
+        self.reference_initializations += 1
+        return super()._count_valid_events(session_id)

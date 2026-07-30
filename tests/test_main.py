@@ -110,7 +110,14 @@ from jarvis.inputs.attachments import (
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
-from jarvis.journal import JournalEvent, JournalRecorder, JournalStore, TurnOutcome
+from jarvis.journal import (
+    JournalEvent,
+    JournalEventRecord,
+    JournalEventRef,
+    JournalRecorder,
+    JournalStore,
+    TurnOutcome,
+)
 from jarvis.journal.fork import ForkSessionReason
 from jarvis.tools.host import (
     McpModuleStatus,
@@ -1168,15 +1175,18 @@ async def test_fork_from_journal_session_rejects_busy_without_changing_history()
     result = await orchestrator.fork_from_journal_session(
         source_session_id="20260718-150000-ab12",
         replay=main_module.JournalReplay(
-            events=[
-                JournalEvent(
-                    session_id="20260718-150000-ab12",
-                    timestamp="2026-07-18T15:00:00+01:00",
-                    source="dock",
-                    role="user",
-                    text="new seed",
-                    media=[],
-                    transcript=None,
+            records=[
+                JournalEventRecord(
+                    JournalEventRef("20260718-150000-ab12", 0),
+                    JournalEvent(
+                        session_id="20260718-150000-ab12",
+                        timestamp="2026-07-18T15:00:00+01:00",
+                        source="dock",
+                        role="user",
+                        text="new seed",
+                        media=[],
+                        transcript=None,
+                    ),
                 )
             ],
             corrupt_lines=0,
@@ -1195,15 +1205,18 @@ async def test_fork_from_journal_session_reports_oversize_turn():
     result = await orchestrator.fork_from_journal_session(
         source_session_id="20260718-150000-ab12",
         replay=main_module.JournalReplay(
-            events=[
-                JournalEvent(
-                    session_id="20260718-150000-ab12",
-                    timestamp="2026-07-18T15:00:00+01:00",
-                    source="dock",
-                    role="user",
-                    text="too long",
-                    media=[],
-                    transcript=None,
+            records=[
+                JournalEventRecord(
+                    JournalEventRef("20260718-150000-ab12", 0),
+                    JournalEvent(
+                        session_id="20260718-150000-ab12",
+                        timestamp="2026-07-18T15:00:00+01:00",
+                        source="dock",
+                        role="user",
+                        text="too long",
+                        media=[],
+                        transcript=None,
+                    ),
                 )
             ],
             corrupt_lines=0,

@@ -4,15 +4,24 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from jarvis.journal.events import JournalEvent, parse_journal_timestamp
+from jarvis.journal.events import (
+    JournalEvent,
+    JournalEventRecord,
+    JournalEventRef,
+    parse_journal_timestamp,
+)
 
 _EVENTS_FILE_NAME = "events.jsonl"
 
 
 @dataclass(frozen=True)
 class JournalReplay:
-    events: list[JournalEvent]
+    records: list[JournalEventRecord]
     corrupt_lines: int
+
+    @property
+    def events(self) -> list[JournalEvent]:
+        return [record.event for record in self.records]
 
 
 @dataclass(frozen=True)
@@ -37,17 +46,24 @@ class JournalUsage:
 class JournalStore:
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._next_event_positions: dict[str, int] = {}
 
     @property
     def root(self) -> Path:
         return self._root
 
-    def append(self, event: JournalEvent) -> None:
+    def append(self, event: JournalEvent) -> JournalEventRef:
+        event_position = self._next_event_positions.get(event.session_id)
+        if event_position is None:
+            event_position = self._count_valid_events(event.session_id)
         session_dir = self._root / event.session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         with (session_dir / _EVENTS_FILE_NAME).open("a", encoding="utf-8") as file:
             file.write(event.to_json_line())
             file.flush()
+        reference = JournalEventRef(event.session_id, event_position)
+        self._next_event_positions[event.session_id] = event_position + 1
+        return reference
 
     def write_media(self, session_id: str, name: str, contents: bytes) -> None:
         media_path = self._root / session_id / name
@@ -57,17 +73,23 @@ class JournalStore:
     def read_session(self, session_id: str) -> JournalReplay:
         events_file = self._root / session_id / _EVENTS_FILE_NAME
         if not events_file.exists():
-            return JournalReplay(events=[], corrupt_lines=0)
+            return JournalReplay(records=[], corrupt_lines=0)
 
-        events: list[JournalEvent] = []
+        records: list[JournalEventRecord] = []
         corrupt_lines = 0
         with events_file.open("r", encoding="utf-8") as file:
             for line in file:
                 try:
-                    events.append(JournalEvent.from_json_line(line))
+                    event = JournalEvent.from_json_line(line)
+                    records.append(
+                        JournalEventRecord(
+                            reference=JournalEventRef(event.session_id, len(records)),
+                            event=event,
+                        )
+                    )
                 except (ValueError, TypeError):
                     corrupt_lines += 1
-        return JournalReplay(events=events, corrupt_lines=corrupt_lines)
+        return JournalReplay(records=records, corrupt_lines=corrupt_lines)
 
     def list_sessions(self) -> list[JournalSessionSummary]:
         summaries = []
@@ -78,13 +100,14 @@ class JournalStore:
             if not session_dir.is_dir():
                 continue
             replay = self.read_session(session_dir.name)
-            if not replay.events:
+            records = replay.records
+            if not records:
                 continue
             summaries.append(
                 JournalSessionSummary(
                     session_id=session_dir.name,
-                    first_timestamp=replay.events[0].timestamp,
-                    last_timestamp=replay.events[-1].timestamp,
+                    first_timestamp=records[0].event.timestamp,
+                    last_timestamp=records[-1].event.timestamp,
                 )
             )
         return sorted(
@@ -109,6 +132,7 @@ class JournalStore:
     def delete_session(self, session_id: str) -> None:
         session_dir = self._existing_session_dir(session_id)
         shutil.rmtree(session_dir)
+        self._next_event_positions.pop(session_id, None)
 
     def _existing_session_dir(self, session_id: str) -> Path:
         real_session_ids = {summary.session_id for summary in self.list_sessions()}
@@ -126,6 +150,9 @@ class JournalStore:
         if not candidate.is_dir():
             raise KeyError(session_id)
         return candidate
+
+    def _count_valid_events(self, session_id: str) -> int:
+        return len(self.read_session(session_id).records)
 
     @staticmethod
     def _directory_size_bytes(session_dir: Path) -> int:

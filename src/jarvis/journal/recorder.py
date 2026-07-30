@@ -250,6 +250,9 @@ class JournalRecorder:
             transcript=None,
             metadata=metadata or {},
         )
-        await asyncio.to_thread(self._store.append, event)
+        reference = await asyncio.to_thread(self._store.append, event)
         if self._bus is not None:
-            await self._bus.publish(JournalEventAppended, JournalEventAppended(event))
+            await self._bus.publish(
+                JournalEventAppended,
+                JournalEventAppended(reference=reference, event=event),
+            )

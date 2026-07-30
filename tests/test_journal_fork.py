@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
-from jarvis.journal.events import JournalEvent
+from jarvis.journal.events import JournalEvent, JournalEventRecord, JournalEventRef
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
     ForkSeedTurn,
@@ -162,7 +162,13 @@ def test_fork_seed_is_deterministic() -> None:
 
 
 def _replay(*events: JournalEvent) -> JournalReplay:
-    return JournalReplay(events=list(events), corrupt_lines=0)
+    return JournalReplay(
+        records=[
+            JournalEventRecord(JournalEventRef(event.session_id, position), event)
+            for position, event in enumerate(events)
+        ],
+        corrupt_lines=0,
+    )
 
 
 def _event(

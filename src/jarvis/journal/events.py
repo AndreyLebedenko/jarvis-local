@@ -16,6 +16,22 @@ JSONScalar = str | int | float | bool | None
 JSONValue = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
 
 
+@dataclass(frozen=True)
+class JournalEventRef:
+    session_id: str
+    event_position: int
+
+    def __post_init__(self) -> None:
+        if not _SESSION_ID_PATTERN.fullmatch(self.session_id):
+            raise ValueError("session_id must match YYYYMMDD-HHMMSS-<short-random>")
+        if (
+            isinstance(self.event_position, bool)
+            or not isinstance(self.event_position, int)
+            or self.event_position < 0
+        ):
+            raise ValueError("event_position must be a non-negative integer")
+
+
 class TurnOutcome(Enum):
     """How a turn ended without a normal completed answer (task-v1.7.0-3).
     Stored as ``metadata["outcome"]`` on an assistant JournalEvent, and used
@@ -92,6 +108,16 @@ class JournalEvent:
             transcript=_require_optional_str(payload, "transcript"),
             metadata=_require_metadata(payload),
         )
+
+
+@dataclass(frozen=True)
+class JournalEventRecord:
+    reference: JournalEventRef
+    event: JournalEvent
+
+    def __post_init__(self) -> None:
+        if self.reference.session_id != self.event.session_id:
+            raise ValueError("journal event reference session_id must match the event")
 
 
 def new_session_id(now: datetime | None = None, *, random_bytes: int = 3) -> str:
@@ -177,4 +203,5 @@ def _require_str_list(payload: dict[str, Any], field: str) -> list[str]:
 
 @dataclass(frozen=True)
 class JournalEventAppended:
+    reference: JournalEventRef
     event: JournalEvent

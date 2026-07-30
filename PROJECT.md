@@ -2326,6 +2326,11 @@ conversation history. It is not fed back into model context.
   timestamp, text, media references, and a reserved nullable `transcript`
   field. Voice audio and screenshots remain binary files beside the log;
   they are never embedded in JSONL.
+- Each successfully parsed raw event has a derived `JournalEventRef` of its
+  event `session_id` and zero-based position among valid lines in that log.
+  Corrupt lines are counted but do not consume a position. References travel
+  through replay and append notifications only; they are not serialized into
+  or added to immutable JSONL events.
 - `JournalRecorder` queues writes away from the turn-critical path. The
   journal store and its SQLite FTS5 index are rebuildable from the raw logs.
   The index covers assistant answers only; user turns, system provenance

@@ -3,6 +3,8 @@
 from jarvis.journal.events import (
     JournalEvent,
     JournalEventAppended,
+    JournalEventRecord,
+    JournalEventRef,
     TurnOutcome,
     new_session_id,
 )
@@ -19,6 +21,8 @@ from jarvis.journal.store import (
 __all__ = [
     "JournalEvent",
     "JournalEventAppended",
+    "JournalEventRecord",
+    "JournalEventRef",
     "JournalRecorder",
     "JournalReplay",
     "JournalSearchHit",

@@ -28,6 +28,7 @@ from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
     JournalEvent,
     JournalEventAppended,
+    JournalEventRef,
     JournalRecorder,
     JournalSearchIndex,
     JournalStore,
@@ -2211,7 +2212,13 @@ async def test_journal_hidden_mode_blocks_http_and_suppresses_pushes(
                 await websocket.receive_json()
                 await websocket.receive_json()
 
-                await bus.publish(JournalEventAppended, JournalEventAppended(event))
+                await bus.publish(
+                    JournalEventAppended,
+                    JournalEventAppended(
+                        reference=JournalEventRef(event.session_id, 0),
+                        event=event,
+                    ),
+                )
                 with pytest.raises(TimeoutError):
                     await websocket.receive(timeout=0.05)
 

@@ -981,14 +981,15 @@ class UiTransportServer:
         replay = await asyncio.to_thread(
             self._journal_store.read_session, source_session_id
         )
-        if not replay.events:
+        records = replay.records
+        if not records:
             return web.json_response(
                 {"status": "rejected", "reason": "unknown_session"}, status=404
             )
         result = await self._journal_fork_handler(
             source_session_id=source_session_id,
             replay=replay,
-            source_end_timestamp=replay.events[-1].timestamp,
+            source_end_timestamp=records[-1].event.timestamp,
             seed_budget_chars=self._journal_fork_seed_max_chars,
         )
         return self._journal_fork_response(source_session_id, result)
@@ -1034,8 +1035,8 @@ class UiTransportServer:
                 "status": "ok",
                 "session_id": session_id,
                 "events": [
-                    journal_event_payload(event, self._journal_media_url)
-                    for event in replay.events
+                    journal_event_payload(record.event, self._journal_media_url)
+                    for record in replay.records
                 ],
             }
         )

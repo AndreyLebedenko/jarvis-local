@@ -116,7 +116,9 @@ class JournalSearchIndex:
 
     def _index_session(self, connection: sqlite3.Connection, session_id: str) -> None:
         replay = self._store.read_session(session_id)
-        for position, event in enumerate(replay.events):
+        for record in replay.records:
+            reference = record.reference
+            event = record.event
             if event.role != "assistant" or not event.text:
                 continue
             timestamp = parse_journal_timestamp(event.timestamp)
@@ -133,11 +135,11 @@ class JournalSearchIndex:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    event.session_id,
+                    reference.session_id,
                     event.timestamp,
                     timestamp.timestamp(),
                     timestamp.date().isoformat(),
-                    position,
+                    reference.event_position,
                     event.text,
                 ),
             )

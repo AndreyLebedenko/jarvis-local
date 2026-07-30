@@ -62,7 +62,8 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
     seedable_turns: list[ForkSeedTurn] = []
     skipped_events = 0
     excluded_events = 0
-    for event in replay.events:
+    for record in replay.records:
+        event = record.event
         if _is_excluded_event(event):
             excluded_events += 1
             continue
