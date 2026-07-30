@@ -1,6 +1,6 @@
 # Task v1.8.0-2: Ollama prompt-token metrics
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** none.
 

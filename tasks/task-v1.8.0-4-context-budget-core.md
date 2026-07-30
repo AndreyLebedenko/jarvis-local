@@ -1,6 +1,6 @@
 # Task v1.8.0-4: Context budget configuration and pure policy
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-3 completed with an approved decision.
 

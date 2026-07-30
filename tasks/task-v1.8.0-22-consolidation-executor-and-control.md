@@ -1,6 +1,6 @@
 # Task v1.8.0-22: Consolidation executor and control
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 
 **Depends on:**

@@ -1,16 +1,16 @@
 # Story v1.8.0: Unlimited conversation history
 
-**Status:** Proposed.
+**Status:** Approved.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.8.0 section).
 **Created:** 2026-07-29.
 **Supersedes:** the separate v1.7.1 near/far consolidation and v1.7.2
 retrieval plan. Their settled storage, auditability, locality, and retention
 decisions are preserved here.
-**Depends on:** `tasks/story-v1.7.3-reasoning-mode-prompts.md`. Its effective
-system-prompt composition must land before this story replaces the current
-message assembly. v1.7.3 is still Proposed, so no v1.8.0 implementation card
-may assume its final module layout or prompt-composition API. Re-read its
-completed cards and resulting code before opening v1.8.0 implementation work.
+**Depends on:** completed and released
+`tasks/story-v1.7.3-reasoning-mode-prompts.md`. Its effective system-prompt
+composition is the prerequisite for replacing the current message assembly.
+Re-read its completed cards and resulting code before opening v1.8.0
+implementation work.
 
 ## User-facing goal
 

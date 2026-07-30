@@ -1,6 +1,6 @@
 # Task v1.8.0-11: Working-context assembler
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 
 **Depends on:**

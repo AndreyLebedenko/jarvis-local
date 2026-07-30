@@ -1,6 +1,6 @@
 # Task v1.8.0-21: Historical consolidation planner
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 
 **Depends on:**

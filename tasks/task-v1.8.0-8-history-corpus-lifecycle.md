@@ -1,6 +1,6 @@
 # Task v1.8.0-8: History corpus lifecycle and incremental indexing
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-1 and v1.8.0-5 through v1.8.0-7.
 

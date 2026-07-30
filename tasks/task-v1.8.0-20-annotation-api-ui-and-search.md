@@ -1,6 +1,6 @@
 # Task v1.8.0-20: Annotation API, UI, and search
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 
 **Depends on:**

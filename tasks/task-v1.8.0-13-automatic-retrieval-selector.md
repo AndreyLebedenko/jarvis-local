@@ -1,6 +1,6 @@
 # Task v1.8.0-13: Automatic retrieval selector
 
-**Status:** Proposed.
+**Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 
 **Depends on:**
