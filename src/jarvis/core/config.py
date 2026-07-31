@@ -469,6 +469,17 @@ class JournalSettings:
 
 
 @dataclass(frozen=True)
+class HistorySettings:
+    prompt_capacity_tokens: int = 49152
+    recent_history_max_tokens: int = 24576
+    automatic_retrieval_max_tokens: int = 8192
+    tool_result_reserve_tokens: int = 8192
+    reasoning_generation_reserve_tokens: int = 16384
+    estimator_safety_margin_tokens: int = 1024
+    minimum_recent_exchanges: int = 1
+
+
+@dataclass(frozen=True)
 class LoggingSettings:
     """story-v1.6.4: where the detailed English engine log is written.
     The setting is the directory, not the file name - rotation owns file
@@ -562,6 +573,7 @@ class Settings:
     ui: UiSettings = field(default_factory=UiSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
+    history: HistorySettings = field(default_factory=HistorySettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     memory: MemorySettings = field(default_factory=MemorySettings)
@@ -580,6 +592,7 @@ _SECTIONS: dict[str, type] = {
     "ui": UiSettings,
     "prompts": PromptSettings,
     "mcp": McpSettings,
+    "history": HistorySettings,
     "journal": JournalSettings,
     "logging": LoggingSettings,
     "memory": MemorySettings,
@@ -638,6 +651,8 @@ def _build_section(
         return _build_memory_section(section_name, raw)
     if cls is LoggingSettings:
         return _build_logging_section(section_name, raw)
+    if cls is HistorySettings:
+        return _build_history_section(section_name, raw)
     if cls is CameraSettings:
         return _build_camera_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
@@ -878,6 +893,34 @@ def _build_memory_section(section_name: str, raw: dict[str, Any]) -> "MemorySett
     if settings.self_file == settings.memory_file:
         raise ConfigError(
             f"[{section_name}].self_file and memory_file must be different"
+        )
+    return settings
+
+
+def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySettings":
+    settings = _build_plain_section(section_name, HistorySettings, raw)
+    for name in (
+        "prompt_capacity_tokens",
+        "recent_history_max_tokens",
+        "automatic_retrieval_max_tokens",
+        "tool_result_reserve_tokens",
+        "reasoning_generation_reserve_tokens",
+        "estimator_safety_margin_tokens",
+        "minimum_recent_exchanges",
+    ):
+        value = getattr(settings, name)
+        if value <= 0:
+            raise ConfigError(
+                f"[{section_name}].{name} must be a positive int, got {value!r}"
+            )
+    mandatory_prompt_reserves = (
+        settings.tool_result_reserve_tokens + settings.estimator_safety_margin_tokens
+    )
+    if mandatory_prompt_reserves >= settings.prompt_capacity_tokens:
+        raise ConfigError(
+            f"[{section_name}] mandatory prompt reserves must leave room for "
+            f"fixed prompt input: {mandatory_prompt_reserves} >= "
+            f"{settings.prompt_capacity_tokens}"
         )
     return settings
 
@@ -1371,7 +1414,22 @@ def load_settings(
         )
         for name, cls in _SECTIONS.items()
     }
-    return Settings(**kwargs)
+    settings = Settings(**kwargs)
+    _validate_settings(settings)
+    return settings
+
+
+def _validate_settings(settings: Settings) -> None:
+    context_window_tokens = (
+        settings.history.prompt_capacity_tokens
+        + settings.history.reasoning_generation_reserve_tokens
+    )
+    if context_window_tokens > settings.backend.num_ctx:
+        raise ConfigError(
+            "[history].prompt_capacity_tokens plus "
+            "[history].reasoning_generation_reserve_tokens must fit "
+            f"backend.num_ctx: {context_window_tokens} > {settings.backend.num_ctx}"
+        )
 
 
 def write_ui_config(

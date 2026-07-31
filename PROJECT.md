@@ -60,7 +60,11 @@ system is intended to grow.
 - Measured performance: load ~0.3 s (warm), audio prefill ~0.1–0.3 s,
   generation ~87 tok/s. VRAM under load: ~10.9/16 GB → ~5 GB headroom for TTS.
 - Context: `num_ctx: 65536` (verified to fit; if VRAM pressure appears, first
-  try `OLLAMA_KV_CACHE_TYPE=q8_0`, then drop to 32768).
+  try `OLLAMA_KV_CACHE_TYPE=q8_0`, then drop to 32768). Since task v1.8.0-4,
+  lowering `backend.num_ctx` also requires lowering `[history]`
+  `prompt_capacity_tokens` and/or `reasoning_generation_reserve_tokens` so
+  their sum still fits the configured context window; a standalone `num_ctx`
+  reduction is a startup `ConfigError`.
 - **Context budget estimator and defaults, 2026-07-31 (task v1.8.0-3):**
   pre-dispatch budgeting uses the no-dependency conservative estimator
   `ceil(canonical_utf8_bytes / 2) + 32 + 12 * message_count + 24 * tool_count`,
@@ -80,7 +84,9 @@ system is intended to grow.
   `estimator_safety_margin_tokens = 1024`, and
   `minimum_recent_exchanges = 1`. `prompt_capacity_tokens` is input capacity
   and excludes the separate reasoning/generation reserve; the two defaults
-  sum to the verified `backend.num_ctx = 65536`. Recent-history and automatic
+  sum exactly to the verified `backend.num_ctx = 65536`, so a smaller
+  `backend.num_ctx` must be configured together with smaller history capacity
+  and/or generation reserve values. Recent-history and automatic
   retrieval values are optional maxima, while tool/result and
   reasoning/generation reserves are mandatory and cannot be borrowed. Rejected
   approaches: `prompt_eval_count` is exact but post-dispatch only, and a

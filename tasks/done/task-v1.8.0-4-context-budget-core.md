@@ -1,6 +1,6 @@
 # Task v1.8.0-4: Context budget configuration and pure policy
 
-**Status:** Approved.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-3 completed with an approved decision.
 
@@ -44,13 +44,13 @@ and a pure budget-allocation policy. Do not select or assemble messages yet.
 
 ## Acceptance criteria
 
-- [ ] Existing configs retain previous behavior through defaults.
-- [ ] Valid `[history]` values load into typed settings.
-- [ ] Every invalid or impossible combination fails with a clear
+- [x] Existing configs retain previous behavior through defaults.
+- [x] Valid `[history]` values load into typed settings.
+- [x] Every invalid or impossible combination fails with a clear
       `ConfigError`.
-- [ ] Pure policy tests cover empty, exact-fit, over-budget, Unicode/Russian,
+- [x] Pure policy tests cover empty, exact-fit, over-budget, Unicode/Russian,
       and tool-reserve cases.
-- [ ] The approved estimator and margin are implemented exactly once.
+- [x] The approved estimator and margin are implemented exactly once.
 
 ## Stop conditions
 
@@ -65,3 +65,12 @@ and a pure budget-allocation policy. Do not select or assemble messages yet.
 - Focused config and new pure-policy tests.
 - `python -m ruff format --check .`
 - `python -m ruff check .`
+
+## Review notes
+
+- The new cross-section validation intentionally changes startup behavior for
+  reduced-context configs: lowering `[backend].num_ctx` without also lowering
+  `[history].prompt_capacity_tokens` and/or
+  `[history].reasoning_generation_reserve_tokens` now raises `ConfigError`.
+  The approved defaults fill the verified 65536-token context exactly, so a
+  smaller context window has no implicit safe history allocation.

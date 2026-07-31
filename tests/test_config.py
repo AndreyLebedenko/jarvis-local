@@ -12,6 +12,7 @@ from jarvis.core.config import (
     ClipboardSettings,
     ConfigError,
     DataBoundary,
+    HistorySettings,
     HotkeySettings,
     JournalSettings,
     LanCameraSource,
@@ -155,6 +156,144 @@ def test_memory_fork_seed_budget_must_be_positive(tmp_path):
     )
 
     with pytest.raises(ConfigError, match="fork_seed_max_chars"):
+        load_settings(config_path)
+
+
+def test_history_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        num_ctx = 2048
+
+        [history]
+        prompt_capacity_tokens = 1536
+        recent_history_max_tokens = 512
+        automatic_retrieval_max_tokens = 256
+        tool_result_reserve_tokens = 128
+        reasoning_generation_reserve_tokens = 512
+        estimator_safety_margin_tokens = 64
+        minimum_recent_exchanges = 2
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.history == HistorySettings(
+        prompt_capacity_tokens=1536,
+        recent_history_max_tokens=512,
+        automatic_retrieval_max_tokens=256,
+        tool_result_reserve_tokens=128,
+        reasoning_generation_reserve_tokens=512,
+        estimator_safety_margin_tokens=64,
+        minimum_recent_exchanges=2,
+    )
+
+
+def test_history_settings_default_to_approved_task3_values(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.history == HistorySettings(
+        prompt_capacity_tokens=49152,
+        recent_history_max_tokens=24576,
+        automatic_retrieval_max_tokens=8192,
+        tool_result_reserve_tokens=8192,
+        reasoning_generation_reserve_tokens=16384,
+        estimator_safety_margin_tokens=1024,
+        minimum_recent_exchanges=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "prompt_capacity_tokens",
+        "recent_history_max_tokens",
+        "automatic_retrieval_max_tokens",
+        "tool_result_reserve_tokens",
+        "reasoning_generation_reserve_tokens",
+        "estimator_safety_margin_tokens",
+        "minimum_recent_exchanges",
+    ],
+)
+def test_history_settings_reject_non_positive_limits(tmp_path, field_name):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+        [history]
+        {field_name} = 0
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=field_name):
+        load_settings(config_path)
+
+
+def test_history_settings_reject_bool_as_integer(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history]
+        prompt_capacity_tokens = true
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="prompt_capacity_tokens"):
+        load_settings(config_path)
+
+
+def test_history_settings_reject_prompt_capacity_beyond_backend_context(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        num_ctx = 2048
+
+        [history]
+        prompt_capacity_tokens = 2048
+        recent_history_max_tokens = 512
+        automatic_retrieval_max_tokens = 256
+        tool_result_reserve_tokens = 1
+        reasoning_generation_reserve_tokens = 1
+        estimator_safety_margin_tokens = 1
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="backend.num_ctx"):
+        load_settings(config_path)
+
+
+def test_lowering_backend_num_ctx_requires_matching_history_capacity(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [backend]
+        num_ctx = 32768
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="backend.num_ctx"):
+        load_settings(config_path)
+
+
+def test_history_settings_reject_reserves_that_leave_no_prompt_room(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history]
+        prompt_capacity_tokens = 100
+        tool_result_reserve_tokens = 90
+        estimator_safety_margin_tokens = 10
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="mandatory prompt reserves"):
         load_settings(config_path)
 
 
@@ -1055,7 +1194,7 @@ def test_ui_config_precedence_is_per_key_not_per_file(tmp_path):
         """
         [backend]
         model = "from-base-config"
-        num_ctx = 1234
+        num_ctx = 65536
         """,
         encoding="utf-8",
     )
@@ -1071,7 +1210,7 @@ def test_ui_config_precedence_is_per_key_not_per_file(tmp_path):
     settings = load_settings(config_path, ui_path=ui_config_path)
 
     assert settings.backend.model == "from-ui-config"
-    assert settings.backend.num_ctx == 1234
+    assert settings.backend.num_ctx == 65536
 
 
 def test_ui_config_alone_still_falls_back_to_defaults_for_other_sections(tmp_path):

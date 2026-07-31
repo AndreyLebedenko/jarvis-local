@@ -15,7 +15,10 @@ endpoint = "http://localhost:11434"
 num_ctx = 65536
 # If VRAM pressure appears, PROJECT.md's fallback is
 # OLLAMA_KV_CACHE_TYPE=q8_0, then num_ctx = 32768 (applied by the human,
-# not automatically by this config).
+# not automatically by this config). If you lower num_ctx below 65536,
+# lower [history].prompt_capacity_tokens and/or
+# [history].reasoning_generation_reserve_tokens at the same time so their
+# sum still fits num_ctx.
 # Optional spike knobs:
 # flash_attention = true
 # kv_cache_type = "q8_0"  # Ollama docs also list "f16" (default) and
@@ -37,6 +40,23 @@ num_ctx = 65536
 # which was itself measured on an already-touched model). Only the read
 # timeout is this generous; connect/write/pool stay short (localhost).
 read_timeout_seconds = 120.0
+
+[history]
+# Prompt input capacity for the bounded working context. This excludes the
+# reasoning/generation reserve below; by default the two sum exactly to
+# backend.num_ctx, so lowering backend.num_ctx requires lowering one or both.
+prompt_capacity_tokens = 49152
+# Optional maxima for later context assembly policies. Fixed prompt input can
+# reduce the realized recent-history or automatic-retrieval allocation.
+recent_history_max_tokens = 24576
+automatic_retrieval_max_tokens = 8192
+# Mandatory reserves inside the prompt budget and outside it. These are not
+# borrowed by recent history or retrieval.
+tool_result_reserve_tokens = 8192
+reasoning_generation_reserve_tokens = 16384
+# One global estimator margin applied after estimating the complete prompt.
+estimator_safety_margin_tokens = 1024
+minimum_recent_exchanges = 1
 
 [hotkeys]
 screenshot_full = "ctrl+alt+s"

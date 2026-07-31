@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import math
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -37,14 +36,15 @@ from jarvis.dialog.tool_presentation import (
     NativeToolPresentation,
     PromptToolPresentation,
 )
+from jarvis.history.context_budget import (
+    CONSERVATIVE_UTF8_ESTIMATOR_FORMULA,
+    ConservativeUtf8TokenEstimator,
+    PromptEstimateMaterial,
+)
 from jarvis.memory.files import MemoryFileLoader, build_memory_file_specs
 from jarvis.tools.interception import ToolDispatchResult
 from jarvis.tools.registry import RegisteredTool
 
-BASE_TOKEN_OVERHEAD = 32
-MESSAGE_TOKEN_OVERHEAD = 12
-TOOL_TOKEN_OVERHEAD = 24
-BYTES_PER_ESTIMATED_TOKEN = 2
 RUNS_PER_CASE = 2
 DEFAULT_OUTPUT_PATH = Path("manual_check_context_token_budget_out/results.json")
 
@@ -136,12 +136,12 @@ def estimate_conservative_tokens(payload: dict[str, object]) -> int:
     tools = payload.get("tools")
     message_count = len(messages) if isinstance(messages, list) else 0
     tool_count = len(tools) if isinstance(tools, list) else 0
-    byte_estimate = math.ceil(len(material.encode("utf-8")) / BYTES_PER_ESTIMATED_TOKEN)
-    return (
-        byte_estimate
-        + BASE_TOKEN_OVERHEAD
-        + message_count * MESSAGE_TOKEN_OVERHEAD
-        + tool_count * TOOL_TOKEN_OVERHEAD
+    return ConservativeUtf8TokenEstimator().estimate_tokens(
+        PromptEstimateMaterial(
+            canonical_utf8_bytes=len(material.encode("utf-8")),
+            message_count=message_count,
+            tool_count=tool_count,
+        )
     )
 
 
@@ -468,12 +468,7 @@ async def run(output_path: Path, tokenizer_model: Path | None) -> None:
                 },
                 "conservative_utf8": {
                     "kind": "fixed_overhead_estimator",
-                    "formula": {
-                        "utf8_bytes_per_token": BYTES_PER_ESTIMATED_TOKEN,
-                        "base_tokens": BASE_TOKEN_OVERHEAD,
-                        "tokens_per_message": MESSAGE_TOKEN_OVERHEAD,
-                        "tokens_per_tool": TOOL_TOKEN_OVERHEAD,
-                    },
+                    "formula": CONSERVATIVE_UTF8_ESTIMATOR_FORMULA,
                 },
             },
             "cases": case_reports,

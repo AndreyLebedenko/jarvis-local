@@ -7,10 +7,11 @@ import pytest
 from jarvis.core.bus import EventBus
 from jarvis.core.config import BackendSettings
 from jarvis.dialog.backend import OllamaBackend
+from jarvis.history.context_budget import (
+    ConservativeUtf8TokenEstimator,
+    PromptEstimateMaterial,
+)
 from manual.manual_check_context_token_budget import (
-    BASE_TOKEN_OVERHEAD,
-    MESSAGE_TOKEN_OVERHEAD,
-    TOOL_TOKEN_OVERHEAD,
     LiveMeasurement,
     build_measurement_cases,
     canonical_prompt_material,
@@ -49,11 +50,12 @@ def test_conservative_estimator_uses_utf8_bytes_and_fixed_overheads():
 
     estimate = estimate_conservative_tokens(payload)
 
-    assert estimate == (
-        (material_bytes + 1) // 2
-        + BASE_TOKEN_OVERHEAD
-        + MESSAGE_TOKEN_OVERHEAD
-        + TOOL_TOKEN_OVERHEAD
+    assert estimate == ConservativeUtf8TokenEstimator().estimate_tokens(
+        PromptEstimateMaterial(
+            canonical_utf8_bytes=material_bytes,
+            message_count=1,
+            tool_count=1,
+        )
     )
 
 
