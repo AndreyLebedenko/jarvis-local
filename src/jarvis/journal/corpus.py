@@ -4,7 +4,9 @@ import json
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 from jarvis.journal.events import (
     JournalEventRef,
@@ -14,6 +16,9 @@ from jarvis.journal.events import (
 from jarvis.journal.store import JournalStore
 
 CURRENT_HISTORY_CORPUS_SCHEMA_VERSION = 1
+HISTORY_READ_MAX_EVENTS_PER_RANGE = 200
+HISTORY_READ_MAX_BATCH_RANGES = 8
+HISTORY_READ_MAX_TOTAL_EVENTS = 500
 _CORPUS_FILE_NAME = "history_corpus.db"
 _SCHEMA_VERSION_KEY = "schema_version"
 
@@ -34,6 +39,106 @@ class HistoryCorpusEvent:
     media_count: int
     transcript: str | None
     metadata: dict[str, JSONValue]
+
+
+@dataclass(frozen=True)
+class HistoryEventRange:
+    start: JournalEventRef
+    end: JournalEventRef
+
+    @property
+    def requested_count(self) -> int:
+        if self.start.session_id != self.end.session_id:
+            return 0
+        if self.end.event_position < self.start.event_position:
+            return 0
+        return self.end.event_position - self.start.event_position + 1
+
+
+@dataclass(frozen=True)
+class HistorySessionMetadata:
+    session_id: str
+    first_timestamp: str
+    last_timestamp: str
+    first_event_position: int
+    last_event_position: int
+    event_count: int
+
+
+class HistoryEventReadStatus(Enum):
+    FOUND = "found"
+    UNKNOWN_REFERENCE = "unknown_reference"
+
+
+@dataclass(frozen=True)
+class HistoryEventRead:
+    status: HistoryEventReadStatus
+    event: HistoryCorpusEvent | None = None
+
+    @property
+    def found(self) -> bool:
+        return self.status is HistoryEventReadStatus.FOUND
+
+
+class HistoryEventRefsReadStatus(Enum):
+    ACCEPTED = "accepted"
+    TOO_MANY_REFERENCES = "too_many_references"
+
+
+@dataclass(frozen=True)
+class HistoryEventRefsRead:
+    status: HistoryEventRefsReadStatus
+    events: tuple[HistoryCorpusEvent, ...] = ()
+    missing_references: tuple[JournalEventRef, ...] = ()
+    max_references: int = HISTORY_READ_MAX_TOTAL_EVENTS
+
+
+class HistoryEventRangeStatus(Enum):
+    FOUND = "found"
+    UNKNOWN_REFERENCE = "unknown_reference"
+    UNKNOWN_START_REFERENCE = "unknown_start_reference"
+    UNKNOWN_END_REFERENCE = "unknown_end_reference"
+    CROSS_SESSION = "cross_session"
+    REVERSED_RANGE = "reversed_range"
+    NEGATIVE_CONTEXT_LIMIT = "negative_context_limit"
+    TOO_MANY_EVENTS = "too_many_events"
+
+
+@dataclass(frozen=True)
+class HistoryEventRangeRead:
+    status: HistoryEventRangeStatus
+    requested_range: HistoryEventRange | None = None
+    events: tuple[HistoryCorpusEvent, ...] = ()
+    missing_reference: JournalEventRef | None = None
+    requested_count: int = 0
+    max_events: int = HISTORY_READ_MAX_EVENTS_PER_RANGE
+
+
+class HistorySessionReadStatus(Enum):
+    FOUND = "found"
+    UNKNOWN_SESSION = "unknown_session"
+
+
+@dataclass(frozen=True)
+class HistorySessionRead:
+    status: HistorySessionReadStatus
+    session: HistorySessionMetadata | None = None
+
+
+class HistoryBatchReadStatus(Enum):
+    ACCEPTED = "accepted"
+    TOO_MANY_RANGES = "too_many_ranges"
+    TOO_MANY_EVENTS = "too_many_events"
+
+
+@dataclass(frozen=True)
+class HistoryBatchRead:
+    status: HistoryBatchReadStatus
+    ranges: tuple[HistoryEventRangeRead, ...] = ()
+    total_events: int = 0
+    requested_events: int = 0
+    max_ranges: int = HISTORY_READ_MAX_BATCH_RANGES
+    max_events: int = HISTORY_READ_MAX_TOTAL_EVENTS
 
 
 class HistoryCorpusRepository:
@@ -60,13 +165,12 @@ class HistoryCorpusRepository:
                 raise
 
     def list_events(self) -> list[HistoryCorpusEvent]:
-        if not self._db_path.exists():
+        connection = self._open_read_connection()
+        if connection is None:
             return []
-        self._check_existing_schema_version()
-        if not self._schema_exists():
-            return []
-
-        with closing(sqlite3.connect(self._db_path)) as connection:
+        with closing(connection):
+            if not _table_exists(connection, "history_corpus_events"):
+                return []
             rows = connection.execute(
                 """
                 SELECT
@@ -86,6 +190,174 @@ class HistoryCorpusRepository:
                 """
             ).fetchall()
         return [self._row_to_event(row) for row in rows]
+
+    def read_event(self, reference: JournalEventRef) -> HistoryEventRead:
+        connection = self._open_read_connection()
+        if connection is None:
+            return HistoryEventRead(HistoryEventReadStatus.UNKNOWN_REFERENCE)
+        with closing(connection):
+            row = self._fetch_event(connection, reference)
+            if row is None:
+                return HistoryEventRead(HistoryEventReadStatus.UNKNOWN_REFERENCE)
+            return HistoryEventRead(
+                HistoryEventReadStatus.FOUND, self._row_to_event(row)
+            )
+
+    def read_events(
+        self, references: tuple[JournalEventRef, ...]
+    ) -> HistoryEventRefsRead:
+        if len(references) > HISTORY_READ_MAX_TOTAL_EVENTS:
+            return HistoryEventRefsRead(
+                HistoryEventRefsReadStatus.TOO_MANY_REFERENCES,
+                max_references=HISTORY_READ_MAX_TOTAL_EVENTS,
+            )
+
+        connection = self._open_read_connection()
+        if connection is None:
+            events_by_ref = {}
+        else:
+            with closing(connection):
+                events_by_ref = self._fetch_events_by_reference(connection, references)
+        events: list[HistoryCorpusEvent] = []
+        missing: list[JournalEventRef] = []
+        for reference in references:
+            event = events_by_ref.get(reference)
+            if event is None:
+                missing.append(reference)
+            else:
+                events.append(event)
+        return HistoryEventRefsRead(
+            HistoryEventRefsReadStatus.ACCEPTED,
+            tuple(events),
+            tuple(missing),
+            HISTORY_READ_MAX_TOTAL_EVENTS,
+        )
+
+    def read_range(self, event_range: HistoryEventRange) -> HistoryEventRangeRead:
+        invalid = self._validate_range_shape(
+            event_range, max_events=HISTORY_READ_MAX_EVENTS_PER_RANGE
+        )
+        if invalid is not None:
+            return invalid
+
+        connection = self._open_read_connection()
+        if connection is None:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.UNKNOWN_START_REFERENCE,
+                requested_range=event_range,
+                missing_reference=event_range.start,
+                requested_count=event_range.requested_count,
+            )
+        with closing(connection):
+            return self._read_range_with_connection(
+                connection,
+                event_range,
+                max_events=HISTORY_READ_MAX_EVENTS_PER_RANGE,
+            )
+
+    def read_surrounding(
+        self, reference: JournalEventRef, *, before: int, after: int
+    ) -> HistoryEventRangeRead:
+        if before < 0 or after < 0:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.NEGATIVE_CONTEXT_LIMIT,
+                missing_reference=reference,
+            )
+        connection = self._open_read_connection()
+        if connection is None:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.UNKNOWN_REFERENCE,
+                missing_reference=reference,
+                requested_count=before + after + 1,
+            )
+        with closing(connection):
+            anchor = self._fetch_event(connection, reference)
+            if anchor is None:
+                return HistoryEventRangeRead(
+                    HistoryEventRangeStatus.UNKNOWN_REFERENCE,
+                    missing_reference=reference,
+                    requested_count=before + after + 1,
+                )
+            session = self._fetch_session_metadata(connection, reference.session_id)
+            if session is None:
+                return HistoryEventRangeRead(
+                    HistoryEventRangeStatus.UNKNOWN_REFERENCE,
+                    missing_reference=reference,
+                    requested_count=before + after + 1,
+                )
+            start = max(session.first_event_position, reference.event_position - before)
+            end = min(session.last_event_position, reference.event_position + after)
+            event_range = HistoryEventRange(
+                JournalEventRef(reference.session_id, start),
+                JournalEventRef(reference.session_id, end),
+            )
+            requested_count = event_range.requested_count
+            if requested_count > HISTORY_READ_MAX_EVENTS_PER_RANGE:
+                return HistoryEventRangeRead(
+                    HistoryEventRangeStatus.TOO_MANY_EVENTS,
+                    requested_range=event_range,
+                    missing_reference=reference,
+                    requested_count=requested_count,
+                    max_events=HISTORY_READ_MAX_EVENTS_PER_RANGE,
+                )
+            return self._read_range_with_connection(
+                connection,
+                event_range,
+                max_events=HISTORY_READ_MAX_EVENTS_PER_RANGE,
+            )
+
+    def read_session(self, session_id: str) -> HistorySessionRead:
+        connection = self._open_read_connection()
+        if connection is None:
+            return HistorySessionRead(HistorySessionReadStatus.UNKNOWN_SESSION)
+        with closing(connection):
+            metadata = self._fetch_session_metadata(connection, session_id)
+        if metadata is None:
+            return HistorySessionRead(HistorySessionReadStatus.UNKNOWN_SESSION)
+        return HistorySessionRead(HistorySessionReadStatus.FOUND, metadata)
+
+    def read_ranges(self, ranges: tuple[HistoryEventRange, ...]) -> HistoryBatchRead:
+        if len(ranges) > HISTORY_READ_MAX_BATCH_RANGES:
+            return HistoryBatchRead(
+                HistoryBatchReadStatus.TOO_MANY_RANGES,
+                max_ranges=HISTORY_READ_MAX_BATCH_RANGES,
+            )
+        requested_events = sum(event_range.requested_count for event_range in ranges)
+        if requested_events > HISTORY_READ_MAX_TOTAL_EVENTS:
+            return HistoryBatchRead(
+                HistoryBatchReadStatus.TOO_MANY_EVENTS,
+                requested_events=requested_events,
+                max_events=HISTORY_READ_MAX_TOTAL_EVENTS,
+            )
+        connection = self._open_read_connection()
+        if connection is None:
+            range_reads = tuple(
+                HistoryEventRangeRead(
+                    HistoryEventRangeStatus.UNKNOWN_START_REFERENCE,
+                    requested_range=event_range,
+                    missing_reference=event_range.start,
+                    requested_count=event_range.requested_count,
+                )
+                for event_range in ranges
+            )
+        else:
+            with closing(connection):
+                range_reads = tuple(
+                    self._read_range_with_connection(
+                        connection,
+                        event_range,
+                        max_events=HISTORY_READ_MAX_EVENTS_PER_RANGE,
+                    )
+                    for event_range in ranges
+                )
+        return HistoryBatchRead(
+            HistoryBatchReadStatus.ACCEPTED,
+            ranges=range_reads,
+            total_events=sum(len(range_read.events) for range_read in range_reads),
+            requested_events=requested_events,
+            max_ranges=HISTORY_READ_MAX_BATCH_RANGES,
+            max_events=HISTORY_READ_MAX_TOTAL_EVENTS,
+        )
 
     def _insert_all_events(self, connection: sqlite3.Connection) -> None:
         for session in self._store.list_sessions():
@@ -177,17 +449,20 @@ class HistoryCorpusRepository:
     def _check_existing_schema_version(self) -> None:
         if not self._db_path.exists():
             return
-        with closing(sqlite3.connect(self._db_path)) as connection:
-            if not _table_exists(connection, "history_corpus_meta"):
-                return
-            row = connection.execute(
-                """
-                SELECT value
-                FROM history_corpus_meta
-                WHERE key = ?
-                """,
-                (_SCHEMA_VERSION_KEY,),
-            ).fetchone()
+        with closing(_connect_sqlite_read_only(self._db_path)) as connection:
+            self._check_schema_version(connection)
+
+    def _check_schema_version(self, connection: sqlite3.Connection) -> None:
+        if not _table_exists(connection, "history_corpus_meta"):
+            return
+        row = connection.execute(
+            """
+            SELECT value
+            FROM history_corpus_meta
+            WHERE key = ?
+            """,
+            (_SCHEMA_VERSION_KEY,),
+        ).fetchone()
         if row is None:
             return
         try:
@@ -202,9 +477,232 @@ class HistoryCorpusRepository:
                 f"{version} > {CURRENT_HISTORY_CORPUS_SCHEMA_VERSION}"
             )
 
-    def _schema_exists(self) -> bool:
-        with closing(sqlite3.connect(self._db_path)) as connection:
-            return _table_exists(connection, "history_corpus_events")
+    def _open_read_connection(self) -> sqlite3.Connection | None:
+        if not self._db_path.exists():
+            return None
+        connection = _connect_sqlite_read_only(self._db_path)
+        try:
+            self._check_schema_version(connection)
+            return connection
+        except Exception:
+            connection.close()
+            raise
+
+    def _fetch_event(
+        self, connection: sqlite3.Connection, reference: JournalEventRef
+    ) -> sqlite3.Row | tuple[object, ...] | None:
+        if not _table_exists(connection, "history_corpus_events"):
+            return None
+        return connection.execute(
+            """
+            SELECT
+                session_id,
+                event_position,
+                timestamp,
+                timestamp_sort,
+                role,
+                source,
+                text,
+                media_json,
+                media_count,
+                transcript,
+                metadata_json
+            FROM history_corpus_events
+            WHERE session_id = ? AND event_position = ?
+            """,
+            (reference.session_id, reference.event_position),
+        ).fetchone()
+
+    def _fetch_events_by_reference(
+        self, connection: sqlite3.Connection, references: tuple[JournalEventRef, ...]
+    ) -> dict[JournalEventRef, HistoryCorpusEvent]:
+        if not references:
+            return {}
+        unique_references = tuple(dict.fromkeys(references))
+        if not unique_references or not _table_exists(
+            connection, "history_corpus_events"
+        ):
+            return {}
+        values_sql = ", ".join("(?, ?)" for _ in unique_references)
+        parameters: list[str | int] = []
+        for reference in unique_references:
+            parameters.extend((reference.session_id, reference.event_position))
+        rows = connection.execute(
+            f"""
+            WITH requested(session_id, event_position) AS (
+                VALUES {values_sql}
+            )
+            SELECT
+                events.session_id,
+                events.event_position,
+                events.timestamp,
+                events.timestamp_sort,
+                events.role,
+                events.source,
+                events.text,
+                events.media_json,
+                events.media_count,
+                events.transcript,
+                events.metadata_json
+            FROM requested
+            JOIN history_corpus_events AS events
+              ON events.session_id = requested.session_id
+             AND events.event_position = requested.event_position
+            """,
+            parameters,
+        ).fetchall()
+        events = tuple(self._row_to_event(row) for row in rows)
+        return {event.reference: event for event in events}
+
+    def _read_range_with_connection(
+        self,
+        connection: sqlite3.Connection,
+        event_range: HistoryEventRange,
+        *,
+        max_events: int,
+    ) -> HistoryEventRangeRead:
+        invalid = self._validate_range_shape(event_range, max_events=max_events)
+        if invalid is not None:
+            return invalid
+        if not _table_exists(connection, "history_corpus_events"):
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.UNKNOWN_START_REFERENCE,
+                requested_range=event_range,
+                missing_reference=event_range.start,
+                requested_count=event_range.requested_count,
+            )
+        rows = connection.execute(
+            """
+            SELECT
+                session_id,
+                event_position,
+                timestamp,
+                timestamp_sort,
+                role,
+                source,
+                text,
+                media_json,
+                media_count,
+                transcript,
+                metadata_json
+            FROM history_corpus_events
+            WHERE session_id = ?
+              AND event_position >= ?
+              AND event_position <= ?
+            ORDER BY event_position
+            """,
+            (
+                event_range.start.session_id,
+                event_range.start.event_position,
+                event_range.end.event_position,
+            ),
+        ).fetchall()
+        events = tuple(self._row_to_event(row) for row in rows)
+        positions = {event.reference.event_position for event in events}
+        if event_range.start.event_position not in positions:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.UNKNOWN_START_REFERENCE,
+                requested_range=event_range,
+                missing_reference=event_range.start,
+                requested_count=event_range.requested_count,
+                max_events=max_events,
+            )
+        if event_range.end.event_position not in positions:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.UNKNOWN_END_REFERENCE,
+                requested_range=event_range,
+                missing_reference=event_range.end,
+                requested_count=event_range.requested_count,
+                max_events=max_events,
+            )
+        return HistoryEventRangeRead(
+            HistoryEventRangeStatus.FOUND,
+            requested_range=event_range,
+            events=events,
+            requested_count=event_range.requested_count,
+            max_events=max_events,
+        )
+
+    def _fetch_session_metadata(
+        self, connection: sqlite3.Connection, session_id: str
+    ) -> HistorySessionMetadata | None:
+        if not _table_exists(connection, "history_corpus_events"):
+            return None
+        row = connection.execute(
+            """
+            SELECT
+                MIN(timestamp_sort),
+                MAX(timestamp_sort),
+                MIN(event_position),
+                MAX(event_position),
+                COUNT(*)
+            FROM history_corpus_events
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None or int(row[4]) == 0:
+            return None
+        first_timestamp = self._fetch_session_boundary_timestamp(
+            connection, session_id, "first"
+        )
+        last_timestamp = self._fetch_session_boundary_timestamp(
+            connection, session_id, "last"
+        )
+        if first_timestamp is None or last_timestamp is None:
+            return None
+        return HistorySessionMetadata(
+            session_id=session_id,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            first_event_position=int(row[2]),
+            last_event_position=int(row[3]),
+            event_count=int(row[4]),
+        )
+
+    def _validate_range_shape(
+        self, event_range: HistoryEventRange, *, max_events: int
+    ) -> HistoryEventRangeRead | None:
+        if event_range.start.session_id != event_range.end.session_id:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.CROSS_SESSION,
+                requested_range=event_range,
+            )
+        if event_range.end.event_position < event_range.start.event_position:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.REVERSED_RANGE,
+                requested_range=event_range,
+            )
+        requested_count = event_range.requested_count
+        if requested_count > max_events:
+            return HistoryEventRangeRead(
+                HistoryEventRangeStatus.TOO_MANY_EVENTS,
+                requested_range=event_range,
+                requested_count=requested_count,
+                max_events=max_events,
+            )
+        return None
+
+    @staticmethod
+    def _fetch_session_boundary_timestamp(
+        connection: sqlite3.Connection,
+        session_id: str,
+        boundary: Literal["first", "last"],
+    ) -> str | None:
+        direction = "ASC" if boundary == "first" else "DESC"
+        row = connection.execute(
+            f"""
+            SELECT timestamp
+            FROM history_corpus_events
+            WHERE session_id = ?
+            ORDER BY event_position {direction}
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return str(row[0])
 
     @staticmethod
     def _row_to_event(row: sqlite3.Row | tuple[object, ...]) -> HistoryCorpusEvent:
@@ -251,6 +749,10 @@ def _schema_objects(connection: sqlite3.Connection, kind: str) -> list[str]:
 
 def _quote_sql_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
+
+
+def _connect_sqlite_read_only(path: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
 
 
 def _json_dumps(value: JSONValue) -> str:

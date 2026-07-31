@@ -1,6 +1,6 @@
 # Task v1.8.0-6: Typed history event and range reads
 
-**Status:** Approved.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-5.
 
@@ -48,14 +48,14 @@ task.
 
 ## Acceptance criteria
 
-- [ ] Single, surrounding, range, session, and batch reads return exact
+- [x] Single, surrounding, range, session, and batch reads return exact
       provenance and stable order.
-- [ ] Invalid, unknown, cross-session, reversed, and over-limit requests have
+- [x] Invalid, unknown, cross-session, reversed, and over-limit requests have
       explicit tested outcomes.
-- [ ] Total-result caps cannot be bypassed by splitting one request into many
+- [x] Total-result caps cannot be bypassed by splitting one request into many
       ranges.
-- [ ] Reads do not modify the corpus or raw journal.
-- [ ] Tests require no Ollama, UI, or hardware.
+- [x] Reads do not modify the corpus or raw journal.
+- [x] Tests require no Ollama, UI, or hardware.
 
 ## Stop conditions
 
@@ -71,3 +71,10 @@ task.
 - New pure/repository history-read tests.
 - Existing journal replay tests.
 - Ruff checks.
+
+Verified:
+
+- `python -m pytest tests\test_journal.py tests\test_journal_search.py tests\test_history_corpus.py`
+- `python -m ruff check .`
+- `python -m ruff format --check .`
+- `python -m pytest`
