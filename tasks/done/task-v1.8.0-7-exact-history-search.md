@@ -1,6 +1,6 @@
 # Task v1.8.0-7: Exact and prefix history search
 
-**Status:** Approved.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-5 and v1.8.0-6.
 
@@ -47,13 +47,13 @@ an adapter while moving search ownership into the history corpus.
 
 ## Acceptance criteria
 
-- [ ] User and assistant text are searchable by exact and prefix queries.
-- [ ] Role/source/session/date filters compose correctly.
-- [ ] Relevance and chronological modes are deterministic.
-- [ ] Every hit reads back to the same event through task 6.
-- [ ] Existing Journal search behavior and injection-safe highlighting stay
+- [x] User and assistant text are searchable by exact and prefix queries.
+- [x] Role/source/session/date filters compose correctly.
+- [x] Relevance and chronological modes are deterministic.
+- [x] Every hit reads back to the same event through task 6.
+- [x] Existing Journal search behavior and injection-safe highlighting stay
       green.
-- [ ] Search before a corpus exists is a clear unavailable/empty state, not a
+- [x] Search before a corpus exists is a clear unavailable/empty state, not a
       write side effect.
 
 ## Stop conditions
@@ -67,6 +67,8 @@ an adapter while moving search ownership into the history corpus.
 
 ## Verification
 
-- `python -m pytest tests/test_journal_search.py`
-- Relevant UI transport and journal-view search tests.
-- Ruff checks.
+- `python -m pytest tests\test_journal_search.py tests\test_history_corpus.py tests\test_ui_transport.py tests\test_journal_view_ui.py` - 158 passed.
+- `python -m ruff check .` - passed.
+- `python -m ruff format --check .` - passed.
+- `python -m pytest` - 1538 passed, 1 skipped, 30 warnings.
+- `tools\graphify.ps1 update` - graph updated; HTML visualization skipped because the graph has more than 5000 nodes.

@@ -212,7 +212,9 @@ def test_unknown_newer_schema_version_fails_explicitly(tmp_path: Path) -> None:
         repository.rebuild()
 
 
-def test_rebuild_leaves_legacy_search_index_db_untouched(tmp_path: Path) -> None:
+def test_rebuild_creates_corpus_fts_without_legacy_search_index_db(
+    tmp_path: Path,
+) -> None:
     store = JournalStore(tmp_path / "journal")
     store.append(
         _event(
@@ -227,13 +229,11 @@ def test_rebuild_leaves_legacy_search_index_db_untouched(tmp_path: Path) -> None
     legacy_index = JournalSearchIndex(store, derived_root)
     legacy_index.rebuild()
     legacy_index_path = derived_root / "index.db"
-    legacy_size_before = legacy_index_path.stat().st_size
 
     repository = HistoryCorpusRepository(store, derived_root)
     repository.rebuild()
 
-    assert legacy_index_path.exists()
-    assert legacy_index_path.stat().st_size == legacy_size_before
+    assert not legacy_index_path.exists()
     assert [hit.snippet for hit in legacy_index.search("relay")] == [
         "normalized [relay] row"
     ]
@@ -251,7 +251,7 @@ def test_rebuild_leaves_legacy_search_index_db_untouched(tmp_path: Path) -> None
         }
     assert "journal_search_events" not in tables
     assert "history_corpus_events" in tables
-    assert not any(table.endswith("_fts") for table in tables)
+    assert "history_corpus_event_fts" in tables
     assert [row.text for row in repository.list_events()] == ["normalized relay row"]
 
 

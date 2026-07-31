@@ -44,6 +44,7 @@ from jarvis.inputs.attachments import (
     AttachmentUpload,
     plan_attachments,
 )
+from jarvis.journal.corpus import HISTORY_SEARCH_MAX_RESULTS
 from jarvis.journal.events import JournalEvent, JournalEventAppended
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
 from jarvis.journal.search import JournalSearchIndex
@@ -1299,6 +1300,10 @@ class UiTransportServer:
             raise web.HTTPBadRequest(text="limit must be an integer") from None
         if limit < 1:
             raise web.HTTPBadRequest(text="limit must be positive")
+        if limit > HISTORY_SEARCH_MAX_RESULTS:
+            raise web.HTTPBadRequest(
+                text=f"limit must be at most {HISTORY_SEARCH_MAX_RESULTS}"
+            )
         return limit
 
     def _journal_media_url(self, event: JournalEvent, media_path: str) -> str:

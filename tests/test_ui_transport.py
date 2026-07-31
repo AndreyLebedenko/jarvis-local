@@ -26,6 +26,7 @@ from jarvis.core.lifecycle import (
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
+    HISTORY_SEARCH_MAX_RESULTS,
     JournalEvent,
     JournalEventAppended,
     JournalEventRef,
@@ -1113,6 +1114,33 @@ async def test_journal_sessions_feed_and_search_use_existing_http_transport(
                 (hit["session_id"], hit["event_position"], hit["snippet"])
                 for hit in search["hits"]
             ] == [(later_session_id, 1, "The [reactor] telemetry is nominal.")]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_search_rejects_limit_over_history_cap(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path)
+    search_index = JournalSearchIndex(store, tmp_path)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_search_index=search_index,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.get(
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                f"?token=valid-token&query=relay&limit={HISTORY_SEARCH_MAX_RESULTS + 1}"
+            )
+
+            assert response.status == 400
+            assert await response.text() == (
+                f"limit must be at most {HISTORY_SEARCH_MAX_RESULTS}"
+            )
     finally:
         await server.stop()
 

@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jarvis.journal import JournalEvent, JournalSearchIndex, JournalStore
+from jarvis.journal import (
+    HistoryCorpusRepository,
+    HistorySearchOrder,
+    HistorySearchRequest,
+    HistorySearchStatus,
+    HistorySessionReadStatus,
+    JournalEvent,
+    JournalSearchIndex,
+    JournalSessionSummary,
+    JournalStore,
+)
 
 
 def test_rebuild_from_store_can_recreate_disposable_index(tmp_path: Path) -> None:
@@ -29,7 +39,7 @@ def test_rebuild_from_store_can_recreate_disposable_index(tmp_path: Path) -> Non
 
     index.rebuild()
     first_results = index.search("telemetry")
-    (tmp_path / "index.db").unlink()
+    (tmp_path / "history_corpus.db").unlink()
     index.rebuild()
 
     assert index.search("telemetry") == first_results
@@ -69,12 +79,69 @@ def test_search_indexes_assistant_text_only(tmp_path: Path) -> None:
     ]
 
 
+def test_history_search_indexes_raw_user_and_assistant_text(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    user_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="user",
+            source="text",
+            text="private-user-token",
+        )
+    )
+    assistant_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:01+01:00",
+            role="assistant",
+            source="assistant",
+            text="public assistant answer",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:02+01:00",
+            role="system",
+            source="context",
+            text="system-token",
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    user_result = repository.search(HistorySearchRequest(query="private-user"))
+    assistant_result = repository.search(HistorySearchRequest(query="assistant"))
+    system_result = repository.search(HistorySearchRequest(query="system-token"))
+
+    assert user_result.status is HistorySearchStatus.ACCEPTED
+    assert [hit.reference for hit in user_result.hits] == [user_ref]
+    assert user_result.hits[0].snippet == "[private]-[user]-token"
+    assert [hit.reference for hit in assistant_result.hits] == [assistant_ref]
+    assert system_result.hits == ()
+
+
 def test_search_before_rebuild_is_read_only_and_returns_no_hits(tmp_path: Path) -> None:
     store = JournalStore(tmp_path)
     index = JournalSearchIndex(store, tmp_path)
 
     assert index.search("anything") == []
     assert not (tmp_path / "index.db").exists()
+
+
+def test_history_search_before_rebuild_is_unavailable_and_read_only(
+    tmp_path: Path,
+) -> None:
+    repository = HistoryCorpusRepository(
+        JournalStore(tmp_path / "journal"), tmp_path / "derived"
+    )
+
+    result = repository.search(HistorySearchRequest(query="anything"))
+
+    assert result.status is HistorySearchStatus.UNAVAILABLE
+    assert result.hits == ()
+    assert not repository.db_path.exists()
 
 
 def test_search_date_filter_is_inclusive_and_date_to_covers_whole_day(
@@ -113,6 +180,56 @@ def test_search_date_filter_is_inclusive_and_date_to_covers_whole_day(
         (session_id, "2026-07-16T23:59:59+01:00"),
         (session_id, "2026-07-17T00:00:00+01:00"),
     ]
+
+
+def test_history_search_filters_compose_by_role_source_session_and_time(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    kept = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="user",
+            source="text",
+            text="shared filter target",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T16:00:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="shared filter target",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260717-153000-cd34",
+            timestamp="2026-07-17T15:30:00+01:00",
+            role="user",
+            source="voice",
+            text="shared filter target",
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    result = repository.search(
+        HistorySearchRequest(
+            query="shared",
+            date_from="2026-07-16",
+            date_to="2026-07-16",
+            session_ids=("20260716-153000-ab12",),
+            roles=("user",),
+            sources=("text",),
+            order=HistorySearchOrder.CHRONOLOGICAL,
+        )
+    )
+
+    assert result.status is HistorySearchStatus.ACCEPTED
+    assert [hit.reference for hit in result.hits] == [kept]
 
 
 def test_date_only_mode_returns_matching_assistant_events(tmp_path: Path) -> None:
@@ -159,6 +276,103 @@ def test_cyrillic_exact_and_prefix_queries_match_assistant_answers(
     assert [hit.session_id for hit in index.search("р")] == ["20260716-153000-ab12"]
 
 
+def test_history_search_cyrillic_exact_and_prefix_queries_match_raw_text(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    reference = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="user",
+            source="text",
+            text="Система запомнила русский ответ.",
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    assert [
+        hit.reference for hit in repository.search(HistorySearchRequest("русский")).hits
+    ] == [reference]
+    assert [
+        hit.reference for hit in repository.search(HistorySearchRequest("рус")).hits
+    ] == [reference]
+    assert [
+        hit.reference for hit in repository.search(HistorySearchRequest("р")).hits
+    ] == [reference]
+
+
+def test_history_search_order_modes_are_deterministic(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    older = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="relay",
+        )
+    )
+    newer = store.append(
+        _event(
+            session_id="20260717-153000-cd34",
+            timestamp="2026-07-17T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="relay relay relay",
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    relevance = repository.search(
+        HistorySearchRequest("relay", order=HistorySearchOrder.RELEVANCE)
+    )
+    chronological = repository.search(
+        HistorySearchRequest("relay", order=HistorySearchOrder.CHRONOLOGICAL)
+    )
+
+    assert [hit.reference for hit in relevance.hits] == [newer, older]
+    assert [hit.reference for hit in chronological.hits] == [older, newer]
+    assert [hit.order_index for hit in relevance.hits] == [0, 1]
+    assert relevance.hits[0].score < relevance.hits[1].score
+
+
+def test_history_search_hits_read_back_to_the_same_event(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    reference = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="read back target",
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    search = repository.search(HistorySearchRequest("target"))
+    read = repository.read_event(search.hits[0].reference)
+
+    assert [hit.reference for hit in search.hits] == [reference]
+    assert read.event is not None
+    assert read.event.text == "read back target"
+
+
+def test_history_search_enforces_strict_result_limit(tmp_path: Path) -> None:
+    repository = HistoryCorpusRepository(
+        JournalStore(tmp_path / "journal"), tmp_path / "derived"
+    )
+
+    too_low = repository.search(HistorySearchRequest("anything", limit=0))
+    too_high = repository.search(HistorySearchRequest("anything", limit=501))
+
+    assert too_low.status is HistorySearchStatus.INVALID_LIMIT
+    assert too_high.status is HistorySearchStatus.TOO_MANY_RESULTS
+
+
 def test_update_session_replaces_existing_session_rows(tmp_path: Path) -> None:
     store = JournalStore(tmp_path)
     session_id = "20260716-153000-ab12"
@@ -185,7 +399,42 @@ def test_update_session_replaces_existing_session_rows(tmp_path: Path) -> None:
     ]
 
 
-def test_delete_session_removes_only_that_sessions_search_rows(tmp_path: Path) -> None:
+def test_update_session_replays_only_the_requested_session(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path)
+    session_id = "20260716-153000-ab12"
+    other_session_id = "20260717-153000-cd34"
+    _append_assistant(
+        store,
+        session_id=session_id,
+        timestamp="2026-07-16T15:30:00+01:00",
+        text="old answer",
+    )
+    _append_assistant(
+        store,
+        session_id=other_session_id,
+        timestamp="2026-07-17T15:30:00+01:00",
+        text="other answer",
+    )
+    JournalSearchIndex(store, tmp_path).rebuild()
+    _append_assistant(
+        store,
+        session_id=session_id,
+        timestamp="2026-07-16T15:31:00+01:00",
+        text="new answer",
+    )
+    no_list_store = _NoListJournalStore(tmp_path)
+    index = JournalSearchIndex(no_list_store, tmp_path)
+
+    index.update_session(session_id)
+
+    assert [hit.snippet for hit in index.search("answer")] == [
+        "old [answer]",
+        "new [answer]",
+        "other [answer]",
+    ]
+
+
+def test_delete_session_removes_only_that_sessions_projection(tmp_path: Path) -> None:
     store = JournalStore(tmp_path)
     deleted_session = "20260716-153000-ab12"
     kept_session = "20260717-153000-cd34"
@@ -209,6 +458,14 @@ def test_delete_session_removes_only_that_sessions_search_rows(tmp_path: Path) -
     assert [(hit.session_id, hit.snippet) for hit in index.search("shared")] == [
         (kept_session, "[shared] answer kept")
     ]
+    repository = HistoryCorpusRepository(store, tmp_path)
+    assert (
+        repository.read_session(deleted_session).status
+        is HistorySessionReadStatus.UNKNOWN_SESSION
+    )
+    assert (
+        repository.read_session(kept_session).status is HistorySessionReadStatus.FOUND
+    )
 
 
 def _append_assistant(
@@ -246,3 +503,8 @@ def _event(
         media=[],
         transcript=None,
     )
+
+
+class _NoListJournalStore(JournalStore):
+    def list_sessions(self) -> list[JournalSessionSummary]:
+        raise RuntimeError("update_session must not list every journal session")
