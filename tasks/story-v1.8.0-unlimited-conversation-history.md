@@ -122,7 +122,9 @@ In scope:
   reasoning, tool results, and forced-final pass.
 - Bounded automatic retrieval plus iterative explicit retrieval.
 - Context, prompt-token, retrieval-latency, and index-health observability.
-- A measured gate for Russian-language semantic retrieval.
+- An early measured gate for Russian-language retrieval quality before
+  retrieval consumers are wired, plus a late regression check after
+  transcripts and annotations expand the searchable text surface.
 
 Out of scope:
 
@@ -255,10 +257,10 @@ Explicit tools let the model refine a query, inspect surrounding events, and
 compare several periods. Tool-returned passages remain inside the current
 tool loop and are not copied into long-term history as new facts.
 
-### 10. Exact retrieval ships before semantic retrieval
+### 10. Exact retrieval is gated before retrieval consumers
 
-FTS and typed range reads are mandatory. Before selecting a vector store, a
-fixed Russian-language evaluation set measures:
+FTS and typed range reads are mandatory. Immediately after exact and prefix
+search exist, a fixed Russian-language evaluation set measures:
 
 - word-form and prefix variation;
 - paraphrases;
@@ -266,18 +268,32 @@ fixed Russian-language evaluation set measures:
 - temporal and session filtering;
 - relevant-context recall and irrelevant-result rate.
 
-If exact retrieval meets the story's threshold, v1.8.0 completes without a
-semantic runtime dependency. If it does not, a gated task evaluates local
-embeddings and storage choices. Qdrant is a candidate, not a predetermined
-dependency. The existing `.venv-mcp-qdrant` and configured read-only Qdrant
-MCP example prove that the external provider path can run; they are not
-evidence that Qdrant is the right integrated history-corpus backend and must
-not influence the predeclared gate threshold.
+If exact retrieval meets the story's threshold, retrieval consumers are built
+on the exact/prefix backend and v1.8.0 completes without a semantic runtime
+dependency. If it does not, implementation stops for an owner decision on a
+local semantic or hybrid retrieval design before model-facing tools,
+automatic retrieval, or working-context wiring consume the search surface.
+The selected backend is then implemented as a conditional task after the
+lifecycle owner has defined projection ownership and before retrieval
+consumers are wired.
+
+Qdrant is a candidate, not a predetermined dependency. The existing
+`.venv-mcp-qdrant` and configured read-only Qdrant MCP example prove that the
+external provider path can run; they are not evidence that Qdrant is the right
+integrated history-corpus backend and must not influence the predeclared gate
+threshold.
+
+After transcripts and annotations are integrated, a later regression gate
+reruns the retrieval-quality benchmark against the final searchable text
+surface. It can confirm the early decision or stop the release if the new
+text layer invalidates it, but it does not reopen lifecycle ownership.
 
 ### 11. Deletion reaches every derived layer
 
 Explicit session deletion removes its search rows, transcripts, annotations,
-archive metadata, and semantic vectors. It does not retroactively mutate an
+archive metadata, and semantic vectors when that optional projection exists.
+Task v1.8.0-8 owns a projection lifecycle seam for every derived layer, even
+when the semantic slot remains empty. It does not retroactively mutate an
 already dispatched Ollama request. A rebuild cannot resurrect deleted data
 because the source session no longer exists.
 
@@ -310,8 +326,16 @@ earlier implementation slice.
    add bounded event, context, range, session, and batch reads.
 7. [Exact and prefix history search](task-v1.8.0-7-exact-history-search.md)
    add FTS over raw text while preserving the current Journal search adapter.
+7a. [Exact retrieval quality gate](task-v1.8.0-7a-exact-retrieval-quality-gate.md)
+    measure exact/prefix retrieval before downstream retrieval consumers are
+    designed against its signal.
 8. [History corpus lifecycle and incremental indexing](task-v1.8.0-8-history-corpus-lifecycle.md)
-   move startup, append, deletion, and rebuild ownership out of the UI.
+   move startup, append, deletion, and rebuild ownership for derived
+   projections out of the UI, including an empty optional semantic slot.
+8a. Conditional semantic/hybrid backend slot:
+    if task 7a rejects exact-only retrieval, create the owner-approved backend
+    card here, after task 8 defines lifecycle ownership and before task 9,
+    task 13, and task 14 consume the retrieval surface.
 9. [Native read-only history tool provider](task-v1.8.0-9-history-tool-provider.md)
    expose bounded search and batch reads within the existing tool-call budget.
 10. [Pure recent-history selection policy](task-v1.8.0-10-recent-history-policy.md)
@@ -321,7 +345,8 @@ earlier implementation slice.
 12. [Working-context orchestration](task-v1.8.0-12-working-context-orchestration.md)
     replace unbounded live replay while preserving existing dialog semantics.
 13. [Automatic retrieval selector](task-v1.8.0-13-automatic-retrieval-selector.md)
-    rank, deduplicate, and budget passages without I/O.
+    rank, deduplicate, and budget passages from the final approved retrieval
+    candidate surface without I/O.
 14. [Automatic retrieval wiring](task-v1.8.0-14-automatic-retrieval-wiring.md)
     retrieve before request assembly with a recent-context fallback.
 15. [Transcript overlay store](task-v1.8.0-15-transcript-overlay-store.md)
@@ -340,19 +365,25 @@ earlier implementation slice.
     calculate safe near/far media operations without performing them.
 22. [Consolidation executor and control](task-v1.8.0-22-consolidation-executor-and-control.md)
     execute explicit plans with restart recovery, API, and UI control.
-23. [Semantic retrieval decision gate](task-v1.8.0-23-semantic-retrieval-gate.md)
-    evaluate exact retrieval before approving any new local runtime dependency.
+23. [Retrieval quality regression](task-v1.8.0-23-retrieval-quality-regression.md)
+    rerun the fixed retrieval-quality benchmark after transcripts and
+    annotations join the searchable corpus.
 24. [Scale, recovery, and end-to-end verification](task-v1.8.0-24-scale-recovery-and-e2e.md)
     test the integrated design on large synthetic history and failure paths.
 25. [Documentation and release verification](task-v1.8.0-25-docs-and-release-verification.md)
     reconcile architecture, configuration, user docs, checks, and manual
     handoff.
 
-Task 23 is a mandatory decision gate, not a placeholder semantic
+Task 7a is the mandatory semantic decision gate, not a placeholder semantic
 implementation. If its fixed evaluation fails, implementation stops for an
-owner decision. The selected semantic design receives its own task card and
-becomes a dependency of tasks 24 and 25. Exact/prefix retrieval remains the
-offline fallback in either outcome.
+owner decision; the selected semantic or hybrid design receives its own
+conditional task card in the slot after task 8 and before retrieval consumers.
+Exact/prefix retrieval remains the offline fallback in either outcome.
+
+Task 23 is a mandatory late regression gate over the final searchable corpus,
+not the first semantic decision point. If transcripts or annotations invalidate
+the recorded retrieval-quality decision, the release stops before scale and
+documentation tasks rather than silently patching retrieval after wiring.
 
 ## Acceptance criteria
 
@@ -386,6 +417,9 @@ offline fallback in either outcome.
       rebuild cannot restore it.
 - [ ] Exact retrieval works when the optional semantic path is absent or
       unavailable.
+- [ ] The semantic/no-semantic decision is made before model-facing history
+      tools, automatic retrieval, and working-context wiring depend on the
+      search surface.
 - [ ] Runtime inference, storage, indexing, and optional embeddings are local
       except for separately enabled external tools unrelated to this story.
 - [ ] Pure automated tests, Ruff format/check, and the feature end-to-end fake
@@ -424,8 +458,10 @@ human-run under the project's hardware testing protocol.
   before batch operations have been implemented and measured.
 - Stop if transcription or annotation work competes with a live user turn in
   a way that makes Ollama latency or VRAM use unpredictable.
-- Stop at the semantic gate if local embedding or index candidates have
+- Stop at the early semantic gate if local embedding or index candidates have
   non-obvious quality, dependency, persistence, or host-resource trade-offs.
+- Stop at the late retrieval regression if transcripts or annotations make
+  the final searchable corpus contradict the recorded retrieval decision.
 - Stop if automatic retrieval cannot distinguish weak matches well enough to
   avoid regularly polluting the working context.
 - Stop if model-written annotations cannot remain visibly traceable to their

@@ -449,8 +449,10 @@ The settled decisions from the old entries remain binding in v1.8.0:
 - model-written annotations remain size-capped, visible, editable, and
   traceable to source events;
 - retrieval is local, provenance-bearing, and bounded;
-- exact FTS retrieval is implemented and measured before a local semantic
-  index is selected;
+- exact FTS retrieval is implemented and measured before retrieval consumers
+  are wired; if that gate requires semantics, the local semantic or hybrid
+  backend is selected before history tools and automatic retrieval consume the
+  search surface;
 - retrieval never silently rewrites `memory.md`, `self.md`, or raw journal
   events.
 
@@ -511,9 +513,13 @@ Scope:
   for thinking, tool results, and the final answer.
 - Prompt/context observability including Ollama prompt-token metrics, context
   composition metrics, index latency, and deterministic degraded behavior.
-- FTS first. A measured Russian-language retrieval gate decides whether a
-  later task inside the story adds local embeddings and which local index it
-  uses.
+- FTS first. A measured Russian-language retrieval gate runs immediately after
+  exact/prefix search, before lifecycle consumers, history tools, automatic
+  retrieval, and working-context wiring depend on the search signal. If that
+  gate rejects exact-only retrieval, a local semantic or hybrid backend is
+  selected and implemented before those consumers are wired; a late regression
+  gate reruns the benchmark after transcripts and annotations expand the
+  searchable text surface.
 - The existing retention-policy report is resolved by the consolidation and
   media lifecycle delivered inside this story.
 

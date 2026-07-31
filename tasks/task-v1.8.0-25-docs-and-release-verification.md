@@ -6,7 +6,9 @@
 **Depends on:**
 
 - all mandatory v1.8.0 task cards
-- any conditional semantic-retrieval implementation card created by task 23
+- task 7a's retrieval-quality decision
+- task 23's retrieval-quality regression decision
+- any conditional semantic/hybrid implementation card inserted after task 8
 
 ## Summary
 
@@ -33,7 +35,8 @@ suite, and prepare the exact human verification handoff for v1.8.0.
   - authoritative versus derived data model;
   - event-reference contract;
   - context-budget algorithm and measured margin;
-  - retrieval behavior and semantic-gate decision;
+  - retrieval behavior, early semantic-gate decision, and late regression
+    decision;
   - transcription, annotation, and consolidation invariants;
   - Ollama and locality implications.
 - Document every `[history]` setting and default in the configuration example.

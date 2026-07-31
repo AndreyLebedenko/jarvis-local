@@ -9,6 +9,7 @@
 - `task-v1.8.0-11-working-context-assembler.md`
 - `task-v1.8.0-12-working-context-orchestration.md`
 - `task-v1.8.0-13-automatic-retrieval-selector.md`
+- any conditional semantic/hybrid backend task inserted after task 8.
 
 ## Summary
 
@@ -19,6 +20,8 @@ feed its selected passages into the working-context assembler.
 
 - `src/jarvis/app.py`
 - the task 8 corpus lifecycle owner
+- the final approved domain retrieval surface from task 7a and any
+  conditional semantic/hybrid backend
 - the task 11 assembler
 - the task 13 selector
 - interruption and busy-state tests in `tests/test_main.py`
@@ -26,13 +29,14 @@ feed its selected passages into the working-context assembler.
 ## Current boundary
 
 - In scope: automatic retrieval and working-context integration.
-- Out of scope: generative query rewriting, semantic embeddings, UI,
-  transcription, and annotations.
+- Out of scope: generative query rewriting, retrieval backend implementation,
+  UI, transcription, and annotations.
 
 ## Requirements
 
 - Retrieve candidates before final request assembly for eligible text turns.
-- Use only local derived-corpus reads and the deterministic task 13 policy.
+- Use only local derived-corpus reads, the final approved retrieval surface,
+  and the deterministic task 13 policy.
 - Do not add an Ollama request solely to decide what to retrieve.
 - Fall back to recent context when the derived corpus is absent, rebuilding,
   corrupt, or temporarily unavailable.

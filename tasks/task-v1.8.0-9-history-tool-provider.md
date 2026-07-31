@@ -2,12 +2,13 @@
 
 **Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
-**Depends on:** tasks v1.8.0-6 through v1.8.0-8.
+**Depends on:** tasks v1.8.0-6 through v1.8.0-8, plus any conditional
+semantic/hybrid backend task inserted after task 8.
 
 ## Summary
 
-Expose exact search and bounded event/range reads to the model through a
-dedicated local `HistoryToolProvider`.
+Expose bounded search and event/range reads to the model through a dedicated
+local `HistoryToolProvider`.
 
 ## Context you need
 
@@ -17,7 +18,9 @@ dedicated local `HistoryToolProvider`.
 - `src/jarvis/dialog/tool_presentation.py`: shared three-call budget.
 - `src/jarvis/core/config.py`: the shared budget is physically stored as
   `settings.mcp.max_tool_calls_per_turn`.
-- Task 6 read API and task 7 search API.
+- Task 6 read API, task 7 search API, task 7a retrieval decision, and the task
+  8 lifecycle owner.
+- Any conditional semantic/hybrid backend task created after task 7a.
 - Existing builtin/dispatcher/tool-presentation tests.
 
 ## Current boundary
@@ -25,7 +28,7 @@ dedicated local `HistoryToolProvider`.
 - In scope: provider name reservation, declarations, argument validation,
   bounded result serialization, registration/wiring, and dispatch tests.
 - Out of scope: automatic retrieval, context assembly, MCP exposure,
-  semantic search, history writes, and tool-budget changes.
+  semantic-backend implementation, history writes, and tool-budget changes.
 
 ## Requirements
 
@@ -38,6 +41,9 @@ dedicated local `HistoryToolProvider`.
   - `read_history`;
   - `read_history_ranges`.
 - Schemas expose only supported filters and bounded batch shapes.
+- Search tools consume the final approved history-domain retrieval surface:
+  exact/prefix only when task 7a passes, or the owner-approved semantic/hybrid
+  backend when task 7a requires one.
 - Every result includes references, role/source/timestamp provenance, plain
   text, truncation/count metadata, and a concise model-facing summary.
 - Validate unknown arguments, invalid references/ranges, and all count/token
@@ -56,6 +62,8 @@ dedicated local `HistoryToolProvider`.
       provider.
 - [ ] MCP configuration rejects a colliding provider name.
 - [ ] Search and batch reads return bounded structured provenance.
+- [ ] Tool behavior does not need to change later if task 7a selected an
+      approved semantic/hybrid backend before this card.
 - [ ] Invalid input produces a tool error without repository mutation.
 - [ ] A search -> surrounding read -> final answer flow fits the existing
       tool budget in a real `ToolAwareDialog` test with fakes.
@@ -68,6 +76,8 @@ dedicated local `HistoryToolProvider`.
   is implemented and tested.
 - Stop if result serialization needs type erasure or exposes raw media bytes.
 - Stop if tool-specific query logic starts duplicating the history domain API.
+- Stop if the history-domain retrieval surface is still undecided after task
+  7a and any required conditional backend card.
 
 ## Verification
 

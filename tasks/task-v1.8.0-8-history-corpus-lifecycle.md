@@ -2,12 +2,14 @@
 
 **Status:** Approved.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
-**Depends on:** tasks v1.8.0-1 and v1.8.0-5 through v1.8.0-7.
+**Depends on:** tasks v1.8.0-1, v1.8.0-5 through v1.8.0-7, and
+task v1.8.0-7a.
 
 ## Summary
 
-Move corpus startup, append-time indexing, and deletion consistency out of
-the UI transport into one history-domain lifecycle owner.
+Move corpus startup, append-time indexing, and deletion consistency for
+derived projections out of the UI transport into one history-domain lifecycle
+owner.
 
 ## Context you need
 
@@ -20,14 +22,18 @@ the UI transport into one history-domain lifecycle owner.
 ## Current boundary
 
 - In scope: one lifecycle service/coordinator, startup synchronization,
-  incremental event projection/FTS update, deletion orchestration, app
-  wiring, and removal of index ownership from UI.
-- Out of scope: transcripts, annotations, tools, context assembly,
-  consolidation, and UI redesign.
+  incremental event projection/FTS update, a projection lifecycle seam for
+  optional semantic vectors, deletion orchestration, app wiring, and removal
+  of index ownership from UI.
+- Out of scope: transcripts, annotations, semantic backend implementation,
+  tools, context assembly, consolidation, and UI redesign.
 
 ## Requirements
 
 - Introduce one history-domain lifecycle owner constructed by `build_app()`.
+- Treat event projection, FTS/search rows, and the optional semantic vector
+  layer as derived projections with one lifecycle owner. The semantic slot may
+  be empty when task 7a approves exact-only retrieval.
 - At startup it validates or rebuilds the derived corpus independently of
   whether Status Console is enabled.
 - Subscribe to `JournalEventAppended` and insert exactly that referenced event
@@ -35,8 +41,11 @@ the UI transport into one history-domain lifecycle owner.
 - Current-session events become searchable after their append completes.
 - Provide one delete-session operation that:
   - enforces the existing active-session guard at the command boundary;
-  - removes raw session data and every derived row;
+  - removes raw session data and every derived row or vector owned by any
+    registered projection;
   - reports failure honestly if consistency cannot be guaranteed.
+- A missing or disabled optional projection is a valid lifecycle state, not a
+  special case in UI or tool code.
 - `UiTransportServer` calls the history service for reads/deletion and keeps
   only UI push/rendering responsibilities.
 - Hidden mode still suppresses HTTP/UI visibility; it does not control
@@ -51,6 +60,8 @@ the UI transport into one history-domain lifecycle owner.
 - [ ] UI live feed still emits exactly one event.
 - [ ] Current-session search does not rebuild the whole session.
 - [ ] Session deletion removes raw and derived data through one owner.
+- [ ] The optional semantic projection has an explicit empty/disabled slot in
+      lifecycle operations without selecting a backend.
 - [ ] Startup rebuild and shutdown ordering are deterministic and tested.
 - [ ] No UI class owns a search-index mutation method afterward.
 
@@ -64,6 +75,8 @@ the UI transport into one history-domain lifecycle owner.
   without an explicit readiness state.
 - Stop if extracting ownership reveals a circular dependency between app,
   journal, and UI modules.
+- Stop if the projection seam would force choosing a semantic backend before
+  task 7a's recorded decision or the owner's follow-up design choice.
 
 ## Verification
 

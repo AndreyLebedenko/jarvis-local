@@ -11,7 +11,8 @@
 - `task-v1.8.0-17-transcript-api-ui-and-consumers.md`
 - `task-v1.8.0-20-annotation-api-ui-and-search.md`
 - `task-v1.8.0-22-consolidation-executor-and-control.md`
-- `task-v1.8.0-23-semantic-retrieval-gate.md`
+- `task-v1.8.0-23-retrieval-quality-regression.md`
+- any conditional semantic/hybrid backend task inserted after task 8.
 
 ## Summary
 
