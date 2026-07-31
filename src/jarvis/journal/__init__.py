@@ -1,5 +1,11 @@
 """Append-only dialog journal data layer."""
 
+from jarvis.journal.corpus import (
+    CURRENT_HISTORY_CORPUS_SCHEMA_VERSION,
+    HistoryCorpusEvent,
+    HistoryCorpusRepository,
+    HistoryCorpusSchemaError,
+)
 from jarvis.journal.events import (
     JournalEvent,
     JournalEventAppended,
@@ -19,6 +25,10 @@ from jarvis.journal.store import (
 )
 
 __all__ = [
+    "CURRENT_HISTORY_CORPUS_SCHEMA_VERSION",
+    "HistoryCorpusEvent",
+    "HistoryCorpusRepository",
+    "HistoryCorpusSchemaError",
     "JournalEvent",
     "JournalEventAppended",
     "JournalEventRecord",

@@ -92,6 +92,23 @@ system is intended to grow.
   approaches: `prompt_eval_count` is exact but post-dispatch only, and a
   standalone SentencePiece tokenizer is neither supplied by an Ollama model
   name nor exact for Ollama's rendered Gemma4 chat template.
+- **Derived history corpus schema, 2026-07-31 (task v1.8.0-5):** the first
+  rebuildable history corpus is a separate SQLite database named
+  `history_corpus.db`, owned by `HistoryCorpusRepository` under
+  `src/jarvis/journal/`. Schema version 1 stores one normalized row per valid
+  raw `JournalEventRecord`: stable reference, timestamp and numeric sort key,
+  role, source, raw text, media JSON plus media count, transcript, and metadata
+  JSON. Metadata and media are stored as JSON text and decoded back to JSON
+  values at the inspection boundary; raw JSONL events and media bytes remain
+  untouched. `rebuild()` is a full transactional replacement from
+  `JournalStore`: corrupt raw lines are skipped by replay and absent from the
+  corpus, and any failure rolls back to the prior valid corpus. Unknown newer
+  schema versions fail explicitly. The pre-existing disposable
+  `JournalSearchIndex` database remains the separate `index.db` owned by
+  `src/jarvis/journal/search.py`; task v1.8.0-5 neither migrates nor deletes it.
+  Later FTS/search tasks decide whether to rebuild or replace that index. This
+  task does not add FTS, query APIs, live append-time updates, transcripts,
+  annotations, tools, UI wiring, or context assembly.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

@@ -1,6 +1,6 @@
 # Task v1.8.0-5: Derived history corpus schema and rebuild
 
-**Status:** Approved.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-1.
 
@@ -43,13 +43,13 @@ live incremental updates.
 
 ## Acceptance criteria
 
-- [ ] Rebuild projects all valid user, assistant, and system events with exact
+- [x] Rebuild projects all valid user, assistant, and system events with exact
       references and metadata.
-- [ ] A second rebuild is deterministic.
-- [ ] Corrupt lines do not abort other events or sessions.
-- [ ] Failure rolls back or leaves the prior valid corpus intact.
-- [ ] Raw JSONL and media bytes are unchanged.
-- [ ] Unknown schema versions fail explicitly.
+- [x] A second rebuild is deterministic.
+- [x] Corrupt lines do not abort other events or sessions.
+- [x] Failure rolls back or leaves the prior valid corpus intact.
+- [x] Raw JSONL and media bytes are unchanged.
+- [x] Unknown schema versions fail explicitly.
 
 ## Stop conditions
 
@@ -65,3 +65,10 @@ live incremental updates.
 - New focused corpus tests using temporary raw sessions and databases.
 - Existing journal store/search tests.
 - Ruff checks.
+
+## Review notes
+
+- Legacy `index.db` disposition: the existing disposable FTS index remains
+  owned by `JournalSearchIndex` in `src/jarvis/journal/search.py`. The new
+  normalized corpus uses a separate `history_corpus.db`; task v1.8.0-5 does
+  not migrate, delete, or rebuild `index.db`.
