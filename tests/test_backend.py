@@ -17,6 +17,7 @@ from jarvis.dialog.backend import (
     OllamaBackend,
     ResponseComplete,
     ResponseToken,
+    parse_metrics,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.inputs.attachment_audio import (
@@ -282,6 +283,7 @@ def _ndjson_fixture_body() -> bytes:
             "done": True,
             "load_duration": 300_000_000,
             "prompt_eval_duration": 200_000_000,
+            "prompt_eval_count": 321,
             "eval_duration": 1_000_000_000,
             "eval_count": 87,
         },
@@ -336,9 +338,14 @@ async def test_latency_metrics_parsed_and_published_on_completion():
                 prompt_eval_seconds=0.2,
                 eval_seconds=1.0,
                 eval_count=87,
+                prompt_eval_count=321,
             )
         )
     ]
+
+
+def test_missing_prompt_eval_count_defaults_to_zero():
+    assert parse_metrics({"done": True}).prompt_eval_count == 0
 
 
 def _close_transcript() -> None:
@@ -433,7 +440,9 @@ async def test_stream_ending_without_done_still_publishes_response_complete():
     )
     await backend.chat(messages=[{"role": "user", "content": "hi"}])
 
-    assert received == [ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0))]
+    assert received == [
+        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
+    ]
 
 
 async def test_stream_ending_without_done_still_republishes_seen_tokens():

@@ -70,6 +70,7 @@ class LatencyMetrics:
     prompt_eval_seconds: float
     eval_seconds: float
     eval_count: int
+    prompt_eval_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -195,4 +196,5 @@ def parse_metrics(chunk: dict[str, Any]) -> LatencyMetrics:
         prompt_eval_seconds=chunk.get("prompt_eval_duration", 0) / 1e9,
         eval_seconds=chunk.get("eval_duration", 0) / 1e9,
         eval_count=chunk.get("eval_count", 0),
+        prompt_eval_count=chunk.get("prompt_eval_count", 0),
     )

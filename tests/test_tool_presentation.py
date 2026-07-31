@@ -105,10 +105,15 @@ class FakeDispatcher:
         return self.results.pop(0)
 
 
-def _done(content: str = "") -> list[dict[str, object]]:
+def _done(content: str = "", *, prompt_eval_count: int = 0) -> list[dict[str, object]]:
     return [
         {"message": {"content": content}},
-        {"message": {"content": ""}, "done": True, "eval_count": 4},
+        {
+            "message": {"content": ""},
+            "done": True,
+            "eval_count": 4,
+            "prompt_eval_count": prompt_eval_count,
+        },
     ]
 
 
@@ -277,7 +282,7 @@ async def test_native_tool_artifacts_do_not_reach_response_events():
     backend = FakeBackend(
         [
             _native_calls(("search_web", {"query": "weather"})),
-            _done("It is sunny."),
+            _done("It is sunny.", prompt_eval_count=31),
         ]
     )
     dispatcher = FakeDispatcher(
@@ -297,6 +302,7 @@ async def test_native_tool_artifacts_do_not_reach_response_events():
     assert tokens == ["It is sunny."]
     assert len(completions) == 1
     assert completions[0].metrics.eval_count == 4
+    assert completions[0].metrics.prompt_eval_count == 31
     assert dispatcher.calls == [("search_web", {"query": "weather"})]
     follow_up_messages = backend.raw_calls[1]["messages"]
     assert follow_up_messages[-2]["role"] == "assistant"
@@ -589,13 +595,16 @@ async def test_tool_failure_skips_later_calls_from_the_same_model_response():
 async def test_prompt_strategy_parses_tool_call_then_only_publishes_final_answer():
     bus = EventBus()
     tokens: list[str] = []
+    completions: list[ResponseComplete] = []
     bus.subscribe(ResponseToken, _append_token(tokens))
+    bus.subscribe(ResponseComplete, _append_completion(completions))
     backend = FakeBackend(
         [
             _done(
-                '{"tool_call":{"name":"search_web","arguments":{"query":"weather"}}}'
+                '{"tool_call":{"name":"search_web","arguments":{"query":"weather"}}}',
+                prompt_eval_count=17,
             ),
-            _done('{"final_answer":"It is sunny."}'),
+            _done('{"final_answer":"It is sunny."}', prompt_eval_count=43),
         ]
     )
     dispatcher = FakeDispatcher(
@@ -613,6 +622,7 @@ async def test_prompt_strategy_parses_tool_call_then_only_publishes_final_answer
     await dialog.chat([{"role": "user", "content": "weather?"}])
 
     assert tokens == ["It is sunny."]
+    assert completions[0].metrics.prompt_eval_count == 43
     assert dispatcher.calls == [("search_web", {"query": "weather"})]
     assert backend.raw_calls[0]["tools"] is None
     assert "Available tools" in backend.raw_calls[0]["messages"][-2]["content"]
@@ -690,7 +700,9 @@ async def test_stream_without_done_still_completes_final_turn_once():
 
     await dialog.chat([{"role": "user", "content": "hello"}])
 
-    assert completions == [ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0))]
+    assert completions == [
+        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
+    ]
 
 
 @pytest.mark.asyncio
