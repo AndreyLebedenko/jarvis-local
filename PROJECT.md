@@ -61,6 +61,31 @@ system is intended to grow.
   generation ~87 tok/s. VRAM under load: ~10.9/16 GB → ~5 GB headroom for TTS.
 - Context: `num_ctx: 65536` (verified to fit; if VRAM pressure appears, first
   try `OLLAMA_KV_CACHE_TYPE=q8_0`, then drop to 32768).
+- **Context budget estimator and defaults, 2026-07-31 (task v1.8.0-3):**
+  pre-dispatch budgeting uses the no-dependency conservative estimator
+  `ceil(canonical_utf8_bytes / 2) + 32 + 12 * message_count + 24 * tool_count`,
+  followed by one global `1024`-token safety margin for the complete assembled
+  prompt. The owner-run live spike used Ollama 0.32.5,
+  `gemma4:12b-it-qat`, and `num_ctx = 65536`; all eight measured payloads
+  returned stable `prompt_eval_count` values across repeated runs. Observed
+  prompt counts ranged from 472 to 2441 tokens. The estimator never
+  underestimated; maximum observed underestimation was 0 tokens, minimum
+  estimator headroom was 876 tokens, and minimum headroom after the global
+  margin was 1900 tokens. Task v1.8.0-4 must implement these exact `[history]`
+  defaults: `prompt_capacity_tokens = 49152`,
+  `recent_history_max_tokens = 24576`,
+  `automatic_retrieval_max_tokens = 8192`,
+  `tool_result_reserve_tokens = 8192`,
+  `reasoning_generation_reserve_tokens = 16384`,
+  `estimator_safety_margin_tokens = 1024`, and
+  `minimum_recent_exchanges = 1`. `prompt_capacity_tokens` is input capacity
+  and excludes the separate reasoning/generation reserve; the two defaults
+  sum to the verified `backend.num_ctx = 65536`. Recent-history and automatic
+  retrieval values are optional maxima, while tool/result and
+  reasoning/generation reserves are mandatory and cannot be borrowed. Rejected
+  approaches: `prompt_eval_count` is exact but post-dispatch only, and a
+  standalone SentencePiece tokenizer is neither supplied by an Ollama model
+  name nor exact for Ollama's rendered Gemma4 chat template.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

@@ -15,6 +15,7 @@ manual_check_capture_out/
 manual_check_camera_spike_out/
 manual_check_camera_sources_out/
 manual_check_aec_spike_out/
+manual_check_context_token_budget_out/
 sounds/
 .planning/
 .claude/settings.local.json
