@@ -27,11 +27,18 @@ transcripts, annotations, and UI.
 - Preserve exact lookup strength for names, dates, identifiers, and numbers.
 - Hydrate selected candidates through typed event/range reads before returning
   model-facing text.
+- Fix one backend-neutral candidate/result contract so the selector does not
+  guess: each candidate exposes source mode (semantic, lexical, or both), an
+  optional semantic score (absent in lexical-only mode), a lexical score or
+  rank, and a combined rank. Absence of a semantic score is a valid,
+  documented state, not an error.
 - Return provenance, score metadata, source mode, truncation, and count data.
 - Run the predeclared Russian benchmark from task 8 without live Ollama,
   network access, or hardware.
 - Record corpus version, labels, thresholds, metrics, result, and decision in
-  `PROJECT.md`.
+  `PROJECT.md`, including the morphology-aware lexical baseline row and the
+  measured increment the semantic layer adds over it, so the embedding cost
+  stays auditable against its benefit.
 - Keep exact/prefix retrieval as mandatory offline fallback.
 
 ## Acceptance criteria
@@ -41,6 +48,9 @@ transcripts, annotations, and UI.
 - [ ] Exact identifiers still work when semantic retrieval is unavailable.
 - [ ] Paraphrase and Russian word-form cases are covered.
 - [ ] Filters compose with both semantic and lexical candidates.
+- [ ] The candidate contract exposes source mode, optional semantic score,
+      lexical score/rank, and combined rank, and is stable for lexical-only
+      results.
 - [ ] The result is reproducible from repository files.
 
 ## Stop conditions

@@ -23,6 +23,9 @@ wiring, tools, and prompt assembly.
 - Construct retrieval requests deterministically from current user text and
   selected recent context.
 - Consume the approved hybrid candidate contract, not FTS-specific details.
+- Operate correctly on a lexical-only candidate set, since automatic retrieval
+  degrades to lexical when the semantic path is unavailable or over budget;
+  a missing semantic score is a normal input, not an error.
 - Apply configurable limits for candidates, accepted passages, relevance, and
   token budget.
 - Deduplicate overlapping hits and passages already present in recent context.
@@ -37,7 +40,8 @@ wiring, tools, and prompt assembly.
 - [ ] Low-relevance matches are omitted.
 - [ ] Selection never exceeds its assigned retrieval budget.
 - [ ] Tests cover Russian paraphrase, prefix fallback, exact identifier
-      fallback, overlap, ties, empty input, and insufficient budget.
+      fallback, lexical-only candidates with no semantic score, overlap, ties,
+      empty input, and insufficient budget.
 
 ## Stop conditions
 

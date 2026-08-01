@@ -4,6 +4,11 @@
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.8.0 section).
 **Created:** 2026-07-29.
 **Revised:** 2026-08-01 after owner review of the exact-first retrieval plan.
+**Reworked:** 2026-08-01. Second pass over the hybrid-retrieval revision: a
+morphology-aware lexical baseline is required before embeddings are justified,
+per-turn query-embedding cost is budgeted on the live path, and the remaining
+implementation and release-boundary cards are grouped into three sequenced
+releases.
 **Supersedes:** the separate v1.7.1 near/far consolidation and v1.7.2
 retrieval plan. Their settled storage, auditability, locality, and retention
 decisions are preserved here.
@@ -79,6 +84,23 @@ No vector result is treated as authoritative. The vector index is a
 rebuildable derived projection, and every model-facing passage must be read
 back from the history corpus or another source-grounded derived layer through
 stable provenance.
+
+"Hybrid" is not a synonym for "embeddings". The Russian retrieval complaint
+splits into two problems with different cheapest solutions. Word-form and
+prefix variation are a morphology problem, solved by a deterministic local
+lemmatizer or stemmer over the lexical layer (a pymorphy3 or
+pymorphy-compatible analyzer, a Snowball stemmer, or another measured local
+morphology backend, applied at index and query time) with no model, no VRAM,
+and no per-turn inference. The specific backend is chosen by the spike against
+the runtime, not fixed here; pymorphy2 in particular is avoided because its
+`inspect.getargspec` use is incompatible with Python 3.11. Synonyms and
+paraphrase are a meaning problem that no lexical method reaches, and only there
+is an embedding layer justified. The spike therefore measures a
+morphology-aware lexical baseline first, and the embedding layer must earn its
+resource and latency cost by the recall it adds over that baseline on
+paraphrase, not by the word-form recall a lemmatizer already delivers. The
+cheapest hybrid that clears the fixed benchmark wins; a full vector store is a
+candidate outcome, not the assumed one.
 
 ## Current system facts
 
@@ -336,6 +358,17 @@ tool loop and are not copied into long-term history as new facts.
 Both paths consume the same approved hybrid retrieval surface. They do not
 call the lexical or semantic projection stores directly.
 
+Automatic retrieval runs on the live turn, so its added cost is a hot-path
+concern, not only an indexing concern. When the approved backend uses
+embeddings, the automatic path embeds the current query on every eligible
+turn, which is a model forward pass competing with Ollama for VRAM before the
+main generation. This cost has a measured per-turn budget defined by the
+spike. If a turn's semantic retrieval cannot complete within that budget, the
+automatic path degrades to lexical-only retrieval for that turn rather than
+delaying generation; degradation is a bounded-time decision, not only a
+projection-unavailable decision. Explicit tool retrieval, which the model
+invokes deliberately, is not held to the same per-turn budget.
+
 ### 11. Hybrid retrieval is selected before retrieval consumers
 
 FTS and typed range reads are mandatory but insufficient as the only
@@ -343,14 +376,30 @@ retrieval signal. Before model-facing history tools, automatic retrieval, or
 working-context wiring consume history search, the story must choose and
 measure a local hybrid retrieval design.
 
+The chosen design is the cheapest one that clears the fixed benchmark. A
+morphology-aware lexical baseline (lemmatized or stemmed FTS) is measured
+before any embedding layer, and an embedding or vector layer is added only for
+the paraphrase and synonym gap it demonstrably closes over that baseline. The
+approved "hybrid" may be lemmatized-lexical plus a light semantic reranker
+rather than a full vector store, if that clears the threshold. A reranker
+counts as semantic hot-path work under the same per-turn latency and VRAM
+budget as query embedding, unless it is measured to run offline or at index
+time, or within a bounded CPU cost over a small candidate set on the live
+path.
+
 The candidate decision must cover:
 
+- a morphology-aware lexical baseline (lemmatizer/stemmer choice) and its
+  standalone benchmark result, measured before embeddings;
 - semantic passage shape and source-reference granularity;
-- embedding or semantic-model choice, installation, and configuration;
+- embedding or semantic-model choice, installation, and configuration, with
+  its incremental benchmark gain over the lexical baseline;
 - local persistence format and rebuild strategy;
 - append-time update and deletion behavior;
 - interaction with exact/prefix FTS, filters, ranking, and deduplication;
-- latency, disk, RAM, VRAM, and startup behavior on the owner's Windows host;
+- disk, RAM, VRAM, and startup behavior on the owner's Windows host;
+- per-turn query-embedding cost on the live path, and whether the embedding
+  model is kept resident (VRAM cost) or loaded per query (latency cost);
 - deterministic testability without live Ollama, network access, or hardware;
 - quality thresholds for Russian exact terms, morphology, paraphrase, names,
   dates, identifiers, numbers, temporal/session filtering, recall, and
@@ -450,11 +499,22 @@ Revised remaining sequence:
 26. [Retrieval quality regression](task-v1.8.0-26-retrieval-quality-regression.md)
     rerun the fixed retrieval-quality benchmark after transcripts and
     annotations join the retrieval corpus.
-27. [Scale, recovery, and end-to-end verification](task-v1.8.0-27-scale-recovery-and-e2e.md)
-    test the integrated design on large synthetic history and failure paths.
-28. [Documentation and release verification](task-v1.8.0-28-docs-and-release-verification.md)
+27. [Final integrated scale, recovery, and e2e](task-v1.8.0-27-scale-recovery-and-e2e.md)
+    test the fully integrated design (through consolidation) on large synthetic
+    history and failure paths. v1.8.2 boundary.
+28. [Final documentation and release verification](task-v1.8.0-28-docs-and-release-verification.md)
     reconcile architecture, configuration, user docs, checks, and manual
-    handoff.
+    handoff over the whole story. v1.8.2 boundary.
+
+Release-boundary cards, out of numeric sequence because committed cards 8-28
+are not renumbered (execution order is set by the release phasing section and
+each card's dependencies):
+
+29. [v1.8.0 core release verification and docs](task-v1.8.0-29-core-release-verification.md)
+    close the v1.8.0 text-history core (cards 8-17) with core-scoped scale,
+    recovery, e2e, and docs.
+30. [v1.8.1 voice and annotation release verification and docs](task-v1.8.0-30-voice-annotation-release-verification.md)
+    close the v1.8.1 slice (cards 18-23, 26) with scoped scale, e2e, and docs.
 
 The old task 7a exact retrieval quality gate is replaced by task 8 and task
 11 in this revision. Exact/prefix retrieval is still tested and preserved,
@@ -462,21 +522,97 @@ but it is no longer allowed to decide whether semantic retrieval exists; the
 story now requires a local hybrid retrieval surface before downstream
 retrieval consumers are designed.
 
-Existing task-card files numbered 8-25 are stale after this story revision.
-They must be rewritten or replaced before implementation continues. Do not
-start those cards under their old boundaries.
+## Release phasing
+
+Cards 8-28 define the implementation arc; cards 29-30 close intermediate
+releases. Together they are one architecture but not one release. They ship in
+three sequenced releases so the headline user-facing result lands and gets
+real-journal exposure before the heavier media subsystems are built. Cards are
+not renumbered; each is assigned to a release below. The cards keep their
+one-at-a-time ordering within a release.
+
+### v1.8.0 - Unlimited text-history core (cards 8-17)
+
+Delivers the core of the goal for text history: prompt cost decoupled from
+journal size, plus memory-like hybrid retrieval over existing user and
+assistant text. It is the smallest slice that makes the text-history goal
+true; the complete conversation history goal is only fully met once voice is
+retrievable in v1.8.1. It includes the hybrid design spike, projection
+lifecycle, semantic passage store, hybrid API and quality gate, the history
+tool provider, recent-history selection, the working-context assembler and
+orchestration, and automatic retrieval.
+
+Voice turns remain non-retrievable in this release; that is a preexisting gap
+(voice events already store empty text today), not a regression this release
+introduces, and it is closed in v1.8.1. This release closes with card 29
+(core-scoped scale, recovery, e2e, and docs) over the v1.8.0 criteria group
+below.
+
+### v1.8.1 - Voice and annotation retrieval (cards 18-23, 26)
+
+Makes voice turns retrievable through explicit local transcription and adds
+auditable, source-grounded session annotations, then reruns the fixed
+retrieval-quality benchmark (card 26) against the expanded text surface. This
+release closes with card 30 (v1.8.1-scoped scale, e2e, and docs) over the
+v1.8.1 criteria group.
+
+### v1.8.2 - Consolidation and media lifecycle (cards 24-25)
+
+Adds explicit near/far consolidation and the reduced-media lifecycle that
+resolves the retention-policy report. It is fully separable from retrieval and
+carries the most host-resource risk, so it ships last. This release closes
+with cards 27 (final integrated scale, recovery, and e2e) and 28 (final docs
+and release verification), which cover the whole story.
+
+### Release-boundary verification cards
+
+Each release closes with its own verification card that is completed and moved
+to `tasks/done/` at that boundary, per the task-card workflow. No card is run
+repeatedly across releases.
+
+- v1.8.0 closes with card 29 (core scale, recovery, e2e, and docs; depends on
+  cards 8-17).
+- v1.8.1 closes with card 26 (retrieval-quality regression over the expanded
+  text surface) and card 30 (scale, e2e, and docs; depends on cards 18-23 and
+  26).
+- v1.8.2 closes with cards 27 and 28, the final integrated verification and
+  docs over the full story (depends on cards 24-25 and 30).
+
+Cards 29 and 30 sit out of numeric sequence because the committed cards 8-28
+are not renumbered; execution order is defined by this phasing section and by
+each card's declared dependencies, not by card number. When v1.8.0 ships, the
+later phases may be promoted to their own story cards if that is cleaner for
+tracking; the architecture and decisions above stay shared.
 
 ## Acceptance criteria
 
-- [ ] Journal size is independent of the Ollama context window and normal
-      prompt size remains bounded as the journal grows.
+Criteria are grouped by release. A release is done when its own group and the
+shared invariants hold for the code shipped in it.
+
+### Shared invariants (must hold at every release boundary)
+
 - [ ] Raw JSONL events are never rewritten by transcription, annotation,
       indexing, retrieval, or consolidation.
+- [ ] Session deletion removes every derived record that exists in the shipped
+      release, and a rebuild cannot restore it.
+- [ ] Runtime inference, storage, indexing, embeddings, and retrieval are
+      local except for separately enabled external tools unrelated to this
+      story.
+- [ ] Pure automated tests, Ruff format/check, and the release's end-to-end
+      fake backend slice are green; hardware/model-dependent verification is
+      handed to the human with exact commands.
+
+### v1.8.0 - Unlimited history core (cards 8-17)
+
+- [ ] Journal size is independent of the Ollama context window and normal
+      prompt size remains bounded as the journal grows.
 - [ ] Current and archived user/assistant text is readable with stable
       provenance.
 - [ ] Current and archived user/assistant text is retrievable through the
       approved hybrid retrieval surface.
-- [ ] Voice turns become retrievable after explicit local transcription.
+- [ ] A morphology-aware lexical baseline is measured before embeddings, and
+      any embedding layer is justified by its incremental paraphrase and
+      synonym gain over that baseline in the recorded benchmark.
 - [ ] Appending an event updates derived corpus, lexical, and semantic
       projections incrementally without rebuilding its whole session.
 - [ ] Projection startup, incremental update, deletion, and full rebuild do
@@ -489,26 +625,32 @@ start those cards under their old boundaries.
       final generation; context overflow is prevented before dispatch.
 - [ ] Automatic retrieval adds only bounded, relevant, provenance-bearing
       passages and performs no separate generative request.
-- [ ] Fork, blank-context, interrupted-turn, time-context, reasoning prompt,
-      reasoning-trace isolation, and current-turn media behavior remain
-      intact.
-- [ ] Annotations remain size-capped, visible, editable, and traceable to raw
-      source events.
-- [ ] The active session is never archived; audio is never automatically
-      deleted before successful transcription.
-- [ ] Session deletion removes every corresponding derived record and a
-      rebuild cannot restore it.
+- [ ] Automatic retrieval's per-turn added latency, including any query
+      embedding, has a measured budget and degrades to lexical-only retrieval
+      within that budget rather than delaying generation.
 - [ ] Exact retrieval works when the semantic path is absent, unavailable, or
       unsuitable for a literal query.
 - [ ] The hybrid retrieval decision is made before model-facing history tools,
       automatic retrieval, and working-context wiring depend on the search
       surface.
-- [ ] Runtime inference, storage, indexing, embeddings, and retrieval are
-      local except for separately enabled external tools unrelated to this
-      story.
-- [ ] Pure automated tests, Ruff format/check, and the feature end-to-end fake
-      backend test are green; hardware/model-dependent verification is handed
-      to the human with exact commands.
+- [ ] Fork, blank-context, interrupted-turn, time-context, reasoning prompt,
+      reasoning-trace isolation, and current-turn media behavior remain
+      intact.
+
+### v1.8.1 - Voice and annotation retrieval (cards 18-23, 26)
+
+- [ ] Voice turns become retrievable after explicit local transcription.
+- [ ] Annotations remain size-capped, visible, editable, and traceable to raw
+      source events.
+- [ ] The fixed retrieval-quality benchmark is rerun after transcripts and
+      annotations join the corpus and still meets its predeclared thresholds.
+
+### v1.8.2 - Consolidation and media lifecycle (cards 24-25)
+
+- [ ] The active session is never archived; audio is never automatically
+      deleted before successful transcription.
+- [ ] Near/far consolidation runs only through an explicit command and keeps
+      model, GPU, and turn-latency work predictable and user-visible.
 
 ## End-to-end feature test
 
@@ -549,6 +691,11 @@ remain human-run under the project's hardware testing protocol.
 - Stop at the hybrid retrieval design spike if local embedding or index
   candidates have non-obvious quality, dependency, persistence, resource, or
   lifecycle trade-offs.
+- Stop at the hybrid retrieval design spike if a morphology-aware lexical
+  baseline is not measured before embeddings, so the embedding layer's cost
+  cannot be weighed against its incremental gain.
+- Stop if the per-turn query-embedding cost on the live path cannot be bounded
+  and cannot degrade to lexical-only retrieval within a measured time budget.
 - Stop if the selected semantic backend cannot preserve deletion,
   rebuildability, provenance, and offline exact fallback.
 - Stop at the early hybrid retrieval quality gate if the selected candidate

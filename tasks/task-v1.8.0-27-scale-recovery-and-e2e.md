@@ -1,13 +1,18 @@
-# Task v1.8.0-27: Scale, recovery, and end-to-end verification
+# Task v1.8.0-27: Final integrated scale, recovery, and end-to-end verification
 
 **Status:** Draft revision for owner review.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
-**Depends on:** task v1.8.0-26.
+**Release:** v1.8.2 (final release-boundary card; see the story's release
+phasing section).
+**Depends on:** tasks v1.8.0-24, v1.8.0-25, and v1.8.0-30.
 
 ## Summary
 
-Verify the integrated unlimited-history design on large synthetic history,
-projection recovery paths, and end-to-end fake-backend dialog behavior.
+Verify the fully integrated unlimited-history design, including consolidation
+and the media lifecycle, on large synthetic history, projection recovery
+paths, and end-to-end fake-backend dialog behavior. This is the final
+verification over the whole story; the v1.8.0 and v1.8.1 boundaries are
+verified by cards 29 and 30.
 
 ## Current boundary
 

@@ -1,13 +1,17 @@
-# Task v1.8.0-28: Documentation and release verification
+# Task v1.8.0-28: Final documentation and release verification
 
 **Status:** Draft revision for owner review.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Release:** v1.8.2 (final release-boundary card; see the story's release
+phasing section).
 **Depends on:** task v1.8.0-27.
 
 ## Summary
 
 Reconcile architecture, configuration, user documentation, checks, and manual
-handoff for the completed unlimited-history release.
+handoff for the fully completed unlimited-history story after consolidation.
+The v1.8.0 and v1.8.1 releases carry their own scoped docs in cards 29 and 30;
+this card is the final reconciliation across the whole story.
 
 ## Current boundary
 

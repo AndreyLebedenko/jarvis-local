@@ -23,8 +23,28 @@ working context, transcripts, annotations, consolidation, and UI.
 
 ## Requirements
 
+- Measure a morphology-aware lexical baseline first: lemmatized or stemmed FTS
+  applied at index and query time, with no model and no per-turn inference.
+  Candidate morphology backends are a pymorphy3 or pymorphy-compatible
+  analyzer, a Snowball stemmer, or another measured local morphology backend.
+  Do not adopt pymorphy2: its `inspect.getargspec` use is incompatible with
+  the project's Python 3.11 runtime. Record the baseline's standalone benchmark
+  result as the reference the embedding layer must beat.
+- Verify install and runtime compatibility of the chosen morphology backend on
+  Python 3.11 before selecting it, including import, a smoke lemmatization, and
+  `requirements.txt` impact.
 - Evaluate at least two local semantic/hybrid options, including whether a
-  no-server embedded store is sufficient and whether Qdrant is justified.
+  no-server embedded store is sufficient and whether Qdrant is justified. An
+  embedding or vector layer is justified only by its incremental benchmark gain
+  over the lexical baseline, principally on paraphrase and synonym cases, not
+  by word-form recall the lemmatizer already delivers.
+- Allow "lemmatized-lexical plus a light semantic reranker" as an approved
+  outcome if it clears the threshold; a full vector store is a candidate
+  outcome, not the assumed one. A reranker that needs a model forward pass on
+  the live path counts as semantic hot-path work under the same per-turn
+  latency and VRAM budget as query embedding, unless it is measured to run
+  offline, at index time, or within a bounded CPU cost over a small candidate
+  set.
 - Treat the existing `.venv-mcp-qdrant` and read-only Qdrant MCP example as
   provider-path evidence only, not as backend selection evidence.
 - Define passage granularity and how each passage maps back to
@@ -33,8 +53,16 @@ working context, transcripts, annotations, consolidation, and UI.
   ranking, deduplication, and read-back.
 - Define installation and configuration requirements for the embedding model
   and index store.
-- Estimate disk, RAM, VRAM, startup, rebuild, append, and query costs on the
-  owner's Windows host.
+- Estimate disk, RAM, VRAM, startup, rebuild, and append costs on the owner's
+  Windows host.
+- Measure the per-turn query cost on the live path separately from indexing:
+  the time to turn one user query into semantic candidates, including query
+  embedding. Decide whether the embedding model is kept resident (VRAM cost,
+  contends with Ollama) or loaded per query (latency cost), and record the
+  trade-off.
+- Define the per-turn automatic-retrieval time budget and the rule that a turn
+  exceeding it falls back to lexical-only retrieval rather than delaying
+  generation.
 - Define deterministic pure tests and human-run measurement commands.
 - Define the fixed early hybrid retrieval quality benchmark and thresholds
   before implementation sees results.
@@ -43,10 +71,17 @@ working context, transcripts, annotations, consolidation, and UI.
 ## Acceptance criteria
 
 - [ ] The owner-approved backend is named explicitly.
+- [ ] The morphology-aware lexical baseline has a recorded standalone
+      benchmark result, and any embedding layer's gain is stated as an
+      increment over it.
+- [ ] The chosen morphology backend is verified to install and import on
+      Python 3.11, with its `requirements.txt` impact recorded.
 - [ ] Exact/prefix retrieval remains the offline literal fallback.
 - [ ] Every semantic candidate has stable source provenance.
 - [ ] The design covers rebuild, append, deletion, and unavailable-backend
       behavior.
+- [ ] The per-turn live query cost is measured, and the resident-versus-per-
+      query embedding trade-off and per-turn fallback budget are recorded.
 - [ ] Quality thresholds and labels are predeclared.
 - [ ] Resource and locality trade-offs are explicit.
 
