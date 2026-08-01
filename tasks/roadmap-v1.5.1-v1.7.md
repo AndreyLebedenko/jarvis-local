@@ -449,10 +449,10 @@ The settled decisions from the old entries remain binding in v1.8.0:
 - model-written annotations remain size-capped, visible, editable, and
   traceable to source events;
 - retrieval is local, provenance-bearing, and bounded;
-- exact FTS retrieval is implemented and measured before retrieval consumers
-  are wired; if that gate requires semantics, the local semantic or hybrid
-  backend is selected before history tools and automatic retrieval consume the
-  search surface;
+- retrieval is measured before its consumers are wired; a morphology-aware
+  lexical baseline is measured first, and a local semantic or hybrid backend
+  is selected before history tools and automatic retrieval consume the search
+  surface, justified by its incremental gain over that baseline;
 - retrieval never silently rewrites `memory.md`, `self.md`, or raw journal
   events.
 
@@ -513,15 +513,21 @@ Scope:
   for thinking, tool results, and the final answer.
 - Prompt/context observability including Ollama prompt-token metrics, context
   composition metrics, index latency, and deterministic degraded behavior.
-- FTS first. A measured Russian-language retrieval gate runs immediately after
-  exact/prefix search, before lifecycle consumers, history tools, automatic
-  retrieval, and working-context wiring depend on the search signal. If that
-  gate rejects exact-only retrieval, a local semantic or hybrid backend is
-  selected and implemented before those consumers are wired; a late regression
-  gate reruns the benchmark after transcripts and annotations expand the
-  searchable text surface.
+- Hybrid retrieval, not exact-first. Lexical FTS is the provenance and
+  literal-lookup backbone and the offline fallback, but it is not asked to
+  solve semantic memory in Russian. A measured design spike compares a
+  morphology-aware lexical baseline against local semantic/hybrid candidates
+  and selects the cheapest design that clears a fixed Russian benchmark before
+  history tools, automatic retrieval, and working-context wiring consume the
+  search surface. A late regression gate reruns the benchmark after transcripts
+  and annotations expand the searchable text surface.
 - The existing retention-policy report is resolved by the consolidation and
   media lifecycle delivered inside this story.
+- Released in three sequenced phases: v1.8.0 delivers the unlimited text-history
+  core (bounded working context plus hybrid retrieval over existing text;
+  voice stays non-retrievable until v1.8.1), v1.8.1 adds voice transcription
+  and annotation retrieval, and v1.8.2 adds consolidation and the reduced-media
+  lifecycle. See the story card's release phasing section.
 
 Boundary:
 
