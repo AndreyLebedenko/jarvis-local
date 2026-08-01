@@ -27,6 +27,10 @@ consolidation, and UI redesign.
   registered derived projections.
 - At startup validate or rebuild projections independently of whether Status
   Console is enabled.
+- At startup rebuild the semantic projection when its recorded backend identity
+  (embedding model, dimension, prompt config) differs from the configured
+  `[history.semantic]` backend. Never serve stored vectors produced by a
+  different model than the current query embedder.
 - Subscribe to `JournalEventAppended` and update exactly that referenced
   event. Do not delete/re-index the whole session.
 - Current-session events become readable and retrievable after append
@@ -44,6 +48,8 @@ consolidation, and UI redesign.
 - [ ] One appended event causes one incremental projection update.
 - [ ] Current-session lexical search does not rebuild the whole session.
 - [ ] Selected semantic projection has explicit enabled/unavailable states.
+- [ ] A configured semantic-backend change triggers a projection rebuild, not a
+      silent mixed-space read.
 - [ ] Session deletion removes raw and derived data through one owner.
 - [ ] No UI class owns a search-index mutation method afterward.
 - [ ] Startup and shutdown ordering are deterministic and tested.

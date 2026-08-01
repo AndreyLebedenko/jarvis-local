@@ -9,6 +9,15 @@
 Implement the selected local semantic projection as rebuildable,
 source-grounded passages and index data.
 
+The task-8 decision (recorded in `PROJECT.md`) selects
+`multilingual-e5-large-instruct` (via Ollama) as the primary embedding backend
+and `embeddinggemma:300m` as a config-swappable latency fallback. All
+per-backend parameters live in a `[history.semantic]` config block, not in
+code: Ollama model id, query/passage prefixes, relative-gate `separation` and
+`top_ratio`, and expected dimension. The projection code is embedding-model
+agnostic; switching backends is a config change plus a rebuild, never a code
+change.
+
 ## Current boundary
 
 In scope: passage schema, embedding/index storage, rebuild, append update,
@@ -23,7 +32,10 @@ working context, transcripts, annotations, and UI controls.
 - Keep passage text source-grounded; do not store generated summaries as the
   only retrievable text.
 - Persist embedding/index metadata needed to reject stale model/configuration
-  mismatches explicitly.
+  mismatches explicitly. The stamp includes the Ollama model id, embedding
+  dimension, and prompt-prefix configuration used to build the index.
+- Read all per-backend parameters from the `[history.semantic]` config block;
+  do not hard-code the model, prefixes, or gate parameters.
 - Rebuild from the history corpus and selected effective text surface.
 - Support incremental append and session deletion through task 9 lifecycle.
 - Provide a typed semantic candidate query API with scores and references.

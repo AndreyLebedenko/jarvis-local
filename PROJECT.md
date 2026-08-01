@@ -3113,6 +3113,71 @@ gate. Established and first applied in
 - Follow CLAUDE.md in this repo for communication protocol and stop
   conditions.
 
+## v1.8.0 hybrid retrieval design spike (task 8 decision, 2026-08-01)
+
+Settled decision (owner-ratified; do not re-litigate without new evidence).
+Russian history retrieval is a three-tier problem, measured against a fixed
+benchmark in `tests/retrieval_benchmark/` (backend supplied as an injected
+function; the shipped corpus/read/search path is exercised, not re-implemented).
+
+Tiers: lexical (surface/prefix), morphology (inflected word forms and names),
+semantic (paraphrase, synonym). Measured recall@k on the benchmark:
+
+- B0, shipped exact/prefix FTS: lexical 1.00, morphology 0.125, semantic 0.00.
+  Confirms the settled fact that FTS5 unicode61 has no Russian stemming; it is
+  the lexical fallback and provenance aid, not the memory engine.
+- B1, morphology baseline: lexical 1.00, morphology 1.00 (pymorphy3) / 0.75
+  (Snowball), semantic 0.00. A local lemmatizer closes the word-form and
+  inflected-name gap cheaply, with no model, VRAM, or per-turn inference.
+  pymorphy2 is rejected: its `inspect.getargspec` use is incompatible with
+  Python 3.11. Snowball is rejected: it over-stems names (андрей/андреем do not
+  unify), reaching only 0.5 name recall.
+- B2, hybrid (pymorphy3 + local embedding, relative gate, at distractor
+  false-positive rate 0): e5-large-instruct semantic 0.562, embeddinggemma
+  0.500, bge-m3 0.312.
+
+Selected backend: pymorphy3 morphology + `multilingual-e5-large-instruct`
+(Ollama) primary semantic + `embeddinggemma:300m` config-swappable latency
+fallback. e5 wins semantic recall and rejects the distractor at the gentlest
+gate (relative `separation` 0.05 vs 0.2 for bge/gemma), with the lightest VRAM
+(335 MB). Rejected: bge-m3 (weakest semantic), Snowball, pymorphy2, and a fixed
+absolute cosine threshold.
+
+Relative gate, not absolute threshold. An absolute cosine threshold does not
+transfer across models (e5 compresses scores into a narrow high band; a fixed
+0.5 returned the distractor for every query and collapsed precision to 0.33).
+The fusion uses a per-query relative gate: reject a query whose top score does
+not exceed the median by `separation`, keep candidates within `top_ratio` of
+the top. This restores precision (e5 lexical precision 0.905 vs 0.810 under an
+absolute threshold), stays silent on queries the lexical side already answers,
+and needs one intuitive per-backend knob instead of a fragile shared threshold.
+
+Backend swappability. The retrieval code is embedding-model agnostic. All
+per-backend parameters live in a `[history.semantic]` config block: Ollama
+model id, query/passage prefixes (e5 `query:`/`passage:`; embeddinggemma
+`task: search result | query:` / `title: none | text:`), relative-gate
+`separation` and `top_ratio`, and expected dimension. Switching to the fallback
+is a config change plus a semantic-projection rebuild, never a code change. The
+semantic projection stamps its backend identity (model, dimension, prompt
+config); a mismatch against the configured backend forces a rebuild so vectors
+from two models are never mixed. Live hot-swap and dual simultaneous indexes
+are rejected as wasteful.
+
+Ratified thresholds: `RATIFIED_THRESHOLDS` in
+`tests/retrieval_benchmark/corpus.py`. The semantic bar is 0.55, set to the
+measured reality of small local embedders on hard Russian paraphrase/synonym,
+not the earlier aspirational 0.80. Morphology 0.90, lexical 1.00, overall
+recall 0.80, overall precision 0.85, distractor false-positive rate 0.0.
+
+Per-turn cost budget (feeds the automatic-retrieval hot-path policy). Warm
+query-embedding latency: e5 ~120-140 ms, embeddinggemma ~85-95 ms, bge-m3
+~115-135 ms; resident VRAM e5 335 MB, bge-m3 664 MB, embeddinggemma 681 MB. The
+first query after model load is a cold-start outlier (~235 ms observed);
+automatic retrieval degrades to lexical-only on cold start and when the per-turn
+budget is exceeded. Real embedding-model quality and host-resource figures are
+human-run via `tests/retrieval_benchmark/measure_semantic.py`; the pure suite
+uses a deterministic concept fixture.
+
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).

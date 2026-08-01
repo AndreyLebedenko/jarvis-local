@@ -1,8 +1,20 @@
 # Task v1.8.0-8: Local hybrid retrieval design spike
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** completed tasks v1.8.0-1 through v1.8.0-7.
+
+## Decision (owner-ratified 2026-08-01)
+
+Selected: pymorphy3 morphology baseline + `multilingual-e5-large-instruct`
+(Ollama) primary semantic backend + `embeddinggemma:300m` config-swappable
+fallback, fused with a per-query relative gate (not an absolute cosine
+threshold). Full evidence, measured numbers, rejected alternatives, and the
+per-turn cost budget are recorded in `PROJECT.md` under the v1.8.0 hybrid
+retrieval spike section. Ratified thresholds live in
+`tests/retrieval_benchmark/corpus.py` as `RATIFIED_THRESHOLDS`. The fixed
+benchmark and the deterministic/human-run measurement tools live in
+`tests/retrieval_benchmark/`.
 
 ## Summary
 

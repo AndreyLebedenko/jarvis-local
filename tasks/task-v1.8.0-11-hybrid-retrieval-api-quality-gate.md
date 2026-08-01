@@ -24,6 +24,13 @@ transcripts, annotations, and UI.
 - Define one `HistoryRetrievalService` or equivalent domain API.
 - Accept query text plus supported session/time/role/source filters.
 - Combine semantic candidates with lexical FTS candidates.
+- Gate semantic candidates with a per-query relative gate, not a fixed absolute
+  cosine threshold. Task 8 measured that absolute thresholds do not transfer
+  across models (e5 needed 0.8 where bge/gemma needed 0.5) and collapse
+  precision; the relative gate rejects a query whose top score does not stand
+  out from the median and keeps candidates within a ratio of the top, restoring
+  precision and staying silent on queries the lexical side already answers. The
+  gate parameters (`separation`, `top_ratio`) are per-backend config.
 - Preserve exact lookup strength for names, dates, identifiers, and numbers.
 - Hydrate selected candidates through typed event/range reads before returning
   model-facing text.
@@ -33,8 +40,11 @@ transcripts, annotations, and UI.
   rank, and a combined rank. Absence of a semantic score is a valid,
   documented state, not an error.
 - Return provenance, score metadata, source mode, truncation, and count data.
-- Run the predeclared Russian benchmark from task 8 without live Ollama,
-  network access, or hardware.
+- Run the fixed task-8 benchmark (`tests/retrieval_benchmark/`) against
+  `RATIFIED_THRESHOLDS`. The pure suite uses the deterministic concept fixture;
+  the real-model validation against the primary (e5) and fallback
+  (embeddinggemma) backends is a human-run handoff via
+  `measure_semantic`, and both models' results are recorded.
 - Record corpus version, labels, thresholds, metrics, result, and decision in
   `PROJECT.md`, including the morphology-aware lexical baseline row and the
   measured increment the semantic layer adds over it, so the embedding cost
@@ -44,7 +54,11 @@ transcripts, annotations, and UI.
 ## Acceptance criteria
 
 - [ ] The benchmark is deterministic and runnable in the pure suite.
-- [ ] Hybrid retrieval meets the predeclared thresholds.
+- [ ] Hybrid retrieval meets `RATIFIED_THRESHOLDS` on the fixture in the pure
+      suite, and both e5 and embeddinggemma meet them in the recorded human-run
+      measurement.
+- [ ] Semantic gating is relative, not a fixed absolute threshold, and the
+      distractor false-positive rate stays 0.0 for both backends.
 - [ ] Exact identifiers still work when semantic retrieval is unavailable.
 - [ ] Paraphrase and Russian word-form cases are covered.
 - [ ] Filters compose with both semantic and lexical candidates.
