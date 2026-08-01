@@ -1,6 +1,6 @@
 # Task v1.8.0-11: Hybrid retrieval domain API and quality gate
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-8 through v1.8.0-10.
 
@@ -53,23 +53,23 @@ transcripts, annotations, and UI.
 
 ## Acceptance criteria
 
-- [ ] The benchmark is deterministic and runnable in the pure suite.
-- [ ] Hybrid retrieval meets `RATIFIED_THRESHOLDS` on the fixture in the pure
+- [x] The benchmark is deterministic and runnable in the pure suite.
+- [x] Hybrid retrieval meets `RATIFIED_THRESHOLDS` on the fixture in the pure
       suite, and the primary backend (e5) meets them in the recorded human-run
       measurement.
-- [ ] The fallback backend (embeddinggemma) preserves lexical and morphology
+- [x] The fallback backend (embeddinggemma) preserves lexical and morphology
       recall and keeps the distractor false-positive rate at 0.0; its lower
       semantic recall is recorded as a deliberate latency-for-quality trade and
       is not gated on `RATIFIED_THRESHOLDS`.
-- [ ] Semantic gating is relative, not a fixed absolute threshold, and the
+- [x] Semantic gating is relative, not a fixed absolute threshold, and the
       distractor false-positive rate stays 0.0 for both backends.
-- [ ] Exact identifiers still work when semantic retrieval is unavailable.
-- [ ] Paraphrase and Russian word-form cases are covered.
-- [ ] Filters compose with both semantic and lexical candidates.
-- [ ] The candidate contract exposes source mode, optional semantic score,
+- [x] Exact identifiers still work when semantic retrieval is unavailable.
+- [x] Paraphrase and Russian word-form cases are covered.
+- [x] Filters compose with both semantic and lexical candidates.
+- [x] The candidate contract exposes source mode, optional semantic score,
       lexical score/rank, and combined rank, and is stable for lexical-only
       results.
-- [ ] The result is reproducible from repository files.
+- [x] The result is reproducible from repository files.
 
 ## Stop conditions
 

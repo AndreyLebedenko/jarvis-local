@@ -46,6 +46,16 @@ from jarvis.journal.lifecycle import (
     UnavailableSemanticHistoryProjection,
 )
 from jarvis.journal.recorder import JournalRecorder
+from jarvis.journal.retrieval import (
+    HISTORY_RETRIEVAL_MAX_RESULTS,
+    HistoryRetrievalCandidate,
+    HistoryRetrievalQuery,
+    HistoryRetrievalResult,
+    HistoryRetrievalService,
+    HistoryRetrievalSourceMode,
+    HistoryRetrievalStatus,
+    Pymorphy3Normalizer,
+)
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
 from jarvis.journal.semantic import (
     CURRENT_SEMANTIC_PROJECTION_SCHEMA_VERSION,
@@ -74,6 +84,7 @@ __all__ = [
     "HISTORY_READ_MAX_BATCH_RANGES",
     "HISTORY_READ_MAX_EVENTS_PER_RANGE",
     "HISTORY_READ_MAX_TOTAL_EVENTS",
+    "HISTORY_RETRIEVAL_MAX_RESULTS",
     "HISTORY_SEARCH_MAX_RESULTS",
     "SEMANTIC_MAX_RESULTS",
     "CorpusHistoryProjection",
@@ -93,6 +104,12 @@ __all__ = [
     "HistoryProjectionConsistencyError",
     "HistoryProjectionLifecycle",
     "HistoryProjectionStatus",
+    "HistoryRetrievalCandidate",
+    "HistoryRetrievalQuery",
+    "HistoryRetrievalResult",
+    "HistoryRetrievalService",
+    "HistoryRetrievalSourceMode",
+    "HistoryRetrievalStatus",
     "HistorySearchHit",
     "HistorySearchOrder",
     "HistorySearchRequest",
@@ -115,6 +132,7 @@ __all__ = [
     "JournalStore",
     "JournalUsage",
     "OllamaEmbeddingProvider",
+    "Pymorphy3Normalizer",
     "SemanticCandidate",
     "SemanticCandidateQuery",
     "SemanticCandidateResult",
