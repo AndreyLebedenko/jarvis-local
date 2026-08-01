@@ -99,10 +99,10 @@ from jarvis.journal.lifecycle import (
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalHistoryService,
-    UnavailableSemanticHistoryProjection,
 )
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.search import JournalSearchIndex
+from jarvis.journal.semantic import OllamaEmbeddingProvider, SemanticPassageIndex
 from jarvis.journal.store import JournalReplay, JournalStore
 from jarvis.memory.files import (
     MemoryFileLoader,
@@ -1085,7 +1085,13 @@ def build_app(
     journal_store = JournalStore(Path(settings.journal.root))
     journal_search_index = JournalSearchIndex(journal_store, journal_store.root)
     history_corpus_repository = journal_search_index.repository
-    semantic_projection = UnavailableSemanticHistoryProjection()
+    semantic_projection = SemanticPassageIndex(
+        history_corpus_repository,
+        journal_store.root,
+        settings.history.semantic,
+        OllamaEmbeddingProvider(settings.backend, settings.history.semantic),
+        logger=logger,
+    )
     history_projection_lifecycle = HistoryProjectionLifecycle(
         bus,
         projections=(CorpusHistoryProjection(history_corpus_repository),),

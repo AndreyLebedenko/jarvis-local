@@ -1,6 +1,6 @@
 # Task v1.8.0-10: Semantic passage and index store
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-8 and v1.8.0-9.
 
@@ -45,12 +45,12 @@ working context, transcripts, annotations, and UI controls.
 
 ## Acceptance criteria
 
-- [ ] Rebuild creates deterministic passage references for a fixed corpus.
-- [ ] Append updates only the new event's relevant passages.
-- [ ] Deletion removes the session's semantic data.
-- [ ] Model/config mismatch is detected clearly.
-- [ ] Candidate queries return references, scores, and no authoritative facts.
-- [ ] Reads do not scan raw JSONL during normal operation.
+- [x] Rebuild creates deterministic passage references for a fixed corpus.
+- [x] Append updates only the new event's relevant passages.
+- [x] Deletion removes the session's semantic data.
+- [x] Model/config mismatch is detected clearly.
+- [x] Candidate queries return references, scores, and no authoritative facts.
+- [x] Reads do not scan raw JSONL during normal operation.
 
 ## Stop conditions
 

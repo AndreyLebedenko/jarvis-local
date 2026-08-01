@@ -460,7 +460,7 @@ Revised remaining sequence:
 9. [History projection lifecycle and incremental indexing](task-v1.8.0-9-history-projection-lifecycle.md)
    move startup, append, deletion, and rebuild ownership for corpus, lexical,
    and semantic projections out of the UI.
-10. [Semantic passage and index store](task-v1.8.0-10-semantic-passage-index-store.md)
+10. [Semantic passage and index store](done/task-v1.8.0-10-semantic-passage-index-store.md)
     persist rebuildable source-grounded semantic passages/vectors for the
     selected backend.
 11. [Hybrid retrieval domain API and quality gate](task-v1.8.0-11-hybrid-retrieval-api-quality-gate.md)

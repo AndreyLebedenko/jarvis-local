@@ -22,6 +22,7 @@ from jarvis.journal.store import (
 
 class HistoryProjectionStatus(Enum):
     ENABLED = "enabled"
+    UNBUILT = "unbuilt"
     UNAVAILABLE = "unavailable"
 
 
@@ -38,6 +39,8 @@ class SemanticProjectionState:
     status: HistoryProjectionStatus
     configured_backend: SemanticProjectionBackendIdentity | None = None
     stored_backend: SemanticProjectionBackendIdentity | None = None
+    passage_count: int = 0
+    last_error: str | None = None
 
 
 class HistoryProjection(Protocol):
