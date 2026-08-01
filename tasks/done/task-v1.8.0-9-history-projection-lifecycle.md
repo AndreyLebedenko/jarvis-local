@@ -1,6 +1,6 @@
 # Task v1.8.0-9: History projection lifecycle and incremental indexing
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-8.
 
@@ -44,15 +44,15 @@ consolidation, and UI redesign.
 
 ## Acceptance criteria
 
-- [ ] Projections work when no Status Console is created.
-- [ ] One appended event causes one incremental projection update.
-- [ ] Current-session lexical search does not rebuild the whole session.
-- [ ] Selected semantic projection has explicit enabled/unavailable states.
-- [ ] A configured semantic-backend change triggers a projection rebuild, not a
+- [x] Projections work when no Status Console is created.
+- [x] One appended event causes one incremental projection update.
+- [x] Current-session lexical search does not rebuild the whole session.
+- [x] Selected semantic projection has explicit enabled/unavailable states.
+- [x] A configured semantic-backend change triggers a projection rebuild, not a
       silent mixed-space read.
-- [ ] Session deletion removes raw and derived data through one owner.
-- [ ] No UI class owns a search-index mutation method afterward.
-- [ ] Startup and shutdown ordering are deterministic and tested.
+- [x] Session deletion removes raw and derived data through one owner.
+- [x] No UI class owns a search-index mutation method afterward.
+- [x] Startup and shutdown ordering are deterministic and tested.
 
 ## Stop conditions
 

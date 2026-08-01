@@ -27,12 +27,16 @@ from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
     HISTORY_SEARCH_MAX_RESULTS,
+    CorpusHistoryProjection,
+    HistoryProjectionLifecycle,
     JournalEvent,
     JournalEventAppended,
     JournalEventRef,
+    JournalHistoryService,
     JournalRecorder,
     JournalSearchIndex,
     JournalStore,
+    UnavailableSemanticHistoryProjection,
 )
 from jarvis.journal.fork import (
     ForkSeedDropReport,
@@ -1060,8 +1064,7 @@ async def test_journal_sessions_feed_and_search_use_existing_http_transport(
         bus,
         _FakeControlApi(),
         token_factory=lambda: "valid-token",
-        journal_store=store,
-        journal_search_index=search_index,
+        journal_history_service=_rebuilt_history_service(bus, store, search_index),
     )
     info = await server.start()
     try:
@@ -1949,8 +1952,9 @@ async def test_journal_usage_and_delete_api_keep_search_consistent(
         EventBus(),
         _FakeControlApi(),
         token_factory=lambda: "valid-token",
-        journal_store=store,
-        journal_search_index=search_index,
+        journal_history_service=_rebuilt_history_service(
+            EventBus(), store, search_index
+        ),
         journal_active_session_id=lambda: active_session,
     )
     info = await server.start()
@@ -2271,12 +2275,13 @@ async def test_journal_append_pushes_exactly_one_live_event(
     store = JournalStore(tmp_path)
     recorder = JournalRecorder(store, bus=bus, clock=_journal_clock())
     search_index = JournalSearchIndex(store, tmp_path)
+    lifecycle = _history_lifecycle(bus, search_index)
+    await lifecycle.start()
     server = UiTransportServer(
         bus,
         _FakeControlApi(),
         token_factory=lambda: "valid-token",
-        journal_store=store,
-        journal_search_index=search_index,
+        journal_history_service=JournalHistoryService(store, lifecycle, search_index),
     )
     info = await server.start()
     try:
@@ -2296,6 +2301,7 @@ async def test_journal_append_pushes_exactly_one_live_event(
             assert delta["payload"]["key"] == "journal_event"
             assert delta["payload"]["value"]["text"] == "live answer"
             assert delta["payload"]["value"]["transcript"] is None
+            await lifecycle.wait_for_idle()
             search = await _get_json(
                 session,
                 f"http://127.0.0.1:{info.port}/api/journal/search"
@@ -2308,6 +2314,7 @@ async def test_journal_append_pushes_exactly_one_live_event(
             with pytest.raises(TimeoutError):
                 await websocket.receive(timeout=0.05)
     finally:
+        await lifecycle.close()
         await server.stop()
 
 
@@ -2315,6 +2322,25 @@ async def _get_json(session: aiohttp.ClientSession, url: str) -> dict:
     response = await session.get(url)
     assert response.status == 200
     return await response.json()
+
+
+def _rebuilt_history_service(
+    bus: EventBus, store: JournalStore, search_index: JournalSearchIndex
+) -> JournalHistoryService:
+    lifecycle = _history_lifecycle(bus, search_index)
+    search_index.repository.rebuild()
+    return JournalHistoryService(store, lifecycle, search_index)
+
+
+def _history_lifecycle(
+    bus: EventBus, search_index: JournalSearchIndex
+) -> HistoryProjectionLifecycle:
+    semantic_projection = UnavailableSemanticHistoryProjection()
+    return HistoryProjectionLifecycle(
+        bus,
+        projections=(CorpusHistoryProjection(search_index.repository),),
+        semantic_projection=semantic_projection,
+    )
 
 
 def _journal_event(

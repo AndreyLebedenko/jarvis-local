@@ -3175,6 +3175,7 @@ def test_run_without_a_console_is_fine_when_debug_is_off(monkeypatch):
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     journal_store = object()
     journal_search_index = object()
+    journal_history_service = object()
     fake_app = types.SimpleNamespace(
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
@@ -3188,6 +3189,8 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         journal_recorder=types.SimpleNamespace(session_id=None),
         journal_store=journal_store,
         journal_search_index=journal_search_index,
+        history_projection_lifecycle=None,
+        journal_history_service=journal_history_service,
         memory_file_repository=object(),
     )
 
@@ -3274,8 +3277,65 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
 
     main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
 
-    assert captured_kwargs["journal_store"] is app.journal_store
-    assert captured_kwargs["journal_search_index"] is app.journal_search_index
+    assert captured_kwargs["journal_history_service"] is app.journal_history_service
+
+
+def test_status_console_starts_history_lifecycle_before_transport(monkeypatch):
+    app = _fake_app()
+    calls: list[str] = []
+
+    class _FakeLifecycle:
+        def __init__(self) -> None:
+            self.start_calls = 0
+            self.started = False
+
+        async def start(self) -> None:
+            self.start_calls += 1
+            if self.started:
+                return
+            self.started = True
+            calls.append("lifecycle")
+
+    class _FakeUiTransportServer:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        async def start(self) -> object:
+            calls.append("transport")
+            return object()
+
+    lifecycle = _FakeLifecycle()
+    app.history_projection_lifecycle = lifecycle
+    fake_live_console = types.SimpleNamespace(
+        api=object(),
+        transport=None,
+        create_windows=lambda: None,
+        load_transport_urls=lambda info: None,
+    )
+    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(
+        main_module,
+        "create_live_status_console",
+        lambda app, include_touchstrip: fake_live_console,
+    )
+    monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
+
+    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
+        del settings, live_console
+        await main_module._start_history_projection_lifecycle(app)
+        calls.append("run")
+
+    monkeypatch.setattr(main_module, "run", fake_run)
+    monkeypatch.setitem(
+        sys.modules,
+        "webview",
+        types.SimpleNamespace(start=lambda callback: callback()),
+    )
+
+    main_module.run_with_status_console(settings=Settings(), include_touchstrip=False)
+
+    assert calls == ["lifecycle", "transport", "run"]
+    assert lifecycle.start_calls == 2
 
 
 def _patch_status_console_composition(monkeypatch, app, fake_run) -> None:

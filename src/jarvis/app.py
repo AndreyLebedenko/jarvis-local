@@ -95,6 +95,12 @@ from jarvis.journal.fork import (
     ForkSessionResult,
     build_fork_seed,
 )
+from jarvis.journal.lifecycle import (
+    CorpusHistoryProjection,
+    HistoryProjectionLifecycle,
+    JournalHistoryService,
+    UnavailableSemanticHistoryProjection,
+)
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.store import JournalReplay, JournalStore
@@ -987,6 +993,8 @@ class App:
     history: ConversationHistory | None = None
     journal_store: JournalStore | None = None
     journal_search_index: JournalSearchIndex | None = None
+    history_projection_lifecycle: HistoryProjectionLifecycle | None = None
+    journal_history_service: JournalHistoryService | None = None
     journal_recorder: JournalRecorder | None = None
     memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
@@ -1076,6 +1084,19 @@ def build_app(
     history = ConversationHistory()
     journal_store = JournalStore(Path(settings.journal.root))
     journal_search_index = JournalSearchIndex(journal_store, journal_store.root)
+    history_corpus_repository = journal_search_index.repository
+    semantic_projection = UnavailableSemanticHistoryProjection()
+    history_projection_lifecycle = HistoryProjectionLifecycle(
+        bus,
+        projections=(CorpusHistoryProjection(history_corpus_repository),),
+        semantic_projection=semantic_projection,
+        logger=logger,
+    )
+    journal_history_service = JournalHistoryService(
+        journal_store,
+        history_projection_lifecycle,
+        journal_search_index,
+    )
     journal_recorder = JournalRecorder(
         journal_store,
         enabled=settings.journal.enabled,
@@ -1127,6 +1148,8 @@ def build_app(
         history=history,
         journal_store=journal_store,
         journal_search_index=journal_search_index,
+        history_projection_lifecycle=history_projection_lifecycle,
+        journal_history_service=journal_history_service,
         journal_recorder=journal_recorder,
         memory_file_repository=memory_file_repository,
         settings=settings,
@@ -1601,6 +1624,9 @@ async def run_until_shutdown(
         if app.journal_recorder is not None:
             logger.info("Shutdown: flushing pending journal writes")
             await app.journal_recorder.wait_for_pending()
+        if app.history_projection_lifecycle is not None:
+            logger.info("Shutdown: flushing pending history projection writes")
+            await app.history_projection_lifecycle.close()
         if app.mcp_host is not None:
             # Disabling before unwiring matters: disable() publishes a
             # SystemEvent, and the Status Console's subscription to it is
@@ -1663,6 +1689,7 @@ async def run(
     ensure_generated(settings.sound_cues)
 
     app = app or build_app(settings)
+    await _start_history_projection_lifecycle(app)
     if debug:
         await _announce_debug_mode_to_panel(app, settings.ui.language)
     # One shutdown signal feeds both the hotkey and the Status Console.
@@ -1733,10 +1760,16 @@ async def run(
         try:
             shutdown_provider.stop()
         finally:
+            if live_console is not None and live_console.transport is not None:
+                await live_console.transport.stop()
             if live_console is not None:
-                if live_console.transport is not None:
-                    await live_console.transport.stop()
                 live_console.close()
+
+
+async def _start_history_projection_lifecycle(app: App) -> None:
+    if app.history_projection_lifecycle is None:
+        return
+    await app.history_projection_lifecycle.start()
 
 
 def run_with_status_console(
@@ -1747,7 +1780,7 @@ def run_with_status_console(
 ) -> None:
     settings = settings or load_settings()
     app = build_app(settings)
-    if app.journal_store is None or app.journal_search_index is None:
+    if app.journal_history_service is None:
         raise RuntimeError("live Status Console requires journal read services")
     live_console = create_live_status_console(
         app, include_touchstrip=include_touchstrip
@@ -1767,8 +1800,7 @@ def run_with_status_console(
             debug=debug,
         ),
         logger=logger,
-        journal_store=app.journal_store,
-        journal_search_index=app.journal_search_index,
+        journal_history_service=app.journal_history_service,
         journal_text_submitter=app.orchestrator.submit_text_input,
         journal_attachment_submitter=app.orchestrator.on_attachment_submission,
         journal_new_context_handler=app.orchestrator.start_new_context,
@@ -1801,6 +1833,7 @@ def run_with_status_console(
         async def start() -> None:
             if live_console.transport is None:
                 raise RuntimeError("Status Console transport was not created")
+            await _start_history_projection_lifecycle(app)
             transport_info = await live_console.transport.start()
             live_console.load_transport_urls(transport_info)
             await run(

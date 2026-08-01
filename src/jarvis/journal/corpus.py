@@ -442,6 +442,13 @@ class HistoryCorpusRepository:
             self._ensure_schema(connection)
             self._delete_session_projection(connection, session_id)
 
+    def project_event(self, record: JournalEventRecord) -> None:
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(self._db_path)) as connection, connection:
+            self._ensure_schema(connection)
+            self._delete_event_projection(connection, record.reference)
+            self._insert_record(connection, record)
+
     def update_session_projection(self, session_id: str) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
@@ -611,6 +618,25 @@ class HistoryCorpusRepository:
         connection.execute(
             "DELETE FROM history_corpus_events WHERE session_id = ?",
             (session_id,),
+        )
+
+    def _delete_event_projection(
+        self, connection: sqlite3.Connection, reference: JournalEventRef
+    ) -> None:
+        parameters = (reference.session_id, reference.event_position)
+        connection.execute(
+            """
+            DELETE FROM history_corpus_event_fts
+            WHERE session_id = ? AND event_position = ?
+            """,
+            parameters,
+        )
+        connection.execute(
+            """
+            DELETE FROM history_corpus_events
+            WHERE session_id = ? AND event_position = ?
+            """,
+            parameters,
         )
 
     def _check_existing_schema_version(self) -> None:

@@ -35,6 +35,16 @@ from jarvis.journal.events import (
     TurnOutcome,
     new_session_id,
 )
+from jarvis.journal.lifecycle import (
+    CorpusHistoryProjection,
+    HistoryProjectionConsistencyError,
+    HistoryProjectionLifecycle,
+    HistoryProjectionStatus,
+    JournalHistoryService,
+    SemanticProjectionBackendIdentity,
+    SemanticProjectionState,
+    UnavailableSemanticHistoryProjection,
+)
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
 from jarvis.journal.store import (
@@ -51,6 +61,7 @@ __all__ = [
     "HISTORY_READ_MAX_EVENTS_PER_RANGE",
     "HISTORY_READ_MAX_TOTAL_EVENTS",
     "HISTORY_SEARCH_MAX_RESULTS",
+    "CorpusHistoryProjection",
     "HistoryBatchRead",
     "HistoryBatchReadStatus",
     "HistoryCorpusEvent",
@@ -63,6 +74,9 @@ __all__ = [
     "HistoryEventReadStatus",
     "HistoryEventRefsRead",
     "HistoryEventRefsReadStatus",
+    "HistoryProjectionConsistencyError",
+    "HistoryProjectionLifecycle",
+    "HistoryProjectionStatus",
     "HistorySearchHit",
     "HistorySearchOrder",
     "HistorySearchRequest",
@@ -75,6 +89,7 @@ __all__ = [
     "JournalEventAppended",
     "JournalEventRecord",
     "JournalEventRef",
+    "JournalHistoryService",
     "JournalRecorder",
     "JournalReplay",
     "JournalSearchHit",
@@ -83,6 +98,9 @@ __all__ = [
     "JournalSessionUsage",
     "JournalStore",
     "JournalUsage",
+    "SemanticProjectionBackendIdentity",
+    "SemanticProjectionState",
     "TurnOutcome",
+    "UnavailableSemanticHistoryProjection",
     "new_session_id",
 ]

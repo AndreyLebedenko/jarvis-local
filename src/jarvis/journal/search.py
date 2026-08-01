@@ -25,6 +25,10 @@ class JournalSearchIndex:
     def __init__(self, store: JournalStore, root: Path) -> None:
         self._repository = HistoryCorpusRepository(store, root)
 
+    @property
+    def repository(self) -> HistoryCorpusRepository:
+        return self._repository
+
     def rebuild(self) -> None:
         self._repository.rebuild()
 

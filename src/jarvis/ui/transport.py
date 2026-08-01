@@ -47,6 +47,10 @@ from jarvis.inputs.attachments import (
 from jarvis.journal.corpus import HISTORY_SEARCH_MAX_RESULTS
 from jarvis.journal.events import JournalEvent, JournalEventAppended
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
+from jarvis.journal.lifecycle import (
+    HistoryProjectionConsistencyError,
+    JournalHistoryService,
+)
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.store import JournalReplay, JournalStore
 from jarvis.memory.files import (
@@ -556,6 +560,7 @@ class UiTransportServer:
         port: int = 0,
         token_factory: Callable[[], str] | None = None,
         ui_dir: Path = UI_DIR,
+        journal_history_service: JournalHistoryService | None = None,
         journal_store: JournalStore | None = None,
         journal_search_index: JournalSearchIndex | None = None,
         journal_text_submitter: TextInputSubmitter | None = None,
@@ -574,6 +579,7 @@ class UiTransportServer:
         self._port = port
         self._token_factory = token_factory or (lambda: secrets.token_urlsafe(32))
         self._ui_dir = ui_dir
+        self._journal_history_service = journal_history_service
         self._journal_store = journal_store
         self._journal_search_index = journal_search_index
         self._journal_text_submitter = journal_text_submitter
@@ -608,7 +614,6 @@ class UiTransportServer:
             self._control_api.set_loop(asyncio.get_running_loop())
         if self._token is None:
             self._token = self._token_factory()
-        await self._rebuild_journal_index()
         self._subscribe_to_bus()
         app = web.Application(
             client_max_size=MAX_JOURNAL_UPLOAD_REQUEST_BYTES,
@@ -785,7 +790,6 @@ class UiTransportServer:
         self._publish_delta(self._state.set_pending_restart(True))
 
     async def _on_journal_event_appended(self, event: JournalEventAppended) -> None:
-        await self._update_journal_index(event.event.session_id)
         if self._is_hidden():
             return
         self._publish_delta(
@@ -805,14 +809,21 @@ class UiTransportServer:
         self._require_http_token(request)
         if self._is_hidden():
             return self._journal_hidden_response()
-        if self._journal_store is None:
+        history = self._journal_history_service
+        if history is None and self._journal_store is None:
             return web.json_response({"status": "ok", "sessions": []})
+        list_sessions = (
+            history.list_sessions
+            if history is not None
+            else self._require_journal_store().list_sessions
+        )
+        store = history if history is not None else self._require_journal_store()
         return web.json_response(
             {
                 "status": "ok",
                 "sessions": [
-                    journal_session_payload(summary, self._journal_store)
-                    for summary in self._journal_store.list_sessions()
+                    journal_session_payload(summary, store)
+                    for summary in list_sessions()
                 ],
             }
         )
@@ -974,14 +985,22 @@ class UiTransportServer:
         self._require_http_token(request)
         if self._is_hidden():
             return self._journal_hidden_response()
-        if self._journal_store is None or self._journal_fork_handler is None:
+        history = self._journal_history_service
+        if history is None and self._journal_store is None:
+            return web.json_response(
+                {"status": "rejected", "reason": "unknown_session"}, status=404
+            )
+        if self._journal_fork_handler is None:
             return web.json_response(
                 {"status": "rejected", "reason": "unknown_session"}, status=404
             )
         source_session_id = request.match_info["session_id"]
-        replay = await asyncio.to_thread(
-            self._journal_store.read_session, source_session_id
+        read_session = (
+            history.read_session
+            if history is not None
+            else self._require_journal_store().read_session
         )
+        replay = await asyncio.to_thread(read_session, source_session_id)
         records = replay.records
         if not records:
             return web.json_response(
@@ -999,7 +1018,8 @@ class UiTransportServer:
         self._require_http_token(request)
         if self._is_hidden():
             return self._journal_hidden_response()
-        if self._journal_store is None:
+        history = self._journal_history_service
+        if history is None and self._journal_store is None:
             return web.json_response(
                 {
                     "status": "ok",
@@ -1008,7 +1028,10 @@ class UiTransportServer:
                     "sessions": [],
                 }
             )
-        usage = await asyncio.to_thread(self._journal_store.usage)
+        usage_reader = history.usage
+        if history is None:
+            usage_reader = self._require_journal_store().usage
+        usage = await asyncio.to_thread(usage_reader)
         return web.json_response(
             {
                 "status": "ok",
@@ -1026,11 +1049,17 @@ class UiTransportServer:
         if self._is_hidden():
             return self._journal_hidden_response()
         session_id = request.match_info["session_id"]
-        if self._journal_store is None:
+        history = self._journal_history_service
+        if history is None and self._journal_store is None:
             return web.json_response(
                 {"status": "ok", "session_id": session_id, "events": []}
             )
-        replay = self._journal_store.read_session(session_id)
+        read_session = (
+            history.read_session
+            if history is not None
+            else self._require_journal_store().read_session
+        )
+        replay = read_session(session_id)
         return web.json_response(
             {
                 "status": "ok",
@@ -1047,7 +1076,8 @@ class UiTransportServer:
         if self._is_hidden():
             return self._journal_hidden_response()
         session_id = request.match_info["session_id"]
-        if self._journal_store is None:
+        history = self._journal_history_service
+        if history is None:
             return web.json_response(
                 {"status": "rejected", "reason": "not_found"}, status=404
             )
@@ -1056,14 +1086,15 @@ class UiTransportServer:
                 {"status": "rejected", "reason": "active_session"}, status=409
             )
         try:
-            await asyncio.to_thread(self._journal_store.delete_session, session_id)
+            await asyncio.to_thread(history.delete_session, session_id)
         except KeyError:
             return web.json_response(
                 {"status": "rejected", "reason": "not_found"}, status=404
             )
-        if self._journal_search_index is not None:
-            await asyncio.to_thread(
-                self._journal_search_index.delete_session, session_id
+        except HistoryProjectionConsistencyError:
+            return web.json_response(
+                {"status": "rejected", "reason": "projection_consistency_failed"},
+                status=500,
             )
         return web.json_response({"status": "ok", "deleted_session_id": session_id})
 
@@ -1072,7 +1103,15 @@ class UiTransportServer:
         if self._is_hidden():
             return self._journal_hidden_response()
         limit = self._parse_search_limit(request.query.get("limit"))
-        if self._journal_search_index is None:
+        history = self._journal_history_service
+        if history is not None:
+            hits = history.search(
+                request.query.get("query", request.query.get("q", "")),
+                date_from=request.query.get("date_from"),
+                date_to=request.query.get("date_to"),
+                limit=limit,
+            )
+        elif self._journal_search_index is None:
             hits = []
         else:
             hits = self._journal_search_index.search(
@@ -1092,7 +1131,7 @@ class UiTransportServer:
         self._require_http_token(request)
         if self._is_hidden():
             return self._journal_hidden_response()
-        if self._journal_store is None:
+        if self._journal_history_service is None and self._journal_store is None:
             raise web.HTTPNotFound(text="journal media not available")
         media_path = self._resolve_journal_media_path(
             request.match_info["session_id"], request.match_info["media_path"]
@@ -1280,16 +1319,6 @@ class UiTransportServer:
             )
         raise RuntimeError(f"unsupported new context result reason: {result.reason}")
 
-    async def _rebuild_journal_index(self) -> None:
-        if self._journal_search_index is None:
-            return
-        await asyncio.to_thread(self._journal_search_index.rebuild)
-
-    async def _update_journal_index(self, session_id: str) -> None:
-        if self._journal_search_index is None:
-            return
-        await asyncio.to_thread(self._journal_search_index.update_session, session_id)
-
     @staticmethod
     def _parse_search_limit(raw: str | None) -> int:
         if raw is None:
@@ -1314,9 +1343,12 @@ class UiTransportServer:
         )
 
     def _resolve_journal_media_path(self, session_id: str, media_path: str) -> Path:
-        if self._journal_store is None:
+        if self._journal_history_service is not None:
+            root = self._journal_history_service.root.resolve()
+        elif self._journal_store is not None:
+            root = self._journal_store.root.resolve()
+        else:
             raise web.HTTPNotFound(text="journal media not available")
-        root = self._journal_store.root.resolve()
         candidate = (root / session_id / media_path).resolve()
         try:
             candidate.relative_to(root)
@@ -1326,6 +1358,11 @@ class UiTransportServer:
         if suffix not in JOURNAL_MEDIA_TYPES or not candidate.is_file():
             raise web.HTTPNotFound(text="journal media not found")
         return candidate
+
+    def _require_journal_store(self) -> JournalStore:
+        if self._journal_store is None:
+            raise RuntimeError("journal store is not configured")
+        return self._journal_store
 
     def _publish_delta(self, message: JsonObject | None) -> None:
         if message is None:
