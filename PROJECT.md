@@ -3194,6 +3194,44 @@ budget is exceeded. Real embedding-model quality and host-resource figures are
 human-run via `tests/retrieval_benchmark/measure_semantic.py`; the pure suite
 uses a deterministic concept fixture.
 
+## v1.8.0 hybrid retrieval domain API (task 11 decision, 2026-08-01)
+
+The production-shaped domain surface is `HistoryRetrievalService`. It combines
+morphology-expanded FTS lexical candidates from `HistoryCorpusRepository` with
+semantic candidates from `SemanticPassageIndex`, applies the same per-query
+relative semantic gate selected in task 8, deduplicates by `JournalEventRef`,
+and hydrates every returned item through typed corpus reads before exposing
+text. Semantic candidates are never authoritative on their own; the source event
+remains the model-facing text source.
+
+Candidate contract: every result exposes `source_mode` (`lexical`, `semantic`,
+or `both`), `combined_rank`, optional `semantic_score`, optional
+`lexical_score`, optional `lexical_rank`, provenance reference, timestamp,
+role, source, hydrated text, and truncation metadata. A missing semantic score
+is the normal lexical-only fallback state. The retrieval service does not
+truncate hydrated source text because it has no prompt-budget policy; all
+task-11 candidates therefore report `truncated=False`. Actual text budgeting
+and truncation belong to the later selector/context-assembler layers.
+
+Pure quality gate: `tests/test_history_retrieval.py` runs the fixed benchmark
+corpus version `2026-08-01.1` through the domain service using the deterministic
+concept fixture for embeddings and pymorphy3 morphology expansion for FTS. The
+fixture result meets `RATIFIED_THRESHOLDS`:
+
+- lexical-strength recall@k 1.000 (threshold 1.00);
+- morphology recall@k 1.000 (threshold 0.90);
+- semantic recall@k 1.000 (threshold 0.55);
+- overall recall@k 1.000 (threshold 0.80);
+- overall precision@k 0.921 (threshold 0.85);
+- distractor false-positive rate 0.000 (threshold 0.0).
+
+Human-run real-model quality remains the task 8 measurement record for the same
+ratified corpus and thresholds: e5-large-instruct is the primary backend and
+clears the semantic bar at 0.562; embeddinggemma is the config-swappable latency
+fallback, preserves lexical/morphology safety, keeps distractor false positives
+at 0.0, and records lower semantic recall (0.500) as the deliberate
+latency-for-quality trade.
+
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).

@@ -22,5 +22,6 @@ mss>=10.2
 opencv-python==4.11.0.86
 pyperclip>=1.11
 pywebview>=6.2
+pymorphy3>=2.0,<3
 pytest>=8.0
 pytest-asyncio>=0.24

@@ -162,6 +162,7 @@ class HistorySearchStatus(Enum):
 @dataclass(frozen=True)
 class HistorySearchRequest:
     query: str = ""
+    term_groups: tuple[tuple[str, ...], ...] = ()
     date_from: str | None = None
     date_to: str | None = None
     session_ids: tuple[str, ...] = ()
@@ -963,7 +964,7 @@ def _validate_search_request(
 
 def _search_sql(request: HistorySearchRequest) -> str:
     where_sql = _search_where_sql(request)
-    snippet_source = "1" if _to_prefix_match_query(request.query) else "0"
+    snippet_source = "1" if _to_match_query(request) else "0"
     score_sql = (
         "bm25(history_corpus_event_fts)"
         if request.order is HistorySearchOrder.RELEVANCE
@@ -999,7 +1000,7 @@ def _search_where_sql(request: HistorySearchRequest) -> str:
 
 def _search_where_parts(request: HistorySearchRequest) -> list[str]:
     where_parts: list[str] = []
-    if _to_prefix_match_query(request.query):
+    if _to_match_query(request):
         where_parts.append("history_corpus_event_fts MATCH ?")
     _append_date_filter(where_parts, request.date_from, "date_from")
     _append_date_filter(where_parts, request.date_to, "date_to")
@@ -1011,7 +1012,7 @@ def _search_where_parts(request: HistorySearchRequest) -> list[str]:
 
 def _search_parameters(request: HistorySearchRequest) -> list[str | int | float]:
     parameters: list[str | int | float] = []
-    match_query = _to_prefix_match_query(request.query)
+    match_query = _to_match_query(request)
     if match_query:
         parameters.append(match_query)
     _append_date_parameters(parameters, request.date_from, "date_from")
@@ -1077,6 +1078,27 @@ def _append_date_parameters(
 def _to_prefix_match_query(query: str) -> str:
     tokens = _QUERY_TOKEN_PATTERN.findall(query.casefold())
     return " AND ".join(f"{token}*" for token in tokens)
+
+
+def _to_match_query(request: HistorySearchRequest) -> str:
+    if not request.term_groups:
+        return _to_prefix_match_query(request.query)
+    groups: list[str] = []
+    for group in request.term_groups:
+        tokens = tuple(
+            dict.fromkeys(
+                token
+                for term in group
+                for token in _QUERY_TOKEN_PATTERN.findall(term.casefold())
+            )
+        )
+        if not tokens:
+            continue
+        if len(tokens) == 1:
+            groups.append(f"{tokens[0]}*")
+        else:
+            groups.append("(" + " OR ".join(f"{token}*" for token in tokens) + ")")
+    return " AND ".join(groups)
 
 
 def _parse_date_bound(value: str) -> date | datetime:

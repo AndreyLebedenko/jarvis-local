@@ -463,7 +463,7 @@ Revised remaining sequence:
 10. [Semantic passage and index store](done/task-v1.8.0-10-semantic-passage-index-store.md)
     persist rebuildable source-grounded semantic passages/vectors for the
     selected backend.
-11. [Hybrid retrieval domain API and quality gate](task-v1.8.0-11-hybrid-retrieval-api-quality-gate.md)
+11. [Hybrid retrieval domain API and quality gate](done/task-v1.8.0-11-hybrid-retrieval-api-quality-gate.md)
     combine semantic and lexical candidates, hydrate references through typed
     reads, and pass the fixed Russian retrieval benchmark.
 12. [Native read-only history tool provider](task-v1.8.0-12-history-tool-provider.md)
