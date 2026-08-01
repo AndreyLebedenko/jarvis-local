@@ -8,12 +8,19 @@ deterministic concept fixture in ``semantic.py``; this script swaps in a real
 ``embed_fn`` and additionally reports the per-turn query-embedding latency that
 is the automatic-retrieval hot-path cost.
 
-Exact commands (run from the repository root against your local Ollama):
+Exact commands for the selected stack (run from the repo root; join the
+continued lines, or use the ``set PYTHONPATH=tests && ...`` form on cmd.exe):
 
-    ollama pull bge-m3
-    PYTHONPATH=tests python -m retrieval_benchmark.measure_semantic bge-m3
-    PYTHONPATH=tests python -m retrieval_benchmark.measure_semantic bge-m3 --hybrid
-    PYTHONPATH=tests python -m retrieval_benchmark.measure_semantic nomic-embed-text
+    # primary: multilingual-e5-large-instruct
+    PYTHONPATH=tests python -m retrieval_benchmark.measure_semantic \
+        blaifa/multilingual-e5-large-instruct --hybrid --separation 0.05 \
+        --query-prefix "query: " --passage-prefix "passage: "
+
+    # fallback: embeddinggemma (latency)
+    PYTHONPATH=tests python -m retrieval_benchmark.measure_semantic \
+        embeddinggemma:300m-bf16 --hybrid --separation 0.2 \
+        --query-prefix "task: search result | query: " \
+        --passage-prefix "title: none | text: "
 
 Model-specific query/passage prompts matter: without them cosine scores are
 miscalibrated and a fixed threshold over-matches (e5 with no prefix returned

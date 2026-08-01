@@ -82,20 +82,31 @@ working context, transcripts, annotations, consolidation, and UI.
 
 ## Acceptance criteria
 
-- [ ] The owner-approved backend is named explicitly.
-- [ ] The morphology-aware lexical baseline has a recorded standalone
+Closure: all criteria are met by the decision recorded in `PROJECT.md`
+(v1.8.0 hybrid retrieval spike section), the benchmark and tools in
+`tests/retrieval_benchmark/`, and the requirements pushed into cards 9, 10,
+and 11. Per-item:
+
+- [x] The owner-approved backend is named explicitly (pymorphy3 + e5-large-
+      instruct primary + embeddinggemma fallback + relative gate).
+- [x] The morphology-aware lexical baseline has a recorded standalone
       benchmark result, and any embedding layer's gain is stated as an
-      increment over it.
-- [ ] The chosen morphology backend is verified to install and import on
-      Python 3.11, with its `requirements.txt` impact recorded.
-- [ ] Exact/prefix retrieval remains the offline literal fallback.
-- [ ] Every semantic candidate has stable source provenance.
-- [ ] The design covers rebuild, append, deletion, and unavailable-backend
-      behavior.
-- [ ] The per-turn live query cost is measured, and the resident-versus-per-
-      query embedding trade-off and per-turn fallback budget are recorded.
-- [ ] Quality thresholds and labels are predeclared.
-- [ ] Resource and locality trade-offs are explicit.
+      increment over it (B0/B1/B2 in `PROJECT.md`).
+- [x] The chosen morphology backend is verified to install and import on
+      Python 3.11, with its `requirements.txt` impact recorded (pymorphy3;
+      spike deps not added to `requirements.txt` until implementation).
+- [x] Exact/prefix retrieval remains the offline literal fallback.
+- [x] Every semantic candidate has stable source provenance (benchmark maps
+      passages to `JournalEventRef`; read-back required by cards 10/11).
+- [x] The design covers rebuild, append, deletion, and unavailable-backend
+      behavior (pushed into cards 9 and 10).
+- [x] The per-turn live query cost is measured, and the resident-versus-per-
+      query embedding trade-off and per-turn fallback budget are recorded
+      (Ollama keeps the model resident; cold-start and over-budget fall back
+      to lexical-only).
+- [x] Quality thresholds and labels are predeclared (`RATIFIED_THRESHOLDS`).
+- [x] Resource and locality trade-offs are explicit (latency/VRAM per model in
+      `PROJECT.md`; all backends local).
 
 ## Stop conditions
 

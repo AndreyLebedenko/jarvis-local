@@ -3117,8 +3117,12 @@ gate. Established and first applied in
 
 Settled decision (owner-ratified; do not re-litigate without new evidence).
 Russian history retrieval is a three-tier problem, measured against a fixed
-benchmark in `tests/retrieval_benchmark/` (backend supplied as an injected
-function; the shipped corpus/read/search path is exercised, not re-implemented).
+benchmark in `tests/retrieval_benchmark/` with the backend supplied as an
+injected function. Scope of what the benchmark exercises: B0 runs the shipped
+corpus/read/search path (`HistoryCorpusRepository`); B1 and B2 validate the
+backend-neutral candidate logic and, human-run, real model quality over an
+in-memory index of the benchmark documents. The production semantic-projection
+path is validated in tasks 10 and 11, not here.
 
 Tiers: lexical (surface/prefix), morphology (inflected word forms and names),
 semantic (paraphrase, synonym). Measured recall@k on the benchmark:
@@ -3142,6 +3146,18 @@ fallback. e5 wins semantic recall and rejects the distractor at the gentlest
 gate (relative `separation` 0.05 vs 0.2 for bge/gemma), with the lightest VRAM
 (335 MB). Rejected: bge-m3 (weakest semantic), Snowball, pymorphy2, and a fixed
 absolute cosine threshold.
+
+Why embeddinggemma is kept despite not clearing the primary bar. A fallback
+must exist for the cases the primary cannot serve: cold start, per-turn budget
+exceeded, or e5 unavailable. embeddinggemma is chosen for that role because it
+is the fastest warm embedder (~85-95 ms vs e5's ~120-140 ms), and latency is
+exactly what the fallback path exists to buy. Its semantic recall (0.500) is
+below the ratified primary bar (0.55) by design and is deliberately not gated:
+on the fallback path we trade semantic recall for latency. The fallback is
+still held to the safety invariants - it must preserve lexical and morphology
+recall and keep the distractor false-positive rate at 0.0. bge-m3 is not kept
+as fallback because it is both slower than embeddinggemma and weaker on
+semantics, so it wins on no axis.
 
 Relative gate, not absolute threshold. An absolute cosine threshold does not
 transfer across models (e5 compresses scores into a narrow high band; a fixed

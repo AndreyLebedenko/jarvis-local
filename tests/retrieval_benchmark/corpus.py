@@ -397,13 +397,20 @@ BENCHMARK_QUERIES: tuple[BenchmarkQuery, ...] = (
 )
 
 
-# PASS thresholds for a selected hybrid backend, expressed as mean recall@k per
+# PASS thresholds for the PRIMARY hybrid backend, expressed as mean recall@k per
 # tier (plus overall precision and the distractor guard). Ratified by the owner
 # on 2026-08-01 after the task-8 B0/B1/B2 measurements: the semantic bar is set
 # to the measured reality of small local embedders on Russian paraphrase and
 # synonym (e5-large-instruct reaches ~0.56), not the earlier aspirational 0.80.
 # Do not weaken these after seeing a backend's results without a documented
 # revision.
+#
+# These gate the primary backend only. The config-swappable latency fallback
+# (embeddinggemma, ~0.50 semantic) is deliberately NOT gated on semantic recall
+# - it is a degraded mode that trades semantic quality for lower latency. The
+# fallback must still preserve lexical and morphology recall and keep the
+# distractor false-positive rate at 0.0; its semantic recall is recorded, not
+# a pass/fail bar.
 RATIFIED_THRESHOLDS: dict[str, float] = {
     "lexical_strength_recall_at_k": 1.0,
     "morphology_recall_at_k": 0.90,

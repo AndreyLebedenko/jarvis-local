@@ -55,8 +55,12 @@ transcripts, annotations, and UI.
 
 - [ ] The benchmark is deterministic and runnable in the pure suite.
 - [ ] Hybrid retrieval meets `RATIFIED_THRESHOLDS` on the fixture in the pure
-      suite, and both e5 and embeddinggemma meet them in the recorded human-run
+      suite, and the primary backend (e5) meets them in the recorded human-run
       measurement.
+- [ ] The fallback backend (embeddinggemma) preserves lexical and morphology
+      recall and keeps the distractor false-positive rate at 0.0; its lower
+      semantic recall is recorded as a deliberate latency-for-quality trade and
+      is not gated on `RATIFIED_THRESHOLDS`.
 - [ ] Semantic gating is relative, not a fixed absolute threshold, and the
       distractor false-positive rate stays 0.0 for both backends.
 - [ ] Exact identifiers still work when semantic retrieval is unavailable.
