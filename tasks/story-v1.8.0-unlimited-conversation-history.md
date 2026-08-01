@@ -1,6 +1,6 @@
 # Story v1.8.0: Unlimited conversation history
 
-**Status:** Draft revision for owner review.
+**Status:** Approved.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.8.0 section).
 **Created:** 2026-07-29.
 **Revised:** 2026-08-01 after owner review of the exact-first retrieval plan.
@@ -453,9 +453,10 @@ Completed cards 1-7 stay valid and are not reopened by this story rewrite:
 
 Revised remaining sequence:
 
-8. [Local hybrid retrieval design spike](task-v1.8.0-8-hybrid-retrieval-design-spike.md)
+8. [Local hybrid retrieval design spike](done/task-v1.8.0-8-hybrid-retrieval-design-spike.md)
    compare candidate local semantic/hybrid backends and choose one with owner
-   approval before any retrieval consumer is wired.
+   approval before any retrieval consumer is wired. Completed: pymorphy3 + e5-large-instruct
+   (embeddinggemma fallback) + relative gate; see `PROJECT.md`.
 9. [History projection lifecycle and incremental indexing](task-v1.8.0-9-history-projection-lifecycle.md)
    move startup, append, deletion, and rebuild ownership for corpus, lexical,
    and semantic projections out of the UI.
