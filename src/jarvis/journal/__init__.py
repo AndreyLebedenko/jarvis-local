@@ -47,6 +47,19 @@ from jarvis.journal.lifecycle import (
 )
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
+from jarvis.journal.semantic import (
+    CURRENT_SEMANTIC_PROJECTION_SCHEMA_VERSION,
+    SEMANTIC_MAX_RESULTS,
+    EmbeddingProvider,
+    OllamaEmbeddingProvider,
+    SemanticCandidate,
+    SemanticCandidateQuery,
+    SemanticCandidateResult,
+    SemanticCandidateStatus,
+    SemanticPassage,
+    SemanticPassageIndex,
+    SemanticProjectionSchemaError,
+)
 from jarvis.journal.store import (
     JournalReplay,
     JournalSessionSummary,
@@ -57,11 +70,14 @@ from jarvis.journal.store import (
 
 __all__ = [
     "CURRENT_HISTORY_CORPUS_SCHEMA_VERSION",
+    "CURRENT_SEMANTIC_PROJECTION_SCHEMA_VERSION",
     "HISTORY_READ_MAX_BATCH_RANGES",
     "HISTORY_READ_MAX_EVENTS_PER_RANGE",
     "HISTORY_READ_MAX_TOTAL_EVENTS",
     "HISTORY_SEARCH_MAX_RESULTS",
+    "SEMANTIC_MAX_RESULTS",
     "CorpusHistoryProjection",
+    "EmbeddingProvider",
     "HistoryBatchRead",
     "HistoryBatchReadStatus",
     "HistoryCorpusEvent",
@@ -98,7 +114,15 @@ __all__ = [
     "JournalSessionUsage",
     "JournalStore",
     "JournalUsage",
+    "OllamaEmbeddingProvider",
+    "SemanticCandidate",
+    "SemanticCandidateQuery",
+    "SemanticCandidateResult",
+    "SemanticCandidateStatus",
+    "SemanticPassage",
+    "SemanticPassageIndex",
     "SemanticProjectionBackendIdentity",
+    "SemanticProjectionSchemaError",
     "SemanticProjectionState",
     "TurnOutcome",
     "UnavailableSemanticHistoryProjection",

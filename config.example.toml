@@ -58,6 +58,17 @@ reasoning_generation_reserve_tokens = 16384
 estimator_safety_margin_tokens = 1024
 minimum_recent_exchanges = 1
 
+[history.semantic]
+# The rebuildable local semantic projection is enabled by default. If the
+# configured model is unavailable, exact/prefix retrieval remains usable.
+enabled = true
+model = "multilingual-e5-large-instruct"
+query_prefix = "query: "
+passage_prefix = "passage: "
+separation = 0.05
+top_ratio = 0.98
+dimension = 1024
+
 [hotkeys]
 screenshot_full = "ctrl+alt+s"
 screenshot_region = "ctrl+alt+r"

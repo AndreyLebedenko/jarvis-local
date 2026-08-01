@@ -477,6 +477,28 @@ class HistorySettings:
     reasoning_generation_reserve_tokens: int = 16384
     estimator_safety_margin_tokens: int = 1024
     minimum_recent_exchanges: int = 1
+    semantic: "HistorySemanticSettings" = field(
+        default_factory=lambda: HistorySemanticSettings()
+    )
+
+
+@dataclass(frozen=True)
+class HistorySemanticSettings:
+    """Configuration for the selected local semantic projection backend."""
+
+    enabled: bool = True
+    model: str = field(
+        default="multilingual-e5-large-instruct", metadata={"non_empty": True}
+    )
+    query_prefix: str = "query: "
+    passage_prefix: str = "passage: "
+    separation: float = field(default=0.05, metadata={"minimum": 0})
+    top_ratio: float = field(
+        default=0.98, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    dimension: int = field(
+        default=1024, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
 
 
 @dataclass(frozen=True)
@@ -898,7 +920,11 @@ def _build_memory_section(section_name: str, raw: dict[str, Any]) -> "MemorySett
 
 
 def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySettings":
-    settings = _build_plain_section(section_name, HistorySettings, raw)
+    semantic_raw = raw.get("semantic", {})
+    if not isinstance(semantic_raw, dict):
+        raise ConfigError(f"[{section_name}.semantic] must be a table")
+    scalar_raw = {key: value for key, value in raw.items() if key != "semantic"}
+    settings = _build_plain_section(section_name, HistorySettings, scalar_raw)
     for name in (
         "prompt_capacity_tokens",
         "recent_history_max_tokens",
@@ -921,6 +947,37 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
             f"[{section_name}] mandatory prompt reserves must leave room for "
             f"fixed prompt input: {mandatory_prompt_reserves} >= "
             f"{settings.prompt_capacity_tokens}"
+        )
+    return replace(
+        settings,
+        semantic=_build_history_semantic_section(
+            f"{section_name}.semantic", semantic_raw
+        ),
+    )
+
+
+def _build_history_semantic_section(
+    section_name: str, raw: dict[str, Any]
+) -> "HistorySemanticSettings":
+    settings = _build_plain_section(section_name, HistorySemanticSettings, raw)
+    if not settings.model.strip():
+        raise ConfigError(f"[{section_name}].model must be a non-empty string")
+    for name in ("query_prefix", "passage_prefix"):
+        if not getattr(settings, name).strip():
+            raise ConfigError(f"[{section_name}].{name} must be a non-empty string")
+    if settings.separation < 0:
+        raise ConfigError(
+            f"[{section_name}].separation must not be negative, "
+            f"got {settings.separation!r}"
+        )
+    if not 0 < settings.top_ratio <= 1:
+        raise ConfigError(
+            f"[{section_name}].top_ratio must be greater than 0 and at most 1, "
+            f"got {settings.top_ratio!r}"
+        )
+    if settings.dimension <= 0:
+        raise ConfigError(
+            f"[{section_name}].dimension must be positive, got {settings.dimension!r}"
         )
     return settings
 
