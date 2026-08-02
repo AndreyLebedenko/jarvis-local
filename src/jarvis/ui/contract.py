@@ -81,7 +81,7 @@ class ModelRequestItem:
 class ModelRequestSummary:
     timestamp: float
     items: tuple[ModelRequestItem, ...]
-    prompt_budget: dict[str, int | bool] | None = None
+    prompt_budget: dict[str, int | bool | str] | None = None
 
 
 class EventLevel(enum.Enum):

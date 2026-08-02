@@ -496,6 +496,9 @@ class HistorySemanticSettings:
     )
     query_prefix: str = "query: "
     passage_prefix: str = "passage: "
+    timeout_seconds: float = field(
+        default=1.0, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
     separation: float = field(default=0.05, metadata={"minimum": 0})
     top_ratio: float = field(
         default=0.98, metadata={"minimum": 0, "exclusive_minimum": True}
@@ -969,6 +972,11 @@ def _build_history_semantic_section(
     for name in ("query_prefix", "passage_prefix"):
         if not getattr(settings, name).strip():
             raise ConfigError(f"[{section_name}].{name} must be a non-empty string")
+    if settings.timeout_seconds <= 0:
+        raise ConfigError(
+            f"[{section_name}].timeout_seconds must be positive, "
+            f"got {settings.timeout_seconds!r}"
+        )
     if settings.separation < 0:
         raise ConfigError(
             f"[{section_name}].separation must not be negative, "

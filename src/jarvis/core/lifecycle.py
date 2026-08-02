@@ -102,7 +102,7 @@ class ModelRequestStarted:
     timestamp: float
     inputs: tuple[ModelRequestInput, ...]
     audio_duration_seconds: float | None
-    prompt_budget: dict[str, int | bool] | None = None
+    prompt_budget: dict[str, int | bool | str] | None = None
 
 
 @dataclass(frozen=True)

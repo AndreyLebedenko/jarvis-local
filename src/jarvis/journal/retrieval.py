@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import statistics
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -46,6 +47,12 @@ class HistoryRetrievalStatus(Enum):
     HYDRATION_FAILED = "hydration_failed"
 
 
+class HistoryRetrievalFallbackMode(Enum):
+    FULL_HYBRID = "full_hybrid"
+    LEXICAL_BY_TIMEOUT = "lexical_by_timeout"
+    LEXICAL_BY_UNAVAILABLE = "lexical_by_unavailable"
+
+
 class HistoryRetrievalSourceMode(Enum):
     LEXICAL = "lexical"
     SEMANTIC = "semantic"
@@ -85,6 +92,10 @@ class HistoryRetrievalResult:
     lexical_count: int = 0
     semantic_count: int = 0
     returned_count: int = 0
+    fallback_mode: HistoryRetrievalFallbackMode = (
+        HistoryRetrievalFallbackMode.FULL_HYBRID
+    )
+    elapsed_seconds: float = 0.0
     missing_references: tuple[JournalEventRef, ...] = ()
     max_results: int = HISTORY_RETRIEVAL_MAX_RESULTS
 
@@ -134,24 +145,35 @@ class HistoryRetrievalService:
         self._normalizer = normalizer
 
     def retrieve(self, request: HistoryRetrievalQuery) -> HistoryRetrievalResult:
+        started = time.perf_counter()
         if not request.query.strip():
-            return HistoryRetrievalResult(HistoryRetrievalStatus.INVALID_QUERY)
+            return HistoryRetrievalResult(
+                HistoryRetrievalStatus.INVALID_QUERY,
+                elapsed_seconds=time.perf_counter() - started,
+            )
         if request.limit < 1 or request.limit > HISTORY_RETRIEVAL_MAX_RESULTS:
             return HistoryRetrievalResult(
                 HistoryRetrievalStatus.TOO_MANY_RESULTS,
                 max_results=HISTORY_RETRIEVAL_MAX_RESULTS,
+                elapsed_seconds=time.perf_counter() - started,
             )
 
         lexical = self._lexical_candidates(request)
         if lexical is None:
-            return HistoryRetrievalResult(HistoryRetrievalStatus.LEXICAL_UNAVAILABLE)
-        semantic = self._semantic_candidates_for(request)
+            return HistoryRetrievalResult(
+                HistoryRetrievalStatus.LEXICAL_UNAVAILABLE,
+                elapsed_seconds=time.perf_counter() - started,
+            )
+        semantic, fallback_mode = self._semantic_candidates_for(request)
         fused = _fuse_candidates(lexical, semantic, request.limit)
         hydrated = self._repository.read_events(
             tuple(candidate.reference for candidate in fused)
         )
         if hydrated.status is not HistoryEventRefsReadStatus.ACCEPTED:
-            return HistoryRetrievalResult(HistoryRetrievalStatus.HYDRATION_FAILED)
+            return HistoryRetrievalResult(
+                HistoryRetrievalStatus.HYDRATION_FAILED,
+                elapsed_seconds=time.perf_counter() - started,
+            )
 
         events_by_reference = {event.reference: event for event in hydrated.events}
         candidates: list[HistoryRetrievalCandidate] = []
@@ -169,6 +191,8 @@ class HistoryRetrievalService:
             lexical_count=len(lexical),
             semantic_count=len(semantic),
             returned_count=len(candidates),
+            fallback_mode=fallback_mode,
+            elapsed_seconds=time.perf_counter() - started,
             missing_references=hydrated.missing_references,
         )
 
@@ -205,7 +229,7 @@ class HistoryRetrievalService:
 
     def _semantic_candidates_for(
         self, request: HistoryRetrievalQuery
-    ) -> tuple[_CandidateAccumulator, ...]:
+    ) -> tuple[tuple[_CandidateAccumulator, ...], HistoryRetrievalFallbackMode]:
         result = self._semantic_candidates.query(
             SemanticCandidateQuery(
                 query=request.query,
@@ -217,19 +241,26 @@ class HistoryRetrievalService:
                 sources=request.sources,
             )
         )
+        if result.status is SemanticCandidateStatus.TIMEOUT:
+            return (), HistoryRetrievalFallbackMode.LEXICAL_BY_TIMEOUT
+        if result.status is SemanticCandidateStatus.UNAVAILABLE:
+            return (), HistoryRetrievalFallbackMode.LEXICAL_BY_UNAVAILABLE
         if result.status is not SemanticCandidateStatus.ACCEPTED:
-            return ()
+            return (), HistoryRetrievalFallbackMode.FULL_HYBRID
         gated = _apply_relative_gate(
             result.candidates,
             separation=self._semantic_settings.separation,
             top_ratio=self._semantic_settings.top_ratio,
         )
-        return tuple(
-            _CandidateAccumulator(
-                reference=candidate.reference,
-                semantic_score=candidate.score,
-            )
-            for candidate in gated
+        return (
+            tuple(
+                _CandidateAccumulator(
+                    reference=candidate.reference,
+                    semantic_score=candidate.score,
+                )
+                for candidate in gated
+            ),
+            HistoryRetrievalFallbackMode.FULL_HYBRID,
         )
 
 

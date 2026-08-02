@@ -3171,13 +3171,19 @@ and needs one intuitive per-backend knob instead of a fragile shared threshold.
 Backend swappability. The retrieval code is embedding-model agnostic. All
 per-backend parameters live in a `[history.semantic]` config block: Ollama
 model id, query/passage prefixes (e5 `query:`/`passage:`; embeddinggemma
-`task: search result | query:` / `title: none | text:`), relative-gate
-`separation` and `top_ratio`, and expected dimension. Switching to the fallback
-is a config change plus a semantic-projection rebuild, never a code change. The
-semantic projection stamps its backend identity (model, dimension, prompt
-config); a mismatch against the configured backend forces a rebuild so vectors
-from two models are never mixed. Live hot-swap and dual simultaneous indexes
-are rejected as wasteful.
+`task: search result | query:` / `title: none | text:`), the provisional
+hot-path semantic query deadline `timeout_seconds = 1.0`, relative-gate
+`separation` and `top_ratio`, and expected dimension. The query timeout is
+distinct from `config.backend.read_timeout_seconds`, which still applies to
+the slower rebuild/index path. The hot path and rebuild path also split the
+HTTP connect budget: query embedding uses the 1 s semantic timeout for all
+four phases, while rebuild keeps the normal 10 s connect budget and only
+extends read/write/pool to the slower backend timeout. Switching to the
+fallback is a config change plus a semantic-projection rebuild, never a code
+change. The semantic projection stamps its backend identity (model,
+dimension, prompt config); a mismatch against the configured backend forces a
+rebuild so vectors from two models are never mixed. Live hot-swap and dual
+simultaneous indexes are rejected as wasteful.
 
 Ratified thresholds: `RATIFIED_THRESHOLDS` in
 `tests/retrieval_benchmark/corpus.py`. The semantic bar is 0.55, set to the

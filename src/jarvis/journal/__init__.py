@@ -49,6 +49,7 @@ from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.retrieval import (
     HISTORY_RETRIEVAL_MAX_RESULTS,
     HistoryRetrievalCandidate,
+    HistoryRetrievalFallbackMode,
     HistoryRetrievalQuery,
     HistoryRetrievalResult,
     HistoryRetrievalService,
@@ -105,6 +106,7 @@ __all__ = [
     "HistoryProjectionLifecycle",
     "HistoryProjectionStatus",
     "HistoryRetrievalCandidate",
+    "HistoryRetrievalFallbackMode",
     "HistoryRetrievalQuery",
     "HistoryRetrievalResult",
     "HistoryRetrievalService",

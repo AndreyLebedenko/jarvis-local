@@ -65,6 +65,8 @@ enabled = true
 model = "multilingual-e5-large-instruct"
 query_prefix = "query: "
 passage_prefix = "passage: "
+# Provisional hot-path deadline for semantic query embeddings.
+timeout_seconds = 1.0
 separation = 0.05
 top_ratio = 0.98
 dimension = 1024

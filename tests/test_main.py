@@ -113,6 +113,12 @@ from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.journal import (
+    HistoryRetrievalCandidate,
+    HistoryRetrievalFallbackMode,
+    HistoryRetrievalQuery,
+    HistoryRetrievalResult,
+    HistoryRetrievalSourceMode,
+    HistoryRetrievalStatus,
     JournalEvent,
     JournalEventRecord,
     JournalEventRef,
@@ -191,6 +197,8 @@ def _assert_model_request_started(
     timestamp: float,
     inputs: tuple[ModelRequestInput, ...],
     audio_duration_seconds: float | None,
+    recent_history_message_count: int = 0,
+    retrieval_message_count: int = 0,
 ) -> None:
     assert event.timestamp == timestamp
     assert event.inputs == inputs
@@ -201,8 +209,11 @@ def _assert_model_request_started(
     assert event.prompt_budget["tool_result_reserve_tokens"] == 8192
     assert event.prompt_budget["reasoning_generation_reserve_tokens"] == 16384
     assert event.prompt_budget["estimator_safety_margin_tokens"] == 1024
-    assert event.prompt_budget["recent_history_message_count"] == 0
-    assert event.prompt_budget["retrieval_message_count"] == 0
+    assert (
+        event.prompt_budget["recent_history_message_count"]
+        == recent_history_message_count
+    )
+    assert event.prompt_budget["retrieval_message_count"] == retrieval_message_count
     assert event.prompt_budget["truncated_recent_history"] is False
     assert event.prompt_budget["blank_context_cleared"] is False
 
@@ -275,6 +286,7 @@ def _orchestrator(
     bus=None,
     clock=None,
     journal_recorder=None,
+    history_retrieval_service=None,
     text_input_max_chars=main_module.DEFAULT_TEXT_INPUT_MAX_CHARS,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
@@ -288,6 +300,7 @@ def _orchestrator(
         reasoning_prompt_settings=reasoning_prompt_settings,
         bus=bus,
         journal_recorder=journal_recorder,
+        history_retrieval_service=history_retrieval_service,
         clock=clock,
         text_input_max_chars=text_input_max_chars,
     )
@@ -325,6 +338,16 @@ class _RequestRecorder:
 
     async def _on_event(self, event: ModelRequestStarted) -> None:
         self.events.append(event)
+
+
+class _FakeHistoryRetrievalService:
+    def __init__(self, result: HistoryRetrievalResult) -> None:
+        self.result = result
+        self.calls: list[HistoryRetrievalQuery] = []
+
+    def retrieve(self, request: HistoryRetrievalQuery) -> HistoryRetrievalResult:
+        self.calls.append(request)
+        return self.result
 
 
 class _FakeJournalRecorder:
@@ -765,6 +788,149 @@ async def test_submit_text_input_starts_shared_turn_without_pending_screenshot()
         UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
     )
     assert len(backend.calls[-1][1]) == 2
+
+
+async def test_submit_text_input_automatic_retrieval_timeout_telemetry():
+    retrieval_candidate = HistoryRetrievalCandidate(
+        reference=JournalEventRef("20260718-120000-ab12", 0),
+        text="Реле не сработало.",
+        timestamp="2026-07-18T12:00:00+00:00",
+        role="assistant",
+        source="text",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        semantic_score=0.95,
+    )
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(retrieval_candidate,),
+            lexical_count=1,
+            semantic_count=0,
+            returned_count=1,
+            fallback_mode=HistoryRetrievalFallbackMode.LEXICAL_BY_TIMEOUT,
+            elapsed_seconds=0.012,
+        )
+    )
+    bus = EventBus()
+    request_recorder = _RequestRecorder(bus)
+    orchestrator, backend, sound_cues = _orchestrator(
+        bus=bus,
+        clock=lambda: 1700000300.0,
+        history_retrieval_service=retrieval_service,
+    )
+    orchestrator._history.add("user", "раньше обсуждали датчики")
+    orchestrator._history.add("assistant", "проверим реле")
+
+    result = await orchestrator.submit_text_input("спасибо за отчёт")
+
+    assert result.reason is TextSubmissionReason.ACCEPTED
+    assert sound_cues.played == ["thinking"]
+    assert retrieval_service.calls
+    [query] = retrieval_service.calls
+    assert "спасибо за отчёт" in query.query
+    assert "раньше обсуждали датчики" in query.query
+    [(messages, media)] = backend.calls
+    assert media is None
+    retrieved_index = next(
+        index
+        for index, message in enumerate(messages)
+        if message["role"] == "system"
+        and isinstance(message["content"], str)
+        and "Retrieved history" in message["content"]
+    )
+    user_index = next(
+        index
+        for index, message in enumerate(messages)
+        if message["role"] == "user" and message["content"] == "спасибо за отчёт"
+    )
+    assert retrieved_index < user_index
+    assert "Реле не сработало." in str(messages[retrieved_index]["content"])
+    assert all(
+        "Retrieved history" not in str(message["content"])
+        for message in orchestrator._history.as_messages()
+    )
+    assert len(request_recorder.events) == 1
+    _assert_model_request_started(
+        request_recorder.events[0],
+        timestamp=1700000300.0,
+        inputs=(ModelRequestInput.TEXT_INPUT,),
+        audio_duration_seconds=None,
+        recent_history_message_count=2,
+        retrieval_message_count=1,
+    )
+    event = request_recorder.events[0]
+    assert event.prompt_budget is not None
+    assert event.prompt_budget["retrieval_candidate_count"] == 1
+    assert event.prompt_budget["retrieval_accepted_passage_count"] == 1
+    assert event.prompt_budget["retrieval_elapsed_ms"] >= 0
+    assert event.prompt_budget["retrieval_lexical_by_timeout"] is True
+    assert event.prompt_budget["retrieval_full_hybrid"] is False
+    assert event.prompt_budget["retrieval_failed"] is False
+    assert "retrieval_failed_status" not in event.prompt_budget
+
+
+async def test_submit_text_input_automatic_retrieval_failure_telemetry_reports_status():
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(
+            HistoryRetrievalStatus.HYDRATION_FAILED,
+        )
+    )
+    bus = EventBus()
+    request_recorder = _RequestRecorder(bus)
+    orchestrator, backend, sound_cues = _orchestrator(
+        bus=bus,
+        clock=lambda: 1700000400.0,
+        history_retrieval_service=retrieval_service,
+    )
+    orchestrator._history.add("user", "раньше обсуждали датчики")
+    orchestrator._history.add("assistant", "проверим реле")
+
+    result = await orchestrator.submit_text_input("спасибо за отчёт")
+
+    assert result.reason is TextSubmissionReason.ACCEPTED
+    assert sound_cues.played == ["thinking"]
+    assert retrieval_service.calls
+    [(messages, media)] = backend.calls
+    assert media is None
+    assert all(
+        "Retrieved history" not in str(message["content"])
+        for message in orchestrator._history.as_messages()
+    )
+    assert len(request_recorder.events) == 1
+    _assert_model_request_started(
+        request_recorder.events[0],
+        timestamp=1700000400.0,
+        inputs=(ModelRequestInput.TEXT_INPUT,),
+        audio_duration_seconds=None,
+        recent_history_message_count=2,
+        retrieval_message_count=0,
+    )
+    event = request_recorder.events[0]
+    assert event.prompt_budget is not None
+    assert event.prompt_budget["retrieval_candidate_count"] == 0
+    assert event.prompt_budget["retrieval_accepted_passage_count"] == 0
+    assert event.prompt_budget["retrieval_elapsed_ms"] >= 0
+    assert event.prompt_budget["retrieval_failed"] is True
+    assert event.prompt_budget["retrieval_failed_status"] == "hydration_failed"
+
+
+async def test_voice_turn_does_not_invoke_automatic_retrieval():
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+    )
+    orchestrator, backend, sound_cues = _orchestrator(
+        history_retrieval_service=retrieval_service
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
+    )
+
+    assert retrieval_service.calls == []
+    assert sound_cues.played == ["thinking"]
+    [(messages, _media)] = backend.calls
+    assert messages[-1]["content"] == "[голосовое сообщение]"
 
 
 async def test_submit_text_input_rejections_are_structured_and_do_not_start_turn():

@@ -18,6 +18,7 @@ from jarvis.journal import (
     HistoryCorpusEvent,
     HistoryEventRefsRead,
     HistoryEventRefsReadStatus,
+    HistoryRetrievalFallbackMode,
     HistoryRetrievalQuery,
     HistoryRetrievalService,
     HistoryRetrievalSourceMode,
@@ -59,6 +60,8 @@ def test_retrieval_hydrates_lexical_candidates_with_stable_contract(
     assert all(candidate.semantic_score is None for candidate in result.candidates)
     assert [candidate.lexical_rank for candidate in result.candidates] == [1, 2]
     assert all(candidate.text for candidate in result.candidates)
+    assert result.fallback_mode is HistoryRetrievalFallbackMode.LEXICAL_BY_UNAVAILABLE
+    assert result.elapsed_seconds >= 0.0
 
 
 def test_retrieval_ranks_are_dense_after_missing_hydration() -> None:
@@ -101,6 +104,29 @@ def test_retrieval_fuses_semantic_and_lexical_candidates(tmp_path: Path) -> None
     )
     assert all(candidate.semantic_score == 1.0 for candidate in result.candidates)
     assert all(candidate.lexical_rank is None for candidate in result.candidates)
+    assert result.fallback_mode is HistoryRetrievalFallbackMode.FULL_HYBRID
+
+
+def test_retrieval_falls_back_to_lexical_when_semantic_times_out(
+    tmp_path: Path,
+) -> None:
+    repository = build_benchmark_corpus(tmp_path / "corpus")
+    service = HistoryRetrievalService(
+        repository,
+        _TimeoutSemanticCandidates(),
+        _semantic_settings(dimension=1),
+        Pymorphy3Normalizer(),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery("A-2481", limit=2))
+
+    assert result.status is HistoryRetrievalStatus.ACCEPTED
+    assert [candidate.reference for candidate in result.candidates] == [
+        document_reference_map()["B0"],
+        document_reference_map()["B1"],
+    ]
+    assert result.fallback_mode is HistoryRetrievalFallbackMode.LEXICAL_BY_TIMEOUT
+    assert result.elapsed_seconds >= 0.0
 
 
 def test_relative_gate_keeps_semantic_silent_on_distractor_query(
@@ -119,6 +145,7 @@ def test_relative_gate_keeps_semantic_silent_on_distractor_query(
     assert result.status is HistoryRetrievalStatus.ACCEPTED
     assert result.candidates == ()
     assert result.semantic_count == 0
+    assert result.fallback_mode is HistoryRetrievalFallbackMode.FULL_HYBRID
 
 
 def test_filters_compose_with_lexical_and_semantic_candidates(tmp_path: Path) -> None:
@@ -153,6 +180,7 @@ def test_filters_compose_with_lexical_and_semantic_candidates(tmp_path: Path) ->
         document_reference_map()["B0"],
         document_reference_map()["B1"],
     ]
+    assert semantic_result.fallback_mode is HistoryRetrievalFallbackMode.FULL_HYBRID
 
 
 def test_hybrid_domain_api_passes_ratified_fixture_quality_gate(
@@ -247,6 +275,12 @@ class _UnavailableSemanticCandidates:
     def query(self, request: SemanticCandidateQuery) -> SemanticCandidateResult:
         del request
         return SemanticCandidateResult(SemanticCandidateStatus.UNAVAILABLE)
+
+
+class _TimeoutSemanticCandidates:
+    def query(self, request: SemanticCandidateQuery) -> SemanticCandidateResult:
+        del request
+        return SemanticCandidateResult(SemanticCandidateStatus.TIMEOUT)
 
 
 class _MissingHydrationRepository:

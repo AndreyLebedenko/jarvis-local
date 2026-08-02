@@ -176,6 +176,28 @@ def test_query_is_unavailable_when_projection_is_disabled(tmp_path: Path) -> Non
     assert not index.db_path.exists()
 
 
+def test_query_reports_timeout_when_query_embedding_exceeds_deadline(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "alpha"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    query_embedder = _TimeoutEmbedder()
+    index = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        _semantic_settings(),
+        _FakeEmbedder(),
+        query_embedder=query_embedder,
+    )
+
+    index.rebuild()
+    result = index.query(SemanticCandidateQuery("alpha"))
+
+    assert result.status is SemanticCandidateStatus.TIMEOUT
+    assert query_embedder.calls == [("query: alpha",)]
+
+
 def test_ollama_embedding_provider_uses_local_embeddings_endpoint() -> None:
     requests: list[httpx.Request] = []
 
@@ -199,6 +221,45 @@ def test_ollama_embedding_provider_uses_local_embeddings_endpoint() -> None:
     assert requests[0].read().decode("utf-8") == (
         '{"model":"embedding-model","prompt":"query text"}'
     )
+
+
+def test_ollama_embedding_provider_separates_query_and_rebuild_connect_timeouts(
+    monkeypatch,
+) -> None:
+    created_clients: list[_RecordingClient] = []
+
+    def client_factory(*, base_url, timeout):
+        client = _RecordingClient(base_url=base_url, timeout=timeout)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(httpx, "Client", client_factory)
+
+    rebuild_provider = OllamaEmbeddingProvider(
+        BackendSettings(endpoint="http://ollama.local"),
+        _semantic_settings(model="embedding-model"),
+    )
+    query_provider = OllamaEmbeddingProvider(
+        BackendSettings(endpoint="http://ollama.local"),
+        _semantic_settings(model="embedding-model"),
+        connect_timeout_seconds=1.0,
+        read_timeout_seconds=1.0,
+    )
+
+    rebuild_vectors = rebuild_provider.embed(("rebuild text",))
+    query_vectors = query_provider.embed(("query text",))
+
+    assert rebuild_vectors == [(1.0, 2.5)]
+    assert query_vectors == [(1.0, 2.5)]
+    assert len(created_clients) == 2
+    assert created_clients[0].timeout.connect == 10.0
+    assert created_clients[0].timeout.read == 120.0
+    assert created_clients[0].timeout.write == 120.0
+    assert created_clients[0].timeout.pool == 120.0
+    assert created_clients[1].timeout.connect == 1.0
+    assert created_clients[1].timeout.read == 1.0
+    assert created_clients[1].timeout.write == 1.0
+    assert created_clients[1].timeout.pool == 1.0
 
 
 def _semantic_settings(
@@ -245,3 +306,31 @@ class _FailingEmbedder:
     def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
         del texts
         raise RuntimeError("embedding backend unavailable")
+
+
+class _TimeoutEmbedder:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+
+    def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
+        self.calls.append(tuple(texts))
+        raise httpx.TimeoutException("query embedding timed out")
+
+
+class _RecordingClient:
+    def __init__(self, *, base_url: str, timeout: httpx.Timeout) -> None:
+        self.base_url = base_url
+        self.timeout = timeout
+        self.requests: list[tuple[str, dict[str, str]]] = []
+
+    def __enter__(self) -> _RecordingClient:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        del exc_type, exc, tb
+        return False
+
+    def post(self, url: str, json: dict[str, str]) -> httpx.Response:
+        self.requests.append((url, json))
+        request = httpx.Request("POST", url, json=json)
+        return httpx.Response(200, request=request, json={"embedding": [1, 2.5]})
