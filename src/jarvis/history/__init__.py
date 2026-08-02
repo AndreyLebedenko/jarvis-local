@@ -19,6 +19,15 @@ from jarvis.history.recent_history import (
     select_recent_history,
     turns_as_messages,
 )
+from jarvis.history.working_context import (
+    RetrievedHistoryPassage,
+    WorkingContextAssembly,
+    WorkingContextBudget,
+    WorkingContextRequest,
+    assemble_working_context,
+    estimate_working_context_tokens,
+    format_retrieved_history_passages,
+)
 
 __all__ = [
     "CONSERVATIVE_UTF8_ESTIMATOR_FORMULA",
@@ -32,8 +41,15 @@ __all__ = [
     "PromptTokenEstimator",
     "RecentHistoryExchange",
     "RecentHistorySelection",
+    "RetrievedHistoryPassage",
+    "WorkingContextAssembly",
+    "WorkingContextBudget",
+    "WorkingContextRequest",
     "allocate_context_budget",
+    "assemble_working_context",
     "estimate_history_contribution_tokens",
+    "estimate_working_context_tokens",
+    "format_retrieved_history_passages",
     "select_recent_history",
     "turns_as_messages",
 ]

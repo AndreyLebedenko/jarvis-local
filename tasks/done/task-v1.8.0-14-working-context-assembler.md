@@ -1,6 +1,6 @@
 # Task v1.8.0-14: Working-context assembler
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-11 and v1.8.0-13.
 
@@ -32,11 +32,11 @@ transcription, annotations, and UI.
 
 ## Acceptance criteria
 
-- [ ] Assembly order is deterministic and tested.
-- [ ] Historical passages are clearly source-framed.
-- [ ] Current-turn media is never copied into retained history.
-- [ ] Over-budget inputs fail before dispatch or drop permitted history only.
-- [ ] Fork, blank-context, interruption, and time-context contracts remain
+- [x] Assembly order is deterministic and tested.
+- [x] Historical passages are clearly source-framed.
+- [x] Current-turn media is never copied into retained history.
+- [x] Over-budget inputs fail before dispatch or drop permitted history only.
+- [x] Fork, blank-context, interruption, and time-context contracts remain
       representable.
 
 ## Stop conditions
