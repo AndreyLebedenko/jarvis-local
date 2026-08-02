@@ -84,6 +84,13 @@ def test_prompt_budget_details_are_appended_when_present():
                 "retrieval_message_count": 1,
                 "truncated_recent_history": True,
                 "blank_context_cleared": False,
+                "retrieval_candidate_count": 3,
+                "retrieval_accepted_passage_count": 2,
+                "retrieval_elapsed_ms": 84,
+                "retrieval_full_hybrid": False,
+                "retrieval_lexical_by_timeout": True,
+                "retrieval_lexical_by_unavailable": False,
+                "retrieval_failed": False,
             },
         )
     )
@@ -92,3 +99,38 @@ def test_prompt_budget_details_are_appended_when_present():
     assert "headroom=576" in message
     assert "history_truncated=true" in message
     assert "blank_context=false" in message
+    assert (
+        "retrieval=3 candidates accepted=2 elapsed=84ms mode=lexical-by-timeout"
+        in message
+    )
+
+
+def test_failed_retrieval_details_are_rendered_when_present():
+    message = model_request_log_message(
+        _event(
+            (ModelRequestInput.AUDIO,),
+            prompt_budget={
+                "prompt_capacity_tokens": 49152,
+                "available_prompt_tokens": 24576,
+                "tool_result_reserve_tokens": 8192,
+                "reasoning_generation_reserve_tokens": 16384,
+                "estimator_safety_margin_tokens": 1024,
+                "estimated_prompt_tokens": 24000,
+                "headroom_tokens": 576,
+                "base_prompt_tokens": 1200,
+                "recent_history_tokens": 20000,
+                "retrieval_tokens": 800,
+                "recent_history_message_count": 8,
+                "retrieval_message_count": 1,
+                "truncated_recent_history": True,
+                "blank_context_cleared": False,
+                "retrieval_candidate_count": 0,
+                "retrieval_accepted_passage_count": 0,
+                "retrieval_elapsed_ms": 3,
+                "retrieval_failed": True,
+                "retrieval_failed_status": "hydration_failed",
+            },
+        )
+    )
+
+    assert "mode=failed(hydration_failed)" in message

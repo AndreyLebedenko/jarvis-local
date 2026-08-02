@@ -13,6 +13,7 @@ from jarvis.core.config import (
     ClipboardSettings,
     ConfigError,
     DataBoundary,
+    HistorySemanticSettings,
     HistorySettings,
     HotkeySettings,
     JournalSettings,
@@ -192,6 +193,37 @@ def test_history_settings_parse_from_config(tmp_path):
     )
 
 
+def test_history_semantic_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history.semantic]
+        enabled = false
+        model = "semantic-fixture"
+        query_prefix = "query: "
+        passage_prefix = "passage: "
+        timeout_seconds = 1.0
+        separation = 0.12
+        top_ratio = 0.9
+        dimension = 512
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.history.semantic == HistorySemanticSettings(
+        enabled=False,
+        model="semantic-fixture",
+        query_prefix="query: ",
+        passage_prefix="passage: ",
+        timeout_seconds=1.0,
+        separation=0.12,
+        top_ratio=0.9,
+        dimension=512,
+    )
+
+
 def test_history_settings_default_to_approved_task3_values(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
@@ -243,6 +275,15 @@ def test_history_settings_reject_bool_as_integer(tmp_path):
     )
 
     with pytest.raises(ConfigError, match="prompt_capacity_tokens"):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize("override", ["timeout_seconds = 0"])
+def test_history_semantic_settings_reject_non_positive_limits(tmp_path, override):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[history.semantic]\n{override}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="timeout_seconds"):
         load_settings(config_path)
 
 

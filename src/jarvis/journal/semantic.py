@@ -55,17 +55,40 @@ class OllamaEmbeddingProvider:
         settings: BackendSettings,
         semantic_settings: HistorySemanticSettings,
         client: httpx.Client | None = None,
+        *,
+        connect_timeout_seconds: float | None = None,
+        read_timeout_seconds: float | None = None,
     ) -> None:
         self._settings = settings
         self._semantic_settings = semantic_settings
         self._client = client
+        self._connect_timeout_seconds = connect_timeout_seconds
+        self._read_timeout_seconds = read_timeout_seconds
 
     def embed(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
         if not texts:
             return []
         if self._client is not None:
             return self._embed_with_client(self._client, texts)
-        timeout = httpx.Timeout(10.0, read=self._settings.read_timeout_seconds)
+        read_timeout_seconds = (
+            self._read_timeout_seconds
+            if self._read_timeout_seconds is not None
+            else self._settings.read_timeout_seconds
+        )
+        connect_timeout_seconds = (
+            self._connect_timeout_seconds
+            if self._connect_timeout_seconds is not None
+            else 10.0
+        )
+        # Keep connect fail-fast separate from the read budget:
+        # rebuild can wait longer for a response, but it should still
+        # notice a dead Ollama quickly.
+        timeout = httpx.Timeout(
+            read_timeout_seconds,
+            connect=connect_timeout_seconds,
+            write=read_timeout_seconds,
+            pool=read_timeout_seconds,
+        )
         with httpx.Client(base_url=self._settings.endpoint, timeout=timeout) as client:
             return self._embed_with_client(client, texts)
 
@@ -126,6 +149,7 @@ class SemanticCandidateStatus(Enum):
     ACCEPTED = "accepted"
     INVALID_QUERY = "invalid_query"
     TOO_MANY_RESULTS = "too_many_results"
+    TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
 
 
@@ -154,11 +178,14 @@ class SemanticPassageIndex:
         settings: HistorySemanticSettings,
         embedder: EmbeddingProvider,
         logger: logging.Logger | None = None,
+        *,
+        query_embedder: EmbeddingProvider | None = None,
     ) -> None:
         self._repository = repository
         self._db_path = root / SEMANTIC_PROJECTION_DB_NAME
         self._settings = settings
         self._embedder = embedder
+        self._query_embedder = query_embedder or embedder
         self._logger = logger or logging.getLogger(__name__)
         self._runtime_error: str | None = None
 
@@ -302,7 +329,7 @@ class SemanticPassageIndex:
         if self.state().status is not HistoryProjectionStatus.ENABLED:
             return SemanticCandidateResult(SemanticCandidateStatus.UNAVAILABLE)
         try:
-            vectors = self._embedder.embed(
+            vectors = self._query_embedder.embed(
                 [self._settings.query_prefix + request.query]
             )
             _validate_vectors(vectors, 1, self._settings.dimension)
@@ -321,6 +348,8 @@ class SemanticPassageIndex:
             )
         except SemanticProjectionSchemaError:
             raise
+        except httpx.TimeoutException:
+            return SemanticCandidateResult(SemanticCandidateStatus.TIMEOUT)
         except Exception as exc:
             self._mark_unavailable(exc, "semantic candidate query failed")
             return SemanticCandidateResult(SemanticCandidateStatus.UNAVAILABLE)

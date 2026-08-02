@@ -1,6 +1,6 @@
 # Task v1.8.0-17: Automatic retrieval wiring
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-15 and v1.8.0-16.
 

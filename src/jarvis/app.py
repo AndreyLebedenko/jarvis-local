@@ -68,10 +68,17 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
 from jarvis.history import (
+    AutomaticRetrievalSelectionLimits,
+    ConservativeUtf8TokenEstimator,
     ContextBudgetLimits,
     ConversationTurn,
+    RetrievedHistoryPassage,
     WorkingContextRequest,
     assemble_working_context,
+    build_automatic_retrieval_request,
+    select_automatic_retrieval_passages,
+    select_recent_history,
+    to_history_retrieval_query,
     turns_as_messages,
 )
 from jarvis.inputs.attachment_audio import (
@@ -97,6 +104,7 @@ from jarvis.inputs.clipboard import run_hotkey_listener as run_clipboard_hotkey_
 from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
+from jarvis.journal import HistoryRetrievalFallbackMode, HistoryRetrievalStatus
 from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
@@ -291,6 +299,7 @@ class Orchestrator:
         thinking_mode: ReasoningLevelState | None = None,
         bus: EventBus | None = None,
         journal_recorder: JournalRecorder | None = None,
+        history_retrieval_service: HistoryRetrievalService | None = None,
         clock: Callable[[], float] | None = None,
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
         system_prompt_provider: Callable[[], str] | None = None,
@@ -312,8 +321,12 @@ class Orchestrator:
         self._thinking_mode = thinking_mode
         self._bus = bus
         self._journal_recorder = journal_recorder
+        self._history_retrieval_service = history_retrieval_service
         self._clock = clock or time.time
         self._text_input_max_chars = text_input_max_chars
+        self._automatic_retrieval_limits = AutomaticRetrievalSelectionLimits(
+            token_budget=self._history_limits.automatic_retrieval_max_tokens
+        )
         self._pending_screenshot_b64: str | None = None
         self._pending_screenshot_png: bytes | None = None
         self._response_tokens: list[str] = []
@@ -750,11 +763,15 @@ class Orchestrator:
             reasoning_level,
             self._reasoning_prompt_settings,
         )
+        (
+            retrieved_passages,
+            retrieval_telemetry,
+        ) = await self._prepare_automatic_retrieval(history_text, source)
         working_context = assemble_working_context(
             WorkingContextRequest(
                 system_prompt=effective_system_prompt,
                 recent_history=self._history.turns(),
-                retrieved_passages=(),
+                retrieved_passages=retrieved_passages,
                 time_context=format_time_context(self._clock()),
                 current_request_text=history_text,
                 limits=self._history_limits,
@@ -764,6 +781,8 @@ class Orchestrator:
         )
         messages = list(working_context.messages)
         prompt_budget = asdict(working_context.budget)
+        if retrieval_telemetry is not None:
+            prompt_budget.update(retrieval_telemetry)
         await self._dispatch_backend_request(
             messages,
             media_b64,
@@ -774,6 +793,72 @@ class Orchestrator:
             prompt_budget,
         )
 
+    async def _prepare_automatic_retrieval(
+        self,
+        history_text: str,
+        source: TurnSource,
+    ) -> tuple[tuple[RetrievedHistoryPassage, ...], dict[str, int | bool | str] | None]:
+        if source is TurnSource.VOICE or self._history_retrieval_service is None:
+            return (), None
+        return await asyncio.to_thread(
+            self._resolve_automatic_retrieval,
+            history_text,
+        )
+
+    def _resolve_automatic_retrieval(
+        self,
+        history_text: str,
+    ) -> tuple[tuple[RetrievedHistoryPassage, ...], dict[str, int | bool | str] | None]:
+        recent_history = select_recent_history(
+            self._history.turns(),
+            estimator=ConservativeUtf8TokenEstimator(),
+            max_tokens=self._history_limits.recent_history_max_tokens,
+            minimum_recent_exchanges=self._history_limits.minimum_recent_exchanges,
+        )
+        request = build_automatic_retrieval_request(history_text, recent_history)
+        if not request.query_text.strip():
+            return (), None
+
+        started = time.perf_counter()
+        retrieval_result = self._history_retrieval_service.retrieve(
+            to_history_retrieval_query(
+                request,
+                limit=self._automatic_retrieval_limits.candidate_limit,
+            )
+        )
+        selection = select_automatic_retrieval_passages(
+            request,
+            retrieval_result.candidates,
+            self._automatic_retrieval_limits,
+            estimator=ConservativeUtf8TokenEstimator(),
+        )
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        telemetry: dict[str, int | bool | str] = {
+            "retrieval_candidate_count": retrieval_result.returned_count,
+            "retrieval_accepted_passage_count": selection.selected_passage_count,
+            "retrieval_elapsed_ms": elapsed_ms,
+            "retrieval_full_hybrid": (
+                retrieval_result.status is HistoryRetrievalStatus.ACCEPTED
+                and retrieval_result.fallback_mode
+                is HistoryRetrievalFallbackMode.FULL_HYBRID
+            ),
+            "retrieval_lexical_by_timeout": (
+                retrieval_result.status is HistoryRetrievalStatus.ACCEPTED
+                and retrieval_result.fallback_mode
+                is HistoryRetrievalFallbackMode.LEXICAL_BY_TIMEOUT
+            ),
+            "retrieval_lexical_by_unavailable": (
+                retrieval_result.status is HistoryRetrievalStatus.ACCEPTED
+                and retrieval_result.fallback_mode
+                is HistoryRetrievalFallbackMode.LEXICAL_BY_UNAVAILABLE
+            ),
+            "retrieval_failed": retrieval_result.status
+            is not HistoryRetrievalStatus.ACCEPTED,
+        }
+        if retrieval_result.status is not HistoryRetrievalStatus.ACCEPTED:
+            telemetry["retrieval_failed_status"] = retrieval_result.status.value
+        return selection.selected_passages, telemetry
+
     async def _dispatch_backend_request(
         self,
         messages: list[dict[str, object]],
@@ -782,7 +867,7 @@ class Orchestrator:
         inputs: tuple[ModelRequestInput, ...],
         audio_duration_seconds: float | None,
         interrupt_requested: asyncio.Event,
-        prompt_budget: dict[str, int | bool] | None = None,
+        prompt_budget: dict[str, int | bool | str] | None = None,
     ) -> None:
         """Runs the backend call as a cancellable task and handles its
         three outcomes: normal completion (nothing further to do here -
@@ -1113,12 +1198,23 @@ def build_app(
     journal_store = JournalStore(Path(settings.journal.root))
     journal_search_index = JournalSearchIndex(journal_store, journal_store.root)
     history_corpus_repository = journal_search_index.repository
+    semantic_index_embedder = OllamaEmbeddingProvider(
+        settings.backend,
+        settings.history.semantic,
+    )
+    semantic_query_embedder = OllamaEmbeddingProvider(
+        settings.backend,
+        settings.history.semantic,
+        connect_timeout_seconds=settings.history.semantic.timeout_seconds,
+        read_timeout_seconds=settings.history.semantic.timeout_seconds,
+    )
     semantic_projection = SemanticPassageIndex(
         history_corpus_repository,
         journal_store.root,
         settings.history.semantic,
-        OllamaEmbeddingProvider(settings.backend, settings.history.semantic),
+        semantic_index_embedder,
         logger=logger,
+        query_embedder=semantic_query_embedder,
     )
     history_retrieval_service = HistoryRetrievalService(
         history_corpus_repository,
@@ -1177,6 +1273,7 @@ def build_app(
         thinking_mode=thinking_mode,
         bus=bus,
         journal_recorder=journal_recorder,
+        history_retrieval_service=history_retrieval_service,
         text_input_max_chars=settings.clipboard.max_chars,
         system_prompt_provider=(
             lambda: memory_loader.compose_system_prompt(settings.prompts.system)
