@@ -60,6 +60,7 @@ from jarvis.audio.tts import BilingualTtsEngine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    HistorySettings,
     JournalSettings,
     LoggingSettings,
     McpServerSettings,
@@ -97,6 +98,7 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
+from jarvis.history.context_budget import ContextBudgetLimits
 from jarvis.inputs.attachments import (
     AttachmentClass,
     AttachmentPlan,
@@ -181,6 +183,28 @@ def _complete_event() -> ResponseComplete:
             load_seconds=0, prompt_eval_seconds=0, eval_seconds=0, eval_count=0
         )
     )
+
+
+def _assert_model_request_started(
+    event: ModelRequestStarted,
+    *,
+    timestamp: float,
+    inputs: tuple[ModelRequestInput, ...],
+    audio_duration_seconds: float | None,
+) -> None:
+    assert event.timestamp == timestamp
+    assert event.inputs == inputs
+    assert event.audio_duration_seconds == audio_duration_seconds
+    assert event.prompt_budget is not None
+    assert event.prompt_budget["prompt_capacity_tokens"] == 49152
+    assert event.prompt_budget["available_prompt_tokens"] == 39936
+    assert event.prompt_budget["tool_result_reserve_tokens"] == 8192
+    assert event.prompt_budget["reasoning_generation_reserve_tokens"] == 16384
+    assert event.prompt_budget["estimator_safety_margin_tokens"] == 1024
+    assert event.prompt_budget["recent_history_message_count"] == 0
+    assert event.prompt_budget["retrieval_message_count"] == 0
+    assert event.prompt_budget["truncated_recent_history"] is False
+    assert event.prompt_budget["blank_context_cleared"] is False
 
 
 # --- system prompt -----------------------------------------------------
@@ -270,6 +294,30 @@ def _orchestrator(
     return orchestrator, backend, sound_cues
 
 
+def test_history_settings_are_explicitly_converted_to_context_budget_limits():
+    limits = main_module._history_limits_from_settings(
+        HistorySettings(
+            prompt_capacity_tokens=1536,
+            recent_history_max_tokens=512,
+            automatic_retrieval_max_tokens=256,
+            tool_result_reserve_tokens=128,
+            reasoning_generation_reserve_tokens=512,
+            estimator_safety_margin_tokens=64,
+            minimum_recent_exchanges=2,
+        )
+    )
+
+    assert limits == ContextBudgetLimits(
+        prompt_capacity_tokens=1536,
+        recent_history_max_tokens=512,
+        automatic_retrieval_max_tokens=256,
+        tool_result_reserve_tokens=128,
+        reasoning_generation_reserve_tokens=512,
+        estimator_safety_margin_tokens=64,
+        minimum_recent_exchanges=2,
+    )
+
+
 class _RequestRecorder:
     def __init__(self, bus: EventBus) -> None:
         self.events: list[ModelRequestStarted] = []
@@ -341,13 +389,13 @@ async def test_accepted_voice_request_reports_its_exact_media_composition():
         UtteranceChunk(wav_bytes=b"audio", start_seconds=2.5, end_seconds=6.75)
     )
 
-    assert recorder.events == [
-        ModelRequestStarted(
-            timestamp=1700000123.0,
-            inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
-            audio_duration_seconds=4.25,
-        )
-    ]
+    assert len(recorder.events) == 1
+    _assert_model_request_started(
+        recorder.events[0],
+        timestamp=1700000123.0,
+        inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
+        audio_duration_seconds=4.25,
+    )
 
 
 async def test_accepted_voice_request_without_screenshot_reports_audio_only():
@@ -361,13 +409,13 @@ async def test_accepted_voice_request_without_screenshot_reports_audio_only():
         UtteranceChunk(wav_bytes=b"audio", start_seconds=2.0, end_seconds=3.5)
     )
 
-    assert recorder.events == [
-        ModelRequestStarted(
-            timestamp=1700000125.0,
-            inputs=(ModelRequestInput.AUDIO,),
-            audio_duration_seconds=1.5,
-        )
-    ]
+    assert len(recorder.events) == 1
+    _assert_model_request_started(
+        recorder.events[0],
+        timestamp=1700000125.0,
+        inputs=(ModelRequestInput.AUDIO,),
+        audio_duration_seconds=1.5,
+    )
 
 
 async def test_request_composition_event_is_published_before_backend_chat():
@@ -404,11 +452,17 @@ async def test_the_system_log_records_what_the_turn_sent_to_the_model(caplog):
             UtteranceChunk(wav_bytes=b"audio", start_seconds=2.5, end_seconds=6.75)
         )
 
-    assert [
+    request_lines = [
         record.getMessage()
         for record in caplog.records
         if "Model request" in record.getMessage()
-    ] == ["[LLM] Model request: inputs=audio,screenshot count=2 audio_duration=4.2s"]
+    ]
+    assert len(request_lines) == 1
+    assert request_lines[0].startswith(
+        "[LLM] Model request: inputs=audio,screenshot count=2 audio_duration=4.2s"
+    )
+    assert "budget=" in request_lines[0]
+    assert "history_truncated=false" in request_lines[0]
 
 
 async def test_the_request_line_is_logged_before_the_backend_is_called(caplog):
@@ -449,7 +503,9 @@ async def test_the_request_line_never_carries_the_content_that_was_sent(caplog):
         for record in caplog.records
         if "Model request" in record.getMessage()
     ]
-    assert request_lines == ["[LLM] Model request: inputs=clipboard count=1"]
+    assert len(request_lines) == 1
+    assert request_lines[0].startswith("[LLM] Model request: inputs=clipboard count=1")
+    assert "budget=" in request_lines[0]
     assert secret not in "\n".join(request_lines)
 
 
@@ -464,13 +520,13 @@ async def test_accepted_clipboard_request_reports_no_content_or_audio_duration()
         ClipboardSubmitted(text="private text", truncated=False, is_empty=False)
     )
 
-    assert recorder.events == [
-        ModelRequestStarted(
-            timestamp=1700000124.0,
-            inputs=(ModelRequestInput.CLIPBOARD,),
-            audio_duration_seconds=None,
-        )
-    ]
+    assert len(recorder.events) == 1
+    _assert_model_request_started(
+        recorder.events[0],
+        timestamp=1700000124.0,
+        inputs=(ModelRequestInput.CLIPBOARD,),
+        audio_duration_seconds=None,
+    )
 
 
 async def test_empty_and_busy_rejected_input_does_not_report_a_model_request():
@@ -513,7 +569,14 @@ async def test_on_utterance_sends_media_and_plays_thinking_cue():
     assert sound_cues.played == ["thinking"]
     [(messages, media)] = backend.calls
     assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
-    assert messages[-1] == {"role": "user", "content": "[голосовое сообщение]"}
+    assert messages[-1] == {
+        "role": "user",
+        "content": "[голосовое сообщение]",
+        "images": [
+            base64.b64encode(b"wav").decode(),
+            base64.b64encode(b"png").decode(),
+        ],
+    }
     # audio first, then the pending screenshot
     assert media == [
         base64.b64encode(b"wav").decode(),
@@ -681,17 +744,20 @@ async def test_submit_text_input_starts_shared_turn_without_pending_screenshot()
     assert result.reason is TextSubmissionReason.ACCEPTED
     assert sound_cues.played == ["thinking"]
     [(messages, media)] = backend.calls
-    assert messages[-1] == {"role": "user", "content": "typed from dock"}
+    assert messages[-1] == {
+        "role": "user",
+        "content": "typed from dock",
+    }
     assert media is None
     assert journal_recorder.user_texts == ["typed from dock"]
     assert journal_recorder.user_text_sources == ["dock"]
-    assert request_recorder.events == [
-        ModelRequestStarted(
-            timestamp=1700000300.0,
-            inputs=(ModelRequestInput.TEXT_INPUT,),
-            audio_duration_seconds=None,
-        )
-    ]
+    assert len(request_recorder.events) == 1
+    _assert_model_request_started(
+        request_recorder.events[0],
+        timestamp=1700000300.0,
+        inputs=(ModelRequestInput.TEXT_INPUT,),
+        audio_duration_seconds=None,
+    )
 
     await orchestrator.on_response_complete(_complete_event())
     await orchestrator.finish_turn()
@@ -830,6 +896,7 @@ async def test_on_attachment_submission_sends_composed_text_and_image_media():
     assert messages[-1] == {
         "role": "user",
         "content": compose_turn_text("check these", plan),
+        "images": list(compose_turn_images(plan)),
     }
     assert media == list(compose_turn_images(plan))
 
@@ -881,17 +948,17 @@ async def test_on_attachment_submission_reports_source_and_input_metadata():
     await orchestrator.on_attachment_submission("hi", plan)
 
     assert turn_recorder.events == [TurnAccepted(source=TurnSource.ATTACHMENT)]
-    assert request_recorder.events == [
-        ModelRequestStarted(
-            timestamp=1700000200.0,
-            inputs=(
-                ModelRequestInput.ATTACHMENT_IMAGE,
-                ModelRequestInput.ATTACHMENT_TEXT,
-                ModelRequestInput.ATTACHMENT_AUDIO,
-            ),
-            audio_duration_seconds=3.0,
-        )
-    ]
+    assert len(request_recorder.events) == 1
+    _assert_model_request_started(
+        request_recorder.events[0],
+        timestamp=1700000200.0,
+        inputs=(
+            ModelRequestInput.ATTACHMENT_IMAGE,
+            ModelRequestInput.ATTACHMENT_TEXT,
+            ModelRequestInput.ATTACHMENT_AUDIO,
+        ),
+        audio_duration_seconds=3.0,
+    )
 
 
 async def test_on_attachment_submission_undecodable_audio_warns_and_continues():
@@ -2198,7 +2265,11 @@ async def test_start_turn_appends_time_context_system_message_before_user_turn()
         "role": "system",
         "content": format_time_context(1700000123.0),
     }
-    assert messages[-1] == {"role": "user", "content": VOICE_PLACEHOLDER_TEXT}
+    assert messages[-1] == {
+        "role": "user",
+        "content": VOICE_PLACEHOLDER_TEXT,
+        "images": [base64.b64encode(b"a").decode()],
+    }
 
 
 async def test_time_context_message_is_not_recorded_in_history():

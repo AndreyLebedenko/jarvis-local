@@ -27,4 +27,23 @@ def model_request_log_message(event: ModelRequestStarted) -> str:
     parts = [f"Model request: inputs={kinds}", f"count={len(event.inputs)}"]
     if event.audio_duration_seconds is not None:
         parts.append(f"audio_duration={event.audio_duration_seconds:.1f}s")
+    if event.prompt_budget is not None:
+        parts.append(_format_prompt_budget(event.prompt_budget))
     return " ".join(parts)
+
+
+def _format_prompt_budget(prompt_budget: dict[str, int | bool]) -> str:
+    return " ".join(
+        [
+            (
+                "budget="
+                f"{prompt_budget['estimated_prompt_tokens']}/"
+                f"{prompt_budget['available_prompt_tokens']}"
+            ),
+            f"headroom={prompt_budget['headroom_tokens']}",
+            "history_truncated="
+            f"{str(bool(prompt_budget['truncated_recent_history'])).lower()}",
+            "blank_context="
+            f"{str(bool(prompt_budget['blank_context_cleared'])).lower()}",
+        ]
+    )

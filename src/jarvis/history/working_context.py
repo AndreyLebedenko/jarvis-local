@@ -9,9 +9,9 @@ from jarvis.history.context_budget import (
     ConservativeUtf8TokenEstimator,
     ContextBudgetError,
     ContextBudgetLimits,
-    PromptEstimateMaterial,
     PromptTokenEstimator,
 )
+from jarvis.history.prompt_estimation import estimate_prompt_tokens
 from jarvis.history.recent_history import (
     ConversationTurn,
     RecentHistorySelection,
@@ -92,13 +92,32 @@ def assemble_working_context(
     if available_prompt_tokens < 0:
         raise ContextBudgetError("mandatory prompt reserves exceed prompt capacity")
 
-    selected_recent = _select_recent_history_for_budget(
-        request=request,
+    base_prompt_messages = leading_messages + trailing_messages
+    base_prompt_tokens = estimate_prompt_tokens(base_prompt_messages, token_estimator)
+    retrieval_tokens = (
+        0
+        if retrieved_message is None
+        else estimate_prompt_tokens((retrieved_message,), token_estimator)
+    )
+    fixed_prompt_messages = (
+        (*base_prompt_messages, retrieved_message)
+        if retrieved_message is not None
+        else base_prompt_messages
+    )
+    fixed_prompt_tokens = estimate_prompt_tokens(
+        fixed_prompt_messages,
+        token_estimator,
+    )
+    recent_budget = available_prompt_tokens - fixed_prompt_tokens
+    if recent_budget < 0:
+        raise ContextBudgetError("fixed prompt input exceeds available prompt capacity")
+    recent_budget = min(request.limits.recent_history_max_tokens, recent_budget)
+    selected_recent = select_recent_history(
+        request.recent_history,
         estimator=token_estimator,
-        leading_messages=leading_messages,
-        trailing_messages=trailing_messages,
-        retrieved_message=retrieved_message,
-        available_prompt_tokens=available_prompt_tokens,
+        max_tokens=recent_budget,
+        minimum_recent_exchanges=request.minimum_recent_exchanges,
+        blank_context=request.blank_context,
     )
     messages = _compose_messages(
         selected_recent=selected_recent,
@@ -106,23 +125,16 @@ def assemble_working_context(
         leading_messages=leading_messages,
         trailing_messages=trailing_messages,
     )
-    estimated_prompt_tokens = _estimate_messages(messages, token_estimator)
+    estimated_prompt_tokens = estimate_prompt_tokens(messages, token_estimator)
     if estimated_prompt_tokens > available_prompt_tokens:
         raise ContextBudgetError(
             "assembled prompt exceeds the available prompt capacity"
         )
 
-    base_prompt_messages = leading_messages + trailing_messages
-    base_prompt_tokens = _estimate_messages(base_prompt_messages, token_estimator)
     recent_history_messages = turns_as_messages(selected_recent.turns)
-    recent_history_tokens = _estimate_messages(
+    recent_history_tokens = estimate_prompt_tokens(
         recent_history_messages,
         token_estimator,
-    )
-    retrieval_tokens = (
-        0
-        if retrieved_message is None
-        else _estimate_messages((retrieved_message,), token_estimator)
     )
     budget = WorkingContextBudget(
         prompt_capacity_tokens=request.limits.prompt_capacity_tokens,
@@ -185,100 +197,7 @@ def estimate_working_context_tokens(
     estimator: PromptTokenEstimator | None = None,
 ) -> int:
     token_estimator = estimator or ConservativeUtf8TokenEstimator()
-    return _estimate_messages(messages, token_estimator)
-
-
-def _select_recent_history_for_budget(
-    *,
-    request: WorkingContextRequest,
-    estimator: PromptTokenEstimator,
-    leading_messages: tuple[Message, ...],
-    trailing_messages: tuple[Message, ...],
-    retrieved_message: Message | None,
-    available_prompt_tokens: int,
-) -> RecentHistorySelection:
-    recent_cap = request.limits.recent_history_max_tokens
-    if request.blank_context or not request.recent_history:
-        selection = select_recent_history(
-            request.recent_history,
-            estimator=estimator,
-            max_tokens=0,
-            minimum_recent_exchanges=request.minimum_recent_exchanges,
-            blank_context=request.blank_context,
-        )
-        if _fits(
-            leading_messages,
-            trailing_messages,
-            retrieved_message,
-            selection,
-            estimator,
-            available_prompt_tokens,
-        ):
-            return selection
-        raise ContextBudgetError("fixed prompt input exceeds available prompt capacity")
-
-    low = 0
-    high = recent_cap
-    best: RecentHistorySelection | None = None
-    while low <= high:
-        candidate_budget = (low + high) // 2
-        selection = select_recent_history(
-            request.recent_history,
-            estimator=estimator,
-            max_tokens=candidate_budget,
-            minimum_recent_exchanges=request.minimum_recent_exchanges,
-            blank_context=False,
-        )
-        if _fits(
-            leading_messages,
-            trailing_messages,
-            retrieved_message,
-            selection,
-            estimator,
-            available_prompt_tokens,
-        ):
-            best = selection
-            low = candidate_budget + 1
-        else:
-            high = candidate_budget - 1
-
-    if best is not None:
-        return best
-
-    selection = select_recent_history(
-        request.recent_history,
-        estimator=estimator,
-        max_tokens=0,
-        minimum_recent_exchanges=request.minimum_recent_exchanges,
-        blank_context=False,
-    )
-    if _fits(
-        leading_messages,
-        trailing_messages,
-        retrieved_message,
-        selection,
-        estimator,
-        available_prompt_tokens,
-    ):
-        return selection
-    raise ContextBudgetError("fixed prompt input exceeds available prompt capacity")
-
-
-def _fits(
-    leading_messages: tuple[Message, ...],
-    trailing_messages: tuple[Message, ...],
-    retrieved_message: Message | None,
-    recent_history: RecentHistorySelection,
-    estimator: PromptTokenEstimator,
-    available_prompt_tokens: int,
-) -> bool:
-    messages = _compose_messages(
-        leading_messages=leading_messages,
-        trailing_messages=trailing_messages,
-        selected_recent=recent_history,
-        retrieved_message=retrieved_message,
-    )
-    return _estimate_messages(messages, estimator) <= available_prompt_tokens
+    return estimate_prompt_tokens(messages, token_estimator)
 
 
 def _compose_messages(
@@ -319,21 +238,3 @@ def _retrieved_history_message(
         "role": "system",
         "content": format_retrieved_history_passages(passages),
     }
-
-
-def _estimate_messages(
-    messages: tuple[Message, ...] | list[Message], estimator: PromptTokenEstimator
-) -> int:
-    payload = json.dumps(
-        list(messages),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return estimator.estimate_tokens(
-        PromptEstimateMaterial(
-            canonical_utf8_bytes=len(payload.encode("utf-8")),
-            message_count=len(messages),
-            tool_count=0,
-        )
-    )

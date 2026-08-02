@@ -156,7 +156,10 @@ def model_request_payload(summary: ModelRequestSummary) -> dict:
         if item.audio_duration_seconds is not None:
             payload["duration_seconds"] = item.audio_duration_seconds
         items.append(payload)
-    return {"timestamp": summary.timestamp, "items": items}
+    payload = {"timestamp": summary.timestamp, "items": items}
+    if summary.prompt_budget is not None:
+        payload["prompt_budget"] = dict(summary.prompt_budget)
+    return payload
 
 
 def model_request_log_payload(summary: ModelRequestSummary) -> dict:
@@ -170,9 +173,9 @@ def model_request_log_payload(summary: ModelRequestSummary) -> dict:
     payload stays typed and the UI localizes it from the existing
     last_request_* catalog keys.
 
-    Content rule: kinds and durations only. There is deliberately no
-    field here that could carry transcript text, clipboard text, or a
-    file name.
+    Content rule: kinds, durations, and prompt-budget metadata only.
+    There is deliberately no field here that could carry transcript text,
+    clipboard text, a file name, or media bytes.
     """
     request = model_request_payload(summary)
     return {

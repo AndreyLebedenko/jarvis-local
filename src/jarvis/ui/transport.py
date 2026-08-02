@@ -758,6 +758,7 @@ class UiTransportServer:
                 )
                 for input_kind in event.inputs
             ),
+            prompt_budget=event.prompt_budget,
         )
         self._publish_delta(self._state.set_last_model_request(summary))
         self._publish_delta(self._state.add_model_request_event(summary))

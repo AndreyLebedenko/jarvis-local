@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 
 from jarvis.history.context_budget import PromptEstimateMaterial, PromptTokenEstimator
+from jarvis.history.prompt_estimation import canonical_prompt_message
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,12 @@ class RecentHistoryExchange:
 
 @dataclass(frozen=True)
 class RecentHistorySelection:
-    """Selected recent history plus explicit observability metadata."""
+    """Selected recent history plus explicit observability metadata.
+
+    requested_minimum_recent_exchanges and minimum_recent_exchanges_met
+    report what the chosen suffix achieved; they do not add a second
+    selection rule on top of the newest-fit policy.
+    """
 
     prefix_turns: tuple[ConversationTurn, ...]
     exchanges: tuple[RecentHistoryExchange, ...]
@@ -228,7 +234,7 @@ def _message_sequence_utf8_bytes(turns: tuple[ConversationTurn, ...]) -> int:
 
 def _canonical_message_json(turn: ConversationTurn) -> str:
     return json.dumps(
-        turns_as_messages((turn,))[0],
+        canonical_prompt_message(turns_as_messages((turn,))[0]),
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,

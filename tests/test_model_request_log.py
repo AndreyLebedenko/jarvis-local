@@ -9,11 +9,16 @@ from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
 
 
-def _event(inputs, audio_duration_seconds=None):
+def _event(
+    inputs,
+    audio_duration_seconds=None,
+    prompt_budget=None,
+):
     return ModelRequestStarted(
         timestamp=1700000000.0,
         inputs=inputs,
         audio_duration_seconds=audio_duration_seconds,
+        prompt_budget=prompt_budget,
     )
 
 
@@ -57,3 +62,33 @@ def test_every_modality_renders_under_its_contract_value():
 
 def test_the_line_is_tagged_with_the_same_source_shape_as_system_events():
     assert LOG_SOURCE == "LLM"
+
+
+def test_prompt_budget_details_are_appended_when_present():
+    message = model_request_log_message(
+        _event(
+            (ModelRequestInput.AUDIO,),
+            audio_duration_seconds=1.5,
+            prompt_budget={
+                "prompt_capacity_tokens": 49152,
+                "available_prompt_tokens": 24576,
+                "tool_result_reserve_tokens": 8192,
+                "reasoning_generation_reserve_tokens": 16384,
+                "estimator_safety_margin_tokens": 1024,
+                "estimated_prompt_tokens": 24000,
+                "headroom_tokens": 576,
+                "base_prompt_tokens": 1200,
+                "recent_history_tokens": 20000,
+                "retrieval_tokens": 800,
+                "recent_history_message_count": 8,
+                "retrieval_message_count": 1,
+                "truncated_recent_history": True,
+                "blank_context_cleared": False,
+            },
+        )
+    )
+
+    assert "budget=24000/24576" in message
+    assert "headroom=576" in message
+    assert "history_truncated=true" in message
+    assert "blank_context=false" in message

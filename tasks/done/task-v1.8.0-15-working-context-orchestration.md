@@ -1,6 +1,6 @@
 # Task v1.8.0-15: Working-context orchestration
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-14.
 

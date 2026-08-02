@@ -7,7 +7,7 @@ import concurrent.futures
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from jarvis.audio.debug_metrics import on_utterance_captured
@@ -27,6 +27,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BUILTIN_TOOL_PROVIDER_NAME,
     HISTORY_TOOL_PROVIDER_NAME,
+    HistorySettings,
     PromptSettings,
     Settings,
     load_settings,
@@ -66,7 +67,13 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
-from jarvis.history import ConversationTurn, turns_as_messages
+from jarvis.history import (
+    ContextBudgetLimits,
+    ConversationTurn,
+    WorkingContextRequest,
+    assemble_working_context,
+    turns_as_messages,
+)
 from jarvis.inputs.attachment_audio import (
     compose_audio_cue,
     compose_audio_media,
@@ -168,6 +175,22 @@ def _compose_effective_system_prompt(
     if section is None:
         return base_prompt
     return f"{base_prompt}\n\n{section}"
+
+
+def _history_limits_from_settings(
+    history_settings: HistorySettings,
+) -> ContextBudgetLimits:
+    return ContextBudgetLimits(
+        prompt_capacity_tokens=history_settings.prompt_capacity_tokens,
+        recent_history_max_tokens=history_settings.recent_history_max_tokens,
+        automatic_retrieval_max_tokens=history_settings.automatic_retrieval_max_tokens,
+        tool_result_reserve_tokens=history_settings.tool_result_reserve_tokens,
+        reasoning_generation_reserve_tokens=(
+            history_settings.reasoning_generation_reserve_tokens
+        ),
+        estimator_safety_margin_tokens=history_settings.estimator_safety_margin_tokens,
+        minimum_recent_exchanges=history_settings.minimum_recent_exchanges,
+    )
 
 
 # Debug mode is an explicit exception to the v1.6.4 content rule, which
@@ -272,6 +295,7 @@ class Orchestrator:
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
         system_prompt_provider: Callable[[], str] | None = None,
         reasoning_prompt_settings: PromptSettings | None = None,
+        history_limits: ContextBudgetLimits | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -279,6 +303,11 @@ class Orchestrator:
         self._system_prompt_provider = system_prompt_provider or (lambda: system_prompt)
         self._system_prompt = self._system_prompt_provider()
         self._reasoning_prompt_settings = reasoning_prompt_settings or PromptSettings()
+        self._history_limits = (
+            history_limits
+            if history_limits is not None
+            else _history_limits_from_settings(Settings().history)
+        )
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
         self._bus = bus
@@ -721,18 +750,20 @@ class Orchestrator:
             reasoning_level,
             self._reasoning_prompt_settings,
         )
-        messages: list[dict[str, object]] = [
-            {"role": "system", "content": effective_system_prompt}
-        ]
-        messages.extend(self._history.as_messages())
-        # Current-turn only, mirroring the media_b64 pattern: this never
-        # reaches ConversationHistory.add(), so no two turns' timestamps
-        # are ever directly compared by the model (see PROJECT.md's
-        # v1.3.2 decision for the accepted DST/indirect-leak limitation).
-        messages.append(
-            {"role": "system", "content": format_time_context(self._clock())}
+        working_context = assemble_working_context(
+            WorkingContextRequest(
+                system_prompt=effective_system_prompt,
+                recent_history=self._history.turns(),
+                retrieved_passages=(),
+                time_context=format_time_context(self._clock()),
+                current_request_text=history_text,
+                limits=self._history_limits,
+                current_request_media_b64=tuple(media_b64 or ()),
+                minimum_recent_exchanges=self._history_limits.minimum_recent_exchanges,
+            )
         )
-        messages.append({"role": "user", "content": history_text})
+        messages = list(working_context.messages)
+        prompt_budget = asdict(working_context.budget)
         await self._dispatch_backend_request(
             messages,
             media_b64,
@@ -740,6 +771,7 @@ class Orchestrator:
             inputs,
             audio_duration_seconds,
             interrupt_requested,
+            prompt_budget,
         )
 
     async def _dispatch_backend_request(
@@ -750,6 +782,7 @@ class Orchestrator:
         inputs: tuple[ModelRequestInput, ...],
         audio_duration_seconds: float | None,
         interrupt_requested: asyncio.Event,
+        prompt_budget: dict[str, int | bool] | None = None,
     ) -> None:
         """Runs the backend call as a cancellable task and handles its
         three outcomes: normal completion (nothing further to do here -
@@ -787,6 +820,7 @@ class Orchestrator:
                     timestamp=self._clock(),
                     inputs=inputs,
                     audio_duration_seconds=audio_duration_seconds,
+                    prompt_budget=prompt_budget,
                 )
                 # Not publish_system_event(): the events panel already has
                 # this turn as a typed, localized entry (task-v1.6.4-2), so
@@ -1148,6 +1182,7 @@ def build_app(
             lambda: memory_loader.compose_system_prompt(settings.prompts.system)
         ),
         reasoning_prompt_settings=settings.prompts,
+        history_limits=_history_limits_from_settings(settings.history),
     )
     return App(
         bus=bus,

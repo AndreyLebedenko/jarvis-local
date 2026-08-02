@@ -200,6 +200,22 @@ def test_model_request_payload_shape_contains_only_metadata():
                 ModelRequestItem(ModelRequestInput.AUDIO, audio_duration_seconds=4.25),
                 ModelRequestItem(ModelRequestInput.SCREENSHOT),
             ),
+            prompt_budget={
+                "prompt_capacity_tokens": 49152,
+                "available_prompt_tokens": 39936,
+                "tool_result_reserve_tokens": 8192,
+                "reasoning_generation_reserve_tokens": 16384,
+                "estimator_safety_margin_tokens": 1024,
+                "estimated_prompt_tokens": 24000,
+                "headroom_tokens": 15936,
+                "base_prompt_tokens": 1200,
+                "recent_history_tokens": 20000,
+                "retrieval_tokens": 800,
+                "recent_history_message_count": 8,
+                "retrieval_message_count": 1,
+                "truncated_recent_history": True,
+                "blank_context_cleared": False,
+            },
         )
     ) == {
         "timestamp": 123.0,
@@ -207,6 +223,22 @@ def test_model_request_payload_shape_contains_only_metadata():
             {"kind": "audio", "duration_seconds": 4.25},
             {"kind": "screenshot"},
         ],
+        "prompt_budget": {
+            "prompt_capacity_tokens": 49152,
+            "available_prompt_tokens": 39936,
+            "tool_result_reserve_tokens": 8192,
+            "reasoning_generation_reserve_tokens": 16384,
+            "estimator_safety_margin_tokens": 1024,
+            "estimated_prompt_tokens": 24000,
+            "headroom_tokens": 15936,
+            "base_prompt_tokens": 1200,
+            "recent_history_tokens": 20000,
+            "retrieval_tokens": 800,
+            "recent_history_message_count": 8,
+            "retrieval_message_count": 1,
+            "truncated_recent_history": True,
+            "blank_context_cleared": False,
+        },
     }
 
 

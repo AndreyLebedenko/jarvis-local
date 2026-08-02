@@ -153,6 +153,41 @@ def test_assemble_working_context_orders_layers_and_keeps_current_media_current_
     assert assembly.budget.retrieval_message_count == 1
 
 
+def test_assemble_working_context_keeps_over_budget_recent_history_empty():
+    estimator = ConservativeUtf8TokenEstimator()
+    recent_history = (
+        _turn("user", "remember the relay"),
+        _turn("assistant", "The relay is stable."),
+    )
+    fixed_messages = [
+        _message("system", "base"),
+        _message("system", "Friday, 2026-08-01T10:00+01:00"),
+        _message("user", "Why did it fail?"),
+    ]
+    request = WorkingContextRequest(
+        system_prompt="base",
+        recent_history=recent_history,
+        retrieved_passages=(),
+        time_context="Friday, 2026-08-01T10:00+01:00",
+        current_request_text="Why did it fail?",
+        limits=_limits(
+            capacity=estimate_working_context_tokens(
+                fixed_messages,
+                estimator=estimator,
+            )
+            + 16,
+        ),
+        minimum_recent_exchanges=1,
+    )
+
+    assembly = assemble_working_context(request, estimator=estimator)
+
+    assert assembly.recent_history.turns == ()
+    assert assembly.recent_history.selected_exchange_count == 0
+    assert assembly.recent_history.truncated is True
+    assert assembly.budget.truncated_recent_history is True
+
+
 def test_assemble_working_context_keeps_blank_context_empty():
     estimator = ConservativeUtf8TokenEstimator()
     expected_messages = [

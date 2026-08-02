@@ -94,6 +94,32 @@ def test_select_recent_history_drops_oldest_exchanges_first():
     assert selection.truncated is True
 
 
+def test_select_recent_history_treats_minimum_as_metadata_when_budget_limits_tail():
+    estimator = ConservativeUtf8TokenEstimator()
+    turns = (
+        _turn("user", "alpha request"),
+        _turn("assistant", "alpha answer"),
+        _turn("user", "beta request"),
+        _turn("assistant", "beta answer"),
+    )
+    newest_exchange = turns[2:]
+    budget = estimate_history_contribution_tokens(newest_exchange, estimator)
+
+    selection = select_recent_history(
+        turns,
+        estimator=estimator,
+        max_tokens=budget,
+        minimum_recent_exchanges=2,
+    )
+
+    assert selection.turns == newest_exchange
+    assert selection.selected_exchange_count == 1
+    assert selection.dropped_exchange_count == 1
+    assert selection.requested_minimum_recent_exchanges == 2
+    assert selection.minimum_recent_exchanges_met is False
+    assert selection.truncated is True
+
+
 def test_select_recent_history_keeps_interrupted_note_with_its_exchange():
     estimator = ConservativeUtf8TokenEstimator()
     interrupted_note = "Пользователь прервал этот ответ до того, как он был закончен."
@@ -182,3 +208,24 @@ def test_select_recent_history_keeps_provenance_only_with_first_exchange():
 
     assert selection.turns == second_exchange_only
     assert all(turn.role != "system" for turn in selection.turns)
+
+
+def test_estimate_history_contribution_tokens_ignores_media_payload_for_budgeting():
+    estimator = ConservativeUtf8TokenEstimator()
+    plain_turns = (
+        ConversationTurn(role="user", text="remember the relay"),
+        ConversationTurn(role="assistant", text="The relay is stable."),
+    )
+    media_turns = (
+        ConversationTurn(
+            role="user",
+            text="remember the relay",
+            media_b64=("media-1",),
+        ),
+        ConversationTurn(role="assistant", text="The relay is stable."),
+    )
+
+    plain_estimate = estimate_history_contribution_tokens(plain_turns, estimator)
+    media_estimate = estimate_history_contribution_tokens(media_turns, estimator)
+
+    assert plain_estimate == media_estimate
