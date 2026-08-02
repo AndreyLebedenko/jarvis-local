@@ -1,6 +1,6 @@
 # Task v1.8.0-13: Pure recent-history selection policy
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-4.
 
@@ -29,10 +29,10 @@ annotations, and prompt assembly.
 
 ## Acceptance criteria
 
-- [ ] Empty, tiny, exact-fit, and over-budget inputs are deterministic.
-- [ ] Interrupted and failed-turn notes keep their existing semantics.
-- [ ] Blank context clears the candidate tail before selection.
-- [ ] No retrieval or journal I/O is introduced.
+- [x] Empty, tiny, exact-fit, and over-budget inputs are deterministic.
+- [x] Interrupted and failed-turn notes keep their existing semantics.
+- [x] Blank context clears the candidate tail before selection.
+- [x] No retrieval or journal I/O is introduced.
 
 ## Stop conditions
 

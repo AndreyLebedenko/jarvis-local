@@ -66,6 +66,7 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
+from jarvis.history import ConversationTurn, turns_as_messages
 from jarvis.inputs.attachment_audio import (
     compose_audio_cue,
     compose_audio_media,
@@ -220,30 +221,20 @@ async def _announce_debug_mode_to_panel(app: "App", language: str) -> None:
     )
 
 
-@dataclass(frozen=True)
-class Turn:
-    role: str
-    text: str
-    media_b64: tuple[str, ...] = ()  # always empty in v1.0 - see module docstring
-
-
 class ConversationHistory:
     """Text-first history with optional media fields for future retention."""
 
     def __init__(self) -> None:
-        self._turns: list[Turn] = []
+        self._turns: list[ConversationTurn] = []
 
     def add(self, role: str, text: str, media_b64: tuple[str, ...] = ()) -> None:
-        self._turns.append(Turn(role=role, text=text, media_b64=media_b64))
+        self._turns.append(ConversationTurn(role=role, text=text, media_b64=media_b64))
 
     def as_messages(self) -> list[dict[str, object]]:
-        messages = []
-        for turn in self._turns:
-            message: dict[str, object] = {"role": turn.role, "content": turn.text}
-            if turn.media_b64:
-                message["images"] = list(turn.media_b64)
-            messages.append(message)
-        return messages
+        return turns_as_messages(self._turns)
+
+    def turns(self) -> tuple[ConversationTurn, ...]:
+        return tuple(self._turns)
 
     def clear(self) -> None:
         """Drops recorded conversation turns."""
