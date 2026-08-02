@@ -1,5 +1,13 @@
 """History-domain pure policies and data contracts."""
 
+from jarvis.history.automatic_retrieval import (
+    AutomaticRetrievalRequest,
+    AutomaticRetrievalSelection,
+    AutomaticRetrievalSelectionLimits,
+    build_automatic_retrieval_request,
+    select_automatic_retrieval_passages,
+    to_history_retrieval_query,
+)
 from jarvis.history.context_budget import (
     CONSERVATIVE_UTF8_ESTIMATOR_FORMULA,
     ConservativeUtf8TokenEstimator,
@@ -31,6 +39,9 @@ from jarvis.history.working_context import (
 
 __all__ = [
     "CONSERVATIVE_UTF8_ESTIMATOR_FORMULA",
+    "AutomaticRetrievalRequest",
+    "AutomaticRetrievalSelection",
+    "AutomaticRetrievalSelectionLimits",
     "ConservativeUtf8TokenEstimator",
     "ContextBudgetAllocation",
     "ContextBudgetError",
@@ -47,9 +58,12 @@ __all__ = [
     "WorkingContextRequest",
     "allocate_context_budget",
     "assemble_working_context",
+    "build_automatic_retrieval_request",
     "estimate_history_contribution_tokens",
     "estimate_working_context_tokens",
     "format_retrieved_history_passages",
+    "select_automatic_retrieval_passages",
     "select_recent_history",
+    "to_history_retrieval_query",
     "turns_as_messages",
 ]

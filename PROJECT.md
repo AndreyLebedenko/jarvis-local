@@ -3190,7 +3190,10 @@ query-embedding latency: e5 ~120-140 ms, embeddinggemma ~85-95 ms, bge-m3
 ~115-135 ms; resident VRAM e5 335 MB, bge-m3 664 MB, embeddinggemma 681 MB. The
 first query after model load is a cold-start outlier (~235 ms observed);
 automatic retrieval degrades to lexical-only on cold start and when the per-turn
-budget is exceeded. Real embedding-model quality and host-resource figures are
+budget is exceeded. Selector note: `minimum_relevance` is a mixed threshold;
+semantic candidates compare directly on cosine score, while lexical-only
+candidates compare on reciprocal lexical rank, so the same numeric value
+admits both interpretations. Real embedding-model quality and host-resource figures are
 human-run via `tests/retrieval_benchmark/measure_semantic.py`; the pure suite
 uses a deterministic concept fixture.
 
