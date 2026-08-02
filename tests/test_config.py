@@ -7,6 +7,7 @@ from conftest import assert_stdlib_only_imports
 
 from jarvis.core.config import (
     DEFAULT_USB_SOURCE_DESCRIPTION,
+    HISTORY_TOOL_PROVIDER_NAME,
     TTS_ROUTE_TYPES,
     BackendSettings,
     ClipboardSettings,
@@ -1909,13 +1910,14 @@ def test_mcp_section_parses_enabled_and_servers(tmp_path):
     }
 
 
-def test_mcp_server_cannot_use_reserved_builtin_provider_name(tmp_path):
+@pytest.mark.parametrize("provider_name", ["builtin", HISTORY_TOOL_PROVIDER_NAME])
+def test_mcp_server_cannot_use_reserved_local_provider_name(tmp_path, provider_name):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
-        '[mcp.servers.builtin]\ncommand = "server"\n', encoding="utf-8"
+        f'[mcp.servers.{provider_name}]\ncommand = "server"\n', encoding="utf-8"
     )
 
-    with pytest.raises(ConfigError, match="reserved provider name 'builtin'"):
+    with pytest.raises(ConfigError, match=f"reserved provider name '{provider_name}'"):
         load_settings(config_path)
 
 

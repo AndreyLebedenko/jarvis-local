@@ -2766,12 +2766,36 @@ def _builtin_tool_payloads(app: App) -> list[dict[str, object]]:
             "description": description("capture_camera_image"),
         },
         {
+            "name": "read_history",
+            "provider": "history",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("read_history"),
+        },
+        {
+            "name": "read_history_ranges",
+            "provider": "history",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("read_history_ranges"),
+        },
+        {
             "name": "remember",
             "provider": "builtin",
             "provider_kind": "builtin",
             "enabled": True,
             "available": True,
             "description": description("remember"),
+        },
+        {
+            "name": "search_history",
+            "provider": "history",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("search_history"),
         },
         {
             "name": "set_reasoning_level",
@@ -4070,7 +4094,14 @@ def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False
     tools = {tool.name: tool for tool in app.mcp_host.registry.all()}
-    assert set(tools) == {"set_reasoning_level", "remember", "capture_camera_image"}
+    assert set(tools) == {
+        "capture_camera_image",
+        "read_history",
+        "read_history_ranges",
+        "remember",
+        "search_history",
+        "set_reasoning_level",
+    }
     assert {tool.provider_kind for tool in tools.values()} == {"builtin"}
 
 
@@ -4363,7 +4394,10 @@ async def test_wire_status_console_repaints_tool_rows_after_a_toggle():
     assert kind == "mcp"
     assert [tool["name"] for tool in payload["local_tools"]] == [
         "capture_camera_image",
+        "read_history",
+        "read_history_ranges",
         "remember",
+        "search_history",
         "set_reasoning_level",
     ]
     unwire(app, subscriptions)

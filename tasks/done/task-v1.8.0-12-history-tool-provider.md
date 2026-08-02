@@ -1,6 +1,6 @@
 # Task v1.8.0-12: Native read-only history tool provider
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-11.
 
@@ -38,14 +38,14 @@ writes, backend selection, and tool-budget changes.
 
 ## Acceptance criteria
 
-- [ ] The registry exposes exactly the three history tools under the reserved
+- [x] The registry exposes exactly the three history tools under the reserved
       provider.
-- [ ] MCP configuration rejects a colliding provider name.
-- [ ] Hybrid search and batch reads return bounded structured provenance.
-- [ ] Invalid input produces a tool error without repository mutation.
-- [ ] Search -> surrounding read -> final answer fits the existing tool
+- [x] MCP configuration rejects a colliding provider name.
+- [x] Hybrid search and batch reads return bounded structured provenance.
+- [x] Invalid input produces a tool error without repository mutation.
+- [x] Search -> surrounding read -> final answer fits the existing tool
       budget in a `ToolAwareDialog` test with fakes.
-- [ ] Disabling MCP does not remove local history tools.
+- [x] Disabling MCP does not remove local history tools.
 
 ## Stop conditions
 

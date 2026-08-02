@@ -26,6 +26,7 @@ from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BUILTIN_TOOL_PROVIDER_NAME,
+    HISTORY_TOOL_PROVIDER_NAME,
     PromptSettings,
     Settings,
     load_settings,
@@ -101,6 +102,7 @@ from jarvis.journal.lifecycle import (
     JournalHistoryService,
 )
 from jarvis.journal.recorder import JournalRecorder
+from jarvis.journal.retrieval import HistoryRetrievalService, Pymorphy3Normalizer
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.semantic import OllamaEmbeddingProvider, SemanticPassageIndex
 from jarvis.journal.store import JournalReplay, JournalStore
@@ -110,6 +112,7 @@ from jarvis.memory.files import (
     build_memory_file_specs,
 )
 from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
+from jarvis.tools.history import HistoryToolProvider
 from jarvis.tools.host import (
     McpHost,
     McpModuleStatusChanged,
@@ -1092,6 +1095,17 @@ def build_app(
         OllamaEmbeddingProvider(settings.backend, settings.history.semantic),
         logger=logger,
     )
+    history_retrieval_service = HistoryRetrievalService(
+        history_corpus_repository,
+        semantic_projection,
+        settings.history.semantic,
+        Pymorphy3Normalizer(),
+    )
+    history_tool_provider = HistoryToolProvider(
+        repository=history_corpus_repository,
+        retrieval_service=history_retrieval_service,
+    )
+    history_tool_provider.register_tools(tool_registry)
     history_projection_lifecycle = HistoryProjectionLifecycle(
         bus,
         projections=(CorpusHistoryProjection(history_corpus_repository),),
@@ -1116,7 +1130,10 @@ def build_app(
         bus,
         settings.mcp,
         registry=tool_registry,
-        builtin_clients={BUILTIN_TOOL_PROVIDER_NAME: builtin_tool_provider},
+        builtin_clients={
+            BUILTIN_TOOL_PROVIDER_NAME: builtin_tool_provider,
+            HISTORY_TOOL_PROVIDER_NAME: history_tool_provider,
+        },
         ui_language=settings.ui.language,
     )
     dialog_backend = ToolAwareDialog(

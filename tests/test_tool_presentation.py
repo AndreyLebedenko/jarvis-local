@@ -409,6 +409,80 @@ async def test_multiple_native_calls_run_sequentially_within_shared_budget():
 
 
 @pytest.mark.asyncio
+async def test_search_then_surrounding_read_then_final_answer_fits_three_call_budget():
+    backend = FakeBackend(
+        [
+            _native_calls(("search_history", {"query": "relay failure"})),
+            _native_calls(
+                (
+                    "read_history",
+                    {
+                        "anchor": {
+                            "session_id": "20260801-100000-ab12",
+                            "event_position": 3,
+                        },
+                        "before": 1,
+                        "after": 1,
+                    },
+                )
+            ),
+            _done("The relay failed during the afternoon run."),
+        ]
+    )
+    dispatcher = FakeDispatcher(
+        [
+            ToolDispatchResult(
+                ok=True,
+                correlation_id="1",
+                content="Found 1 grounded history match.",
+                structured_content={
+                    "results": [
+                        {
+                            "reference": {
+                                "session_id": "20260801-100000-ab12",
+                                "event_position": 3,
+                            }
+                        }
+                    ]
+                },
+            ),
+            ToolDispatchResult(
+                ok=True,
+                correlation_id="2",
+                content="Read 3 events around 20260801-100000-ab12:3.",
+                structured_content={"returned_count": 3},
+            ),
+        ]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool("search_history"), _tool("read_history")),
+        dispatcher,
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    await dialog.chat([{"role": "user", "content": "why did the relay fail?"}])
+
+    assert dispatcher.calls == [
+        ("search_history", {"query": "relay failure"}),
+        (
+            "read_history",
+            {
+                "anchor": {
+                    "session_id": "20260801-100000-ab12",
+                    "event_position": 3,
+                },
+                "before": 1,
+                "after": 1,
+            },
+        ),
+    ]
+    assert len(backend.raw_calls) == 3
+
+
+@pytest.mark.asyncio
 async def test_native_tool_followup_retains_media_on_the_original_user_message():
     backend = FakeBackend(
         [
