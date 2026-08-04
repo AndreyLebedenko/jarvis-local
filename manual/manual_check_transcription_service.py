@@ -21,8 +21,16 @@ Usage:
   # Transcribe the most recent transcribable voice event:
   python -m manual.manual_check_transcription_service --latest
 
+  # Probe an alternate model-facing framing without editing code:
+  python -m manual.manual_check_transcription_service --latest \
+      --instruction "Transcribe this recording verbatim, word for word."
+
 Both --session/--position and --latest write a GENERATED transcript overlay.
-Re-running overwrites it (idempotent, retryable).
+Re-running overwrites it (idempotent, retryable). `--instruction` overrides the
+default framing - useful because `gemma4:12b-it-qat` will refuse ("provide the
+audio file") for some phrasings even though the audio reaches it, so the exact
+instruction wording is a live-tuning knob (see the transcription refusal bug
+report).
 """
 
 from __future__ import annotations
@@ -75,6 +83,7 @@ async def _transcribe(
     store: JournalStore,
     backend: OllamaBackend,
     reference: JournalEventRef,
+    instruction: str | None,
 ) -> None:
     overlays = TranscriptOverlayRepository(
         store.root, JournalStoreEventReferenceResolver(store)
@@ -83,7 +92,10 @@ async def _transcribe(
         JournalStoreTranscriptionSource(store),
         OllamaTranscriptionBackend(backend),
         overlays,
+        **({} if instruction is None else {"instruction": instruction}),
     )
+    if instruction is not None:
+        print(f"Instruction override: {instruction}")
     print(f"Transcribing {reference.session_id} #{reference.event_position} ...")
     result = await service.transcribe_event(reference)
     print(f"Outcome: {result.outcome.value}")
@@ -128,7 +140,7 @@ async def run(args: argparse.Namespace) -> None:
 
     bus = EventBus()
     backend = OllamaBackend(bus=bus, settings=settings.backend)
-    await _transcribe(store, backend, reference)
+    await _transcribe(store, backend, reference, args.instruction)
 
 
 if __name__ == "__main__":
@@ -138,5 +150,9 @@ if __name__ == "__main__":
     parser.add_argument("--session", help="session id of the event to transcribe")
     parser.add_argument(
         "--position", type=int, help="event position within the session"
+    )
+    parser.add_argument(
+        "--instruction",
+        help="override the model-facing transcription instruction (framing probe)",
     )
     asyncio.run(run(parser.parse_args()))

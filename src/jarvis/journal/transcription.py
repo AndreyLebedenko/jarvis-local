@@ -54,13 +54,18 @@ logger = logging.getLogger(__name__)
 AUDIO_MEDIA_EXTENSIONS = frozenset({".wav"})
 DEFAULT_MAX_CONCURRENCY = 1
 
-# Runtime data sent to the model, not documentation or UI text: Russian
-# typography is canonical here, same exception as the dialog system prompt
-# (CLAUDE.md rule 9). Historical voice audio is predominantly Russian speech.
+# Model-facing instruction (not user-facing TTS/dialog text). The exact
+# English wording is the one PROJECT.md's day-0 fidelity check verified against
+# `gemma4:12b-it-qat`: it produced faithful verbatim Russian transcription,
+# whereas a plain Russian "transcribe this audio recording" instruction made
+# the model refuse ("provide the audio file"), the same response digital
+# silence produces (see the transcription refusal bug report). It stays
+# English and is configurable so the framing can be tuned against the live
+# model without a code change.
 DEFAULT_TRANSCRIPTION_INSTRUCTION = (
-    "Расшифруй дословно речь в этой аудиозаписи. Выведи только произнесённый "
-    "текст, без комментариев, пояснений и кавычек. Если речь на другом языке, "
-    "расшифруй на языке оригинала."
+    "Transcribe this recording verbatim, word for word. "
+    "Do not correct, complete, translate, or interpret anything. "
+    "Output only the spoken text."
 )
 
 _T = TypeVar("_T")
