@@ -71,10 +71,11 @@ Chosen over the nearby alternatives because:
 - it does not touch the transport, options, or `think` handling, none of which
   are implicated (comprehension works with them).
 
-This mitigation is **not yet verified against live Ollama** - the change was
-made without a hardware run, per the testing protocol. It must be confirmed by
-a human running the manual handoff and checking that the output is an actual
-verbatim transcript, not a refusal.
+**Resolved (owner-run, 2026-08-04).** With the English verbatim default the
+manual handoff (`--latest`, session `20260803-225905-3aec72` #2,
+`gemma4:12b-it-qat`, `think: false`, full generation options) returned an
+actual verbatim Russian transcript instead of a refusal. The framing wording
+was the whole cause; transport, options, and `think` were never implicated.
 
 ## Future considerations / boundaries
 
