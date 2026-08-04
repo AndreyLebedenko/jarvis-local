@@ -10,7 +10,11 @@ from typing import Protocol
 
 from jarvis.core.bus import EventBus
 from jarvis.journal.corpus import HistoryCorpusRepository
-from jarvis.journal.events import JournalEventAppended, JournalEventRecord
+from jarvis.journal.events import (
+    JournalEventAppended,
+    JournalEventRecord,
+    JournalEventRef,
+)
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
 from jarvis.journal.store import (
     JournalReplay,
@@ -18,6 +22,7 @@ from jarvis.journal.store import (
     JournalStore,
     JournalUsage,
 )
+from jarvis.journal.transcript import TranscriptOverlayRepository
 
 
 class HistoryProjectionStatus(Enum):
@@ -101,6 +106,42 @@ class CorpusHistoryProjection:
 
     def delete_session_projection(self, session_id: str) -> None:
         self._repository.delete_session_projection(session_id)
+
+
+class JournalStoreEventReferenceResolver:
+    """Resolves event existence against the authoritative raw journal.
+
+    The raw journal is the source of truth; derived projections such as the
+    corpus are rebuildable and may lag a fresh append or a not-yet-rebuilt
+    startup, so a transcript overlay's reference is validated here, never
+    against a projection whose transient state could reject a valid event.
+    """
+
+    def __init__(self, store: JournalStore) -> None:
+        self._store = store
+
+    def event_exists(self, reference: JournalEventRef) -> bool:
+        records = self._store.read_session(reference.session_id).records
+        return (
+            reference.event_position < len(records)
+            and records[reference.event_position].reference == reference
+        )
+
+
+class TranscriptHistoryProjection:
+    name = "transcript"
+
+    def __init__(self, repository: TranscriptOverlayRepository) -> None:
+        self._repository = repository
+
+    def rebuild(self) -> None:
+        self._repository.rebuild()
+
+    def project_event(self, record: JournalEventRecord) -> None:
+        del record
+
+    def delete_session_projection(self, session_id: str) -> None:
+        self._repository.delete_session(session_id)
 
 
 class HistoryProjectionConsistencyError(Exception):

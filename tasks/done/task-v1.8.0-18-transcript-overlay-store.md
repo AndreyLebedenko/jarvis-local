@@ -1,6 +1,6 @@
 # Task v1.8.0-18: Transcript overlay store
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-9.
 
@@ -27,10 +27,10 @@ integration, annotations, and consolidation.
 
 ## Acceptance criteria
 
-- [ ] Raw JSONL remains byte-identical after transcript edits.
-- [ ] Transcript reads return source references and status.
-- [ ] Session deletion removes transcript rows.
-- [ ] Invalid references and over-limit text are rejected explicitly.
+- [x] Raw JSONL remains byte-identical after transcript edits.
+- [x] Transcript reads return source references and status.
+- [x] Session deletion removes transcript rows.
+- [x] Invalid references and over-limit text are rejected explicitly.
 
 ## Stop conditions
 
