@@ -34,6 +34,10 @@ class RetrievedHistoryPassage:
     timestamp: str
     text: str
     truncated: bool = False
+    # True when ``text`` is a derived voice transcript rather than the event's
+    # own text. It is surfaced in the model-facing payload so a transcript is
+    # framed as a transcript, never as the user's verbatim typed words.
+    text_is_transcript: bool = False
 
 
 @dataclass(frozen=True)
@@ -176,6 +180,7 @@ def format_retrieved_history_passages(
             "timestamp": passage.timestamp,
             "text": passage.text,
             "truncated": passage.truncated,
+            "text_is_transcript": passage.text_is_transcript,
         }
         for passage in passages
     ]

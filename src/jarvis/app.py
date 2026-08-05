@@ -116,12 +116,23 @@ from jarvis.journal.lifecycle import (
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalHistoryService,
+    JournalStoreEventReferenceResolver,
+    TranscriptHistoryProjection,
 )
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.retrieval import HistoryRetrievalService, Pymorphy3Normalizer
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.semantic import OllamaEmbeddingProvider, SemanticPassageIndex
 from jarvis.journal.store import JournalReplay, JournalStore
+from jarvis.journal.transcript import (
+    TranscriptOverlayRepository,
+    TranscriptOverlayTextResolver,
+)
+from jarvis.journal.transcription import (
+    JournalStoreTranscriptionSource,
+    OllamaTranscriptionBackend,
+    TranscriptionService,
+)
 from jarvis.memory.files import (
     MemoryFileLoader,
     MemoryFileRepository,
@@ -1109,6 +1120,8 @@ class App:
     history_projection_lifecycle: HistoryProjectionLifecycle | None = None
     journal_history_service: JournalHistoryService | None = None
     journal_recorder: JournalRecorder | None = None
+    transcript_overlay_repository: TranscriptOverlayRepository | None = None
+    transcription_service: TranscriptionService | None = None
     memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
@@ -1134,6 +1147,26 @@ def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
 
 def _new_context_provenance_line() -> str:
     return "Новый пустой контекст создан пользователем."
+
+
+def _build_transcription_service(
+    settings: Settings,
+    journal_store: JournalStore,
+    backend: OllamaBackend,
+    transcripts: TranscriptOverlayRepository,
+) -> TranscriptionService:
+    transcription_settings = settings.history.transcription
+    kwargs: dict[str, object] = {
+        "max_concurrency": transcription_settings.max_concurrency,
+    }
+    if transcription_settings.instruction.strip():
+        kwargs["instruction"] = transcription_settings.instruction
+    return TranscriptionService(
+        JournalStoreTranscriptionSource(journal_store),
+        OllamaTranscriptionBackend(backend),
+        transcripts,
+        **kwargs,
+    )
 
 
 def build_app(
@@ -1196,7 +1229,18 @@ def build_app(
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
     journal_store = JournalStore(Path(settings.journal.root))
-    journal_search_index = JournalSearchIndex(journal_store, journal_store.root)
+    transcript_overlay_repository = TranscriptOverlayRepository(
+        journal_store.root,
+        JournalStoreEventReferenceResolver(journal_store),
+    )
+    transcript_text_resolver = TranscriptOverlayTextResolver(
+        transcript_overlay_repository
+    )
+    journal_search_index = JournalSearchIndex(
+        journal_store,
+        journal_store.root,
+        transcripts=transcript_text_resolver,
+    )
     history_corpus_repository = journal_search_index.repository
     semantic_index_embedder = OllamaEmbeddingProvider(
         settings.backend,
@@ -1215,6 +1259,7 @@ def build_app(
         semantic_index_embedder,
         logger=logger,
         query_embedder=semantic_query_embedder,
+        transcripts=transcript_text_resolver,
     )
     history_retrieval_service = HistoryRetrievalService(
         history_corpus_repository,
@@ -1227,11 +1272,25 @@ def build_app(
         retrieval_service=history_retrieval_service,
     )
     history_tool_provider.register_tools(tool_registry)
+    transcription_service = (
+        _build_transcription_service(
+            settings,
+            journal_store,
+            backend,
+            transcript_overlay_repository,
+        )
+        if settings.history.transcription.enabled
+        else None
+    )
     history_projection_lifecycle = HistoryProjectionLifecycle(
         bus,
-        projections=(CorpusHistoryProjection(history_corpus_repository),),
+        projections=(
+            CorpusHistoryProjection(history_corpus_repository),
+            TranscriptHistoryProjection(transcript_overlay_repository),
+        ),
         semantic_projection=semantic_projection,
         logger=logger,
+        transcript_event_source=JournalStoreTranscriptionSource(journal_store),
     )
     journal_history_service = JournalHistoryService(
         journal_store,
@@ -1297,6 +1356,8 @@ def build_app(
         history_projection_lifecycle=history_projection_lifecycle,
         journal_history_service=journal_history_service,
         journal_recorder=journal_recorder,
+        transcript_overlay_repository=transcript_overlay_repository,
+        transcription_service=transcription_service,
         memory_file_repository=memory_file_repository,
         settings=settings,
         mcp_host=mcp_host,
@@ -1957,6 +2018,8 @@ def run_with_status_console(
             if app.journal_recorder is not None
             else None
         ),
+        journal_transcript_repository=app.transcript_overlay_repository,
+        journal_transcription_service=app.transcription_service,
         memory_file_repository=app.memory_file_repository,
     )
     live_console.create_windows()

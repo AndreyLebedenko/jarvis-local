@@ -83,6 +83,7 @@ class HistoryRetrievalCandidate:
     lexical_score: float | None = None
     lexical_rank: int | None = None
     truncated: bool = False
+    text_is_transcript: bool = False
 
 
 @dataclass(frozen=True)
@@ -336,7 +337,7 @@ def _to_retrieval_candidate(
         source_mode = HistoryRetrievalSourceMode.LEXICAL
     return HistoryRetrievalCandidate(
         reference=candidate.reference,
-        text=event.text,
+        text=event.indexed_text,
         timestamp=event.timestamp,
         role=event.role,
         source=event.source,
@@ -346,6 +347,7 @@ def _to_retrieval_candidate(
         lexical_score=candidate.lexical_score,
         lexical_rank=candidate.lexical_rank,
         truncated=False,
+        text_is_transcript=event.text_is_transcript,
     )
 
 

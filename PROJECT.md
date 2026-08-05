@@ -109,6 +109,54 @@ system is intended to grow.
   Later FTS/search tasks decide whether to rebuild or replace that index. This
   task does not add FTS, query APIs, live append-time updates, transcripts,
   annotations, tools, UI wiring, or context assembly.
+- **Effective-transcript retrieval consumers, 2026-08-05 (task v1.8.0-20).**
+  A voice turn is recorded with empty `text` and its audio as media; its words
+  live only in the derived transcript overlay (task v1.8.0-18). Retrieval must
+  index and hydrate that overlay text so voice content becomes searchable
+  without rewriting the raw journal. The chosen model (owner-approved):
+  - **Effective text is a derived corpus column, not a rewrite of raw text.**
+    `history_corpus.db` schema is bumped to version 2, adding an
+    `effective_text` column: raw text when the event has its own text, else the
+    transcript overlay text, else empty. Raw `text` stays byte-untouched for
+    provenance. The corpus FTS and the semantic passage store index
+    `effective_text`; `HistoryCorpusEvent.indexed_text` and `text_is_transcript`
+    are derived, and retrieval candidates / range reads carry the transcript as
+    their text with a `text_is_transcript` flag so it is source-framed as a
+    transcript, never silently as the user's own words. That flag is propagated
+    end to end: `HistoryRetrievalCandidate` -> automatic-retrieval
+    `RetrievedHistoryPassage` -> the model-facing working-context JSON block, so
+    a retrieved transcript is never framed as an ordinary user turn. The corpus
+    and semantic
+    projections resolve the overlay through an injected
+    `EffectiveTranscriptResolver` (a `TranscriptOverlayTextResolver` over the
+    overlay repo); a normal text turn never consults it. The single shared
+    `HistoryCorpusRepository` (`JournalSearchIndex.repository`) is the
+    transcript-aware writer, so all readers see the same effective text.
+    The Journal UI search uses this full corpus surface for both `user` and
+    `assistant` roles, including effective voice transcripts; it no longer
+    applies the legacy assistant-only filter.
+  - **A transcript edit/generation re-projects one event through the
+    lifecycle.** Transcription and edits happen after the event exists, not via
+    `JournalEventAppended`. A successful overlay write publishes
+    `TranscriptOverlayChanged(reference)`; `HistoryProjectionLifecycle`
+    subscribes (like it does for appends), reads the raw event, and re-projects
+    that single event into corpus/FTS/semantic off-thread. No unrelated session
+    is rebuilt. Overlay writers do not know about projections. Re-projection is
+    serialized and coalesced per event: while one event's re-projection runs, a
+    further change for the same event marks a single rerun rather than starting
+    a concurrent run, so the corpus and semantic writes cannot commit out of
+    order and leave the two projections reflecting different overlay versions.
+  - **API/UI are read/edit/generate over the same overlay + service.** New
+    authenticated endpoints `GET|PUT /api/journal/transcripts/{session}/{pos}`
+    and `POST .../generate` follow the existing `_require_http_token` +
+    Hidden-mode suppression pattern; edits store `TranscriptSource.EDITED`,
+    generate runs the task v1.8.0-19 `TranscriptionService` (reasoning off,
+    audio via `images`), and both publish `TranscriptOverlayChanged` on success.
+    The Journal UI shows a transcript panel (status, editable text, Save,
+    Transcribe) only on past voice events; there is no automatic background
+    transcription. Config: `[history.transcription]` (`enabled`, `instruction`,
+    `max_concurrency`). Live transcription quality remains a human-run manual
+    handoff (`manual/manual_check_transcription_service.py`).
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

@@ -3452,6 +3452,8 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         journal_search_index=journal_search_index,
         history_projection_lifecycle=None,
         journal_history_service=journal_history_service,
+        transcript_overlay_repository=object(),
+        transcription_service=object(),
         memory_file_repository=object(),
     )
 

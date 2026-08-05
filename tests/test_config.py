@@ -15,6 +15,7 @@ from jarvis.core.config import (
     DataBoundary,
     HistorySemanticSettings,
     HistorySettings,
+    HistoryTranscriptionSettings,
     HotkeySettings,
     JournalSettings,
     LanCameraSource,
@@ -222,6 +223,41 @@ def test_history_semantic_settings_parse_from_config(tmp_path):
         top_ratio=0.9,
         dimension=512,
     )
+
+
+def test_history_transcription_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history.transcription]
+        enabled = false
+        instruction = "Transcribe verbatim."
+        max_concurrency = 2
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.history.transcription == HistoryTranscriptionSettings(
+        enabled=False,
+        instruction="Transcribe verbatim.",
+        max_concurrency=2,
+    )
+
+
+def test_history_transcription_max_concurrency_must_be_positive(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history.transcription]
+        max_concurrency = 0
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
 
 
 def test_history_settings_default_to_approved_task3_values(tmp_path):

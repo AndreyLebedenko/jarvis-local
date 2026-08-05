@@ -484,6 +484,26 @@ class HistorySettings:
     semantic: "HistorySemanticSettings" = field(
         default_factory=lambda: HistorySemanticSettings()
     )
+    transcription: "HistoryTranscriptionSettings" = field(
+        default_factory=lambda: HistoryTranscriptionSettings()
+    )
+
+
+@dataclass(frozen=True)
+class HistoryTranscriptionSettings:
+    """Explicit historical voice transcription (task-v1.8.0-20).
+
+    Never runs on its own initiative: it is invoked only through the
+    authenticated transcript generate endpoint. ``instruction`` is the
+    model-facing English framing; an empty value defers to the service's
+    verified default. ``max_concurrency`` bounds how many transcription model
+    calls run at once so historical transcription competes predictably with a
+    live turn.
+    """
+
+    enabled: bool = True
+    instruction: str = ""
+    max_concurrency: int = 1
 
 
 @dataclass(frozen=True)
@@ -930,7 +950,14 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
     semantic_raw = raw.get("semantic", {})
     if not isinstance(semantic_raw, dict):
         raise ConfigError(f"[{section_name}.semantic] must be a table")
-    scalar_raw = {key: value for key, value in raw.items() if key != "semantic"}
+    transcription_raw = raw.get("transcription", {})
+    if not isinstance(transcription_raw, dict):
+        raise ConfigError(f"[{section_name}.transcription] must be a table")
+    scalar_raw = {
+        key: value
+        for key, value in raw.items()
+        if key not in {"semantic", "transcription"}
+    }
     settings = _build_plain_section(section_name, HistorySettings, scalar_raw)
     for name in (
         "prompt_capacity_tokens",
@@ -960,7 +987,22 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
         semantic=_build_history_semantic_section(
             f"{section_name}.semantic", semantic_raw
         ),
+        transcription=_build_history_transcription_section(
+            f"{section_name}.transcription", transcription_raw
+        ),
     )
+
+
+def _build_history_transcription_section(
+    section_name: str, raw: dict[str, Any]
+) -> "HistoryTranscriptionSettings":
+    settings = _build_plain_section(section_name, HistoryTranscriptionSettings, raw)
+    if settings.max_concurrency < 1:
+        raise ConfigError(
+            f"[{section_name}].max_concurrency must be at least 1, "
+            f"got {settings.max_concurrency!r}"
+        )
+    return settings
 
 
 def _build_history_semantic_section(

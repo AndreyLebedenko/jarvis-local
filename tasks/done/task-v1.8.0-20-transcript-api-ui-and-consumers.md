@@ -1,6 +1,6 @@
 # Task v1.8.0-20: Transcript API, UI, and retrieval consumers
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-18 and v1.8.0-19.
 
@@ -29,11 +29,11 @@ consolidation, and working-context policy.
 
 ## Acceptance criteria
 
-- [ ] Users can view and edit transcript overlays.
-- [ ] Generated transcripts are auditable and editable.
-- [ ] Search/retrieval can find transcript-only voice content.
-- [ ] Hidden mode suppresses transcript UI/API visibility.
-- [ ] Projection updates do not rebuild unrelated sessions.
+- [x] Users can view and edit transcript overlays.
+- [x] Generated transcripts are auditable and editable.
+- [x] Search/retrieval can find transcript-only voice content.
+- [x] Hidden mode suppresses transcript UI/API visibility.
+- [x] Projection updates do not rebuild unrelated sessions.
 
 ## Stop conditions
 
@@ -43,5 +43,6 @@ consolidation, and working-context policy.
 ## Verification
 
 - API, UI, projection, and retrieval tests.
-- `python -m pytest`
-- Ruff checks.
+- `python -m pytest`: 1723 passed, 1 skipped.
+- Ruff format and lint checks passed.
+- Owner completed the required manual transcript, search, and Hidden-mode checks.

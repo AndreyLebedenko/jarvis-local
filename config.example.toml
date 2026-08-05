@@ -71,6 +71,21 @@ separation = 0.05
 top_ratio = 0.98
 dimension = 1024
 
+[history.transcription]
+# Explicit historical voice transcription (task-v1.8.0-20). It never runs on
+# its own initiative: transcripts are generated only through the authenticated
+# Journal transcript "Transcribe" control / generate endpoint. When enabled,
+# the generate endpoint is available; disabling it removes that endpoint while
+# read/edit of existing transcript overlays stay available.
+enabled = true
+# Model-facing English framing for the transcription request. Empty defers to
+# the service's verified default (the wording PROJECT.md's day-0 fidelity
+# check confirmed produces faithful verbatim Russian transcription).
+instruction = ""
+# How many transcription model calls may run at once. Kept low so historical
+# transcription competes predictably with a live dialog turn for VRAM.
+max_concurrency = 1
+
 [hotkeys]
 screenshot_full = "ctrl+alt+s"
 screenshot_region = "ctrl+alt+r"

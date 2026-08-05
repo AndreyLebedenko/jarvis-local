@@ -778,6 +778,7 @@ def _serialize_retrieval_candidates(
                 "source": candidate.source,
                 "text": event_text.payload["text"],
                 "truncated": event_text.truncated or candidate.truncated,
+                "text_is_transcript": candidate.text_is_transcript,
                 "source_mode": candidate.source_mode.value,
                 "combined_rank": candidate.combined_rank,
                 "semantic_score": candidate.semantic_score,
@@ -794,7 +795,7 @@ def _serialize_events(
     serialized: list[JSONObject] = []
     truncated_count = 0
     for event in events:
-        text = _truncate_text(event.text)
+        text = _truncate_text(event.indexed_text)
         truncated_count += int(text.truncated)
         serialized.append(
             {
@@ -804,6 +805,7 @@ def _serialize_events(
                 "source": event.source,
                 "text": text.payload["text"],
                 "truncated": text.truncated,
+                "text_is_transcript": event.text_is_transcript,
                 "media_count": event.media_count,
                 "transcript": event.transcript,
             }

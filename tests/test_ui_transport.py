@@ -43,6 +43,12 @@ from jarvis.journal.fork import (
     ForkSessionReason,
     ForkSessionResult,
 )
+from jarvis.journal.lifecycle import JournalStoreEventReferenceResolver
+from jarvis.journal.transcript import (
+    TranscriptOverlayChanged,
+    TranscriptOverlayRepository,
+)
+from jarvis.journal.transcription import TranscriptionOutcome, TranscriptionResult
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileRepository,
@@ -1148,7 +1154,20 @@ async def test_journal_sessions_feed_and_search_use_existing_http_transport(
             assert [
                 (hit["session_id"], hit["event_position"], hit["snippet"])
                 for hit in search["hits"]
-            ] == [(later_session_id, 1, "The [reactor] telemetry is nominal.")]
+            ] == [
+                (later_session_id, 0, "[reactor] check"),
+                (later_session_id, 1, "The [reactor] telemetry is nominal."),
+            ]
+
+            user_search = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                "?token=valid-token&query=real-topic",
+            )
+            assert [
+                (hit["session_id"], hit["event_position"], hit["snippet"])
+                for hit in user_search["hits"]
+            ] == [(session_id, 2, "the [real] [topic] after voice")]
     finally:
         await server.stop()
 
@@ -2393,6 +2412,217 @@ def _journal_event(
         media=media,
         transcript=None,
     )
+
+
+_TRANSCRIPT_SESSION = "20260801-120000-ab12"
+
+
+def _voice_store(tmp_path: Path) -> tuple[JournalStore, TranscriptOverlayRepository]:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _journal_event(
+            session_id=_TRANSCRIPT_SESSION,
+            timestamp="2026-08-01T12:00:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance.wav",),
+        )
+    )
+    overlays = TranscriptOverlayRepository(
+        tmp_path / "derived", JournalStoreEventReferenceResolver(store)
+    )
+    return store, overlays
+
+
+class _FakeTranscriptionService:
+    def __init__(self, result: TranscriptionResult) -> None:
+        self._result = result
+        self.calls: list[JournalEventRef] = []
+
+    async def transcribe_event(self, reference: JournalEventRef) -> TranscriptionResult:
+        self.calls.append(reference)
+        return self._result
+
+
+@pytest.mark.asyncio
+async def test_transcript_api_read_edit_round_trip_and_publishes_change(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    _store, overlays = _voice_store(tmp_path)
+    changed: list[JournalEventRef] = []
+
+    async def _capture(event: TranscriptOverlayChanged) -> None:
+        changed.append(event.reference)
+
+    bus.subscribe(TranscriptOverlayChanged, _capture)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_transcript_repository=overlays,
+    )
+    info = await server.start()
+    base = (
+        f"http://127.0.0.1:{info.port}/api/journal/transcripts/{_TRANSCRIPT_SESSION}/0"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            missing = await _get_json(session, base + "?token=valid-token")
+            assert missing["found"] is False
+            assert missing["transcript"] is None
+
+            written = await session.put(
+                base + "?token=valid-token", json={"text": "секретный код альфа"}
+            )
+            assert written.status == 200
+            payload = await written.json()
+            assert payload["found"] is True
+            assert payload["transcript"]["text"] == "секретный код альфа"
+            assert payload["transcript"]["source"] == "edited"
+
+            reread = await _get_json(session, base + "?token=valid-token")
+            assert reread["transcript"]["text"] == "секретный код альфа"
+    finally:
+        await server.stop()
+
+    assert changed == [JournalEventRef(_TRANSCRIPT_SESSION, 0)]
+
+
+@pytest.mark.asyncio
+async def test_transcript_api_edit_rejections(tmp_path: Path) -> None:
+    _store, overlays = _voice_store(tmp_path)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_transcript_repository=overlays,
+    )
+    info = await server.start()
+    base = f"http://127.0.0.1:{info.port}/api/journal/transcripts"
+    try:
+        async with aiohttp.ClientSession() as session:
+            empty = await session.put(
+                f"{base}/{_TRANSCRIPT_SESSION}/0?token=valid-token",
+                json={"text": ""},
+            )
+            assert empty.status == 400
+            assert (await empty.json())["reason"] == "text_empty"
+
+            too_long = await session.put(
+                f"{base}/{_TRANSCRIPT_SESSION}/0?token=valid-token",
+                json={"text": "x" * 20001},
+            )
+            assert too_long.status == 413
+            assert (await too_long.json())["reason"] == "text_too_long"
+
+            unknown = await session.put(
+                f"{base}/{_TRANSCRIPT_SESSION}/9?token=valid-token",
+                json={"text": "no such event"},
+            )
+            assert unknown.status == 404
+            assert (await unknown.json())["reason"] == "unknown_reference"
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_transcript_api_hidden_and_token(tmp_path: Path) -> None:
+    _store, overlays = _voice_store(tmp_path)
+    hidden = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+        journal_transcript_repository=overlays,
+    )
+    hidden_info = await hidden.start()
+    base = (
+        f"http://127.0.0.1:{hidden_info.port}/api/journal/transcripts/"
+        f"{_TRANSCRIPT_SESSION}/0"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            hidden_get = await _get_json(session, base + "?token=valid-token")
+            assert hidden_get == {"status": "hidden"}
+            missing_token = await session.get(base)
+            assert missing_token.status == 401
+    finally:
+        await hidden.stop()
+
+
+@pytest.mark.asyncio
+async def test_transcript_generate_endpoint(tmp_path: Path) -> None:
+    bus = EventBus()
+    _store, overlays = _voice_store(tmp_path)
+    reference = JournalEventRef(_TRANSCRIPT_SESSION, 0)
+    changed: list[JournalEventRef] = []
+
+    async def _capture(event: TranscriptOverlayChanged) -> None:
+        changed.append(event.reference)
+
+    bus.subscribe(TranscriptOverlayChanged, _capture)
+    service = _FakeTranscriptionService(
+        TranscriptionResult(
+            reference,
+            TranscriptionOutcome.TRANSCRIBED,
+            transcript="сгенерированный текст",
+        )
+    )
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_transcript_repository=overlays,
+        journal_transcription_service=service,
+    )
+    info = await server.start()
+    generate = (
+        f"http://127.0.0.1:{info.port}/api/journal/transcripts/"
+        f"{_TRANSCRIPT_SESSION}/0/generate?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(generate)
+            assert response.status == 200
+            payload = await response.json()
+            assert payload["status"] == "ok"
+            assert payload["outcome"] == "transcribed"
+            assert payload["transcript"] == "сгенерированный текст"
+    finally:
+        await server.stop()
+
+    assert service.calls == [reference]
+    assert changed == [reference]
+
+
+@pytest.mark.asyncio
+async def test_transcript_generate_reports_no_audio(tmp_path: Path) -> None:
+    _store, overlays = _voice_store(tmp_path)
+    reference = JournalEventRef(_TRANSCRIPT_SESSION, 0)
+    service = _FakeTranscriptionService(
+        TranscriptionResult(reference, TranscriptionOutcome.NO_AUDIO_MEDIA)
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_transcript_repository=overlays,
+        journal_transcription_service=service,
+    )
+    info = await server.start()
+    generate = (
+        f"http://127.0.0.1:{info.port}/api/journal/transcripts/"
+        f"{_TRANSCRIPT_SESSION}/0/generate?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(generate)
+            assert response.status == 409
+            assert (await response.json())["reason"] == "no_audio_media"
+    finally:
+        await server.stop()
 
 
 def _journal_clock():

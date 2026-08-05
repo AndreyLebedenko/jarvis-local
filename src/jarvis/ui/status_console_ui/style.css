@@ -790,6 +790,45 @@ html[data-view="settings"] .settings {
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
 
+.journal-transcript {
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--panel); padding: 8px; max-width: min(100%, 520px);
+}
+.journal-transcript-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.journal-transcript-title {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.journal-transcript-status {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--cyan-dim);
+}
+.journal-transcript-text {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--text);
+  font-size: 12.5px; padding: 6px; user-select: text;
+}
+.journal-transcript-text:focus { outline: none; border-color: var(--cyan-dim); }
+.journal-transcript-actions { display: flex; gap: 6px; }
+.journal-transcript-generate, .journal-transcript-save {
+  border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
+  color: var(--text-faint); font: 9.5px "Consolas", "Cascadia Mono", monospace;
+  padding: 3px 8px; cursor: pointer;
+}
+.journal-transcript-generate:hover, .journal-transcript-save:hover {
+  border-color: var(--cyan-dim); color: var(--cyan);
+}
+.journal-transcript-generate:disabled, .journal-transcript-save:disabled {
+  opacity: 0.5; cursor: default; border-color: var(--border); color: var(--text-faint);
+}
+.journal-transcript-message {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--amber);
+  overflow-wrap: anywhere; min-height: 12px;
+}
+
 .journal-search-group { display: flex; flex-direction: column; gap: 6px; }
 .journal-search-session {
   display: flex; align-items: baseline; gap: 8px; padding: 4px 2px;

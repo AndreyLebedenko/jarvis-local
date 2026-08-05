@@ -1989,11 +1989,201 @@ function _journalEventElement(event, position = null) {
     text.textContent = event.text;
     message.appendChild(text);
   }
+  // Transcript controls only attach to a known event position (the full feed
+  // render, never a live append whose position is not yet known) and only to
+  // events carrying transcribable audio. Transcription is a deliberate
+  // historical action on a past voice turn, never an implied background job.
+  if (position !== null && _journalEventHasAudio(event)) {
+    message.appendChild(_journalTranscriptPanel(event, position));
+  }
   const provenanceDetail = _journalProvenanceDetail(event);
   if (provenanceDetail !== null) message.appendChild(provenanceDetail);
   const outcomeDetail = _journalOutcomeDetail(event);
   if (outcomeDetail !== null) message.appendChild(outcomeDetail);
   return message;
+}
+
+function _journalEventHasAudio(event) {
+  return (event.media || []).some((item) =>
+    item.path.toLowerCase().endsWith(".wav")
+  );
+}
+
+// Derived transcript overlay controls for one voice event (task-v1.8.0-20).
+// The panel reads and edits the derived overlay only; it never rewrites the
+// raw journal event, and generation runs the explicit, user-invoked
+// transcription endpoint - there is no automatic background transcription.
+function _journalTranscriptPanel(event, position) {
+  const panel = document.createElement("div");
+  panel.className = "journal-transcript";
+  panel.dataset.eventPosition = String(position);
+
+  const head = document.createElement("div");
+  head.className = "journal-transcript-head";
+  const title = document.createElement("span");
+  title.className = "journal-transcript-title";
+  title.textContent = uiString("journal_transcript_title");
+  const status = document.createElement("span");
+  status.className = "journal-transcript-status";
+  head.append(title, status);
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "journal-transcript-text";
+  textarea.rows = 5;
+  textarea.placeholder = uiString("journal_transcript_edit_placeholder");
+
+  const actions = document.createElement("div");
+  actions.className = "journal-transcript-actions";
+  const generate = document.createElement("button");
+  generate.type = "button";
+  generate.className = "journal-transcript-generate";
+  generate.textContent = uiString("journal_transcript_generate");
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "journal-transcript-save";
+  save.textContent = uiString("journal_transcript_save");
+  actions.append(generate, save);
+
+  const message = document.createElement("div");
+  message.className = "journal-transcript-message";
+  message.setAttribute("role", "status");
+
+  panel.append(head, textarea, actions, message);
+
+  const refs = { panel, status, textarea, generate, save, message };
+  generate.addEventListener("click", () =>
+    generateJournalTranscript(event.session_id, position, refs)
+  );
+  save.addEventListener("click", () =>
+    saveJournalTranscript(event.session_id, position, refs)
+  );
+  _loadJournalTranscript(event.session_id, position, refs);
+  return panel;
+}
+
+function _journalTranscriptStatusLabel(source) {
+  if (source === "generated") return uiString("journal_transcript_generated");
+  if (source === "edited") return uiString("journal_transcript_edited");
+  return uiString("journal_transcript_none");
+}
+
+function _applyJournalTranscriptRead(refs, payload) {
+  const transcript = payload && payload.transcript;
+  if (payload && payload.found && transcript) {
+    refs.textarea.value = transcript.text;
+    refs.status.textContent = _journalTranscriptStatusLabel(transcript.source);
+  } else {
+    refs.textarea.value = "";
+    refs.status.textContent = uiString("journal_transcript_none");
+  }
+}
+
+async function _loadJournalTranscript(sessionId, position, refs) {
+  const url = _journalTranscriptUrl(sessionId, position);
+  if (url === null) {
+    refs.status.textContent = uiString("transport_no_token");
+    return;
+  }
+  try {
+    const response = await fetch(url);
+    const payload = await response.json();
+    if (payload.status === "hidden") return;
+    _applyJournalTranscriptRead(refs, payload);
+  } catch (error) {
+    console.error("Transcript load failed:", error);
+    refs.status.textContent = uiString("journal_transcript_load_failed");
+  }
+}
+
+async function saveJournalTranscript(sessionId, position, refs) {
+  const text = refs.textarea.value.trim();
+  if (!text) {
+    refs.message.textContent = uiString("journal_transcript_empty");
+    return;
+  }
+  const url = _journalTranscriptUrl(sessionId, position);
+  if (url === null) {
+    refs.message.textContent = uiString("transport_no_token");
+    return;
+  }
+  refs.save.disabled = true;
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      _applyJournalTranscriptRead(refs, payload);
+      refs.message.textContent = uiString("journal_transcript_saved");
+      return;
+    }
+    refs.message.textContent = _journalTranscriptSaveError(payload);
+  } catch (error) {
+    console.error("Transcript save failed:", error);
+    refs.message.textContent = uiString("journal_transcript_save_failed");
+  } finally {
+    refs.save.disabled = false;
+  }
+}
+
+function _journalTranscriptSaveError(payload) {
+  if (payload.reason === "text_empty") {
+    return uiString("journal_transcript_empty");
+  }
+  if (payload.reason === "text_too_long") {
+    return uiString("journal_transcript_over_limit").replace(
+      "{max}",
+      String(payload.max_chars)
+    );
+  }
+  return uiString("journal_transcript_save_failed");
+}
+
+async function generateJournalTranscript(sessionId, position, refs) {
+  const url = _journalTranscriptUrl(sessionId, position, "/generate");
+  if (url === null) {
+    refs.message.textContent = uiString("transport_no_token");
+    return;
+  }
+  refs.generate.disabled = true;
+  refs.save.disabled = true;
+  refs.message.textContent = uiString("journal_transcript_generating");
+  try {
+    const response = await fetch(url, { method: "POST" });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      refs.textarea.value = payload.transcript || "";
+      refs.status.textContent = uiString("journal_transcript_generated");
+      refs.message.textContent = "";
+      return;
+    }
+    refs.message.textContent = _journalTranscriptGenerateError(payload);
+  } catch (error) {
+    console.error("Transcript generation failed:", error);
+    refs.message.textContent = uiString("journal_transcript_generate_failed");
+  } finally {
+    refs.generate.disabled = false;
+    refs.save.disabled = false;
+  }
+}
+
+function _journalTranscriptGenerateError(payload) {
+  if (payload && payload.reason === "no_audio_media") {
+    return uiString("journal_transcript_generate_no_audio");
+  }
+  return uiString("journal_transcript_generate_failed");
+}
+
+function _journalTranscriptUrl(sessionId, position, suffix = "") {
+  return _journalUrl(
+    "/api/journal/transcripts/" +
+      encodeURIComponent(sessionId) +
+      "/" +
+      encodeURIComponent(String(position)) +
+      suffix
+  );
 }
 
 function _journalProvenanceDetail(event) {

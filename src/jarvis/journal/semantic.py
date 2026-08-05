@@ -18,6 +18,7 @@ import httpx
 from jarvis.core.config import BackendSettings, HistorySemanticSettings
 from jarvis.journal.corpus import (
     HISTORY_SEARCH_MAX_RESULTS,
+    EffectiveTranscriptResolver,
     HistoryCorpusEvent,
     HistoryCorpusRepository,
 )
@@ -180,6 +181,7 @@ class SemanticPassageIndex:
         logger: logging.Logger | None = None,
         *,
         query_embedder: EmbeddingProvider | None = None,
+        transcripts: EffectiveTranscriptResolver | None = None,
     ) -> None:
         self._repository = repository
         self._db_path = root / SEMANTIC_PROJECTION_DB_NAME
@@ -187,6 +189,7 @@ class SemanticPassageIndex:
         self._embedder = embedder
         self._query_embedder = query_embedder or embedder
         self._logger = logger or logging.getLogger(__name__)
+        self._transcripts = transcripts
         self._runtime_error: str | None = None
 
     @property
@@ -276,7 +279,7 @@ class SemanticPassageIndex:
     def project_event(self, record: JournalEventRecord) -> None:
         if self.state().status is not HistoryProjectionStatus.ENABLED:
             return
-        passage = _passage_from_record(record)
+        passage = self._passage_from_record(record)
         try:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             with closing(sqlite3.connect(self._db_path)) as connection:
@@ -502,23 +505,39 @@ class SemanticPassageIndex:
         self._runtime_error = f"{operation}: {type(error).__name__}: {error}"
         self._logger.exception(operation)
 
+    def _passage_from_record(
+        self, record: JournalEventRecord
+    ) -> SemanticPassage | None:
+        event = record.event
+        if event.role not in {"user", "assistant"}:
+            return None
+        text = self._effective_text(record.reference, event.text)
+        if not text.strip():
+            return None
+        return SemanticPassage(
+            passage_id=_passage_id(record.reference),
+            reference=record.reference,
+            timestamp=event.timestamp,
+            role=event.role,
+            source=event.source,
+            text=text,
+        )
 
-def _passage_from_record(record: JournalEventRecord) -> SemanticPassage | None:
-    event = record.event
-    if event.role not in {"user", "assistant"} or not event.text.strip():
-        return None
-    return SemanticPassage(
-        passage_id=_passage_id(record.reference),
-        reference=record.reference,
-        timestamp=event.timestamp,
-        role=event.role,
-        source=event.source,
-        text=event.text,
-    )
+    def _effective_text(self, reference: JournalEventRef, raw_text: str) -> str:
+        """Transcript-aware text for the incremental (record) projection path.
+
+        Mirrors the corpus rule so a re-projected voice turn embeds its
+        transcript overlay, while a normal turn never consults the overlay.
+        """
+
+        if raw_text.strip() or self._transcripts is None:
+            return raw_text
+        overlay = self._transcripts.transcript_text(reference)
+        return overlay if overlay else raw_text
 
 
 def _passage_from_corpus_event(event: HistoryCorpusEvent) -> SemanticPassage | None:
-    if event.role not in {"user", "assistant"} or not event.text.strip():
+    if event.role not in {"user", "assistant"} or not event.indexed_text.strip():
         return None
     return SemanticPassage(
         passage_id=_passage_id(event.reference),
@@ -526,7 +545,7 @@ def _passage_from_corpus_event(event: HistoryCorpusEvent) -> SemanticPassage | N
         timestamp=event.timestamp,
         role=event.role,
         source=event.source,
-        text=event.text,
+        text=event.indexed_text,
     )
 
 

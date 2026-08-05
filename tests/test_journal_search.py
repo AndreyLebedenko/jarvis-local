@@ -48,7 +48,7 @@ def test_rebuild_from_store_can_recreate_disposable_index(tmp_path: Path) -> Non
     ]
 
 
-def test_search_indexes_assistant_text_only(tmp_path: Path) -> None:
+def test_search_indexes_user_and_assistant_text(tmp_path: Path) -> None:
     store = JournalStore(tmp_path)
     session_id = "20260716-153000-ab12"
     store.append(
@@ -73,7 +73,9 @@ def test_search_indexes_assistant_text_only(tmp_path: Path) -> None:
     index = JournalSearchIndex(store, tmp_path)
     index.rebuild()
 
-    assert index.search("private-user-token") == []
+    assert [hit.snippet for hit in index.search("private-user-token")] == [
+        "[private]-[user]-[token]"
+    ]
     assert [hit.snippet for hit in index.search("assistant")] == [
         "public [assistant] answer"
     ]

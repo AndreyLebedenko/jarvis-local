@@ -58,6 +58,20 @@ class TranscriptDeleteStatus(Enum):
 
 
 @dataclass(frozen=True)
+class TranscriptOverlayChanged:
+    """A transcript overlay for one event was written, edited, or cleared.
+
+    Published after a successful overlay write so the projection lifecycle can
+    re-index that single event's effective text into the corpus, lexical, and
+    semantic projections without rebuilding an unrelated session. It carries
+    only the source reference; the projection reads the raw event and the
+    overlay itself.
+    """
+
+    reference: JournalEventRef
+
+
+@dataclass(frozen=True)
 class TranscriptOverlay:
     reference: JournalEventRef
     text: str
@@ -321,6 +335,25 @@ class TranscriptOverlayRepository:
         except Exception:
             connection.close()
             raise
+
+
+class TranscriptOverlayTextResolver:
+    """Adapts the overlay repository to the projections' effective-text seam.
+
+    Returns an event's overlay text (generated or user-edited) for the corpus
+    and semantic projections, or ``None`` when no overlay exists. It never
+    invents text: an absent or empty overlay resolves to ``None`` so the
+    projection keeps the raw (empty) text and the event stays non-indexed.
+    """
+
+    def __init__(self, repository: TranscriptOverlayRepository) -> None:
+        self._repository = repository
+
+    def transcript_text(self, reference: JournalEventRef) -> str | None:
+        read = self._repository.read_transcript(reference)
+        if read.overlay is None:
+            return None
+        return read.overlay.text or None
 
 
 def _table_exists(connection: sqlite3.Connection, name: str) -> bool:

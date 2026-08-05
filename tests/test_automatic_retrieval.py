@@ -143,7 +143,7 @@ def test_select_automatic_retrieval_prefers_semantic_paraphrase_and_skips_overla
         candidate_limit=4,
         passage_limit=2,
         minimum_relevance=0.5,
-        token_budget=256,
+        token_budget=512,
     )
     candidates = (
         _candidate(
@@ -247,7 +247,7 @@ def test_select_automatic_retrieval_keeps_candidate_with_recent_phrase() -> None
             candidate_limit=1,
             passage_limit=1,
             minimum_relevance=0.5,
-            token_budget=256,
+            token_budget=512,
         ),
         estimator=estimator,
     )
@@ -504,3 +504,37 @@ def test_select_automatic_retrieval_skips_low_relevance_and_stays_within_budget(
         "Реле не сработало из-за перегрева."
     ]
     assert selection.skipped_capacity_count == 1
+
+
+def test_automatic_retrieval_passage_marks_transcript_source():
+    candidate = HistoryRetrievalCandidate(
+        reference=JournalEventRef("20260801-100000-ab12", 0),
+        text="секретный код альфа",
+        timestamp="2026-08-01T10:00:00+01:00",
+        role="user",
+        source="voice",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        lexical_score=1.0,
+        lexical_rank=1,
+        text_is_transcript=True,
+    )
+    request = build_automatic_retrieval_request(
+        "код альфа", _recent_history(), roles=("user",), sources=("voice",)
+    )
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (candidate,),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.selected_passage_count == 1
+    passage = selection.selected_passages[0]
+    # The transcript flag survives selection and reaches the model-facing
+    # working-context payload, so the transcript is framed as a transcript and
+    # not as the user's own verbatim words.
+    assert passage.text_is_transcript is True
+    formatted = format_retrieved_history_passages(selection.selected_passages)
+    assert '"text_is_transcript":true' in formatted

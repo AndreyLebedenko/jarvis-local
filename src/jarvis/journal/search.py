@@ -5,6 +5,7 @@ from pathlib import Path
 
 from jarvis.journal.corpus import (
     HISTORY_SEARCH_MAX_RESULTS,
+    EffectiveTranscriptResolver,
     HistoryCorpusRepository,
     HistorySearchOrder,
     HistorySearchRequest,
@@ -22,8 +23,13 @@ class JournalSearchHit:
 
 
 class JournalSearchIndex:
-    def __init__(self, store: JournalStore, root: Path) -> None:
-        self._repository = HistoryCorpusRepository(store, root)
+    def __init__(
+        self,
+        store: JournalStore,
+        root: Path,
+        transcripts: EffectiveTranscriptResolver | None = None,
+    ) -> None:
+        self._repository = HistoryCorpusRepository(store, root, transcripts)
 
     @property
     def repository(self) -> HistoryCorpusRepository:
@@ -55,7 +61,7 @@ class JournalSearchIndex:
                 query=query,
                 date_from=date_from,
                 date_to=date_to,
-                roles=("assistant",),
+                roles=("user", "assistant"),
                 limit=limit,
                 order=HistorySearchOrder.CHRONOLOGICAL,
             )

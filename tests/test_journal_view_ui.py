@@ -696,3 +696,44 @@ def test_search_input_is_debounced_and_no_results_text_is_localized():
         0
     ]
     assert 'uiString("journal_search_no_results")' in render_body
+
+
+def test_transcript_panel_only_attaches_to_positioned_voice_events():
+    body = APP_JS.split("function _journalEventElement(")[1].split("\n}")[0]
+    assert "position !== null && _journalEventHasAudio(event)" in body
+    assert "_journalTranscriptPanel(event, position)" in body
+    has_audio = APP_JS.split("function _journalEventHasAudio(")[1].split("\n}")[0]
+    assert '.endsWith(".wav")' in has_audio
+
+
+def test_transcript_panel_exposes_generate_and_save_controls():
+    panel = APP_JS.split("function _journalTranscriptPanel(")[1].split("\n}")[0]
+    assert "textarea.rows = 5;" in panel
+    assert 'uiString("journal_transcript_generate")' in panel
+    assert 'uiString("journal_transcript_save")' in panel
+    assert "generateJournalTranscript(event.session_id, position, refs)" in panel
+    assert "saveJournalTranscript(event.session_id, position, refs)" in panel
+    assert "_loadJournalTranscript(event.session_id, position, refs)" in panel
+
+
+def test_transcript_endpoints_are_token_scoped_and_typed():
+    url_body = APP_JS.split("function _journalTranscriptUrl(")[1].split("\n}")[0]
+    assert "_journalUrl(" in url_body
+    assert '"/api/journal/transcripts/"' in url_body
+    save_body = APP_JS.split("async function saveJournalTranscript(")[1].split("\n}")[0]
+    assert 'method: "PUT"' in save_body
+    generate_body = APP_JS.split("async function generateJournalTranscript(")[1].split(
+        "\n}"
+    )[0]
+    assert 'method: "POST"' in generate_body
+
+
+def test_transcript_strings_present_in_both_languages():
+    for key in (
+        "journal_transcript_title",
+        "journal_transcript_generate",
+        "journal_transcript_save",
+        "journal_transcript_none",
+        "journal_transcript_generating",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2

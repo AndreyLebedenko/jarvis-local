@@ -11,6 +11,7 @@ from typing import Protocol
 from jarvis.core.bus import EventBus
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import (
+    JournalEvent,
     JournalEventAppended,
     JournalEventRecord,
     JournalEventRef,
@@ -22,7 +23,21 @@ from jarvis.journal.store import (
     JournalStore,
     JournalUsage,
 )
-from jarvis.journal.transcript import TranscriptOverlayRepository
+from jarvis.journal.transcript import (
+    TranscriptOverlayChanged,
+    TranscriptOverlayRepository,
+)
+
+
+class TranscriptReprojectionSource(Protocol):
+    """Reads the raw source event for a transcript re-projection.
+
+    Validation is against the authoritative raw journal, so a transcript
+    written for a valid event always re-projects even if a derived projection
+    lagged the original append.
+    """
+
+    def read_event(self, reference: JournalEventRef) -> JournalEvent | None: ...
 
 
 class HistoryProjectionStatus(Enum):
@@ -208,13 +223,17 @@ class HistoryProjectionLifecycle:
         logger: logging.Logger | None = None,
         create_task: Callable[[Coroutine[object, object, None]], asyncio.Task[None]]
         | None = None,
+        transcript_event_source: TranscriptReprojectionSource | None = None,
     ) -> None:
         self._bus = bus
         self._projections = projections
         self._semantic_projection = semantic_projection
         self._logger = logger or logging.getLogger(__name__)
         self._create_task = create_task or asyncio.create_task
+        self._transcript_event_source = transcript_event_source
         self._pending_tasks: set[asyncio.Task[None]] = set()
+        self._reprojection_active: set[JournalEventRef] = set()
+        self._reprojection_pending: set[JournalEventRef] = set()
         self._start_lock = asyncio.Lock()
         self._subscribed = False
 
@@ -228,6 +247,10 @@ class HistoryProjectionLifecycle:
                 return
             await asyncio.to_thread(self._rebuild_startup_projections)
             self._bus.subscribe(JournalEventAppended, self._on_journal_event_appended)
+            if self._transcript_event_source is not None:
+                self._bus.subscribe(
+                    TranscriptOverlayChanged, self._on_transcript_overlay_changed
+                )
             self._subscribed = True
 
     async def close(self) -> None:
@@ -236,6 +259,10 @@ class HistoryProjectionLifecycle:
                 self._bus.unsubscribe(
                     JournalEventAppended, self._on_journal_event_appended
                 )
+                if self._transcript_event_source is not None:
+                    self._bus.unsubscribe(
+                        TranscriptOverlayChanged, self._on_transcript_overlay_changed
+                    )
                 self._subscribed = False
         await self.wait_for_idle()
 
@@ -259,6 +286,57 @@ class HistoryProjectionLifecycle:
         task = self._create_task(self._project_appended_event(record))
         self._pending_tasks.add(task)
         task.add_done_callback(self._pending_tasks.discard)
+
+    async def _on_transcript_overlay_changed(
+        self, event: TranscriptOverlayChanged
+    ) -> None:
+        reference = event.reference
+        if reference in self._reprojection_active:
+            # A re-projection for this event is already running. Two concurrent
+            # runs for one reference could commit the corpus and semantic
+            # writes out of order and leave them reflecting different overlay
+            # versions. Mark the in-flight run to repeat once instead, so
+            # re-projection stays serialized per event and always ends reading
+            # the current overlay.
+            self._reprojection_pending.add(reference)
+            return
+        self._reprojection_active.add(reference)
+        task = self._create_task(self._run_transcript_reprojection(reference))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _run_transcript_reprojection(self, reference: JournalEventRef) -> None:
+        try:
+            while True:
+                await self._reproject_transcript_event(reference)
+                # No await between this check and either looping or returning,
+                # so an overlay change delivered during the run above is
+                # observed atomically and coalesced into exactly one rerun.
+                if reference not in self._reprojection_pending:
+                    return
+                self._reprojection_pending.discard(reference)
+        finally:
+            self._reprojection_active.discard(reference)
+
+    async def _reproject_transcript_event(self, reference: JournalEventRef) -> None:
+        source = self._transcript_event_source
+        if source is None:
+            return
+        try:
+            event = await asyncio.to_thread(source.read_event, reference)
+            if event is None:
+                # The overlay outlived its source event (e.g. a deleted
+                # session). Deletion already removed the derived rows; there is
+                # nothing to re-project.
+                return
+            record = JournalEventRecord(reference, event)
+            await asyncio.to_thread(self._project_event, record)
+        except Exception:
+            self._logger.exception(
+                "Transcript re-projection failed for %s:%s",
+                reference.session_id,
+                reference.event_position,
+            )
 
     async def _project_appended_event(self, record: JournalEventRecord) -> None:
         try:

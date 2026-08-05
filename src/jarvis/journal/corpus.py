@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from jarvis.journal.events import (
+    JournalEvent,
     JournalEventRecord,
     JournalEventRef,
     JSONValue,
@@ -18,7 +19,12 @@ from jarvis.journal.events import (
 )
 from jarvis.journal.store import JournalStore
 
-CURRENT_HISTORY_CORPUS_SCHEMA_VERSION = 1
+# Schema version 2 adds the derived ``effective_text`` column: the text a
+# retrieval projection should index and hydrate for one event, which is the
+# raw event text for a normal turn and the transcript overlay text for a voice
+# turn whose raw text is empty. Raw ``text`` stays byte-untouched for
+# provenance; ``effective_text`` is a rebuildable derived value.
+CURRENT_HISTORY_CORPUS_SCHEMA_VERSION = 2
 HISTORY_READ_MAX_EVENTS_PER_RANGE = 200
 HISTORY_READ_MAX_BATCH_RANGES = 8
 HISTORY_READ_MAX_TOTAL_EVENTS = 500
@@ -30,6 +36,18 @@ _QUERY_TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
 
 class HistoryCorpusSchemaError(Exception):
     pass
+
+
+class EffectiveTranscriptResolver(Protocol):
+    """Supplies the derived transcript overlay text for one source event.
+
+    Returns the overlay's effective text (generated or user-edited) for the
+    reference, or ``None`` when no overlay exists. The corpus consults it only
+    when an event's raw text is empty, so a normal text turn never pays a
+    lookup and voice turns become retrievable through their transcript.
+    """
+
+    def transcript_text(self, reference: JournalEventRef) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -44,6 +62,29 @@ class HistoryCorpusEvent:
     media_count: int
     transcript: str | None
     metadata: dict[str, JSONValue]
+    effective_text: str = ""
+
+    @property
+    def indexed_text(self) -> str:
+        """The text retrieval indexes and hydrates for this event.
+
+        Equal to the raw text for a normal turn; the transcript overlay text
+        for a voice turn whose raw text is empty. Falls back to raw text when
+        no derived value was stored (e.g. a value constructed in a test).
+        """
+
+        return self.effective_text or self.text
+
+    @property
+    def text_is_transcript(self) -> bool:
+        """Whether ``indexed_text`` came from a transcript overlay.
+
+        True only when the raw event carried no text of its own and a
+        transcript supplied the indexed text, so a caller can source-frame the
+        text as a transcript rather than the user's own words.
+        """
+
+        return bool(self.effective_text) and not self.text.strip()
 
 
 @dataclass(frozen=True)
@@ -191,13 +232,35 @@ class HistorySearchResult:
 
 
 class HistoryCorpusRepository:
-    def __init__(self, store: JournalStore, root: Path) -> None:
+    def __init__(
+        self,
+        store: JournalStore,
+        root: Path,
+        transcripts: EffectiveTranscriptResolver | None = None,
+    ) -> None:
         self._store = store
         self._db_path = root / _CORPUS_FILE_NAME
+        self._transcripts = transcripts
 
     @property
     def db_path(self) -> Path:
         return self._db_path
+
+    def _effective_text(self, event: JournalEvent, reference: JournalEventRef) -> str:
+        """Resolve the text to index/hydrate for one event.
+
+        Raw text wins when present, so an ordinary turn never consults the
+        overlay store. A voice turn with empty raw text falls back to its
+        transcript overlay (when one exists), which is what makes voice content
+        retrievable without rewriting the raw journal.
+        """
+
+        if event.text.strip():
+            return event.text
+        if self._transcripts is None:
+            return event.text
+        overlay = self._transcripts.transcript_text(reference)
+        return overlay if overlay else event.text
 
     def rebuild(self) -> None:
         self._check_existing_schema_version()
@@ -233,7 +296,8 @@ class HistoryCorpusRepository:
                     media_json,
                     media_count,
                     transcript,
-                    metadata_json
+                    metadata_json,
+                    effective_text
                 FROM history_corpus_events
                 ORDER BY timestamp_sort, session_id, event_position
                 """
@@ -475,6 +539,7 @@ class HistoryCorpusRepository:
         reference = record.reference
         event = record.event
         timestamp = parse_journal_timestamp(event.timestamp)
+        effective_text = self._effective_text(event, reference)
         connection.execute(
             """
             INSERT INTO history_corpus_events (
@@ -488,9 +553,10 @@ class HistoryCorpusRepository:
                 media_json,
                 media_count,
                 transcript,
-                metadata_json
+                metadata_json,
+                effective_text
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reference.session_id,
@@ -504,9 +570,10 @@ class HistoryCorpusRepository:
                 len(event.media),
                 event.transcript,
                 _json_dumps(event.metadata),
+                effective_text,
             ),
         )
-        if event.role in {"user", "assistant"} and event.text:
+        if event.role in {"user", "assistant"} and effective_text.strip():
             connection.execute(
                 """
                 INSERT INTO history_corpus_event_fts (
@@ -529,7 +596,7 @@ class HistoryCorpusRepository:
                     timestamp.date().isoformat(),
                     event.role,
                     event.source,
-                    event.text,
+                    effective_text,
                 ),
             )
 
@@ -563,6 +630,7 @@ class HistoryCorpusRepository:
                 media_count INTEGER NOT NULL,
                 transcript TEXT,
                 metadata_json TEXT NOT NULL,
+                effective_text TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (session_id, event_position)
             )
             """
@@ -700,7 +768,8 @@ class HistoryCorpusRepository:
                 media_json,
                 media_count,
                 transcript,
-                metadata_json
+                metadata_json,
+                effective_text
             FROM history_corpus_events
             WHERE session_id = ? AND event_position = ?
             """,
@@ -737,7 +806,8 @@ class HistoryCorpusRepository:
                 events.media_json,
                 events.media_count,
                 events.transcript,
-                events.metadata_json
+                events.metadata_json,
+                events.effective_text
             FROM requested
             JOIN history_corpus_events AS events
               ON events.session_id = requested.session_id
@@ -778,7 +848,8 @@ class HistoryCorpusRepository:
                 media_json,
                 media_count,
                 transcript,
-                metadata_json
+                metadata_json,
+                effective_text
             FROM history_corpus_events
             WHERE session_id = ?
               AND event_position >= ?
@@ -902,17 +973,20 @@ class HistoryCorpusRepository:
     def _row_to_event(row: sqlite3.Row | tuple[object, ...]) -> HistoryCorpusEvent:
         media = _json_load_list(row[7], "media_json")
         metadata = _json_load_object(row[10], "metadata_json")
+        text = str(row[6])
+        effective_text = str(row[11]) if row[11] is not None else text
         return HistoryCorpusEvent(
             reference=JournalEventRef(str(row[0]), int(row[1])),
             timestamp=str(row[2]),
             timestamp_sort=float(row[3]),
             role=str(row[4]),
             source=str(row[5]),
-            text=str(row[6]),
+            text=text,
             media=tuple(media),
             media_count=int(row[8]),
             transcript=None if row[9] is None else str(row[9]),
             metadata=metadata,
+            effective_text=effective_text,
         )
 
 

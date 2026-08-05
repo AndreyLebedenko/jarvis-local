@@ -45,7 +45,7 @@ from jarvis.inputs.attachments import (
     plan_attachments,
 )
 from jarvis.journal.corpus import HISTORY_SEARCH_MAX_RESULTS
-from jarvis.journal.events import JournalEvent, JournalEventAppended
+from jarvis.journal.events import JournalEvent, JournalEventAppended, JournalEventRef
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
 from jarvis.journal.lifecycle import (
     HistoryProjectionConsistencyError,
@@ -53,6 +53,19 @@ from jarvis.journal.lifecycle import (
 )
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.store import JournalReplay, JournalStore
+from jarvis.journal.transcript import (
+    TRANSCRIPT_MAX_TEXT_LENGTH,
+    TranscriptOverlayChanged,
+    TranscriptOverlayRead,
+    TranscriptOverlayRepository,
+    TranscriptSource,
+    TranscriptUpsertStatus,
+)
+from jarvis.journal.transcription import (
+    TranscriptionOutcome,
+    TranscriptionResult,
+    TranscriptionService,
+)
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileOverCapError,
@@ -569,6 +582,8 @@ class UiTransportServer:
         journal_fork_handler: JournalForkHandler | None = None,
         journal_fork_seed_max_chars: int = DEFAULT_FORK_SEED_MAX_CHARS,
         journal_active_session_id: Callable[[], str | None] | None = None,
+        journal_transcript_repository: TranscriptOverlayRepository | None = None,
+        journal_transcription_service: TranscriptionService | None = None,
         memory_file_repository: MemoryFileRepository | None = None,
     ) -> None:
         self._bus = bus
@@ -588,6 +603,8 @@ class UiTransportServer:
         self._journal_fork_handler = journal_fork_handler
         self._journal_fork_seed_max_chars = journal_fork_seed_max_chars
         self._journal_active_session_id = journal_active_session_id or (lambda: None)
+        self._journal_transcript_repository = journal_transcript_repository
+        self._journal_transcription_service = journal_transcription_service
         self._memory_file_repository = memory_file_repository
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
@@ -637,6 +654,18 @@ class UiTransportServer:
             "/api/journal/sessions/{session_id}", self._journal_delete_handler
         )
         app.router.add_get("/api/journal/search", self._journal_search_handler)
+        app.router.add_get(
+            "/api/journal/transcripts/{session_id}/{event_position}",
+            self._journal_transcript_get_handler,
+        )
+        app.router.add_put(
+            "/api/journal/transcripts/{session_id}/{event_position}",
+            self._journal_transcript_put_handler,
+        )
+        app.router.add_post(
+            "/api/journal/transcripts/{session_id}/{event_position}/generate",
+            self._journal_transcript_generate_handler,
+        )
         app.router.add_get(
             "/api/journal/media/{session_id}/{media_path:.*}",
             self._journal_media_handler,
@@ -1128,6 +1157,67 @@ class UiTransportServer:
             }
         )
 
+    async def _journal_transcript_get_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        if self._journal_transcript_repository is None:
+            raise web.HTTPServiceUnavailable(text="transcripts not available")
+        reference = self._parse_transcript_reference(request)
+        read = await asyncio.to_thread(
+            self._journal_transcript_repository.read_transcript, reference
+        )
+        return web.json_response(self._transcript_read_payload(reference, read))
+
+    async def _journal_transcript_put_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        repository = self._journal_transcript_repository
+        if repository is None:
+            raise web.HTTPServiceUnavailable(text="transcripts not available")
+        reference = self._parse_transcript_reference(request)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+            raise web.HTTPBadRequest(text="request body requires string text")
+        result = await asyncio.to_thread(
+            repository.upsert_transcript,
+            reference,
+            payload["text"],
+            TranscriptSource.EDITED,
+        )
+        if not result.accepted:
+            return self._transcript_upsert_rejection(result.status)
+        await self._bus.publish(
+            TranscriptOverlayChanged, TranscriptOverlayChanged(reference)
+        )
+        read = await asyncio.to_thread(repository.read_transcript, reference)
+        return web.json_response(self._transcript_read_payload(reference, read))
+
+    async def _journal_transcript_generate_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        service = self._journal_transcription_service
+        if service is None:
+            raise web.HTTPServiceUnavailable(text="transcription not available")
+        reference = self._parse_transcript_reference(request)
+        result = await service.transcribe_event(reference)
+        if result.transcribed:
+            await self._bus.publish(
+                TranscriptOverlayChanged, TranscriptOverlayChanged(reference)
+            )
+        return self._transcript_generate_response(reference, result)
+
     async def _journal_media_handler(self, request: web.Request) -> web.StreamResponse:
         self._require_http_token(request)
         if self._is_hidden():
@@ -1189,6 +1279,88 @@ class UiTransportServer:
     @staticmethod
     def _journal_hidden_response() -> web.Response:
         return web.json_response({"status": "hidden"})
+
+    @staticmethod
+    def _parse_transcript_reference(request: web.Request) -> JournalEventRef:
+        try:
+            position = int(request.match_info["event_position"])
+        except ValueError:
+            raise web.HTTPBadRequest(text="event_position must be an integer") from None
+        try:
+            return JournalEventRef(request.match_info["session_id"], position)
+        except ValueError:
+            raise web.HTTPBadRequest(text="invalid transcript reference") from None
+
+    @staticmethod
+    def _transcript_read_payload(
+        reference: JournalEventRef, read: TranscriptOverlayRead
+    ) -> JsonObject:
+        overlay = read.overlay
+        payload: JsonObject = {
+            "status": "ok",
+            "reference": {
+                "session_id": reference.session_id,
+                "event_position": reference.event_position,
+            },
+            "found": overlay is not None,
+            "transcript": None,
+        }
+        if overlay is not None:
+            payload["transcript"] = {
+                "text": overlay.text,
+                "source": overlay.source.value,
+                "created_at": overlay.created_at,
+                "updated_at": overlay.updated_at,
+            }
+        return payload
+
+    @staticmethod
+    def _transcript_upsert_rejection(status: TranscriptUpsertStatus) -> web.Response:
+        codes = {
+            TranscriptUpsertStatus.UNKNOWN_REFERENCE: 404,
+            TranscriptUpsertStatus.TEXT_EMPTY: 400,
+            TranscriptUpsertStatus.TEXT_TOO_LONG: 413,
+            TranscriptUpsertStatus.INVALID_SOURCE: 400,
+        }
+        body: JsonObject = {"status": "rejected", "reason": status.value}
+        if status is TranscriptUpsertStatus.TEXT_TOO_LONG:
+            body["max_chars"] = TRANSCRIPT_MAX_TEXT_LENGTH
+        return web.json_response(body, status=codes.get(status, 400))
+
+    def _transcript_generate_response(
+        self, reference: JournalEventRef, result: TranscriptionResult
+    ) -> web.Response:
+        reference_payload = {
+            "session_id": reference.session_id,
+            "event_position": reference.event_position,
+        }
+        if result.transcribed:
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "reference": reference_payload,
+                    "outcome": result.outcome.value,
+                    "transcript": result.transcript,
+                }
+            )
+        codes = {
+            TranscriptionOutcome.UNKNOWN_EVENT: 404,
+            TranscriptionOutcome.NO_AUDIO_MEDIA: 409,
+            TranscriptionOutcome.MEDIA_UNREADABLE: 500,
+            TranscriptionOutcome.EMPTY_TRANSCRIPT: 422,
+            TranscriptionOutcome.TRANSCRIPT_REJECTED: 500,
+            TranscriptionOutcome.BACKEND_FAILED: 502,
+            TranscriptionOutcome.CANCELLED: 409,
+        }
+        return web.json_response(
+            {
+                "status": "rejected",
+                "reference": reference_payload,
+                "reason": result.outcome.value,
+                "detail": result.detail,
+            },
+            status=codes.get(result.outcome, 500),
+        )
 
     @staticmethod
     def _memory_file_payload(read: MemoryFileRead) -> JsonObject:

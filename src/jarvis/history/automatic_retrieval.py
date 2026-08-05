@@ -239,6 +239,7 @@ def _to_retrieved_history_passage(
         timestamp=candidate.timestamp,
         text=candidate.text,
         truncated=False,
+        text_is_transcript=candidate.text_is_transcript,
     )
 
 
