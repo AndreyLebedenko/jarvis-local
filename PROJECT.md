@@ -157,6 +157,24 @@ system is intended to grow.
     transcription. Config: `[history.transcription]` (`enabled`, `instruction`,
     `max_concurrency`). Live transcription quality remains a human-run manual
     handoff (`manual/manual_check_transcription_service.py`).
+- **Annotation overlay store, 2026-08-06 (task v1.8.0-21).** Bounded,
+  source-grounded session annotations are a derived overlay in a separate
+  `annotation_overlays.db` beside the raw journal (same root as the transcript
+  overlay), owned by `AnnotationOverlayRepository`; raw JSONL is never
+  rewritten. Each annotation anchors to a whole session or an inclusive event
+  range and carries `author`, `source` (`GENERATED`/`EDITED`), `status`
+  (`ACTIVE`/`DISMISSED`), and JSON metadata. `EDITED` covers any human change up
+  to a full rewrite - there is no separate human-authored source. `ACTIVE` is
+  the normal state and the generator writes it directly (no human-approval
+  gate); `DISMISSED` hides an annotation without deleting it, for audit.
+  Limits: text 20000 chars, author 200, <=200 annotations per session, metadata
+  <=32 keys and <=4000 serialized chars. Session deletion removes annotations
+  through the registered `AnnotationHistoryProjection` in
+  `HistoryProjectionLifecycle` (its `project_event` is a deliberate no-op -
+  annotations are written explicitly, not derived from an appended event). This
+  card is storage only; model generation (task 22), the typed retrieval seam,
+  API, and UI (task 23) are out of scope, and the story-level design lives in
+  `story-v1.8.0` decision 5. Full contract and rationale in that story card.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

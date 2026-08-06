@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
+from jarvis.journal.annotation import AnnotationOverlayRepository
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import (
     JournalEvent,
@@ -153,6 +154,25 @@ class TranscriptHistoryProjection:
         self._repository.rebuild()
 
     def project_event(self, record: JournalEventRecord) -> None:
+        del record
+
+    def delete_session_projection(self, session_id: str) -> None:
+        self._repository.delete_session(session_id)
+
+
+class AnnotationHistoryProjection:
+    name = "annotation"
+
+    def __init__(self, repository: AnnotationOverlayRepository) -> None:
+        self._repository = repository
+
+    def rebuild(self) -> None:
+        self._repository.rebuild()
+
+    def project_event(self, record: JournalEventRecord) -> None:
+        # Annotations are written explicitly, never derived from an appended
+        # raw event, so an append projects nothing here. Session deletion is
+        # the only lifecycle path that touches the overlay store.
         del record
 
     def delete_session_projection(self, session_id: str) -> None:

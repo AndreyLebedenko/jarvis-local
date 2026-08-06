@@ -287,6 +287,46 @@ text cannot silently become a new system instruction.
 Assistant statements are not promoted to confirmed user facts merely
 because retrieval found them.
 
+**Annotation overlay store contract (task v1.8.0-21, owner-approved
+2026-08-06).** The concrete storage layer for the above:
+
+- **Storage.** A separate `annotation_overlays.db` (schema version 1) beside
+  the raw journal, at the same root as the transcript overlay, owned by
+  `AnnotationOverlayRepository`. Raw JSONL bytes are never touched; the store is
+  a rebuildable derived projection with its own schema-version health check.
+- **Anchor.** `AnnotationTarget` is either a whole session (both positions
+  `None`) or an inclusive event range `[start, end]` with `start <= end`; a
+  single event is `[n, n]`. Range validity leans on append-only contiguity:
+  if `end` exists the whole prefix does, so the resolver checks the endpoints
+  against the authoritative raw journal (`JournalStoreEventReferenceResolver`),
+  never a derived projection. A whole-session target probes position 0.
+- **Identity and fields.** Many annotations per session, each with a generated
+  `annotation_id`. Fields: `text`, `author`, `source` (`GENERATED` = model,
+  `EDITED` = any human change up to a full rewrite - no separate human-authored
+  source), `status` (`ACTIVE` default / `DISMISSED`), `metadata` (JSON), and
+  created/updated timestamps.
+- **Status semantics.** `ACTIVE` is the normal state; the task-22 generator
+  writes `ACTIVE` directly, with no mandatory human-approval gate before an
+  annotation is usable. `DISMISSED` lets a later UI hide an annotation without
+  deleting it, preserving the audit trail; nothing in these cards transitions
+  status automatically.
+- **Limits.** text 20000 chars, author 200 chars, at most 200 annotations per
+  session, metadata at most 32 keys and 4000 serialized chars. These are
+  internal store bounds, tunable, and independent of `num_ctx`.
+- **Operations.** `add`, `update` (edit text/status/source/metadata, keeps
+  `created_at`), `read` by id, `read_session_annotations` (insertion order),
+  `delete` by id, `delete_session`, `rebuild`, `count`. `update` stays in this
+  card because editability is part of this decision; UI controls do not.
+- **Lifecycle.** `AnnotationHistoryProjection` is registered in
+  `HistoryProjectionLifecycle`; its `project_event` is a no-op (annotations are
+  written explicitly, not derived from an appended raw event), and session
+  deletion fans out to the overlay through `JournalHistoryService`.
+- **Out of scope for task 21.** Model generation (task 22); the typed
+  retrieval seam that keeps `annotation_id`/target/metadata traceable, API, and
+  UI (task 23); consolidation. The store deliberately exposes no
+  text-only retrieval resolver, so task 23 can design a provenance-preserving
+  retrieval contract rather than inherit a lossy one.
+
 ### 6. Consolidation serves the unlimited-history goal
 
 Near sessions retain original replayable media. Far sessions retain full

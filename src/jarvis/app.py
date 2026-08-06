@@ -105,6 +105,7 @@ from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
 from jarvis.journal import HistoryRetrievalFallbackMode, HistoryRetrievalStatus
+from jarvis.journal.annotation import AnnotationOverlayRepository
 from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
@@ -113,6 +114,7 @@ from jarvis.journal.fork import (
     build_fork_seed,
 )
 from jarvis.journal.lifecycle import (
+    AnnotationHistoryProjection,
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalHistoryService,
@@ -1121,6 +1123,7 @@ class App:
     journal_history_service: JournalHistoryService | None = None
     journal_recorder: JournalRecorder | None = None
     transcript_overlay_repository: TranscriptOverlayRepository | None = None
+    annotation_overlay_repository: AnnotationOverlayRepository | None = None
     transcription_service: TranscriptionService | None = None
     memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
@@ -1236,6 +1239,10 @@ def build_app(
     transcript_text_resolver = TranscriptOverlayTextResolver(
         transcript_overlay_repository
     )
+    annotation_overlay_repository = AnnotationOverlayRepository(
+        journal_store.root,
+        JournalStoreEventReferenceResolver(journal_store),
+    )
     journal_search_index = JournalSearchIndex(
         journal_store,
         journal_store.root,
@@ -1287,6 +1294,7 @@ def build_app(
         projections=(
             CorpusHistoryProjection(history_corpus_repository),
             TranscriptHistoryProjection(transcript_overlay_repository),
+            AnnotationHistoryProjection(annotation_overlay_repository),
         ),
         semantic_projection=semantic_projection,
         logger=logger,
@@ -1357,6 +1365,7 @@ def build_app(
         journal_history_service=journal_history_service,
         journal_recorder=journal_recorder,
         transcript_overlay_repository=transcript_overlay_repository,
+        annotation_overlay_repository=annotation_overlay_repository,
         transcription_service=transcription_service,
         memory_file_repository=memory_file_repository,
         settings=settings,
