@@ -1,6 +1,6 @@
 # Task v1.8.0-21: Annotation overlay store
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-9.
 
@@ -28,10 +28,10 @@ and consolidation.
 
 ## Acceptance criteria
 
-- [ ] Raw journal bytes are unchanged by annotation writes.
-- [ ] Invalid references and oversize annotations are rejected.
-- [ ] Session deletion removes annotations.
-- [ ] Reads expose source references and metadata.
+- [x] Raw journal bytes are unchanged by annotation writes.
+- [x] Invalid references and oversize annotations are rejected.
+- [x] Session deletion removes annotations.
+- [x] Reads expose source references and metadata.
 
 ## Stop conditions
 

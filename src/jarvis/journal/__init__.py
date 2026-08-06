@@ -1,5 +1,26 @@
 """Append-only dialog journal data layer."""
 
+from jarvis.journal.annotation import (
+    ANNOTATION_MAX_AUTHOR_LENGTH,
+    ANNOTATION_MAX_METADATA_ENTRIES,
+    ANNOTATION_MAX_METADATA_SERIALIZED_LENGTH,
+    ANNOTATION_MAX_PER_SESSION,
+    ANNOTATION_MAX_TEXT_LENGTH,
+    ANNOTATION_OVERLAY_DB_NAME,
+    CURRENT_ANNOTATION_OVERLAY_SCHEMA_VERSION,
+    Annotation,
+    AnnotationDeleteResult,
+    AnnotationDeleteStatus,
+    AnnotationOverlayRepository,
+    AnnotationOverlaySchemaError,
+    AnnotationRead,
+    AnnotationReadStatus,
+    AnnotationSource,
+    AnnotationStatus,
+    AnnotationTarget,
+    AnnotationWriteResult,
+    AnnotationWriteStatus,
+)
 from jarvis.journal.corpus import (
     CURRENT_HISTORY_CORPUS_SCHEMA_VERSION,
     HISTORY_READ_MAX_BATCH_RANGES,
@@ -36,6 +57,7 @@ from jarvis.journal.events import (
     new_session_id,
 )
 from jarvis.journal.lifecycle import (
+    AnnotationHistoryProjection,
     CorpusHistoryProjection,
     HistoryProjectionConsistencyError,
     HistoryProjectionLifecycle,
@@ -120,7 +142,14 @@ from jarvis.journal.transcription import (
 )
 
 __all__ = [
+    "ANNOTATION_MAX_AUTHOR_LENGTH",
+    "ANNOTATION_MAX_METADATA_ENTRIES",
+    "ANNOTATION_MAX_METADATA_SERIALIZED_LENGTH",
+    "ANNOTATION_MAX_PER_SESSION",
+    "ANNOTATION_MAX_TEXT_LENGTH",
+    "ANNOTATION_OVERLAY_DB_NAME",
     "AUDIO_MEDIA_EXTENSIONS",
+    "CURRENT_ANNOTATION_OVERLAY_SCHEMA_VERSION",
     "CURRENT_HISTORY_CORPUS_SCHEMA_VERSION",
     "CURRENT_SEMANTIC_PROJECTION_SCHEMA_VERSION",
     "CURRENT_TRANSCRIPT_OVERLAY_SCHEMA_VERSION",
@@ -134,6 +163,19 @@ __all__ = [
     "SEMANTIC_MAX_RESULTS",
     "TRANSCRIPT_MAX_TEXT_LENGTH",
     "TRANSCRIPT_OVERLAY_DB_NAME",
+    "Annotation",
+    "AnnotationDeleteResult",
+    "AnnotationDeleteStatus",
+    "AnnotationHistoryProjection",
+    "AnnotationOverlayRepository",
+    "AnnotationOverlaySchemaError",
+    "AnnotationRead",
+    "AnnotationReadStatus",
+    "AnnotationSource",
+    "AnnotationStatus",
+    "AnnotationTarget",
+    "AnnotationWriteResult",
+    "AnnotationWriteStatus",
     "CorpusHistoryProjection",
     "EmbeddingProvider",
     "EventReferenceResolver",

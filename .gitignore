@@ -8,6 +8,7 @@ config.toml
 config.ui.toml
 .jarvis/
 .idea/
+.local-models/**
 /screenshots/
 manual_check_audio_out/
 manual_check_microphone_devices_out/
@@ -18,9 +19,10 @@ manual_check_aec_spike_out/
 manual_check_context_token_budget_out/
 sounds/
 .planning/
+.claude/**
 .claude/settings.local.json
 .claude/settings.json
-graphify-out/
+graphify-out/**
 /journal/
 /logs/
 /memory/
