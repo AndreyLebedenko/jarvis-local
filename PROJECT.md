@@ -210,6 +210,48 @@ system is intended to grow.
     user fact - story decision 5, finalized by task 23). Live summarization
     quality beyond these traps remains a human judgment; the objective checks
     and raw outputs are archived, the faithfulness sign-off is evidential only.
+- **Annotation retrieval, API, and UI, 2026-08-07 (task v1.8.0-23).** Makes the
+  derived annotations (task 21/22) retrievable and editable without ever
+  confusing them with raw history. The store deliberately shipped no text-only
+  retrieval resolver, so this card designs the provenance-preserving contract.
+  Owner-approved model:
+  - **Separate derived projections, one retrieval surface.** Annotation text is
+    indexed into its own lexical (FTS, pymorphy-normalized like events) and
+    semantic (passages keyed by `annotation_id`) projections, physically
+    distinct from the event corpus/FTS/semantic tables - annotation rows never
+    enter the event projections, so a retrieved annotation can never replace a
+    raw event or range read. `HistoryRetrievalService` remains the single hybrid
+    surface: it queries the event and annotation lexical and semantic sources,
+    fuses them into one ranked result, and reuses the single per-turn query
+    embedding across both semantic indices (added live-path cost is one more ANN
+    lookup, not a second forward pass). A fully separate annotation retrieval API
+    was rejected (duplicated stack, contradicts "annotations join the retrieval
+    corpus", second surface against decisions 10/11).
+  - **Typed candidates.** A retrieval candidate is a discriminated identity: an
+    event (`JournalEventRef` -> `read_events`) or an annotation (`annotation_id`
+    + `AnnotationTarget` -> `AnnotationOverlayRepository`). An annotation carries
+    `kind=annotation`, `source` (`GENERATED`/`EDITED`), and its target, and is
+    surfaced as delimited derived data, never as a user/assistant turn; the raw
+    range it summarizes stays independently readable and byte-untouched. This is
+    how derived text is distinguished from raw by construction.
+  - **Eligible for automatic and explicit retrieval.** Annotations are not
+    filtered out of automatic pre-turn retrieval (a session summary is a
+    high-density source-framed signal a bounded context wants). Anti-pollution
+    ranking is selector policy (card 16), validated by the card-26 regression,
+    not suppression at the surface.
+  - **Lifecycle-owned reprojection.** Add/edit/delete publishes
+    `AnnotationOverlayChanged`; `HistoryProjectionLifecycle` reprojects only that
+    annotation's lexical and semantic rows off-thread, mirroring
+    `TranscriptOverlayChanged`. `AnnotationHistoryProjection.project_event` stays
+    a no-op. Session deletion also clears the annotation lexical/semantic
+    projections (decision 12).
+  - **API/UI.** Authenticated read/list/edit/generate endpoints keyed by session
+    and `annotation_id` (generate by whole-session or event range), same
+    `_require_http_token` + Hidden-mode suppression pattern; edits store
+    `AnnotationSource.EDITED`, generate runs the task-22 service. The Journal UI
+    shows session/range annotations with source references, editable, Hidden mode
+    suppresses them, and there is no automatic background generation. Full
+    contract in `story-v1.8.0` decision 5.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`
