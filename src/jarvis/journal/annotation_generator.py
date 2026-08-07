@@ -40,7 +40,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, TypeVar
@@ -48,6 +48,7 @@ from typing import Protocol, TypeVar
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.annotation import (
     ANNOTATION_MAX_TEXT_LENGTH,
+    AnnotationOverlayChanged,
     AnnotationSource,
     AnnotationStatus,
     AnnotationTarget,
@@ -97,6 +98,13 @@ _T = TypeVar("_T")
 
 # One chat message as this service builds it: role plus text content.
 ChatMessageValue = str | Sequence[str]
+
+# Publishes an annotation-overlay change so the history projection lifecycle can
+# reproject the derived retrieval rows. The generator is a production writer of
+# annotations, so it publishes on a successful write; the change signal is a
+# projection-maintenance concern, distinct from the dialog/TTS pipeline this
+# service deliberately never touches.
+AnnotationChangePublisher = Callable[[AnnotationOverlayChanged], Awaitable[None]]
 
 
 class AnnotationGenerationOutcome(Enum):
@@ -411,6 +419,7 @@ class AnnotationGenerationService:
         max_source_chars: int = DEFAULT_MAX_SOURCE_CHARS,
         max_annotation_chars: int = DEFAULT_MAX_ANNOTATION_CHARS,
         author: str = GENERATOR_AUTHOR,
+        publish_changed: AnnotationChangePublisher | None = None,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1")
@@ -434,6 +443,7 @@ class AnnotationGenerationService:
         self._max_source_chars = max_source_chars
         self._max_annotation_chars = max_annotation_chars
         self._author = author
+        self._publish_changed = publish_changed
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._active: dict[
             AnnotationTarget, asyncio.Task[AnnotationGenerationResult]
@@ -706,6 +716,7 @@ class AnnotationGenerationService:
                     metadata=run.metadata,
                 )
             )
+        await self._publish_change(target.session_id, write.annotation_id)
         return self._log_result(
             AnnotationGenerationResult(
                 target,
@@ -716,6 +727,25 @@ class AnnotationGenerationService:
                 metadata=run.metadata,
             )
         )
+
+    async def _publish_change(self, session_id: str, annotation_id: str | None) -> None:
+        """Signal the projection lifecycle that a new annotation exists.
+
+        A publish failure must not fail an already-committed generation: the
+        overlay is written and the result stands; the derived projections just
+        stay stale until the next change or a restart rebuild.
+        """
+
+        if self._publish_changed is None or annotation_id is None:
+            return
+        try:
+            await self._publish_changed(
+                AnnotationOverlayChanged(session_id, annotation_id)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to publish annotation change for %s", annotation_id
+            )
 
     def _log_result(
         self, result: AnnotationGenerationResult

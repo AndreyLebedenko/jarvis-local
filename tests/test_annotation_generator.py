@@ -8,6 +8,7 @@ import pytest
 
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.annotation import (
+    AnnotationOverlayChanged,
     AnnotationOverlayRepository,
     AnnotationSource,
     AnnotationStatus,
@@ -257,6 +258,46 @@ class TestGenerateHappyPath:
         assert stored.status is AnnotationStatus.ACTIVE
         assert stored.target.start_position == 0
         assert stored.target.end_position == 2
+
+    async def test_publishes_change_on_successful_write(self, tmp_path: Path) -> None:
+        reader = _FakeSourceReader(
+            _found(_range(0, 2), [_event(0), _event(1), _event(2)])
+        )
+        repo = _repo(tmp_path)
+        published: list[AnnotationOverlayChanged] = []
+
+        async def _publish(event: AnnotationOverlayChanged) -> None:
+            published.append(event)
+
+        service = _service(
+            reader, _FakeBackend(text="summary"), repo, publish_changed=_publish
+        )
+
+        result = await service.generate_annotation(_target(0, 2))
+
+        assert result.outcome is AnnotationGenerationOutcome.GENERATED
+        assert published == [AnnotationOverlayChanged(_SESSION, result.annotation_id)]
+
+    async def test_does_not_publish_when_nothing_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        reader = _FakeSourceReader(
+            _found(_range(0, 0), [_event(0)]),
+        )
+        repo = _repo(tmp_path)
+        published: list[AnnotationOverlayChanged] = []
+
+        async def _publish(event: AnnotationOverlayChanged) -> None:
+            published.append(event)
+
+        service = _service(
+            reader, _FakeBackend(text="   "), repo, publish_changed=_publish
+        )
+
+        result = await service.generate_annotation(_target(0, 0))
+
+        assert result.outcome is AnnotationGenerationOutcome.EMPTY_ANNOTATION
+        assert published == []
 
     async def test_whole_session_reads_full_span_and_stores_whole_session(
         self, tmp_path: Path

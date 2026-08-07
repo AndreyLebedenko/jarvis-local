@@ -244,7 +244,13 @@ system is intended to grow.
     annotation's lexical and semantic rows off-thread, mirroring
     `TranscriptOverlayChanged`. `AnnotationHistoryProjection.project_event` stays
     a no-op. Session deletion also clears the annotation lexical/semantic
-    projections (decision 12).
+    projections (decision 12). One annotation's read-then-write re-projection and
+    session-projection deletion are serialized under a shared lock, so a deletion
+    racing an in-flight re-projection cannot resurface a deleted session's rows.
+    Unlike the transcript path (where the API layer publishes), the generation
+    service publishes on a successful write - it is the production writer, so
+    co-locating the publish keeps a generated annotation retrievable regardless
+    of caller; the API edit path publishes for edits.
   - **API/UI.** Authenticated read/list/edit/generate endpoints keyed by session
     and `annotation_id` (generate by whole-session or event range), same
     `_require_http_token` + Hidden-mode suppression pattern; edits store

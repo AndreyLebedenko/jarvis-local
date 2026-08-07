@@ -105,7 +105,10 @@ from jarvis.inputs.hotkeys import HotkeyProvider, WindowsHotkeyProvider
 from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
 from jarvis.journal import HistoryRetrievalFallbackMode, HistoryRetrievalStatus
-from jarvis.journal.annotation import AnnotationOverlayRepository
+from jarvis.journal.annotation import (
+    AnnotationOverlayChanged,
+    AnnotationOverlayRepository,
+)
 from jarvis.journal.annotation_generator import (
     AnnotationGenerationService,
     OllamaAnnotationBackend,
@@ -1185,6 +1188,7 @@ def _build_annotation_generation_service(
     corpus: HistoryCorpusRepository,
     backend: OllamaBackend,
     annotations: AnnotationOverlayRepository,
+    bus: EventBus,
 ) -> AnnotationGenerationService:
     annotation_settings = settings.history.annotation
     kwargs: dict[str, object] = {
@@ -1200,6 +1204,7 @@ def _build_annotation_generation_service(
         corpus,
         OllamaAnnotationBackend(backend),
         annotations,
+        publish_changed=lambda event: bus.publish(AnnotationOverlayChanged, event),
         **kwargs,
     )
 
@@ -1339,6 +1344,7 @@ def build_app(
             history_corpus_repository,
             backend,
             annotation_overlay_repository,
+            bus,
         )
         if settings.history.annotation.enabled
         else None
