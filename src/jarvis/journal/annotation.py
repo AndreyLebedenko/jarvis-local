@@ -148,6 +148,23 @@ class AnnotationDeleteResult:
     status: AnnotationDeleteStatus
 
 
+@dataclass(frozen=True)
+class AnnotationOverlayChanged:
+    """Published when an annotation is added, edited, or removed.
+
+    Mirrors ``TranscriptOverlayChanged``: overlay writers (the API edit path and
+    the task-22 generator) publish it so the history projection lifecycle can
+    reproject just this annotation's derived lexical and semantic rows, without
+    the writers knowing about projections. ``annotation_id`` identifies the row
+    to reproject; ``session_id`` is carried for filtering and diagnostics. A
+    deleted annotation still publishes it - the reprojection then finds the row
+    gone and clears the derived rows instead of re-indexing.
+    """
+
+    session_id: str
+    annotation_id: str
+
+
 class AnnotationOverlayRepository:
     def __init__(self, root: Path, references: EventReferenceResolver) -> None:
         self._db_path = root / ANNOTATION_OVERLAY_DB_NAME
@@ -274,6 +291,24 @@ class AnnotationOverlayRepository:
         if row is None:
             return AnnotationRead(AnnotationReadStatus.NOT_FOUND)
         return AnnotationRead(AnnotationReadStatus.FOUND, _row_to_annotation(row))
+
+    def list_all_annotations(self) -> tuple[Annotation, ...]:
+        """Every annotation across all sessions, in insertion order.
+
+        The derived retrieval projections (task v1.8.0-23) enumerate the store
+        through this to rebuild their lexical and semantic rows from scratch.
+        """
+
+        connection = self._open_read_connection()
+        if connection is None:
+            return ()
+        with closing(connection):
+            if not _table_exists(connection, "annotation_overlays"):
+                return ()
+            rows = connection.execute(
+                f"SELECT {_ANNOTATION_COLUMNS} FROM annotation_overlays ORDER BY rowid"
+            ).fetchall()
+        return tuple(_row_to_annotation(row) for row in rows)
 
     def read_session_annotations(self, session_id: str) -> tuple[Annotation, ...]:
         connection = self._open_read_connection()

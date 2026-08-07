@@ -110,6 +110,8 @@ from jarvis.journal.annotation_generator import (
     AnnotationGenerationService,
     OllamaAnnotationBackend,
 )
+from jarvis.journal.annotation_search import AnnotationSearchIndex
+from jarvis.journal.annotation_semantic import AnnotationSemanticIndex
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
@@ -1298,6 +1300,18 @@ def build_app(
         query_embedder=semantic_query_embedder,
         transcripts=transcript_text_resolver,
     )
+    annotation_search_index = AnnotationSearchIndex(
+        annotation_overlay_repository,
+        journal_store.root,
+    )
+    annotation_semantic_index = AnnotationSemanticIndex(
+        annotation_overlay_repository,
+        journal_store.root,
+        settings.history.semantic,
+        semantic_index_embedder,
+        logger=logger,
+        query_embedder=semantic_query_embedder,
+    )
     history_retrieval_service = HistoryRetrievalService(
         history_corpus_repository,
         semantic_projection,
@@ -1339,6 +1353,11 @@ def build_app(
         semantic_projection=semantic_projection,
         logger=logger,
         transcript_event_source=JournalStoreTranscriptionSource(journal_store),
+        annotation_projections=(
+            annotation_search_index,
+            annotation_semantic_index,
+        ),
+        annotation_source=annotation_overlay_repository,
     )
     journal_history_service = JournalHistoryService(
         journal_store,

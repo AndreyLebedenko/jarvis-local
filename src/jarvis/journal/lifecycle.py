@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -9,7 +10,12 @@ from pathlib import Path
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
-from jarvis.journal.annotation import AnnotationOverlayRepository
+from jarvis.journal.annotation import (
+    Annotation,
+    AnnotationOverlayChanged,
+    AnnotationOverlayRepository,
+    AnnotationRead,
+)
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import (
     JournalEvent,
@@ -39,6 +45,37 @@ class TranscriptReprojectionSource(Protocol):
     """
 
     def read_event(self, reference: JournalEventRef) -> JournalEvent | None: ...
+
+
+class AnnotationReprojectionSource(Protocol):
+    """Reads one annotation by id for a re-projection.
+
+    ``AnnotationOverlayRepository`` satisfies this structurally. A missing read
+    (the annotation was deleted) drives the derived projections to drop the row
+    rather than re-index it.
+    """
+
+    def read_annotation(self, annotation_id: str) -> AnnotationRead: ...
+
+
+class AnnotationDerivedProjection(Protocol):
+    """A derived retrieval projection over the annotation overlay store.
+
+    Unlike an event ``HistoryProjection``, an annotation projection never
+    updates on a raw ``JournalEventAppended`` (annotations are written
+    explicitly). It rebuilds at startup, maintains one annotation on an overlay
+    change, and clears a session on deletion.
+    """
+
+    name: str
+
+    def startup_rebuild(self) -> None: ...
+
+    def reproject_annotation(self, annotation: Annotation) -> None: ...
+
+    def delete_annotation_projection(self, annotation_id: str) -> None: ...
+
+    def delete_session_projection(self, session_id: str) -> None: ...
 
 
 class HistoryProjectionStatus(Enum):
@@ -244,6 +281,8 @@ class HistoryProjectionLifecycle:
         create_task: Callable[[Coroutine[object, object, None]], asyncio.Task[None]]
         | None = None,
         transcript_event_source: TranscriptReprojectionSource | None = None,
+        annotation_projections: tuple[AnnotationDerivedProjection, ...] = (),
+        annotation_source: AnnotationReprojectionSource | None = None,
     ) -> None:
         self._bus = bus
         self._projections = projections
@@ -251,11 +290,29 @@ class HistoryProjectionLifecycle:
         self._logger = logger or logging.getLogger(__name__)
         self._create_task = create_task or asyncio.create_task
         self._transcript_event_source = transcript_event_source
+        self._annotation_projections = annotation_projections
+        self._annotation_source = annotation_source
         self._pending_tasks: set[asyncio.Task[None]] = set()
         self._reprojection_active: set[JournalEventRef] = set()
         self._reprojection_pending: set[JournalEventRef] = set()
+        self._annotation_active: set[str] = set()
+        self._annotation_pending: set[str] = set()
+        # Serializes one annotation's read-then-write re-projection against a
+        # concurrent session-projection deletion. Without it, a re-projection
+        # that read an annotation before its session was deleted could write the
+        # stale row back after deletion cleared the derived projections, so
+        # retrieval would resurface a deleted session. A threading lock (not an
+        # asyncio one) because it is held across the off-thread projection work
+        # and acquired by the on-loop deletion path.
+        self._annotation_write_lock = threading.Lock()
         self._start_lock = asyncio.Lock()
         self._subscribed = False
+
+    @property
+    def _annotations_enabled(self) -> bool:
+        return self._annotation_source is not None and bool(
+            self._annotation_projections
+        )
 
     @property
     def semantic_state(self) -> SemanticProjectionState:
@@ -271,6 +328,10 @@ class HistoryProjectionLifecycle:
                 self._bus.subscribe(
                     TranscriptOverlayChanged, self._on_transcript_overlay_changed
                 )
+            if self._annotations_enabled:
+                self._bus.subscribe(
+                    AnnotationOverlayChanged, self._on_annotation_overlay_changed
+                )
             self._subscribed = True
 
     async def close(self) -> None:
@@ -283,6 +344,10 @@ class HistoryProjectionLifecycle:
                     self._bus.unsubscribe(
                         TranscriptOverlayChanged, self._on_transcript_overlay_changed
                     )
+                if self._annotations_enabled:
+                    self._bus.unsubscribe(
+                        AnnotationOverlayChanged, self._on_annotation_overlay_changed
+                    )
                 self._subscribed = False
         await self.wait_for_idle()
 
@@ -292,14 +357,24 @@ class HistoryProjectionLifecycle:
             await asyncio.gather(*pending)
 
     def delete_session_projections(self, session_id: str) -> None:
-        for projection in self._projections:
-            projection.delete_session_projection(session_id)
-        self._semantic_projection.delete_session_projection(session_id)
+        # The lock makes deletion mutually exclusive with an in-flight annotation
+        # re-projection (see _reproject_annotation): either the re-projection
+        # commits first and this deletion then clears its row, or this deletion
+        # commits first and the re-projection observes the annotation is gone and
+        # writes nothing. Both orders end with no derived row for the session.
+        with self._annotation_write_lock:
+            for projection in self._projections:
+                projection.delete_session_projection(session_id)
+            self._semantic_projection.delete_session_projection(session_id)
+            for annotation_projection in self._annotation_projections:
+                annotation_projection.delete_session_projection(session_id)
 
     def _rebuild_startup_projections(self) -> None:
         for projection in self._projections:
             projection.rebuild()
         self._semantic_projection.rebuild_if_backend_changed()
+        for annotation_projection in self._annotation_projections:
+            annotation_projection.startup_rebuild()
 
     async def _on_journal_event_appended(self, event: JournalEventAppended) -> None:
         record = JournalEventRecord(event.reference, event.event)
@@ -357,6 +432,67 @@ class HistoryProjectionLifecycle:
                 reference.session_id,
                 reference.event_position,
             )
+
+    async def _on_annotation_overlay_changed(
+        self, event: AnnotationOverlayChanged
+    ) -> None:
+        annotation_id = event.annotation_id
+        if annotation_id in self._annotation_active:
+            # Serialize re-projection per annotation for the same reason the
+            # transcript path does: two concurrent runs could commit the lexical
+            # and semantic writes out of order and leave the two projections
+            # reflecting different annotation versions. Coalesce into one rerun.
+            self._annotation_pending.add(annotation_id)
+            return
+        self._annotation_active.add(annotation_id)
+        task = self._create_task(self._run_annotation_reprojection(annotation_id))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _run_annotation_reprojection(self, annotation_id: str) -> None:
+        try:
+            while True:
+                await self._reproject_annotation(annotation_id)
+                # No await between this check and looping/returning, so a change
+                # delivered during the run above is observed atomically and
+                # coalesced into exactly one rerun.
+                if annotation_id not in self._annotation_pending:
+                    return
+                self._annotation_pending.discard(annotation_id)
+        finally:
+            self._annotation_active.discard(annotation_id)
+
+    async def _reproject_annotation(self, annotation_id: str) -> None:
+        source = self._annotation_source
+        if source is None:
+            return
+        try:
+            await asyncio.to_thread(self._reproject_annotation_locked, annotation_id)
+        except Exception:
+            self._logger.exception(
+                "Annotation re-projection failed for %s", annotation_id
+            )
+
+    def _reproject_annotation_locked(self, annotation_id: str) -> None:
+        source = self._annotation_source
+        if source is None:
+            return
+        # Read the current annotation and write the derived rows as one critical
+        # section, so a concurrent session deletion cannot slip between the read
+        # and the write and let a stale row survive (see delete_session_
+        # projections). Re-reading under the lock is also what makes deletion win
+        # when it commits first: the annotation is then already gone.
+        with self._annotation_write_lock:
+            read = source.read_annotation(annotation_id)
+            annotation = read.annotation if read.found else None
+            if annotation is None:
+                # The annotation was deleted (or dismissal removed its row). Drop
+                # any derived rows so retrieval cannot resurface it.
+                for projection in self._annotation_projections:
+                    projection.delete_annotation_projection(annotation_id)
+            else:
+                for projection in self._annotation_projections:
+                    projection.reproject_annotation(annotation)
 
     async def _project_appended_event(self, record: JournalEventRecord) -> None:
         try:
