@@ -86,6 +86,38 @@ instruction = ""
 # transcription competes predictably with a live dialog turn for VRAM.
 max_concurrency = 1
 
+[history.annotation]
+# Explicit historical annotation generation (task-v1.8.0-22). It never runs on
+# its own initiative: annotations are generated only through an explicit
+# user/UI command over a bounded event range, summarizing only that cited
+# source material. Disabling it removes the generator.
+enabled = true
+# Model-facing framing for the annotation request. Empty defers to the
+# service's default: a Russian instruction (so a Russian conversation is
+# summarized in Russian) that summarizes only the cited excerpt and requires
+# attribution (assistant claims must not be presented as the user's facts).
+instruction = ""
+# Model reasoning level for generation: "off", "low", "medium", or "high".
+# "off" plus "low" cover the practical off/on choice; reasoning trace never
+# reaches the stored annotation regardless. Other generation options come from
+# [backend].
+reasoning = "off"
+# How many generation model calls may run at once. Kept low so historical
+# generation competes predictably with a live dialog turn for VRAM.
+max_concurrency = 1
+# Largest event range one annotation may summarize (at most 200, the history
+# read API's per-range limit).
+max_source_events = 100
+# Largest total source text sent to the model for one annotation, in
+# characters. Event text has no upper limit of its own, so this bounds the
+# prompt size (a few long events cannot form an unbounded request). The default
+# 24000 (~12000 tokens by the conservative estimator) stays well under the
+# input budget; oversize source is rejected before any model call.
+max_source_chars = 24000
+# Largest generated annotation, in characters (at most 20000, the annotation
+# overlay store's own limit).
+max_annotation_chars = 4000
+
 [hotkeys]
 screenshot_full = "ctrl+alt+s"
 screenshot_region = "ctrl+alt+r"

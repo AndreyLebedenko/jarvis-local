@@ -13,6 +13,7 @@ from jarvis.core.config import (
     ClipboardSettings,
     ConfigError,
     DataBoundary,
+    HistoryAnnotationSettings,
     HistorySemanticSettings,
     HistorySettings,
     HistoryTranscriptionSettings,
@@ -255,6 +256,64 @@ def test_history_transcription_max_concurrency_must_be_positive(tmp_path):
         """,
         encoding="utf-8",
     )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_history_annotation_settings_parse_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [history.annotation]
+        enabled = false
+        instruction = "Summarize the excerpt."
+        reasoning = "medium"
+        max_concurrency = 2
+        max_source_events = 50
+        max_source_chars = 12000
+        max_annotation_chars = 2000
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.history.annotation == HistoryAnnotationSettings(
+        enabled=False,
+        instruction="Summarize the excerpt.",
+        reasoning="medium",
+        max_concurrency=2,
+        max_source_events=50,
+        max_source_chars=12000,
+        max_annotation_chars=2000,
+    )
+
+
+def test_history_annotation_defaults(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("", encoding="utf-8")
+    settings = load_settings(config_path)
+    assert settings.history.annotation == HistoryAnnotationSettings()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "max_concurrency = 0",
+        "max_source_events = 0",
+        "max_source_events = 201",
+        "max_source_chars = 0",
+        "max_source_chars = 200001",
+        "max_annotation_chars = 0",
+        "max_annotation_chars = 20001",
+        'reasoning = "sideways"',
+        "reasoning = 3",
+    ],
+)
+def test_history_annotation_rejects_out_of_range(tmp_path, body):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[history.annotation]\n{body}\n", encoding="utf-8")
 
     with pytest.raises(ConfigError):
         load_settings(config_path)

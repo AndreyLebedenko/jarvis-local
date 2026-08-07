@@ -327,6 +327,42 @@ because retrieval found them.
   text-only retrieval resolver, so task 23 can design a provenance-preserving
   retrieval contract rather than inherit a lossy one.
 
+**Annotation generator contract (task v1.8.0-22, owner-approved 2026-08-07).**
+Explicit, source-grounded, non-dialog generation over the store above:
+
+- **Service.** `AnnotationGenerationService` mirrors the transcription service
+  (task 19): a whole-session or event-range target is read through the history
+  read API (`HistoryCorpusRepository`), the model summarizes only the cited
+  material, and a `GENERATED` overlay is written anchored to that target. No
+  `ResponseToken`; a bounded semaphore keeps it competing predictably with a
+  live turn; model/reasoning/options are audited from the real payload and
+  stored in the annotation's metadata.
+- **Target.** Whole session (its full event span is read, but stored as a
+  whole-session target so it stays "the session", not a frozen range) or an
+  inclusive event range. Whole session is the natural default for a UI.
+- **Structural grounding.** Only the cited events reach the prompt, and the
+  stored target is exactly the summarized material - grounding is by
+  construction, not just instruction.
+- **Bounds (predictable live-turn competition).** `max_source_events` (<=200),
+  `max_source_chars` (default 24000; raw event text has no per-event cap, so the
+  total source is capped and oversize is rejected *before* the model),
+  `max_annotation_chars`. Config `[history.annotation]`.
+- **Reasoning.** Configurable via `ReasoningLevel` (off/low/medium/high),
+  default **off**. A live A/B (2026-08-07, `gemma4:12b-it-qat`) showed `high`
+  added no faithfulness on objective traps at ~5x latency. Reasoning trace is
+  never read into the annotation.
+- **Attribution is an instruction lever, not a format one.** The default
+  instruction is Russian (so Russian conversations summarize in Russian) and
+  carries an explicit attribution clause. A 24-cell live A/B showed the
+  "assistant claim flattened into a user fact" failure (decision 5) was
+  Russian+base-instruction specific; a JSONL source format did not fix it and
+  cost more tokens, while the attribution clause did (0/3). `format_source_block`
+  therefore keeps its delimited label block. The hard guarantee stays
+  downstream: annotations are surfaced as `GENERATED`/author/target-anchored
+  derived data, never raw user fact (finalized by task 23).
+- **Out of scope for task 22.** Automatic scheduler, UI, retrieval-projection
+  integration, and consolidation.
+
 ### 6. Consolidation serves the unlimited-history goal
 
 Near sessions retain original replayable media. Far sessions retain full

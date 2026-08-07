@@ -175,6 +175,41 @@ system is intended to grow.
   card is storage only; model generation (task 22), the typed retrieval seam,
   API, and UI (task 23) are out of scope, and the story-level design lives in
   `story-v1.8.0` decision 5. Full contract and rationale in that story card.
+- **Annotation generator, 2026-08-07 (task v1.8.0-22).** Explicit,
+  source-grounded, non-dialog Ollama generation of session annotations
+  (`AnnotationGenerationService`), mirroring the transcription service: reads a
+  target through the history read API, summarizes only the cited material,
+  writes a `GENERATED` overlay anchored to that target; no `ResponseToken`,
+  bounded semaphore, model/options audited from the real payload. Target is a
+  whole session (its full span is read; stored as whole-session, not a frozen
+  range) or an inclusive event range. Source grounding is structural (only cited
+  events are in the prompt). Bounds: `max_source_events` (<=200),
+  `max_source_chars` (default 24000, ~12000 tokens - rejects oversize *before*
+  the model, since raw event text has no per-event cap), `max_annotation_chars`.
+  Config `[history.annotation]`; `reasoning` reuses `ReasoningLevel`
+  (off/low/medium/high). Owner-approved defaults (2026-08-07): `reasoning=off`
+  and a Russian default instruction with an attribution clause. Both defaults
+  were chosen from a live A/B on `gemma4:12b-it-qat` (agent-run under the
+  owner's supervision, harness in scratchpad), not from taste:
+  - **Reasoning off is the default.** On objective faithfulness traps
+    (self-correction 3.11-not-3.10, numeric 26->12, distractor grounding,
+    reasoning-trace leakage), `high` gave zero improvement over `off` (both
+    perfect) at ~5x latency (~5.5 s vs ~1.05 s warm). Reasoning trace is never
+    read into the annotation regardless.
+  - **Attribution is fixed by the instruction, not the input format.** A
+    24-cell A/B (format LABEL vs JSONL x instruction base vs +attribution x
+    EN/RU, reasoning off) found the "assistant's claim flattened into a bare
+    user fact" failure was *Russian-plus-base-instruction* specific (0/3 in all
+    English cells, 3/3 in LABEL/RU/base). A JSONL source block did **not** fix
+    it (2/3) and cost ~10% more tokens and bled structure into the output; the
+    explicit attribution clause drove flattening to 0/3 in both formats. So
+    `format_source_block` keeps the delimited label block, and the default
+    instruction carries the attribution clause. This is the generation-side
+    quality lever; the hard guarantee is downstream (annotations are stored and
+    surfaced as `GENERATED`/`author`/target-anchored derived data, never raw
+    user fact - story decision 5, finalized by task 23). Live summarization
+    quality beyond these traps remains a human judgment; the objective checks
+    and raw outputs are archived, the faithfulness sign-off is evidential only.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

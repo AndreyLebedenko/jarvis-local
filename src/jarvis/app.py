@@ -106,6 +106,11 @@ from jarvis.inputs.interrupt import InterruptRequested
 from jarvis.inputs.interrupt import run_hotkey_listener as run_interrupt_hotkey_listener
 from jarvis.journal import HistoryRetrievalFallbackMode, HistoryRetrievalStatus
 from jarvis.journal.annotation import AnnotationOverlayRepository
+from jarvis.journal.annotation_generator import (
+    AnnotationGenerationService,
+    OllamaAnnotationBackend,
+)
+from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
@@ -1125,6 +1130,7 @@ class App:
     transcript_overlay_repository: TranscriptOverlayRepository | None = None
     annotation_overlay_repository: AnnotationOverlayRepository | None = None
     transcription_service: TranscriptionService | None = None
+    annotation_generation_service: AnnotationGenerationService | None = None
     memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
@@ -1168,6 +1174,30 @@ def _build_transcription_service(
         JournalStoreTranscriptionSource(journal_store),
         OllamaTranscriptionBackend(backend),
         transcripts,
+        **kwargs,
+    )
+
+
+def _build_annotation_generation_service(
+    settings: Settings,
+    corpus: HistoryCorpusRepository,
+    backend: OllamaBackend,
+    annotations: AnnotationOverlayRepository,
+) -> AnnotationGenerationService:
+    annotation_settings = settings.history.annotation
+    kwargs: dict[str, object] = {
+        "reasoning": ReasoningLevel(annotation_settings.reasoning),
+        "max_concurrency": annotation_settings.max_concurrency,
+        "max_source_events": annotation_settings.max_source_events,
+        "max_source_chars": annotation_settings.max_source_chars,
+        "max_annotation_chars": annotation_settings.max_annotation_chars,
+    }
+    if annotation_settings.instruction.strip():
+        kwargs["instruction"] = annotation_settings.instruction
+    return AnnotationGenerationService(
+        corpus,
+        OllamaAnnotationBackend(backend),
+        annotations,
         **kwargs,
     )
 
@@ -1289,6 +1319,16 @@ def build_app(
         if settings.history.transcription.enabled
         else None
     )
+    annotation_generation_service = (
+        _build_annotation_generation_service(
+            settings,
+            history_corpus_repository,
+            backend,
+            annotation_overlay_repository,
+        )
+        if settings.history.annotation.enabled
+        else None
+    )
     history_projection_lifecycle = HistoryProjectionLifecycle(
         bus,
         projections=(
@@ -1366,6 +1406,7 @@ def build_app(
         journal_recorder=journal_recorder,
         transcript_overlay_repository=transcript_overlay_repository,
         annotation_overlay_repository=annotation_overlay_repository,
+        annotation_generation_service=annotation_generation_service,
         transcription_service=transcription_service,
         memory_file_repository=memory_file_repository,
         settings=settings,

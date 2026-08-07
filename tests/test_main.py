@@ -60,6 +60,7 @@ from jarvis.audio.tts import BilingualTtsEngine
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    HistoryAnnotationSettings,
     HistorySettings,
     JournalSettings,
     LoggingSettings,
@@ -4358,6 +4359,43 @@ def test_build_app_constructs_an_mcp_host_when_mcp_is_enabled():
     # settings.mcp.enabled, after build_app() returns.
     assert app.mcp_host.status == McpModuleStatus.OFF
     assert app.mcp_host.enabled is False  # constructed, not yet connected
+
+
+def test_build_app_constructs_annotation_generation_service_with_settings():
+    settings = Settings(
+        journal=JournalSettings(enabled=False),
+        history=HistorySettings(
+            annotation=HistoryAnnotationSettings(
+                instruction="Summarize only the cited excerpt.",
+                reasoning="high",
+                max_concurrency=2,
+                max_source_events=42,
+                max_source_chars=15000,
+                max_annotation_chars=3000,
+            )
+        ),
+    )
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    service = app.annotation_generation_service
+    assert service is not None
+    assert service.reasoning is ReasoningLevel.HIGH
+    assert service.max_source_events == 42
+    assert service.max_source_chars == 15000
+    assert service._max_annotation_chars == 3000
+    assert service._instruction == "Summarize only the cited excerpt."
+
+
+def test_build_app_omits_annotation_generation_service_when_disabled():
+    settings = Settings(
+        journal=JournalSettings(enabled=False),
+        history=HistorySettings(annotation=HistoryAnnotationSettings(enabled=False)),
+    )
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    assert app.annotation_generation_service is None
 
 
 def test_build_app_wires_configured_tool_presentation_and_budget():

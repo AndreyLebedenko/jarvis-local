@@ -487,6 +487,9 @@ class HistorySettings:
     transcription: "HistoryTranscriptionSettings" = field(
         default_factory=lambda: HistoryTranscriptionSettings()
     )
+    annotation: "HistoryAnnotationSettings" = field(
+        default_factory=lambda: HistoryAnnotationSettings()
+    )
 
 
 @dataclass(frozen=True)
@@ -504,6 +507,35 @@ class HistoryTranscriptionSettings:
     enabled: bool = True
     instruction: str = ""
     max_concurrency: int = 1
+
+
+@dataclass(frozen=True)
+class HistoryAnnotationSettings:
+    """Explicit historical annotation generation (task-v1.8.0-22).
+
+    Never runs on its own initiative: it is invoked only through an explicit
+    user/UI command. ``instruction`` is the model-facing English framing; an
+    empty value defers to the service's default. ``max_concurrency`` bounds how
+    many generation model calls run at once so it competes predictably with a
+    live turn. ``reasoning`` selects the model reasoning level for generation;
+    it reuses the app's reasoning values ("off", "low", "medium", "high") so
+    plain off/on is available now and graded levels come for free later. Other
+    generation options come from the current backend settings.
+    ``max_source_events`` caps how many events one annotation may
+    summarize (kept at or below the history read API's per-range limit of 200),
+    ``max_source_chars`` caps the total source text sent to the model so a few
+    long events cannot form an unbounded prompt, and ``max_annotation_chars``
+    caps the generated text (kept at or below the annotation overlay store's
+    own 20000-char limit).
+    """
+
+    enabled: bool = True
+    instruction: str = ""
+    reasoning: str = "off"
+    max_concurrency: int = 1
+    max_source_events: int = 100
+    max_source_chars: int = 24000
+    max_annotation_chars: int = 4000
 
 
 @dataclass(frozen=True)
@@ -953,10 +985,13 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
     transcription_raw = raw.get("transcription", {})
     if not isinstance(transcription_raw, dict):
         raise ConfigError(f"[{section_name}.transcription] must be a table")
+    annotation_raw = raw.get("annotation", {})
+    if not isinstance(annotation_raw, dict):
+        raise ConfigError(f"[{section_name}.annotation] must be a table")
     scalar_raw = {
         key: value
         for key, value in raw.items()
-        if key not in {"semantic", "transcription"}
+        if key not in {"semantic", "transcription", "annotation"}
     }
     settings = _build_plain_section(section_name, HistorySettings, scalar_raw)
     for name in (
@@ -990,6 +1025,9 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
         transcription=_build_history_transcription_section(
             f"{section_name}.transcription", transcription_raw
         ),
+        annotation=_build_history_annotation_section(
+            f"{section_name}.annotation", annotation_raw
+        ),
     )
 
 
@@ -1001,6 +1039,48 @@ def _build_history_transcription_section(
         raise ConfigError(
             f"[{section_name}].max_concurrency must be at least 1, "
             f"got {settings.max_concurrency!r}"
+        )
+    return settings
+
+
+def _build_history_annotation_section(
+    section_name: str, raw: dict[str, Any]
+) -> "HistoryAnnotationSettings":
+    settings = _build_plain_section(section_name, HistoryAnnotationSettings, raw)
+    if settings.max_concurrency < 1:
+        raise ConfigError(
+            f"[{section_name}].max_concurrency must be at least 1, "
+            f"got {settings.max_concurrency!r}"
+        )
+    # Mirrors dialog.thinking_mode.ReasoningLevel values; not imported here to
+    # keep config free of a journal/dialog import cycle. app.py converts the
+    # validated string to a ReasoningLevel when wiring the service.
+    if settings.reasoning not in {"off", "low", "medium", "high"}:
+        raise ConfigError(
+            f"[{section_name}].reasoning must be one of off/low/medium/high, "
+            f"got {settings.reasoning!r}"
+        )
+    # 200 is the history read API's HISTORY_READ_MAX_EVENTS_PER_RANGE; 20000 is
+    # the annotation overlay store's ANNOTATION_MAX_TEXT_LENGTH. Both are
+    # hardcoded here (not imported) to keep config free of a journal import
+    # cycle; a change to either constant must be reflected in this bound.
+    if not 1 <= settings.max_source_events <= 200:
+        raise ConfigError(
+            f"[{section_name}].max_source_events must be between 1 and 200, "
+            f"got {settings.max_source_events!r}"
+        )
+    # A generous absolute ceiling that still keeps a misconfigured value from
+    # forming a prompt far beyond the model's input budget; the default 24000
+    # (~12000 tokens by the conservative estimator) is the safe operating point.
+    if not 1 <= settings.max_source_chars <= 200000:
+        raise ConfigError(
+            f"[{section_name}].max_source_chars must be between 1 and 200000, "
+            f"got {settings.max_source_chars!r}"
+        )
+    if not 1 <= settings.max_annotation_chars <= 20000:
+        raise ConfigError(
+            f"[{section_name}].max_annotation_chars must be between 1 and 20000, "
+            f"got {settings.max_annotation_chars!r}"
         )
     return settings
 

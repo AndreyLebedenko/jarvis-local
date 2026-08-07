@@ -1,6 +1,6 @@
 # Task v1.8.0-22: Historical annotation generator
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-21.
 
@@ -28,10 +28,10 @@ consolidation execution.
 
 ## Acceptance criteria
 
-- [ ] Pure tests cover prompt construction and source bounding.
-- [ ] Generated annotations include source references.
-- [ ] Oversize source ranges and outputs are rejected.
-- [ ] Manual handoff command is provided for live Ollama verification.
+- [x] Pure tests cover prompt construction and source bounding.
+- [x] Generated annotations include source references.
+- [x] Oversize source ranges and outputs are rejected.
+- [x] Manual handoff command is provided for live Ollama verification.
 
 ## Stop conditions
 
