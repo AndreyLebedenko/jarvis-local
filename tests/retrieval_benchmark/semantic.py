@@ -216,15 +216,9 @@ def _concept_lookup() -> tuple[list[str], dict[str, int], dict[str, str]]:
     return vocabulary, concept_index, text_concept
 
 
-def concept_embedder() -> EmbedFunction:
-    """Clean concept-space fixture: one-hot per concept (no model, no hardware).
-
-    Same concept gives cosine 1.0, different concepts 0.0. Cleanly separable, so
-    an absolute threshold works here; it is the baseline plumbing fixture.
-    """
-
-    vocabulary, concept_index, text_concept = _concept_lookup()
-
+def _embed_from_lookup(
+    vocabulary: list[str], concept_index: dict[str, int], text_concept: dict[str, str]
+) -> EmbedFunction:
     def embed(texts: Sequence[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for text in texts:
@@ -236,6 +230,39 @@ def concept_embedder() -> EmbedFunction:
         return vectors
 
     return embed
+
+
+def concept_embedder() -> EmbedFunction:
+    """Clean concept-space fixture: one-hot per concept (no model, no hardware).
+
+    Same concept gives cosine 1.0, different concepts 0.0. Cleanly separable, so
+    an absolute threshold works here; it is the baseline plumbing fixture.
+    """
+
+    vocabulary, concept_index, text_concept = _concept_lookup()
+    return _embed_from_lookup(vocabulary, concept_index, text_concept)
+
+
+def extended_concept_embedder(
+    text_concepts: dict[str, str],
+) -> EmbedFunction:
+    """``concept_embedder`` with extra text->concept entries layered on top.
+
+    The frozen task-11 vocabulary and mappings (``_DOCUMENT_CONCEPTS``/
+    ``_QUERY_CONCEPTS``) are untouched; ``text_concepts`` supplies additional
+    ``text -> concept`` entries (keyed by the literal document/query text, the
+    only thing an ``EmbedFunction`` ever receives) for a second modality, e.g.
+    the task-26 transcript and annotation slices. One shared embed function
+    then serves both the base corpus and the added slices, mirroring how the
+    production backend embeds every source through one model.
+    """
+
+    base_vocabulary, _base_index, base_text_concept = _concept_lookup()
+    vocabulary = sorted(set(base_vocabulary) | set(text_concepts.values()))
+    concept_index = {concept: position for position, concept in enumerate(vocabulary)}
+    text_concept = dict(base_text_concept)
+    text_concept.update(text_concepts)
+    return _embed_from_lookup(vocabulary, concept_index, text_concept)
 
 
 def compressed_concept_embedder(base: float = 1.0, bump: float = 0.5) -> EmbedFunction:

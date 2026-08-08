@@ -510,6 +510,102 @@ system is intended to grow.
     substring-check's blind spot (provider called after the `with`) by
     temporarily reintroducing each and confirming the test fails, then
     restoring the fix.
+- **Retrieval-quality regression, 2026-08-08 (task v1.8.0-26).** Reran the
+  fixed task-8/11 benchmark after transcripts (task 20) and annotations (task
+  23) joined the retrieval corpus, per the story's "early gate, then late
+  regression" plan (decision 11).
+  - **Corpus version.** Base corpus `2026-08-01.1`
+    (`tests/retrieval_benchmark/corpus.py`, frozen, unchanged) plus a new
+    additive slice `2026-08-08.1`
+    (`tests/retrieval_benchmark/multimodal_corpus.py`): a transcript-only
+    voice session (raw text empty, effective text from a transcript overlay,
+    exactly as task 18-20 shipped it) and three labeled `ACTIVE` annotations
+    (whole-session and range, `GENERATED` and `EDITED`) carrying facts absent
+    from any raw event, so a hit is attributable to annotation retrieval
+    specifically. `RATIFIED_THRESHOLDS` and the task-11 labels are reused
+    unchanged, per the card's requirement; no threshold was revised.
+  - **Retrieval mode.** Pure deterministic suite only (no live Ollama,
+    network, or hardware, per the card's scope): one shared
+    `HistoryRetrievalService` over a single `HistoryCorpusRepository` +
+    `SemanticPassageIndex` + `AnnotationSearchIndex` + `AnnotationSemanticIndex`,
+    all built from the same `JournalStore`, using one shared
+    `extended_concept_embedder` (`tests/retrieval_benchmark/semantic.py`) - the
+    task-11 concept fixture with transcript/annotation text layered on top -
+    so base, transcript, and annotation text share one concept space, mirroring
+    how the production backend embeds every source through one model. Real
+    e5-large-instruct/embeddinggemma quality is unchanged from the task-8/11
+    human-run record; this card does not re-measure it.
+  - **Metrics and result: PASS.** All three slices meet `RATIFIED_THRESHOLDS`
+    (`tests/test_retrieval_quality_regression.py`):
+    - base corpus (rerun with transcripts/annotations sharing its service):
+      lexical 1.000, morphology 1.000, semantic 1.000, overall recall 1.000,
+      overall precision **0.904** (was 0.921 in the task-11-only run),
+      distractor FP 0.000;
+    - transcript slice: lexical 1.000, morphology 1.000, semantic 1.000,
+      overall recall 1.000, overall precision 1.000, distractor FP 0.000;
+    - annotation slice: lexical 1.000, morphology 1.000, semantic 1.000,
+      overall recall 1.000, overall precision 1.000, distractor FP 0.000.
+    Exact/prefix fallback confirmed separately for literal cases: with both
+    the event and annotation semantic stores forced `UNAVAILABLE`, every
+    lexical-strength/morphology-tier transcript and annotation query still
+    resolves through FTS + pymorphy3 term expansion alone.
+  - **The base-corpus precision dip is explained, not a regression.** Query
+    `q-id-a2481` ("A-2481", relevant `{B0, B1}`) now also returns `ANN-B` - an
+    annotation deliberately written to mention that same order id, ranked
+    *above* B0 - because `HistoryRetrievalService` correctly indexes and fuses
+    annotation lexical hits for any shared token. This is the concrete
+    instance of the anti-pollution scenario story decision 5 named in advance
+    ("a dense summary out-ranking the precise raw event that answers a
+    query"): the annotation is arguably relevant too, but the task-11 label
+    for that query predates annotations existing and does not include it, so
+    it counts as a precision miss under the frozen label. `0.904` stays well
+    above the `0.85` threshold, so this is a recorded observation, not a stop
+    condition; selector-level anti-pollution ranking is card 16's territory
+    and out of this card's boundary.
+  - **Release decision: proceed.** The final retrieval surface (event +
+    transcript + annotation, hybrid lexical/semantic) meets every ratified
+    threshold with transcripts and annotations included. v1.8.1 is not
+    blocked on retrieval quality; card 30 (v1.8.1 scale/e2e/docs) can proceed.
+  - **Deferred check from task 23, closed:**
+    `tasks/bug_reports/2026-08-08-edited-annotation-recall-miss-in-new-context.md`.
+    `test_annotation_edit_reprojection_race_is_real_and_bounded_by_wait_for_idle`
+    confirms the PUT-edit/reprojection race is real today: publishing
+    `AnnotationOverlayChanged` only schedules `_run_annotation_reprojection`
+    as a background task (`HistoryProjectionLifecycle`), so a query issued
+    before that task runs can miss an edit the PUT handler already reported as
+    saved; `wait_for_idle()` is the deterministic boundary in the test. An
+    unforced repro (no artificial block) found the edit already searchable
+    *immediately* after publish, but that only shows the in-process SQLite
+    writes are cheap - it says nothing about the live path. This card cannot
+    measure that path (pure suite, no live Ollama/network/hardware): the only
+    existing figures in this file (~85-235 ms) are the task-8 *query*-embedding
+    measurement, a different call site (short benchmark text, retrieval-time)
+    from the one this race depends on
+    (`AnnotationSemanticIndex.reproject_annotation`, embedding the full
+    annotation passage up to the 20,000-char overlay limit, under
+    `_annotation_write_lock` alongside other pending reprojections). Treating
+    that figure as a bound on the reprojection window was an unsupported
+    extrapolation and has been retracted from this record. Decision: the race
+    is confirmed real (new, solid evidence for explanation 1) and the
+    annotation semantic/lexical slices added by this card show no ranking
+    defect on their own held-out queries (recall/precision 1.000 above, mild
+    evidence against a *systemic* ranking problem, not proof against this one
+    incident) - but without a real latency measurement neither explanation is
+    formally ruled out for the reported ~1-minute gap. No fix lands here
+    either: a properly scoped fix would await only the edited annotation's own
+    reprojection, not every pending lifecycle task (a blanket `wait_for_idle()`
+    would block the HTTP response on unrelated work, against decision 6's
+    predictability goal), and that per-annotation wait is new lifecycle
+    plumbing - out of this card's boundary per its own stop conditions. Owner
+    then manually replayed the exact original repro (edit via the PUT-backed
+    UI, query from a fresh context shortly after) with no code change made in
+    between, and confirmed it no longer reproduces; the bug report is closed
+    on that basis, with root-cause attribution between the two explanations
+    still formally open. Its "Future considerations" section keeps the
+    concrete follow-up on record in case it resurfaces: a human-run latency
+    measurement of annotation-passage reprojection (mirroring
+    `measure_semantic.py`), and a scoped fix task if that measurement shows a
+    non-trivial window.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

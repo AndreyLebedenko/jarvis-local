@@ -35,28 +35,36 @@ RetrievalFunction = Callable[[BenchmarkQuery], list[str]]
 _SEARCH_LIMIT = 50
 
 
-def document_reference_map() -> dict[str, JournalEventRef]:
+def document_reference_map(
+    documents: tuple[object, ...] = BENCHMARK_DOCUMENTS,
+) -> dict[str, JournalEventRef]:
     """Map each benchmark document id to its deterministic event reference.
 
     Event positions are per-session and 0-based in append order, matching how
     ``JournalStore`` assigns them, so the map is computed without touching the
-    store.
+    store. ``documents`` defaults to the frozen task-11 corpus but accepts any
+    document sequence exposing ``doc_id``/``session_id`` (e.g. the task-26
+    transcript slice), so a second modality's ids can be resolved the same
+    way without colliding with the base map (each slice uses its own session
+    ids and letter prefixes).
     """
 
     positions: dict[str, int] = defaultdict(int)
     references: dict[str, JournalEventRef] = {}
-    for document in BENCHMARK_DOCUMENTS:
+    for document in documents:
         position = positions[document.session_id]
         references[document.doc_id] = JournalEventRef(document.session_id, position)
         positions[document.session_id] = position + 1
     return references
 
 
-def build_benchmark_corpus(root: Path) -> HistoryCorpusRepository:
+def build_benchmark_corpus(
+    root: Path, documents: tuple[object, ...] = BENCHMARK_DOCUMENTS
+) -> HistoryCorpusRepository:
     """Append every benchmark document and return a rebuilt corpus repository."""
 
     store = JournalStore(root / "journal")
-    for document in BENCHMARK_DOCUMENTS:
+    for document in documents:
         store.append(
             JournalEvent(
                 session_id=document.session_id,
@@ -184,10 +192,11 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def evaluate_retrieval(retrieval_fn: RetrievalFunction) -> RetrievalReport:
-    outcomes = tuple(
-        _evaluate_query(query, retrieval_fn(query)) for query in BENCHMARK_QUERIES
-    )
+def evaluate_retrieval(
+    retrieval_fn: RetrievalFunction,
+    queries: tuple[BenchmarkQuery, ...] = BENCHMARK_QUERIES,
+) -> RetrievalReport:
+    outcomes = tuple(_evaluate_query(query, retrieval_fn(query)) for query in queries)
 
     recall_by_category: dict[RetrievalCategory, list[float]] = defaultdict(list)
     for outcome in outcomes:
