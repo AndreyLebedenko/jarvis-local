@@ -155,6 +155,7 @@
     <div class="journal-usage" id="journalUsageTotal"></div>
     <button class="journal-new-context" id="journalNewContextButton" type="button" data-i18n="journal_new_context" onclick="startNewJournalContext()">New context</button>
     <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
+    <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" data-i18n="journal_annotation_open" onclick="toggleJournalAnnotationPanel()">Annotations</button>
     <div id="journalSessionList"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
@@ -168,6 +169,32 @@
         <button type="button" data-i18n="journal_memory_close" onclick="toggleJournalMemoryPanel()">Close</button>
       </div>
       <div class="journal-memory-files" id="journalMemoryFiles"></div>
+    </section>
+    <section class="journal-annotation-panel" id="journalAnnotationPanel" hidden aria-labelledby="journalAnnotationHeading">
+      <div class="journal-annotation-header">
+        <div>
+          <h2 id="journalAnnotationHeading" data-i18n="journal_annotation_title">Annotations</h2>
+          <p data-i18n="journal_annotation_note">Derived notes about this session, not the original conversation.</p>
+        </div>
+        <div class="journal-annotation-header-actions">
+          <button type="button" id="journalAnnotationGenerateSession" data-i18n="journal_annotation_generate_session" onclick="generateJournalAnnotationSession()">Generate for session</button>
+          <button type="button" data-i18n="journal_annotation_close" onclick="toggleJournalAnnotationPanel()">Close</button>
+        </div>
+      </div>
+      <form class="journal-annotation-range" id="journalAnnotationRange" onsubmit="return false">
+        <label for="journalAnnotationRangeStart">
+          <span data-i18n="journal_annotation_range_start">From</span>
+          <input id="journalAnnotationRangeStart" type="number" min="0" step="1">
+        </label>
+        <label for="journalAnnotationRangeEnd">
+          <span data-i18n="journal_annotation_range_end">To</span>
+          <input id="journalAnnotationRangeEnd" type="number" min="0" step="1">
+        </label>
+        <button type="button" id="journalAnnotationGenerateRange" data-i18n="journal_annotation_generate_range" onclick="generateJournalAnnotationRange()">Generate for range</button>
+      </form>
+      <div class="journal-annotation-message" id="journalAnnotationMessage" role="status"></div>
+      <div class="journal-annotation-list" id="journalAnnotationList"></div>
+      <div class="journal-annotation-empty" id="journalAnnotationEmpty" data-i18n="journal_annotation_empty">No annotations yet</div>
     </section>
     <form class="journal-search" id="journalSearch" onsubmit="return false">
       <label class="journal-search-query" for="journalSearchQuery">

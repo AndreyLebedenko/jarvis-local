@@ -855,6 +855,7 @@ function _clearJournalContent() {
   _journalForkInFlightSessionId = null;
   _journalNewContextInFlight = false;
   _clearJournalMemoryPanel();
+  _clearJournalAnnotationPanel();
   _clearJournalAttachments();
   _updateJournalNewContextButton();
   _setJournalInputStatus("");
@@ -1648,6 +1649,7 @@ async function selectJournalSession(sessionId, contextEventPosition = null) {
   const valid = generation === _journalContentGeneration && !_isHiddenActive();
   if (valid && _journalSelectedSessionId === sessionId) {
     _renderJournalFeed(payload ? payload.events : [], contextEventPosition);
+    _reloadJournalAnnotationsIfOpen(sessionId);
   }
   _maybeRefetchJournalFeed();
 }
@@ -2184,6 +2186,300 @@ function _journalTranscriptUrl(sessionId, position, suffix = "") {
       encodeURIComponent(String(position)) +
       suffix
   );
+}
+
+// Derived annotation overlay panel for the selected session (task v1.8.0-23
+// slice 4). Annotations are optional, source-grounded notes over a whole
+// session or an explicit event range - a summary, never the original
+// conversation, which is why the panel note says so explicitly and every
+// card shows its target and source instead of presenting the text as a raw
+// turn. The panel is session-scoped (unlike Memory's two fixed files): it
+// loads for _journalSelectedSessionId when opened and reloads whenever the
+// selected session changes while it stays open.
+let _journalAnnotationOpen = false;
+let _journalAnnotationGenerateInFlight = false;
+// Bumped whenever a generate call starts or the panel is cleared (Hidden), and
+// captured locally by each _generateJournalAnnotation() call. Clearing while a
+// generate is in flight resets the flag/buttons immediately so a reopened
+// panel is not stuck disabled, but the abandoned fetch is still running
+// server-side; without this token its late completion would reach the same
+// finally block and clobber the flag/buttons/message a newer, still-running
+// generate call owns. Only a completion whose captured token still matches
+// the current one may touch that shared state.
+let _journalAnnotationGenerateToken = 0;
+
+async function toggleJournalAnnotationPanel() {
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_annotation_hidden"));
+    return;
+  }
+  _journalAnnotationOpen = !_journalAnnotationOpen;
+  document.getElementById("journalAnnotationPanel").hidden = !_journalAnnotationOpen;
+  document.getElementById("journalAnnotationToggle").textContent = uiString(
+    _journalAnnotationOpen ? "journal_annotation_close" : "journal_annotation_open");
+  if (_journalAnnotationOpen) await _loadJournalAnnotations(_journalSelectedSessionId);
+}
+
+function _clearJournalAnnotationPanel() {
+  _journalAnnotationOpen = false;
+  _journalAnnotationGenerateInFlight = false;
+  _journalAnnotationGenerateToken += 1;
+  const panel = document.getElementById("journalAnnotationPanel");
+  if (panel) panel.hidden = true;
+  const toggle = document.getElementById("journalAnnotationToggle");
+  if (toggle) toggle.textContent = uiString("journal_annotation_open");
+  const list = document.getElementById("journalAnnotationList");
+  if (list) list.replaceChildren();
+  const message = document.getElementById("journalAnnotationMessage");
+  if (message) message.textContent = "";
+  _setJournalAnnotationGenerateButtonsDisabled(false);
+}
+
+// Called after selectJournalSession() settles so an already-open panel
+// follows the session switch instead of showing the previous session's
+// annotations.
+function _reloadJournalAnnotationsIfOpen(sessionId) {
+  if (!_journalAnnotationOpen) return;
+  _loadJournalAnnotations(sessionId);
+}
+
+async function _loadJournalAnnotations(sessionId) {
+  const list = document.getElementById("journalAnnotationList");
+  const empty = document.getElementById("journalAnnotationEmpty");
+  const message = document.getElementById("journalAnnotationMessage");
+  if (sessionId === null) {
+    list.replaceChildren();
+    empty.hidden = false;
+    return;
+  }
+  const generation = _journalContentGeneration;
+  const payload = await _fetchJournalJson(
+    "/api/journal/annotations/" + encodeURIComponent(sessionId));
+  // A slow response for a session the user has navigated away from (or that
+  // Hidden invalidated) must not overwrite the panel.
+  if (generation !== _journalContentGeneration || _journalSelectedSessionId !== sessionId) {
+    return;
+  }
+  if (!payload) {
+    message.textContent = uiString("journal_annotation_load_failed");
+    return;
+  }
+  message.textContent = "";
+  const annotations = payload.annotations || [];
+  list.replaceChildren();
+  empty.hidden = annotations.length !== 0;
+  for (const annotation of annotations) {
+    list.appendChild(_journalAnnotationElement(annotation));
+  }
+}
+
+function _journalAnnotationElement(annotation) {
+  const card = document.createElement("section");
+  card.className = "journal-annotation";
+  card.dataset.annotationId = annotation.annotation_id;
+
+  const head = document.createElement("div");
+  head.className = "journal-annotation-card-head";
+  const target = document.createElement("button");
+  target.type = "button";
+  target.className = "journal-annotation-target";
+  target.textContent = _journalAnnotationTargetLabel(annotation.target);
+  if (annotation.target.start_position === null) {
+    target.disabled = true;
+  } else {
+    target.addEventListener("click", () =>
+      _highlightJournalContextEvent(annotation.target.start_position));
+  }
+  const source = document.createElement("span");
+  source.className = "journal-annotation-source";
+  source.textContent = _journalAnnotationSourceLabel(annotation);
+  head.append(target, source);
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "journal-annotation-text";
+  textarea.rows = 4;
+  textarea.value = annotation.text;
+  textarea.placeholder = uiString("journal_annotation_edit_placeholder");
+
+  const footer = document.createElement("div");
+  footer.className = "journal-annotation-footer";
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "journal-annotation-save";
+  save.textContent = uiString("journal_annotation_save");
+  const status = document.createElement("span");
+  status.className = "journal-annotation-status";
+  footer.append(save, status);
+
+  card.append(head, textarea, footer);
+
+  const refs = { card, source, textarea, save, status };
+  save.addEventListener("click", () =>
+    saveJournalAnnotation(annotation.target.session_id, annotation.annotation_id, refs));
+  return card;
+}
+
+function _journalAnnotationTargetLabel(target) {
+  if (target.start_position === null || target.end_position === null) {
+    return uiString("journal_annotation_target_session");
+  }
+  return uiString("journal_annotation_target_range")
+    .replace("{start}", String(target.start_position))
+    .replace("{end}", String(target.end_position));
+}
+
+function _journalAnnotationSourceLabel(annotation) {
+  const key = annotation.source === "edited"
+    ? "journal_annotation_source_edited"
+    : "journal_annotation_source_generated";
+  const label = uiString(key);
+  return annotation.status === "dismissed"
+    ? label + " " + uiString("journal_annotation_status_dismissed")
+    : label;
+}
+
+async function saveJournalAnnotation(sessionId, annotationId, refs) {
+  const text = refs.textarea.value.trim();
+  if (!text) {
+    refs.status.textContent = uiString("journal_annotation_text_empty");
+    return;
+  }
+  const url = _journalAnnotationUrl(sessionId, annotationId);
+  if (url === null) {
+    refs.status.textContent = uiString("transport_no_token");
+    return;
+  }
+  refs.save.disabled = true;
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      refs.textarea.value = payload.annotation.text;
+      refs.source.textContent = _journalAnnotationSourceLabel(payload.annotation);
+      refs.status.textContent = uiString("journal_annotation_saved");
+      return;
+    }
+    refs.status.textContent = _journalAnnotationSaveError(payload);
+  } catch (error) {
+    console.error("Annotation save failed:", error);
+    refs.status.textContent = uiString("journal_annotation_save_failed");
+  } finally {
+    refs.save.disabled = false;
+  }
+}
+
+function _journalAnnotationSaveError(payload) {
+  if (payload.reason === "text_empty") {
+    return uiString("journal_annotation_text_empty");
+  }
+  if (payload.reason === "text_too_long") {
+    return uiString("journal_annotation_over_limit").replace(
+      "{max}",
+      String(payload.max_chars)
+    );
+  }
+  return uiString("journal_annotation_save_failed");
+}
+
+async function generateJournalAnnotationSession() {
+  await _generateJournalAnnotation(null, null);
+}
+
+function generateJournalAnnotationRange() {
+  const start = _parseJournalAnnotationRangeInput(
+    document.getElementById("journalAnnotationRangeStart").value);
+  const end = _parseJournalAnnotationRangeInput(
+    document.getElementById("journalAnnotationRangeEnd").value);
+  if (start === null || end === null || start > end) {
+    document.getElementById("journalAnnotationMessage").textContent = uiString(
+      "journal_annotation_range_invalid");
+    return;
+  }
+  _generateJournalAnnotation(start, end);
+}
+
+function _parseJournalAnnotationRangeInput(value) {
+  if (value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+async function _generateJournalAnnotation(start, end) {
+  const sessionId = _journalSelectedSessionId;
+  const message = document.getElementById("journalAnnotationMessage");
+  if (sessionId === null) return;
+  const url = _journalAnnotationUrl(sessionId, null, "generate");
+  if (url === null) {
+    message.textContent = uiString("transport_no_token");
+    return;
+  }
+  if (_journalAnnotationGenerateInFlight) return;
+  _journalAnnotationGenerateInFlight = true;
+  _journalAnnotationGenerateToken += 1;
+  const token = _journalAnnotationGenerateToken;
+  _setJournalAnnotationGenerateButtonsDisabled(true);
+  message.textContent = uiString("journal_annotation_generating");
+  try {
+    const hasRange = start !== null;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: hasRange ? { "Content-Type": "application/json" } : {},
+      body: hasRange
+        ? JSON.stringify({ start_position: start, end_position: end })
+        : undefined,
+    });
+    const payload = await response.json();
+    // A stale response - the panel was cleared (Hidden) and a newer generate
+    // call now owns the flag/buttons/message - must not touch any of them.
+    if (token !== _journalAnnotationGenerateToken) return;
+    if (payload.status === "ok") {
+      message.textContent = "";
+      await _loadJournalAnnotations(sessionId);
+      return;
+    }
+    message.textContent = _journalAnnotationGenerateError(payload);
+  } catch (error) {
+    console.error("Annotation generation failed:", error);
+    if (token === _journalAnnotationGenerateToken) {
+      message.textContent = uiString("journal_annotation_generate_failed");
+    }
+  } finally {
+    if (token === _journalAnnotationGenerateToken) {
+      _journalAnnotationGenerateInFlight = false;
+      _setJournalAnnotationGenerateButtonsDisabled(false);
+    }
+  }
+}
+
+function _setJournalAnnotationGenerateButtonsDisabled(disabled) {
+  const sessionButton = document.getElementById("journalAnnotationGenerateSession");
+  const rangeButton = document.getElementById("journalAnnotationGenerateRange");
+  if (sessionButton) sessionButton.disabled = disabled;
+  if (rangeButton) rangeButton.disabled = disabled;
+}
+
+function _journalAnnotationGenerateError(payload) {
+  if (payload && payload.reason === "unknown_range") {
+    return uiString("journal_annotation_generate_unknown_range");
+  }
+  if (
+    payload &&
+    (payload.reason === "source_too_large" || payload.reason === "source_text_too_large")
+  ) {
+    return uiString("journal_annotation_generate_too_large");
+  }
+  return uiString("journal_annotation_generate_failed");
+}
+
+function _journalAnnotationUrl(sessionId, annotationId, suffix = "") {
+  let path = "/api/journal/annotations/" + encodeURIComponent(sessionId);
+  if (annotationId !== null) path += "/" + encodeURIComponent(annotationId);
+  if (suffix) path += "/" + suffix;
+  return _journalUrl(path);
 }
 
 function _journalProvenanceDetail(event) {

@@ -600,12 +600,14 @@ html[data-view="settings"] .settings {
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
 .journal-memory-toggle,
+.journal-annotation-toggle,
 .journal-new-context {
   height: 28px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel-2); color: var(--text-dim); cursor: pointer;
   font: 11px "Consolas", "Cascadia Mono", monospace;
 }
 .journal-memory-toggle:hover,
+.journal-annotation-toggle:hover,
 .journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
 .journal-session {
@@ -701,6 +703,99 @@ html[data-view="settings"] .settings {
 .journal-memory-file.over-limit .journal-memory-status { color: var(--red); }
 @media (max-width: 760px) {
   .journal-memory-files { grid-template-columns: 1fr; }
+}
+.journal-annotation-panel {
+  border-bottom: 1px solid var(--border); background: var(--panel);
+  padding: 12px 22px; display: flex; flex-direction: column; gap: 10px;
+}
+.journal-annotation-panel[hidden] { display: none; }
+.journal-annotation-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.journal-annotation-header h2 {
+  margin: 0 0 4px; color: var(--text-dim);
+  font: 11px "Consolas", "Cascadia Mono", monospace;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.journal-annotation-header p {
+  margin: 0; color: var(--text-faint); font-size: 11.5px;
+}
+.journal-annotation-header-actions { display: flex; gap: 8px; }
+.journal-annotation-header-actions button {
+  height: 28px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-size: 11px;
+}
+.journal-annotation-header-actions button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-annotation-header-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.journal-annotation-range {
+  display: flex; align-items: end; gap: 9px;
+}
+.journal-annotation-range label {
+  display: flex; flex-direction: column; gap: 4px;
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--text-faint);
+}
+.journal-annotation-range input {
+  width: 84px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel-2); color: var(--text); padding: 5px 7px; font-size: 12px;
+}
+.journal-annotation-range button {
+  height: 28px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-size: 11px;
+}
+.journal-annotation-range button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-annotation-range button:disabled { opacity: 0.4; cursor: not-allowed; }
+.journal-annotation-message {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--amber);
+  overflow-wrap: anywhere; min-height: 12px;
+}
+.journal-annotation-list {
+  display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto;
+}
+.journal-annotation-empty {
+  color: var(--text-faint); font-size: 11.5px;
+}
+.journal-annotation {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
+  padding: 10px;
+}
+.journal-annotation-card-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.journal-annotation-target {
+  border: none; background: none; padding: 0; cursor: pointer; text-align: left;
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--cyan-dim);
+  text-decoration: underline dotted;
+}
+.journal-annotation-target:hover { color: var(--cyan); }
+.journal-annotation-target:disabled {
+  cursor: default; color: var(--text-faint); text-decoration: none;
+}
+.journal-annotation-source {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--text-faint);
+}
+.journal-annotation-text {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--text);
+  font-size: 12.5px; padding: 6px; user-select: text;
+}
+.journal-annotation-text:focus { outline: none; border-color: var(--cyan-dim); }
+.journal-annotation-footer {
+  display: flex; align-items: center; gap: 8px;
+}
+.journal-annotation-save {
+  border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
+  color: var(--text-faint); font: 9.5px "Consolas", "Cascadia Mono", monospace;
+  padding: 3px 8px; cursor: pointer;
+}
+.journal-annotation-save:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-annotation-save:disabled {
+  opacity: 0.5; cursor: default; border-color: var(--border); color: var(--text-faint);
+}
+.journal-annotation-status {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--amber);
+  overflow-wrap: anywhere;
 }
 .journal-search {
   display: flex; align-items: end; gap: 9px; padding: 12px 22px;

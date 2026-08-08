@@ -394,6 +394,131 @@ def test_journal_memory_panel_is_reachable_from_journal_view():
     assert ".journal-memory-panel[hidden] { display: none; }" in compact
 
 
+def test_journal_annotation_panel_is_reachable_from_journal_view():
+    assert 'id="journalAnnotationToggle"' in INDEX_HTML
+    assert 'onclick="toggleJournalAnnotationPanel()"' in INDEX_HTML
+    assert 'id="journalAnnotationPanel"' in INDEX_HTML
+    assert 'data-i18n="journal_annotation_note"' in INDEX_HTML
+    assert 'id="journalAnnotationGenerateSession"' in INDEX_HTML
+    assert 'onclick="generateJournalAnnotationSession()"' in INDEX_HTML
+    assert 'id="journalAnnotationRangeStart"' in INDEX_HTML
+    assert 'id="journalAnnotationRangeEnd"' in INDEX_HTML
+    assert 'id="journalAnnotationGenerateRange"' in INDEX_HTML
+    assert 'onclick="generateJournalAnnotationRange()"' in INDEX_HTML
+    assert 'id="journalAnnotationList"' in INDEX_HTML
+    assert 'id="journalAnnotationEmpty"' in INDEX_HTML
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert ".journal-annotation-panel[hidden] { display: none; }" in compact
+
+
+def test_journal_annotation_panel_note_frames_annotations_as_derived():
+    """Stop condition: the UI must not make generated annotations look
+    authoritative. The panel note and every card's target/source label are
+    the mechanism - assert the note string itself says so, not just that a
+    string exists."""
+    assert "not the original conversation" in _string_catalog("en")[
+        "journal_annotation_note"
+    ]
+
+
+def test_journal_annotation_panel_reloads_on_session_switch():
+    body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[0]
+    assert "_reloadJournalAnnotationsIfOpen(sessionId)" in body
+
+
+def test_journal_annotation_panel_is_cleared_with_journal_content():
+    body = APP_JS.split("function _clearJournalContent(")[1].split("\n}")[0]
+    assert "_clearJournalAnnotationPanel();" in body
+
+
+def test_journal_annotation_toggle_is_hidden_aware():
+    body = APP_JS.split("async function toggleJournalAnnotationPanel(")[1].split(
+        "\n}"
+    )[0]
+    assert "_isHiddenActive()" in body
+    assert 'uiString("journal_annotation_hidden")' in body
+
+
+def test_journal_annotation_card_exposes_target_source_and_save():
+    body = APP_JS.split("function _journalAnnotationElement(")[1].split("\n}")[0]
+    assert "_journalAnnotationTargetLabel(annotation.target)" in body
+    assert "_journalAnnotationSourceLabel(annotation)" in body
+    assert (
+        "saveJournalAnnotation(annotation.target.session_id, "
+        "annotation.annotation_id, refs)"
+    ) in body
+
+
+def test_journal_annotation_target_label_distinguishes_session_from_range():
+    body = APP_JS.split("function _journalAnnotationTargetLabel(")[1].split("\n}")[0]
+    assert 'uiString("journal_annotation_target_session")' in body
+    assert 'uiString("journal_annotation_target_range")' in body
+
+
+def test_journal_annotation_save_uses_put_and_syncs_source_badge():
+    body = APP_JS.split("async function saveJournalAnnotation(")[1].split("\n}")[0]
+    assert 'method: "PUT"' in body
+    assert (
+        "refs.source.textContent = _journalAnnotationSourceLabel(payload.annotation)"
+        in body
+    )
+
+
+def test_journal_annotation_generate_endpoints_are_typed_and_reload_list():
+    session_body = APP_JS.split("async function _generateJournalAnnotation(")[1].split(
+        "\n}"
+    )[0]
+    assert 'method: "POST"' in session_body
+    assert '_journalAnnotationUrl(sessionId, null, "generate")' in session_body
+    assert "await _loadJournalAnnotations(sessionId);" in session_body
+    url_body = APP_JS.split("function _journalAnnotationUrl(")[1].split("\n}")[0]
+    assert '"/api/journal/annotations/"' in url_body
+
+
+def test_journal_annotation_range_generate_rejects_reversed_range_client_side():
+    body = APP_JS.split("function generateJournalAnnotationRange(")[1].split("\n}")[0]
+    assert "start === null || end === null || start > end" in body
+    assert "journal_annotation_range_invalid" in body
+
+
+def test_journal_annotation_generate_completion_is_token_guarded():
+    """A generate call in flight when Hidden clears the panel must not have
+    its late completion clobber a newer generate call's flag/buttons/message
+    - only the completion whose token still matches the current one may."""
+    body = APP_JS.split("async function _generateJournalAnnotation(")[1].split("\n}")[
+        0
+    ]
+    assert "_journalAnnotationGenerateToken += 1;" in body
+    assert "const token = _journalAnnotationGenerateToken;" in body
+    assert "if (token !== _journalAnnotationGenerateToken) return;" in body
+    assert "if (token === _journalAnnotationGenerateToken) {" in body
+
+
+def test_journal_annotation_clear_invalidates_in_flight_generate_token():
+    body = APP_JS.split("function _clearJournalAnnotationPanel(")[1].split("\n}")[0]
+    assert "_journalAnnotationGenerateToken += 1;" in body
+    assert "_journalAnnotationGenerateInFlight = false;" in body
+    assert "_setJournalAnnotationGenerateButtonsDisabled(false);" in body
+
+
+def test_journal_annotation_strings_present_in_both_languages():
+    for key in (
+        "journal_annotation_open",
+        "journal_annotation_close",
+        "journal_annotation_title",
+        "journal_annotation_note",
+        "journal_annotation_generate_session",
+        "journal_annotation_generate_range",
+        "journal_annotation_save",
+        "journal_annotation_target_session",
+        "journal_annotation_target_range",
+        "journal_annotation_source_generated",
+        "journal_annotation_source_edited",
+        "journal_annotation_generate_unknown_range",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2
+
+
 def test_journal_memory_panel_loads_and_saves_fixed_file_ids():
     assert 'const _MEMORY_FILE_IDS = ["self", "memory"];' in APP_JS
     load_body = APP_JS.split("async function loadJournalMemoryFiles(")[1].split("\n}")[

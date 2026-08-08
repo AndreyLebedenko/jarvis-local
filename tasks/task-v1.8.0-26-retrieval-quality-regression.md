@@ -17,6 +17,16 @@ recording final metrics, and stopping release if retrieval quality regresses.
 Out of scope: selecting a new backend, changing thresholds after seeing
 results, altering automatic retrieval wiring, and adding runtime dependency.
 
+## Deferred check from task 23
+
+Before closing this card, revisit
+`tasks/bug_reports/2026-08-08-edited-annotation-recall-miss-in-new-context.md`:
+a manual playtest during task 23 slice 4 saw an edited annotation fail to be
+recalled at all from a fresh context shortly after saving. Determine whether
+this was the PUT-edit/reprojection race described there or a plain ranking
+miss, using this card's benchmark harness or a log-backed repro; the report
+lists the concrete follow-up for each case.
+
 ## Requirements
 
 - Reuse the task 11 benchmark labels, thresholds, and metric definitions

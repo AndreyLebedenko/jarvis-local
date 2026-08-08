@@ -1,6 +1,12 @@
 # Task v1.8.0-23: Annotation API, UI, and retrieval projections
 
-**Status:** Approved. Retrieval contract owner-approved 2026-08-07.
+**Status:** Completed. Retrieval contract owner-approved 2026-08-07. All four
+slices implemented and merged; verified by automated suite (`python -m
+pytest`: 1882 passed, 1 skipped; ruff clean) and manual Journal UI playtest
+(2026-08-08). One retrieval-quality edge case observed during that playtest
+(edited annotation not recalled in a fresh context shortly after save) is
+deferred to task v1.8.0-26 rather than blocking this card - see
+`tasks/bug_reports/2026-08-08-edited-annotation-recall-miss-in-new-context.md`.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-21 and v1.8.0-22.
 
@@ -69,13 +75,13 @@ retrieval-quality regression (card 26) are not this card.
 
 ## Acceptance criteria
 
-- [ ] Users can view and edit annotation overlays.
-- [ ] Retrieval can find annotation text and expose it as a typed derived
+- [x] Users can view and edit annotation overlays.
+- [x] Retrieval can find annotation text and expose it as a typed derived
       candidate (`kind=annotation`, source, target), never as a raw turn.
-- [ ] Source references are visible and preserved.
-- [ ] Hidden mode suppresses annotation UI/API visibility.
-- [ ] Projection updates do not rebuild unrelated sessions.
-- [ ] Session deletion clears the annotation lexical and semantic projections
+- [x] Source references are visible and preserved.
+- [x] Hidden mode suppresses annotation UI/API visibility.
+- [x] Projection updates do not rebuild unrelated sessions.
+- [x] Session deletion clears the annotation lexical and semantic projections
       and a rebuild cannot restore them.
 
 ## Stop conditions

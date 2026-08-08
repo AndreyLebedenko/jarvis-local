@@ -295,7 +295,34 @@ system is intended to grow.
     itself, while generate relies on the generation service's own publish. There
     is no hard-delete endpoint - the card lists only read/list/edit/generate, and
     `DISMISSED` is the audit-preserving hide (a future edit-surface extension, not
-    this slice).
+    this slice). Implemented (slice 4): a session-scoped Journal panel
+    (`journalAnnotationToggle`/`journalAnnotationPanel`), mirroring the Memory
+    panel's toggle shape rather than the Transcript panel's per-event shape,
+    since an annotation is session/range-scoped, not tied to one event position.
+    Loads the session's annotation list on open and on every session switch
+    while open (`_reloadJournalAnnotationsIfOpen`), closes and clears on Hidden
+    or session-content invalidation (`_clearJournalContent`), same as Memory.
+    Each card shows the target (whole session, or `Events {start}-{end}` with a
+    click-to-jump into the feed via the existing `_highlightJournalContextEvent`)
+    and the source (Generated/Edited, plus a dismissed marker), edits via PUT
+    with the response's own annotation applied back to the card (badge included)
+    with no extra GET, and generation (whole-session button or an explicit
+    start/end range form, client-rejecting a reversed range before the request)
+    reloads the full list on success since a new annotation has no card to patch.
+    The panel note states explicitly that annotations are derived and not the
+    original conversation - the direct implementation of the stop condition
+    "UI must not make generated annotations look authoritative." Hidden
+    suppression is inherited from the existing `.journal-sessions`/
+    `.journal-feed-pane` display:none rule (same CSS containers as Memory); the
+    toggle handler's own Hidden check is defense in depth, matching Memory's.
+    Generate concurrency is token-guarded, not just flag-guarded: clearing the
+    panel (Hidden) resets the in-flight flag and re-enables the buttons
+    immediately so a reopened panel is not stuck disabled, but the abandoned
+    fetch is still running server-side; `_journalAnnotationGenerateToken`
+    (bumped on every new generate call and on every clear) lets each call's
+    completion recognize whether it is still current before touching the
+    shared flag/buttons/message, so a late completion from an abandoned call
+    can never clobber a newer, still-running generate call's state.
 - **Derived read model is eventually consistent, 2026-08-08 (task v1.8.0-23).**
   The raw JSONL journal and the overlay stores (transcript, annotation) are the
   authoritative record; every retrieval-facing projection (corpus/FTS, semantic,
