@@ -1,6 +1,8 @@
 # Task v1.8.0-26: Retrieval quality regression
 
-**Status:** Draft revision for owner review.
+**Status:** Completed.
+Full record in `PROJECT.md`'s "Retrieval-quality regression (task v1.8.0-26)"
+entry.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-20 and v1.8.0-23.
 
@@ -27,6 +29,15 @@ this was the PUT-edit/reprojection race described there or a plain ranking
 miss, using this card's benchmark harness or a log-backed repro; the report
 lists the concrete follow-up for each case.
 
+**Done.** A deterministic repro
+(`test_annotation_edit_reprojection_race_is_real_and_bounded_by_wait_for_idle`)
+confirmed the reprojection race is structurally real, but this card's pure
+scope could not measure its real-world duration, so root-cause attribution for
+the original incident stayed formally open. The owner then manually replayed
+the exact original scenario with no code change in between and confirmed it no
+longer reproduces. Bug report closed on that basis; see its "Owner
+reverification" section and `PROJECT.md`.
+
 ## Requirements
 
 - Reuse the task 11 benchmark labels, thresholds, and metric definitions
@@ -40,11 +51,11 @@ lists the concrete follow-up for each case.
 
 ## Acceptance criteria
 
-- [ ] The benchmark remains deterministic and pure.
-- [ ] Raw-text quality labels are preserved.
-- [ ] Transcript and annotation slices are explicit.
-- [ ] Final decision is reproducible from repository files.
-- [ ] No new runtime dependency is introduced by this regression task.
+- [x] The benchmark remains deterministic and pure.
+- [x] Raw-text quality labels are preserved.
+- [x] Transcript and annotation slices are explicit.
+- [x] Final decision is reproducible from repository files.
+- [x] No new runtime dependency is introduced by this regression task.
 
 ## Stop conditions
 

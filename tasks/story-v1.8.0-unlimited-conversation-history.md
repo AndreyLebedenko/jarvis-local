@@ -637,7 +637,7 @@ Revised remaining sequence:
     calculate safe near/far media operations without performing them.
 25. [Consolidation executor and control](task-v1.8.0-25-consolidation-executor-and-control.md)
     execute explicit plans with restart recovery, API, and UI control.
-26. [Retrieval quality regression](task-v1.8.0-26-retrieval-quality-regression.md)
+26. [Retrieval quality regression](done/task-v1.8.0-26-retrieval-quality-regression.md)
     rerun the fixed retrieval-quality benchmark after transcripts and
     annotations join the retrieval corpus.
 27. [Final integrated scale, recovery, and e2e](task-v1.8.0-27-scale-recovery-and-e2e.md)
