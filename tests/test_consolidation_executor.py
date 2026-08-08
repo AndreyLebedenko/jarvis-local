@@ -328,8 +328,8 @@ def test_concurrent_execute_calls_for_the_same_session_do_not_race(
 
     def run() -> None:
         result = executor.execute_far_consolidation(
-        _SESSION, active_session_id_provider=_no_active_session
-    )
+            _SESSION, active_session_id_provider=_no_active_session
+        )
         with results_lock:
             results.append(result)
 
@@ -403,9 +403,7 @@ def test_active_session_provider_is_evaluated_inside_the_lock_scope() -> None:
     # Every AST node genuinely reachable from inside the with-block's body -
     # not "textually after the `with` line", actual lexical descendants.
     inside_with_block = {
-        id(node)
-        for statement in with_statement.body
-        for node in ast.walk(statement)
+        id(node) for statement in with_statement.body for node in ast.walk(statement)
     }
 
     def is_provider_call(node: ast.AST) -> bool:

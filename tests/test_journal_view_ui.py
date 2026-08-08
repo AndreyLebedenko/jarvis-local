@@ -416,9 +416,10 @@ def test_journal_annotation_panel_note_frames_annotations_as_derived():
     authoritative. The panel note and every card's target/source label are
     the mechanism - assert the note string itself says so, not just that a
     string exists."""
-    assert "not the original conversation" in _string_catalog("en")[
-        "journal_annotation_note"
-    ]
+    assert (
+        "not the original conversation"
+        in _string_catalog("en")["journal_annotation_note"]
+    )
 
 
 def test_journal_annotation_panel_reloads_on_session_switch():
@@ -432,9 +433,9 @@ def test_journal_annotation_panel_is_cleared_with_journal_content():
 
 
 def test_journal_annotation_toggle_is_hidden_aware():
-    body = APP_JS.split("async function toggleJournalAnnotationPanel(")[1].split(
-        "\n}"
-    )[0]
+    body = APP_JS.split("async function toggleJournalAnnotationPanel(")[1].split("\n}")[
+        0
+    ]
     assert "_isHiddenActive()" in body
     assert 'uiString("journal_annotation_hidden")' in body
 
@@ -485,9 +486,7 @@ def test_journal_annotation_generate_completion_is_token_guarded():
     """A generate call in flight when Hidden clears the panel must not have
     its late completion clobber a newer generate call's flag/buttons/message
     - only the completion whose token still matches the current one may."""
-    body = APP_JS.split("async function _generateJournalAnnotation(")[1].split("\n}")[
-        0
-    ]
+    body = APP_JS.split("async function _generateJournalAnnotation(")[1].split("\n}")[0]
     assert "_journalAnnotationGenerateToken += 1;" in body
     assert "const token = _journalAnnotationGenerateToken;" in body
     assert "if (token !== _journalAnnotationGenerateToken) return;" in body
@@ -586,18 +585,18 @@ def test_journal_consolidation_execute_requires_a_confirm_dialog():
     """The one destructive action in the Journal surface must not fire
     without an explicit confirmation naming how many files will be removed
     (owner decision, task v1.8.0-25: preview + confirm, not execute alone)."""
-    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
-        "\n}"
-    )[0]
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split("\n}")[
+        0
+    ]
     assert "window.confirm(" in body
     assert 'uiString("journal_consolidation_confirm")' in body
     assert "_journalConsolidationRemovableCount" in body
 
 
 def test_journal_consolidation_execute_posts_and_reloads_the_plan():
-    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
-        "\n}"
-    )[0]
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split("\n}")[
+        0
+    ]
     assert 'method: "POST"' in body
     assert "/execute" in body
     assert "await _loadJournalConsolidation(sessionId);" in body
@@ -607,9 +606,9 @@ def test_journal_consolidation_execute_completion_is_token_guarded():
     """A late completion from an execute call abandoned by Hidden must not
     clobber a newer execute call's flag/buttons/message - mirrors the exact
     fix already applied to annotation generate for the same race."""
-    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
-        "\n}"
-    )[0]
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split("\n}")[
+        0
+    ]
     assert "_journalConsolidationExecuteToken += 1;" in body
     assert "const token = _journalConsolidationExecuteToken;" in body
     assert "if (token !== _journalConsolidationExecuteToken) return;" in body
@@ -642,9 +641,9 @@ def test_journal_consolidation_active_and_unknown_session_disable_execute():
 
 
 def test_journal_consolidation_media_item_uses_typed_action_and_reason_strings():
-    body = APP_JS.split("function _journalConsolidationMediaElement(")[1].split(
-        "\n}"
-    )[0]
+    body = APP_JS.split("function _journalConsolidationMediaElement(")[1].split("\n}")[
+        0
+    ]
     assert 'uiString("journal_consolidation_reason_" + item.reason)' in body
     assert "journal_consolidation_action_remove" in body
     assert "journal_consolidation_action_keep" in body

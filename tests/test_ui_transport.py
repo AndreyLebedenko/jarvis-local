@@ -3064,9 +3064,7 @@ async def test_consolidation_execute_api_removes_audio_and_status_reflects_it(
     )
     try:
         async with aiohttp.ClientSession() as session:
-            before_status = await _get_json(
-                session, f"{root}/status?token=valid-token"
-            )
+            before_status = await _get_json(session, f"{root}/status?token=valid-token")
             assert before_status["found"] is False
 
             executed = await session.post(f"{root}/execute?token=valid-token")
@@ -3153,9 +3151,7 @@ async def test_consolidation_api_hidden_and_token(tmp_path: Path) -> None:
         async with aiohttp.ClientSession() as session:
             hidden_plan = await _get_json(session, f"{root}?token=valid-token")
             assert hidden_plan == {"status": "hidden"}
-            hidden_status = await _get_json(
-                session, f"{root}/status?token=valid-token"
-            )
+            hidden_status = await _get_json(session, f"{root}/status?token=valid-token")
             assert hidden_status == {"status": "hidden"}
             hidden_execute = await session.post(f"{root}/execute?token=valid-token")
             assert (await hidden_execute.json()) == {"status": "hidden"}
