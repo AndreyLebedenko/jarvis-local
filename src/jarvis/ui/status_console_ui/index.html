@@ -156,6 +156,7 @@
     <button class="journal-new-context" id="journalNewContextButton" type="button" data-i18n="journal_new_context" onclick="startNewJournalContext()">New context</button>
     <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
     <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" data-i18n="journal_annotation_open" onclick="toggleJournalAnnotationPanel()">Annotations</button>
+    <button class="journal-consolidation-toggle" id="journalConsolidationToggle" type="button" data-i18n="journal_consolidation_open" onclick="toggleJournalConsolidationPanel()">Consolidation</button>
     <div id="journalSessionList"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
@@ -195,6 +196,20 @@
       <div class="journal-annotation-message" id="journalAnnotationMessage" role="status"></div>
       <div class="journal-annotation-list" id="journalAnnotationList"></div>
       <div class="journal-annotation-empty" id="journalAnnotationEmpty" data-i18n="journal_annotation_empty">No annotations yet</div>
+    </section>
+    <section class="journal-consolidation-panel" id="journalConsolidationPanel" hidden aria-labelledby="journalConsolidationHeading">
+      <div class="journal-consolidation-header">
+        <div>
+          <h2 id="journalConsolidationHeading" data-i18n="journal_consolidation_title">Consolidation</h2>
+          <p data-i18n="journal_consolidation_note">Dry-run preview. Removes audio only once it has a transcript - text, transcripts, and annotations are never touched.</p>
+        </div>
+        <button type="button" data-i18n="journal_consolidation_close" onclick="toggleJournalConsolidationPanel()">Close</button>
+      </div>
+      <div class="journal-consolidation-message" id="journalConsolidationMessage" role="status"></div>
+      <div class="journal-consolidation-summary" id="journalConsolidationSummary"></div>
+      <div class="journal-consolidation-list" id="journalConsolidationMediaList"></div>
+      <div class="journal-consolidation-last-run" id="journalConsolidationLastRun"></div>
+      <button type="button" class="journal-consolidation-execute" id="journalConsolidationExecute" data-i18n="journal_consolidation_execute" onclick="executeJournalConsolidation()" disabled>Execute</button>
     </section>
     <form class="journal-search" id="journalSearch" onsubmit="return false">
       <label class="journal-search-query" for="journalSearchQuery">

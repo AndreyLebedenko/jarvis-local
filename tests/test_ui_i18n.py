@@ -15,6 +15,7 @@ from jarvis.core.config import TTS_ROUTE_TYPES, MemorySettings
 from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.inputs.attachments import AttachmentClass
+from jarvis.journal.consolidation import MediaActionReason
 from jarvis.memory.files import MemoryFileRepository, build_memory_file_specs
 from jarvis.tools.builtin import BuiltinToolProvider
 from jarvis.tools.registry import ToolRegistry
@@ -83,6 +84,7 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
             "last_request_",
             "journal_attachment_class_",
             "journal_attachment_status_",
+            "journal_consolidation_reason_",
             "mcp_",
             "think_status_",
         }
@@ -117,6 +119,20 @@ def test_every_attachment_class_has_a_journal_upload_label():
 
     assert expected <= keys
     assert "journal_attachment_class_unknown" in keys
+
+
+def test_every_media_action_reason_has_a_consolidation_label():
+    """The consolidation API serializes MediaActionReason.value as
+    payload["reason"], and app.js renders it through
+    uiString("journal_consolidation_reason_" + item.reason). Keep that
+    cross-language suffix contract pinned the same way AttachmentClass
+    labels are."""
+    keys = _strings_js_keys()["en"]
+    expected = {
+        f"journal_consolidation_reason_{member.value}" for member in MediaActionReason
+    }
+
+    assert expected <= keys
 
 
 def test_every_projected_tts_field_has_a_localized_label():

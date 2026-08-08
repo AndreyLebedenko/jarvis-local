@@ -392,6 +392,124 @@ system is intended to grow.
   that does touch text has a real field to populate. Execution of a plan
   (actually deleting files, with restart recovery) is task v1.8.0-25, not this
   card.
+- **Consolidation executor, archive metadata, API, and UI contract (task
+  v1.8.0-25, owner-approved 2026-08-08).** Two design decisions were settled
+  with the owner before implementation:
+  - **Crash/restart recovery is idempotent re-derivation, not a durable
+    step-log.** `ConsolidationExecutor.execute_far_consolidation` in
+    `src/jarvis/journal/consolidation_executor.py` always builds a *fresh*
+    plan through `ConsolidationPlanner` right before acting, never trusting a
+    plan the caller fetched earlier. An already-removed file resolves to
+    `MediaActionReason.ALREADY_ABSENT` on that fresh plan, so re-invoking
+    execute after a crash, restart, or partial failure simply continues with
+    whatever the current state still proposes - no separate "resume"
+    operation, no durable in-progress marker that could drift out of sync
+    with reality. This also makes the active-session guard unconditional:
+    every execution re-checks `active_session_id` against a fresh plan, so no
+    stale or tampered plan can bypass it. A per-file failure (permission
+    error, disk error, ...) does not abort the run - the remaining files are
+    still attempted and the run is reported `PARTIAL_FAILURE` rather than
+    raising, which is what makes recovery state honest rather than an
+    all-or-nothing guess.
+  - **The new archive-metadata store (the story's "archive metadata" derived-
+    corpus category, not built until this card) keeps only the latest run's
+    result per session, not a history of every attempt.**
+    `ArchiveOverlayRepository` (`src/jarvis/journal/archive.py`) upserts one
+    `archive_runs` row per session - status (`COMPLETED`/`PARTIAL_FAILURE`),
+    per-media outcome (`REMOVED`/`KEPT`/`FAILED` with a reason/detail string),
+    `bytes_reclaimed`, timestamps - mirroring the transcript/annotation
+    overlay schema pattern but with no `EventReferenceResolver` validation at
+    write time (the executor already validated everything through the
+    planner before writing the summary). Like annotations, a run is written
+    only by the explicit executor, never derived from an appended raw event,
+    so `ArchiveHistoryProjection.project_event` (`lifecycle.py`) is a no-op;
+    only session deletion fans out to it, registered in
+    `HistoryProjectionLifecycle`'s `projections` tuple alongside corpus,
+    transcript, and annotation.
+  - **API is preview/execute, never a client-supplied plan.** `GET
+    /api/journal/consolidation/{session_id}` wraps the task-24 planner
+    read-only; `GET .../status` reads the last archive run; `POST
+    .../execute` is the only destructive endpoint in the whole transport and,
+    per the recovery design above, ignores any plan the client might have
+    cached and re-derives its own. All three follow the existing
+    `_require_http_token` + Hidden-mode-suppression pattern.
+  - **UI requires an explicit confirm before execute** (owner decision): the
+    Journal panel always shows the dry-run preview (event/annotation counts,
+    per-file action+reason, last run) before the Execute button is enabled,
+    and `executeJournalConsolidation()` gates the POST behind
+    `window.confirm()` naming the file count. The button starts `disabled` in
+    markup and stays disabled until a loaded plan reports at least one
+    removable file. Both the plan-load and the execute-call paths carry the
+    same token-guard fix already applied to the annotation panel
+    (`_journalConsolidationLoadToken`, `_journalConsolidationExecuteToken`):
+    an older overlapping response, or a late completion from a call Hidden
+    already abandoned, cannot clobber a newer one's DOM state.
+  - **Concurrent execute calls for the same session are serialized by a
+    per-session lock** (Codex stop-time review, 2026-08-08).
+    `ConsolidationExecutor` holds a `dict[session_id, threading.Lock]`;
+    `execute_far_consolidation` acquires the session's lock before doing
+    anything. Without it, two overlapping HTTP requests (the transport runs
+    `execute_far_consolidation` via `asyncio.to_thread`, so this is two real
+    OS threads) both plan from the same pre-deletion state, both mark the
+    same file REMOVE, and the loser of the `os.unlink()` race gets
+    `FileNotFoundError` - a real, just-deleted-by-the-winner file reported as
+    a false `PARTIAL_FAILURE`, even though the plan's goal (the file is gone)
+    was achieved. The lock makes the second call's fresh re-plan run strictly
+    after the first call's deletions commit, so it correctly sees
+    `ALREADY_ABSENT` and reports KEEP instead of racing a second delete.
+    Different sessions still execute fully in parallel. Regression test:
+    `test_concurrent_execute_calls_for_the_same_session_do_not_race` runs two
+    real threads against a source whose `delete_media` is deliberately slow,
+    and asserts `delete_media` is called exactly once total (not just "never
+    overlapping") - the second call must never attempt it at all.
+  - **The per-session lock's own wait can go stale on the active-session
+    guard** (Codex stop-time review, 2026-08-08, found immediately after the
+    lock fix above). A call can wait an unbounded time behind another
+    same-session execution; if `active_session_id` had been captured once by
+    the caller *before* that wait (transport.py's original pattern:
+    `active_session_id=self._journal_active_session_id()` evaluated eagerly
+    before `asyncio.to_thread` dispatch), a session could become active while
+    the call sat blocked on the lock, and it would still act on the stale
+    "not active" snapshot once it finally acquired the lock - bypassing the
+    guard through the wait itself, not through a stale plan (the fresh-plan
+    design doesn't help here because the plan is built *after* the lock is
+    already held, using whatever `active_session_id` value it was handed).
+    Fixed by changing `execute_far_consolidation`'s parameter from a value to
+    `active_session_id_provider: Callable[[], str | None]`, called only
+    *after* the lock is acquired; transport.py now passes the callable itself
+    (`self._journal_active_session_id`, already a `Callable[[], str | None]`)
+    instead of invoking it eagerly. This went through four review passes on
+    the regression test alone. The first two tried to prove call order
+    (provider vs. lock) through timing - checking only that the second
+    call's *outer* call had started before the session went active (proves
+    scheduling ran, not that the provider was blocked), then instrumenting
+    the provider with its own event and asserting it stayed unset through a
+    generous window while the first call held the lock (still just makes an
+    ordering bug *unlikely* to observe, not impossible - a race is not a
+    proof). The third switched to a source-text check (`source.index(
+    "active_session_id_provider()") > source.index("with self._lock_for(
+    ...)")`), correctly rejected too: that only proves textual order, not
+    lexical nesting - moving the call to a statement *after* the `with`
+    block (no longer holding the lock at all) satisfies the same substring
+    check while breaking the actual guarantee. The fix needed Python's own
+    parser, not string or timing heuristics:
+    `test_active_session_provider_is_evaluated_inside_the_lock_scope` parses
+    `execute_far_consolidation` with `ast`, finds the `with
+    self._lock_for(...)` statement, and walks only the nodes reachable from
+    *inside its body* to build the set of calls genuinely nested there, then
+    asserts every call to `active_session_id_provider` in the function is a
+    member of that set. A call moved after the block - the exact bug the
+    substring check missed - shows up as a call outside the with-body's node
+    set and fails deterministically, every run. Combined with
+    `test_concurrent_execute_calls_for_the_same_session_do_not_race` (which
+    proves at runtime that the lock genuinely serializes same-session calls),
+    the two together prove the property no race or substring check could: a
+    queued call's active-session check always reflects state after the
+    previous call's full critical section. Verified to actually catch both
+    the original bug (provider evaluated before the `with`) and the
+    substring-check's blind spot (provider called after the `with`) by
+    temporarily reintroducing each and confirming the test fails, then
+    restoring the fix.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

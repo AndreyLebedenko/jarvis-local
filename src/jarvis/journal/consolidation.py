@@ -141,7 +141,14 @@ class ConsolidationSource(Protocol):
 
 
 class JournalStoreConsolidationSource:
-    """`ConsolidationSource` backed by the append-only journal store."""
+    """`ConsolidationSource` backed by the append-only journal store.
+
+    Also implements the executor's `ConsolidationExecutionSource` (task
+    v1.8.0-25, `consolidation_executor.py`): `media_size`/`delete_media` are
+    the only two operations that read a media file's size or remove it from
+    disk. One adapter serves both the read-only planner and the executor so
+    session/media path resolution is not duplicated between them.
+    """
 
     def __init__(self, store: JournalStore) -> None:
         self._store = store
@@ -151,6 +158,12 @@ class JournalStoreConsolidationSource:
 
     def media_exists(self, session_id: str, name: str) -> bool:
         return (self._store.root / session_id / name).exists()
+
+    def media_size(self, session_id: str, name: str) -> int:
+        return (self._store.root / session_id / name).stat().st_size
+
+    def delete_media(self, session_id: str, name: str) -> None:
+        (self._store.root / session_id / name).unlink()
 
 
 class ConsolidationPlanner:

@@ -856,6 +856,7 @@ function _clearJournalContent() {
   _journalNewContextInFlight = false;
   _clearJournalMemoryPanel();
   _clearJournalAnnotationPanel();
+  _clearJournalConsolidationPanel();
   _clearJournalAttachments();
   _updateJournalNewContextButton();
   _setJournalInputStatus("");
@@ -1650,6 +1651,7 @@ async function selectJournalSession(sessionId, contextEventPosition = null) {
   if (valid && _journalSelectedSessionId === sessionId) {
     _renderJournalFeed(payload ? payload.events : [], contextEventPosition);
     _reloadJournalAnnotationsIfOpen(sessionId);
+    _reloadJournalConsolidationIfOpen(sessionId);
   }
   _maybeRefetchJournalFeed();
 }
@@ -2497,6 +2499,223 @@ function _journalAnnotationUrl(sessionId, annotationId, suffix = "") {
   if (annotationId !== null) path += "/" + encodeURIComponent(annotationId);
   if (suffix) path += "/" + suffix;
   return _journalUrl(path);
+}
+
+// Derived far-consolidation dry-run/execute panel for the selected session
+// (task v1.8.0-25). Unlike Annotations, this panel never edits text - it only
+// previews (GET, no I/O side effect) and, on explicit confirm, executes the
+// one destructive action anywhere in the Journal surface: removing audio
+// files that already have a transcript. Session-scoped like Annotations,
+// with the same load-token guard against out-of-order responses and the same
+// in-flight-call token guard for the one action button, both carried over
+// from the annotation panel's own fixes rather than re-discovered here.
+let _journalConsolidationOpen = false;
+let _journalConsolidationLoadToken = 0;
+let _journalConsolidationExecuteInFlight = false;
+let _journalConsolidationExecuteToken = 0;
+let _journalConsolidationRemovableCount = 0;
+
+async function toggleJournalConsolidationPanel() {
+  if (_isHiddenActive()) {
+    _setJournalInputStatus(uiString("journal_consolidation_hidden"));
+    return;
+  }
+  _journalConsolidationOpen = !_journalConsolidationOpen;
+  document.getElementById("journalConsolidationPanel").hidden =
+    !_journalConsolidationOpen;
+  document.getElementById("journalConsolidationToggle").textContent = uiString(
+    _journalConsolidationOpen
+      ? "journal_consolidation_close"
+      : "journal_consolidation_open");
+  if (_journalConsolidationOpen) {
+    await _loadJournalConsolidation(_journalSelectedSessionId);
+  }
+}
+
+function _clearJournalConsolidationPanel() {
+  _journalConsolidationOpen = false;
+  _journalConsolidationLoadToken += 1;
+  _journalConsolidationExecuteInFlight = false;
+  _journalConsolidationExecuteToken += 1;
+  _journalConsolidationRemovableCount = 0;
+  const panel = document.getElementById("journalConsolidationPanel");
+  if (panel) panel.hidden = true;
+  const toggle = document.getElementById("journalConsolidationToggle");
+  if (toggle) toggle.textContent = uiString("journal_consolidation_open");
+  const summary = document.getElementById("journalConsolidationSummary");
+  if (summary) summary.textContent = "";
+  const list = document.getElementById("journalConsolidationMediaList");
+  if (list) list.replaceChildren();
+  const lastRun = document.getElementById("journalConsolidationLastRun");
+  if (lastRun) lastRun.textContent = "";
+  const message = document.getElementById("journalConsolidationMessage");
+  if (message) message.textContent = "";
+  _setJournalConsolidationExecuteDisabled(true);
+}
+
+// Called after selectJournalSession() settles so an already-open panel
+// follows the session switch instead of showing the previous session's plan.
+function _reloadJournalConsolidationIfOpen(sessionId) {
+  if (!_journalConsolidationOpen) return;
+  _loadJournalConsolidation(sessionId);
+}
+
+async function _loadJournalConsolidation(sessionId) {
+  const list = document.getElementById("journalConsolidationMediaList");
+  const message = document.getElementById("journalConsolidationMessage");
+  _journalConsolidationLoadToken += 1;
+  const token = _journalConsolidationLoadToken;
+  if (sessionId === null) {
+    document.getElementById("journalConsolidationSummary").textContent = "";
+    list.replaceChildren();
+    document.getElementById("journalConsolidationLastRun").textContent = "";
+    _journalConsolidationRemovableCount = 0;
+    _setJournalConsolidationExecuteDisabled(true);
+    return;
+  }
+  const generation = _journalContentGeneration;
+  const base = "/api/journal/consolidation/" + encodeURIComponent(sessionId);
+  const [planPayload, statusPayload] = await Promise.all([
+    _fetchJournalJson(base),
+    _fetchJournalJson(base + "/status"),
+  ]);
+  // Same out-of-order guard as annotations: an older overlapping load (the
+  // panel's own open-load racing a post-execute reload, or a session switch
+  // mid-flight) must not overwrite what a newer load already rendered.
+  if (
+    generation !== _journalContentGeneration ||
+    _journalSelectedSessionId !== sessionId ||
+    token !== _journalConsolidationLoadToken
+  ) {
+    return;
+  }
+  if (!planPayload) {
+    message.textContent = uiString("journal_consolidation_load_failed");
+    _setJournalConsolidationExecuteDisabled(true);
+    return;
+  }
+  message.textContent = "";
+  _renderJournalConsolidationPlan(planPayload.plan);
+  _renderJournalConsolidationLastRun(statusPayload ? statusPayload.run : null);
+}
+
+function _renderJournalConsolidationPlan(plan) {
+  const summary = document.getElementById("journalConsolidationSummary");
+  const list = document.getElementById("journalConsolidationMediaList");
+  list.replaceChildren();
+
+  if (plan.plan_status === "active_session") {
+    summary.textContent = uiString("journal_consolidation_active_session");
+    _journalConsolidationRemovableCount = 0;
+    _setJournalConsolidationExecuteDisabled(true);
+    return;
+  }
+  if (plan.plan_status === "unknown_session") {
+    summary.textContent = uiString("journal_consolidation_unknown_session");
+    _journalConsolidationRemovableCount = 0;
+    _setJournalConsolidationExecuteDisabled(true);
+    return;
+  }
+
+  summary.textContent = uiString("journal_consolidation_summary")
+    .replace("{events}", String(plan.event_count))
+    .replace("{annotations}", String(plan.annotation_count))
+    .replace("{removable}", String(plan.removable_count));
+  for (const item of plan.media_items) {
+    list.appendChild(_journalConsolidationMediaElement(item));
+  }
+  _journalConsolidationRemovableCount = plan.removable_count;
+  _setJournalConsolidationExecuteDisabled(plan.removable_count === 0);
+}
+
+function _journalConsolidationMediaElement(item) {
+  const row = document.createElement("div");
+  row.className = "journal-consolidation-media-item";
+  const media = document.createElement("span");
+  media.className = "journal-consolidation-media-name";
+  media.textContent = item.media;
+  const action = document.createElement("span");
+  action.className =
+    "journal-consolidation-media-action journal-consolidation-media-action-" +
+    item.action;
+  action.textContent = uiString(
+    item.action === "remove"
+      ? "journal_consolidation_action_remove"
+      : "journal_consolidation_action_keep");
+  const reason = document.createElement("span");
+  reason.className = "journal-consolidation-media-reason";
+  reason.textContent = uiString("journal_consolidation_reason_" + item.reason);
+  row.append(media, action, reason);
+  return row;
+}
+
+function _renderJournalConsolidationLastRun(run) {
+  const lastRun = document.getElementById("journalConsolidationLastRun");
+  if (!run) {
+    lastRun.textContent = uiString("journal_consolidation_no_prior_run");
+    return;
+  }
+  const statusKey =
+    run.status === "completed"
+      ? "journal_consolidation_run_completed"
+      : "journal_consolidation_run_partial_failure";
+  lastRun.textContent = uiString(statusKey)
+    .replace("{removed}", String(run.removed_count))
+    .replace("{failed}", String(run.failed_count))
+    .replace("{bytes}", String(run.bytes_reclaimed));
+}
+
+async function executeJournalConsolidation() {
+  const sessionId = _journalSelectedSessionId;
+  const message = document.getElementById("journalConsolidationMessage");
+  if (sessionId === null || _journalConsolidationExecuteInFlight) return;
+  if (
+    !window.confirm(
+      uiString("journal_consolidation_confirm").replace(
+        "{count}", String(_journalConsolidationRemovableCount)))
+  ) {
+    return;
+  }
+  const url = _journalUrl(
+    "/api/journal/consolidation/" + encodeURIComponent(sessionId) + "/execute");
+  if (url === null) {
+    message.textContent = uiString("transport_no_token");
+    return;
+  }
+  _journalConsolidationExecuteInFlight = true;
+  _journalConsolidationExecuteToken += 1;
+  const token = _journalConsolidationExecuteToken;
+  _setJournalConsolidationExecuteDisabled(true);
+  message.textContent = uiString("journal_consolidation_executing");
+  try {
+    const response = await fetch(url, { method: "POST" });
+    const payload = await response.json();
+    // A stale response - the panel was cleared (Hidden) and a newer execute
+    // call now owns the flag/buttons/message - must not touch any of them.
+    if (token !== _journalConsolidationExecuteToken) return;
+    if (payload.status !== "ok") {
+      message.textContent = uiString("journal_consolidation_execute_failed");
+      return;
+    }
+    message.textContent = "";
+    await _loadJournalConsolidation(sessionId);
+  } catch (error) {
+    console.error("Consolidation execute failed:", error);
+    if (token === _journalConsolidationExecuteToken) {
+      message.textContent = uiString("journal_consolidation_execute_failed");
+    }
+  } finally {
+    if (token === _journalConsolidationExecuteToken) {
+      _journalConsolidationExecuteInFlight = false;
+      _setJournalConsolidationExecuteDisabled(
+        _journalConsolidationRemovableCount === 0);
+    }
+  }
+}
+
+function _setJournalConsolidationExecuteDisabled(disabled) {
+  const button = document.getElementById("journalConsolidationExecute");
+  if (button) button.disabled = disabled;
 }
 
 function _journalProvenanceDetail(event) {

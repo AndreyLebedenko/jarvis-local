@@ -3457,6 +3457,8 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         transcription_service=object(),
         annotation_overlay_repository=object(),
         annotation_generation_service=object(),
+        consolidation_planner=object(),
+        consolidation_executor=object(),
         memory_file_repository=object(),
     )
 
@@ -4387,6 +4389,21 @@ def test_build_app_constructs_annotation_generation_service_with_settings():
     assert service.max_source_chars == 15000
     assert service._max_annotation_chars == 3000
     assert service._instruction == "Summarize only the cited excerpt."
+
+
+def test_build_app_always_constructs_consolidation_planner_and_executor():
+    """Unlike transcription/annotation generation, consolidation planning and
+    execution have no separate enable flag - task v1.8.0-24/25 provide no
+    background/automatic behavior to gate, only explicit, user-triggered
+    reads and the one destructive action, so there is nothing unsafe about
+    always constructing them."""
+    settings = Settings(journal=JournalSettings(enabled=False))
+
+    app = build_app(settings, backend=_FakeBackend())
+
+    assert app.archive_overlay_repository is not None
+    assert app.consolidation_planner is not None
+    assert app.consolidation_executor is not None
 
 
 def test_build_app_omits_annotation_generation_service_when_disabled():

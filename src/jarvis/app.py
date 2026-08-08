@@ -115,6 +115,12 @@ from jarvis.journal.annotation_generator import (
 )
 from jarvis.journal.annotation_search import AnnotationSearchIndex
 from jarvis.journal.annotation_semantic import AnnotationSemanticIndex
+from jarvis.journal.archive import ArchiveOverlayRepository
+from jarvis.journal.consolidation import (
+    ConsolidationPlanner,
+    JournalStoreConsolidationSource,
+)
+from jarvis.journal.consolidation_executor import ConsolidationExecutor
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
 from jarvis.journal.fork import (
@@ -125,6 +131,7 @@ from jarvis.journal.fork import (
 )
 from jarvis.journal.lifecycle import (
     AnnotationHistoryProjection,
+    ArchiveHistoryProjection,
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalHistoryService,
@@ -1140,6 +1147,9 @@ class App:
     annotation_overlay_repository: AnnotationOverlayRepository | None = None
     transcription_service: TranscriptionService | None = None
     annotation_generation_service: AnnotationGenerationService | None = None
+    archive_overlay_repository: ArchiveOverlayRepository | None = None
+    consolidation_planner: ConsolidationPlanner | None = None
+    consolidation_executor: ConsolidationExecutor | None = None
     memory_file_repository: MemoryFileRepository | None = None
     # build_app() always constructs a real McpHost, regardless of
     # [mcp].enabled - McpHost is itself side-effect-free at construction
@@ -1284,6 +1294,20 @@ def build_app(
         journal_store.root,
         JournalStoreEventReferenceResolver(journal_store),
     )
+    archive_overlay_repository = ArchiveOverlayRepository(journal_store.root)
+    # One adapter shared by the planner and the executor - JournalStore-
+    # backed session/media I/O is not duplicated between the read-only plan
+    # (task v1.8.0-24) and the executor that actually deletes files (task
+    # v1.8.0-25).
+    consolidation_source = JournalStoreConsolidationSource(journal_store)
+    consolidation_planner = ConsolidationPlanner(
+        consolidation_source,
+        transcript_overlay_repository,
+        annotation_overlay_repository,
+    )
+    consolidation_executor = ConsolidationExecutor(
+        consolidation_planner, consolidation_source, archive_overlay_repository
+    )
     journal_search_index = JournalSearchIndex(
         journal_store,
         journal_store.root,
@@ -1367,6 +1391,7 @@ def build_app(
             CorpusHistoryProjection(history_corpus_repository),
             TranscriptHistoryProjection(transcript_overlay_repository),
             AnnotationHistoryProjection(annotation_overlay_repository),
+            ArchiveHistoryProjection(archive_overlay_repository),
         ),
         semantic_projection=semantic_projection,
         logger=logger,
@@ -1445,6 +1470,9 @@ def build_app(
         annotation_overlay_repository=annotation_overlay_repository,
         annotation_generation_service=annotation_generation_service,
         transcription_service=transcription_service,
+        archive_overlay_repository=archive_overlay_repository,
+        consolidation_planner=consolidation_planner,
+        consolidation_executor=consolidation_executor,
         memory_file_repository=memory_file_repository,
         settings=settings,
         mcp_host=mcp_host,
@@ -2109,6 +2137,8 @@ def run_with_status_console(
         journal_transcription_service=app.transcription_service,
         journal_annotation_repository=app.annotation_overlay_repository,
         journal_annotation_generation_service=app.annotation_generation_service,
+        journal_consolidation_planner=app.consolidation_planner,
+        journal_consolidation_executor=app.consolidation_executor,
         memory_file_repository=app.memory_file_repository,
     )
     live_console.create_windows()

@@ -59,6 +59,13 @@ from jarvis.journal.annotation_generator import (
     AnnotationGenerationResult,
     AnnotationGenerationService,
 )
+from jarvis.journal.archive import ArchiveMediaOutcome, ArchiveRun
+from jarvis.journal.consolidation import (
+    ConsolidationPlan,
+    ConsolidationPlanner,
+    MediaPlanItem,
+)
+from jarvis.journal.consolidation_executor import ConsolidationExecutor
 from jarvis.journal.corpus import HISTORY_SEARCH_MAX_RESULTS
 from jarvis.journal.events import JournalEvent, JournalEventAppended, JournalEventRef
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
@@ -607,6 +614,8 @@ class UiTransportServer:
         journal_annotation_generation_service: (
             AnnotationGenerationService | None
         ) = None,
+        journal_consolidation_planner: ConsolidationPlanner | None = None,
+        journal_consolidation_executor: ConsolidationExecutor | None = None,
         memory_file_repository: MemoryFileRepository | None = None,
     ) -> None:
         self._bus = bus
@@ -632,6 +641,8 @@ class UiTransportServer:
         self._journal_annotation_generation_service = (
             journal_annotation_generation_service
         )
+        self._journal_consolidation_planner = journal_consolidation_planner
+        self._journal_consolidation_executor = journal_consolidation_executor
         self._memory_file_repository = memory_file_repository
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
@@ -708,6 +719,18 @@ class UiTransportServer:
         app.router.add_put(
             "/api/journal/annotations/{session_id}/{annotation_id}",
             self._journal_annotation_put_handler,
+        )
+        app.router.add_get(
+            "/api/journal/consolidation/{session_id}",
+            self._journal_consolidation_plan_handler,
+        )
+        app.router.add_get(
+            "/api/journal/consolidation/{session_id}/status",
+            self._journal_consolidation_status_handler,
+        )
+        app.router.add_post(
+            "/api/journal/consolidation/{session_id}/execute",
+            self._journal_consolidation_execute_handler,
         )
         app.router.add_get(
             "/api/journal/media/{session_id}/{media_path:.*}",
@@ -1356,6 +1379,151 @@ class UiTransportServer:
         target = await self._parse_annotation_generate_target(request, session_id)
         result = await service.generate_annotation(target)
         return self._annotation_generate_response(target, result)
+
+    async def _journal_consolidation_plan_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        planner = self._journal_consolidation_planner
+        if planner is None:
+            raise web.HTTPServiceUnavailable(
+                text="consolidation planning not available"
+            )
+        session_id = request.match_info["session_id"]
+        plan = await asyncio.to_thread(
+            planner.plan_far_consolidation,
+            session_id,
+            active_session_id=self._journal_active_session_id(),
+        )
+        return web.json_response(
+            {"status": "ok", "plan": self._consolidation_plan_payload(plan)}
+        )
+
+    async def _journal_consolidation_status_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        executor = self._journal_consolidation_executor
+        if executor is None:
+            raise web.HTTPServiceUnavailable(text="consolidation not available")
+        session_id = request.match_info["session_id"]
+        read = await asyncio.to_thread(executor.read_last_run, session_id)
+        return web.json_response(
+            {
+                "status": "ok",
+                "session_id": session_id,
+                "found": read.found,
+                "run": (
+                    self._archive_run_payload(read.run)
+                    if read.run is not None
+                    else None
+                ),
+            }
+        )
+
+    async def _journal_consolidation_execute_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        # Destructive: the only endpoint in this file that deletes bytes from
+        # disk. No client-supplied plan is ever accepted - the executor
+        # always re-derives a fresh plan itself right before acting (owner
+        # decision, task v1.8.0-25), so a stale preview fetched earlier by
+        # the UI cannot be replayed to bypass the active-session guard or act
+        # on since-changed state.
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        executor = self._journal_consolidation_executor
+        if executor is None:
+            raise web.HTTPServiceUnavailable(text="consolidation not available")
+        session_id = request.match_info["session_id"]
+        result = await asyncio.to_thread(
+            executor.execute_far_consolidation,
+            session_id,
+            active_session_id_provider=self._journal_active_session_id,
+        )
+        return web.json_response(
+            {
+                "status": "ok",
+                "session_id": session_id,
+                "outcome": result.outcome.value,
+                "run": (
+                    self._archive_run_payload(result.run)
+                    if result.run is not None
+                    else None
+                ),
+            }
+        )
+
+    @staticmethod
+    def _event_ref_payload(reference: JournalEventRef) -> JsonObject:
+        return {
+            "session_id": reference.session_id,
+            "event_position": reference.event_position,
+        }
+
+    @staticmethod
+    def _consolidation_plan_payload(plan: ConsolidationPlan) -> JsonObject:
+        raw_text_range = None
+        if plan.raw_text_range is not None:
+            raw_text_range = {
+                "start": UiTransportServer._event_ref_payload(
+                    plan.raw_text_range.start
+                ),
+                "end": UiTransportServer._event_ref_payload(plan.raw_text_range.end),
+            }
+        return {
+            "session_id": plan.session_id,
+            "plan_status": plan.status.value,
+            "event_count": plan.event_count,
+            "raw_text_range": raw_text_range,
+            "annotation_count": plan.annotation_count,
+            "media_items": [
+                UiTransportServer._media_plan_item_payload(item)
+                for item in plan.media_items
+            ],
+            "removable_count": len(plan.removable_media),
+            "projection_updates_required": list(plan.projection_updates_required),
+        }
+
+    @staticmethod
+    def _media_plan_item_payload(item: MediaPlanItem) -> JsonObject:
+        return {
+            "reference": UiTransportServer._event_ref_payload(item.reference),
+            "media": item.media,
+            "action": item.action.value,
+            "reason": item.reason.value,
+        }
+
+    @staticmethod
+    def _archive_run_payload(run: ArchiveRun) -> JsonObject:
+        return {
+            "status": run.status.value,
+            "event_count": run.event_count,
+            "annotation_count": run.annotation_count,
+            "bytes_reclaimed": run.bytes_reclaimed,
+            "removed_count": run.removed_count,
+            "failed_count": run.failed_count,
+            "media_outcomes": [
+                UiTransportServer._archive_media_outcome_payload(item)
+                for item in run.media_outcomes
+            ],
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+        }
+
+    @staticmethod
+    def _archive_media_outcome_payload(item: ArchiveMediaOutcome) -> JsonObject:
+        return {
+            "reference": UiTransportServer._event_ref_payload(item.reference),
+            "media": item.media,
+            "outcome": item.outcome.value,
+            "detail": item.detail,
+        }
 
     async def _journal_media_handler(self, request: web.Request) -> web.StreamResponse:
         self._require_http_token(request)

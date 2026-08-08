@@ -33,6 +33,9 @@ from jarvis.journal import (
     AnnotationOverlayRepository,
     AnnotationSource,
     AnnotationTarget,
+    ArchiveOverlayRepository,
+    ConsolidationExecutor,
+    ConsolidationPlanner,
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalEvent,
@@ -42,6 +45,7 @@ from jarvis.journal import (
     JournalRecorder,
     JournalSearchIndex,
     JournalStore,
+    JournalStoreConsolidationSource,
     UnavailableSemanticHistoryProjection,
 )
 from jarvis.journal.fork import (
@@ -53,6 +57,7 @@ from jarvis.journal.lifecycle import JournalStoreEventReferenceResolver
 from jarvis.journal.transcript import (
     TranscriptOverlayChanged,
     TranscriptOverlayRepository,
+    TranscriptSource,
 )
 from jarvis.journal.transcription import TranscriptionOutcome, TranscriptionResult
 from jarvis.memory.files import (
@@ -2936,6 +2941,249 @@ async def test_annotation_generate_reports_failure(tmp_path: Path) -> None:
             body = await response.json()
             assert body["reason"] == "unknown_range"
             assert body["detail"] == "end 9 out of range"
+    finally:
+        await server.stop()
+
+
+_CONSOLIDATION_SESSION = "20260801-140000-ef56"
+
+
+def _consolidation_setup(
+    tmp_path: Path,
+) -> tuple[
+    JournalStore,
+    TranscriptOverlayRepository,
+    ConsolidationPlanner,
+    ConsolidationExecutor,
+    ArchiveOverlayRepository,
+]:
+    # Production shares one root across the raw store and every overlay
+    # (app.py); the consolidation API depends on that (media files, the
+    # transcript overlay, and the archive record must resolve against the
+    # same session directory), unlike the annotation-only fixtures above
+    # that can afford a separate "derived" root.
+    store = JournalStore(tmp_path)
+    resolver = JournalStoreEventReferenceResolver(store)
+    transcripts = TranscriptOverlayRepository(tmp_path, resolver)
+    annotations = AnnotationOverlayRepository(tmp_path, resolver)
+    archive = ArchiveOverlayRepository(tmp_path)
+    source = JournalStoreConsolidationSource(store)
+    planner = ConsolidationPlanner(source, transcripts, annotations)
+    executor = ConsolidationExecutor(planner, source, archive)
+    return store, transcripts, planner, executor, archive
+
+
+@pytest.mark.asyncio
+async def test_consolidation_plan_api_reports_transcribed_and_untranscribed_media(
+    tmp_path: Path,
+) -> None:
+    store, transcripts, planner, _executor, _archive = _consolidation_setup(tmp_path)
+    store.write_media(_CONSOLIDATION_SESSION, "utterance-0001.wav", b"aaa")
+    store.write_media(_CONSOLIDATION_SESSION, "utterance-0002.wav", b"bbbb")
+    ref1 = store.append(
+        _journal_event(
+            session_id=_CONSOLIDATION_SESSION,
+            timestamp="2026-08-01T14:00:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance-0001.wav",),
+        )
+    )
+    store.append(
+        _journal_event(
+            session_id=_CONSOLIDATION_SESSION,
+            timestamp="2026-08-01T14:01:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance-0002.wav",),
+        )
+    )
+    transcripts.upsert_transcript(ref1, "первое", TranscriptSource.GENERATED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_consolidation_planner=planner,
+    )
+    info = await server.start()
+    url = (
+        f"http://127.0.0.1:{info.port}/api/journal/consolidation/"
+        f"{_CONSOLIDATION_SESSION}?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = await _get_json(session, url)
+    finally:
+        await server.stop()
+
+    plan = payload["plan"]
+    assert plan["plan_status"] == "planned"
+    assert plan["event_count"] == 2
+    assert plan["removable_count"] == 1
+    items = {item["media"]: item for item in plan["media_items"]}
+    assert items["utterance-0001.wav"]["action"] == "remove"
+    assert items["utterance-0001.wav"]["reason"] == "transcribed"
+    assert items["utterance-0002.wav"]["action"] == "keep"
+    assert items["utterance-0002.wav"]["reason"] == "no_transcript"
+    assert plan["raw_text_range"] == {
+        "start": {"session_id": _CONSOLIDATION_SESSION, "event_position": 0},
+        "end": {"session_id": _CONSOLIDATION_SESSION, "event_position": 1},
+    }
+
+
+@pytest.mark.asyncio
+async def test_consolidation_execute_api_removes_audio_and_status_reflects_it(
+    tmp_path: Path,
+) -> None:
+    store, transcripts, planner, executor, _archive = _consolidation_setup(tmp_path)
+    store.write_media(_CONSOLIDATION_SESSION, "utterance-0001.wav", b"aaa")
+    ref = store.append(
+        _journal_event(
+            session_id=_CONSOLIDATION_SESSION,
+            timestamp="2026-08-01T14:00:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance-0001.wav",),
+        )
+    )
+    transcripts.upsert_transcript(ref, "первое", TranscriptSource.GENERATED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_consolidation_planner=planner,
+        journal_consolidation_executor=executor,
+    )
+    info = await server.start()
+    root = (
+        f"http://127.0.0.1:{info.port}/api/journal/consolidation/"
+        f"{_CONSOLIDATION_SESSION}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            before_status = await _get_json(
+                session, f"{root}/status?token=valid-token"
+            )
+            assert before_status["found"] is False
+
+            executed = await session.post(f"{root}/execute?token=valid-token")
+            assert executed.status == 200
+            executed_payload = await executed.json()
+            assert executed_payload["outcome"] == "executed"
+            run = executed_payload["run"]
+            assert run["status"] == "completed"
+            assert run["removed_count"] == 1
+            assert run["bytes_reclaimed"] == 3
+
+            after_status = await _get_json(session, f"{root}/status?token=valid-token")
+            assert after_status["found"] is True
+            assert after_status["run"] == run
+    finally:
+        await server.stop()
+
+    assert not (tmp_path / _CONSOLIDATION_SESSION / "utterance-0001.wav").exists()
+
+
+@pytest.mark.asyncio
+async def test_consolidation_api_active_session_guard_blocks_execute(
+    tmp_path: Path,
+) -> None:
+    store, transcripts, planner, executor, _archive = _consolidation_setup(tmp_path)
+    store.write_media(_CONSOLIDATION_SESSION, "utterance-0001.wav", b"aaa")
+    ref = store.append(
+        _journal_event(
+            session_id=_CONSOLIDATION_SESSION,
+            timestamp="2026-08-01T14:00:00+01:00",
+            source="voice",
+            role="user",
+            text="",
+            media=("utterance-0001.wav",),
+        )
+    )
+    transcripts.upsert_transcript(ref, "первое", TranscriptSource.GENERATED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_active_session_id=lambda: _CONSOLIDATION_SESSION,
+        journal_consolidation_planner=planner,
+        journal_consolidation_executor=executor,
+    )
+    info = await server.start()
+    root = (
+        f"http://127.0.0.1:{info.port}/api/journal/consolidation/"
+        f"{_CONSOLIDATION_SESSION}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            plan_payload = await _get_json(session, f"{root}?token=valid-token")
+            assert plan_payload["plan"]["plan_status"] == "active_session"
+
+            executed = await session.post(f"{root}/execute?token=valid-token")
+            assert executed.status == 200
+            executed_payload = await executed.json()
+            assert executed_payload["outcome"] == "active_session"
+            assert executed_payload["run"] is None
+    finally:
+        await server.stop()
+
+    assert (tmp_path / _CONSOLIDATION_SESSION / "utterance-0001.wav").exists()
+
+
+@pytest.mark.asyncio
+async def test_consolidation_api_hidden_and_token(tmp_path: Path) -> None:
+    _store, _transcripts, planner, executor, _archive = _consolidation_setup(tmp_path)
+    hidden = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+        journal_consolidation_planner=planner,
+        journal_consolidation_executor=executor,
+    )
+    info = await hidden.start()
+    root = (
+        f"http://127.0.0.1:{info.port}/api/journal/consolidation/"
+        f"{_CONSOLIDATION_SESSION}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            hidden_plan = await _get_json(session, f"{root}?token=valid-token")
+            assert hidden_plan == {"status": "hidden"}
+            hidden_status = await _get_json(
+                session, f"{root}/status?token=valid-token"
+            )
+            assert hidden_status == {"status": "hidden"}
+            hidden_execute = await session.post(f"{root}/execute?token=valid-token")
+            assert (await hidden_execute.json()) == {"status": "hidden"}
+
+            missing_token = await session.get(root)
+            assert missing_token.status == 401
+    finally:
+        await hidden.stop()
+
+
+@pytest.mark.asyncio
+async def test_consolidation_api_unavailable_without_planner_or_executor() -> None:
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
+    info = await server.start()
+    root = (
+        f"http://127.0.0.1:{info.port}/api/journal/consolidation/"
+        f"{_CONSOLIDATION_SESSION}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            plan_response = await session.get(f"{root}?token=valid-token")
+            assert plan_response.status == 503
+            status_response = await session.get(f"{root}/status?token=valid-token")
+            assert status_response.status == 503
+            execute_response = await session.post(f"{root}/execute?token=valid-token")
+            assert execute_response.status == 503
     finally:
         await server.stop()
 

@@ -601,6 +601,7 @@ html[data-view="settings"] .settings {
 }
 .journal-memory-toggle,
 .journal-annotation-toggle,
+.journal-consolidation-toggle,
 .journal-new-context {
   height: 28px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel-2); color: var(--text-dim); cursor: pointer;
@@ -608,6 +609,7 @@ html[data-view="settings"] .settings {
 }
 .journal-memory-toggle:hover,
 .journal-annotation-toggle:hover,
+.journal-consolidation-toggle:hover,
 .journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
 .journal-session {
@@ -796,6 +798,66 @@ html[data-view="settings"] .settings {
 .journal-annotation-status {
   font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--amber);
   overflow-wrap: anywhere;
+}
+.journal-consolidation-panel {
+  border-bottom: 1px solid var(--border); background: var(--panel);
+  padding: 12px 22px; display: flex; flex-direction: column; gap: 10px;
+}
+.journal-consolidation-panel[hidden] { display: none; }
+.journal-consolidation-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.journal-consolidation-header h2 {
+  margin: 0 0 4px; color: var(--text-dim);
+  font: 11px "Consolas", "Cascadia Mono", monospace;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.journal-consolidation-header p {
+  margin: 0; color: var(--text-faint); font-size: 11.5px;
+}
+.journal-consolidation-header button {
+  height: 28px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel-2); color: var(--text-dim); cursor: pointer; font-size: 11px;
+}
+.journal-consolidation-header button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-consolidation-message {
+  font: 10.5px "Consolas", "Cascadia Mono", monospace; color: var(--amber);
+  overflow-wrap: anywhere; min-height: 12px;
+}
+.journal-consolidation-summary {
+  font-size: 11.5px; color: var(--text-dim);
+}
+.journal-consolidation-list {
+  display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;
+}
+.journal-consolidation-media-item {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2);
+  padding: 6px 10px; font-size: 11.5px;
+}
+.journal-consolidation-media-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 11px "Consolas", "Cascadia Mono", monospace; color: var(--text);
+}
+.journal-consolidation-media-action {
+  font: 10px "Consolas", "Cascadia Mono", monospace; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 2px 6px; border-radius: 4px;
+}
+.journal-consolidation-media-action-remove { color: var(--red); background: var(--red-tint); }
+.journal-consolidation-media-action-keep { color: var(--text-faint); background: var(--panel); }
+.journal-consolidation-media-reason { color: var(--text-faint); font-size: 10.5px; }
+.journal-consolidation-last-run {
+  font-size: 11px; color: var(--text-faint);
+}
+.journal-consolidation-execute {
+  align-self: flex-start; height: 30px; border: 1px solid var(--red-dim); border-radius: 6px;
+  background: var(--red-tint); color: var(--red); cursor: pointer;
+  font: 11.5px "Consolas", "Cascadia Mono", monospace; padding: 0 14px;
+}
+.journal-consolidation-execute:hover { border-color: var(--red); }
+.journal-consolidation-execute:disabled {
+  opacity: 0.4; cursor: not-allowed; border-color: var(--border);
+  background: var(--panel-2); color: var(--text-faint);
 }
 .journal-search {
   display: flex; align-items: end; gap: 9px; padding: 12px 22px;

@@ -535,6 +535,138 @@ def test_journal_annotation_strings_present_in_both_languages():
         assert STRINGS_JS.count(key + ":") == 2
 
 
+def test_journal_consolidation_panel_is_reachable_from_journal_view():
+    assert 'id="journalConsolidationToggle"' in INDEX_HTML
+    assert 'onclick="toggleJournalConsolidationPanel()"' in INDEX_HTML
+    assert 'id="journalConsolidationPanel"' in INDEX_HTML
+    assert 'data-i18n="journal_consolidation_note"' in INDEX_HTML
+    assert 'id="journalConsolidationSummary"' in INDEX_HTML
+    assert 'id="journalConsolidationMediaList"' in INDEX_HTML
+    assert 'id="journalConsolidationLastRun"' in INDEX_HTML
+    assert 'id="journalConsolidationExecute"' in INDEX_HTML
+    assert 'onclick="executeJournalConsolidation()"' in INDEX_HTML
+    compact = re.sub(r"\s+", " ", STYLE_CSS)
+    assert ".journal-consolidation-panel[hidden] { display: none; }" in compact
+
+
+def test_journal_consolidation_execute_button_is_disabled_by_default():
+    """Nothing must be executable before a plan has actually loaded and
+    reported a removable file - this is the only destructive control in the
+    Journal surface."""
+    match = re.search(r'<button[^>]*id="journalConsolidationExecute"[^>]*>', INDEX_HTML)
+    assert match is not None
+    assert "disabled" in match.group(0)
+
+
+def test_journal_consolidation_panel_note_explains_the_dry_run_and_gate():
+    note = _string_catalog("en")["journal_consolidation_note"]
+    assert "transcript" in note
+    assert "never touched" in note
+
+
+def test_journal_consolidation_panel_reloads_on_session_switch():
+    body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[0]
+    assert "_reloadJournalConsolidationIfOpen(sessionId)" in body
+
+
+def test_journal_consolidation_panel_is_cleared_with_journal_content():
+    body = APP_JS.split("function _clearJournalContent(")[1].split("\n}")[0]
+    assert "_clearJournalConsolidationPanel();" in body
+
+
+def test_journal_consolidation_toggle_is_hidden_aware():
+    body = APP_JS.split("async function toggleJournalConsolidationPanel(")[1].split(
+        "\n}"
+    )[0]
+    assert "_isHiddenActive()" in body
+    assert 'uiString("journal_consolidation_hidden")' in body
+
+
+def test_journal_consolidation_execute_requires_a_confirm_dialog():
+    """The one destructive action in the Journal surface must not fire
+    without an explicit confirmation naming how many files will be removed
+    (owner decision, task v1.8.0-25: preview + confirm, not execute alone)."""
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
+        "\n}"
+    )[0]
+    assert "window.confirm(" in body
+    assert 'uiString("journal_consolidation_confirm")' in body
+    assert "_journalConsolidationRemovableCount" in body
+
+
+def test_journal_consolidation_execute_posts_and_reloads_the_plan():
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
+        "\n}"
+    )[0]
+    assert 'method: "POST"' in body
+    assert "/execute" in body
+    assert "await _loadJournalConsolidation(sessionId);" in body
+
+
+def test_journal_consolidation_execute_completion_is_token_guarded():
+    """A late completion from an execute call abandoned by Hidden must not
+    clobber a newer execute call's flag/buttons/message - mirrors the exact
+    fix already applied to annotation generate for the same race."""
+    body = APP_JS.split("async function executeJournalConsolidation(")[1].split(
+        "\n}"
+    )[0]
+    assert "_journalConsolidationExecuteToken += 1;" in body
+    assert "const token = _journalConsolidationExecuteToken;" in body
+    assert "if (token !== _journalConsolidationExecuteToken) return;" in body
+    assert "if (token === _journalConsolidationExecuteToken) {" in body
+
+
+def test_journal_consolidation_clear_invalidates_in_flight_execute_token():
+    body = APP_JS.split("function _clearJournalConsolidationPanel(")[1].split("\n}")[0]
+    assert "_journalConsolidationExecuteToken += 1;" in body
+    assert "_journalConsolidationExecuteInFlight = false;" in body
+
+
+def test_journal_consolidation_load_is_token_guarded():
+    body = APP_JS.split("async function _loadJournalConsolidation(")[1].split("\n}")[0]
+    assert "_journalConsolidationLoadToken += 1;" in body
+    assert "const token = _journalConsolidationLoadToken;" in body
+    assert "token !== _journalConsolidationLoadToken" in body
+
+
+def test_journal_consolidation_clear_invalidates_in_flight_load_token():
+    body = APP_JS.split("function _clearJournalConsolidationPanel(")[1].split("\n}")[0]
+    assert "_journalConsolidationLoadToken += 1;" in body
+
+
+def test_journal_consolidation_active_and_unknown_session_disable_execute():
+    body = APP_JS.split("function _renderJournalConsolidationPlan(")[1].split("\n}")[0]
+    assert '"active_session"' in body
+    assert '"unknown_session"' in body
+    assert body.count("_setJournalConsolidationExecuteDisabled(true);") >= 2
+
+
+def test_journal_consolidation_media_item_uses_typed_action_and_reason_strings():
+    body = APP_JS.split("function _journalConsolidationMediaElement(")[1].split(
+        "\n}"
+    )[0]
+    assert 'uiString("journal_consolidation_reason_" + item.reason)' in body
+    assert "journal_consolidation_action_remove" in body
+    assert "journal_consolidation_action_keep" in body
+
+
+def test_journal_consolidation_strings_present_in_both_languages():
+    for key in (
+        "journal_consolidation_open",
+        "journal_consolidation_close",
+        "journal_consolidation_title",
+        "journal_consolidation_note",
+        "journal_consolidation_summary",
+        "journal_consolidation_execute",
+        "journal_consolidation_confirm",
+        "journal_consolidation_action_remove",
+        "journal_consolidation_action_keep",
+        "journal_consolidation_run_completed",
+        "journal_consolidation_run_partial_failure",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2
+
+
 def test_journal_memory_panel_loads_and_saves_fixed_file_ids():
     assert 'const _MEMORY_FILE_IDS = ["self", "memory"];' in APP_JS
     load_body = APP_JS.split("async function loadJournalMemoryFiles(")[1].split("\n}")[

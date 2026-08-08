@@ -16,6 +16,7 @@ from jarvis.journal.annotation import (
     AnnotationOverlayRepository,
     AnnotationRead,
 )
+from jarvis.journal.archive import ArchiveOverlayRepository
 from jarvis.journal.corpus import HistoryCorpusRepository
 from jarvis.journal.events import (
     JournalEvent,
@@ -210,6 +211,28 @@ class AnnotationHistoryProjection:
         # Annotations are written explicitly, never derived from an appended
         # raw event, so an append projects nothing here. Session deletion is
         # the only lifecycle path that touches the overlay store.
+        del record
+
+    def delete_session_projection(self, session_id: str) -> None:
+        self._repository.delete_session(session_id)
+
+
+class ArchiveHistoryProjection:
+    """Fan-out target for session deletion over the archive metadata store
+    (task v1.8.0-25). Like annotations, a run is written only by the explicit
+    executor, never derived from an appended raw event, so `project_event` is
+    a no-op; only session deletion touches this store.
+    """
+
+    name = "archive"
+
+    def __init__(self, repository: ArchiveOverlayRepository) -> None:
+        self._repository = repository
+
+    def rebuild(self) -> None:
+        self._repository.rebuild()
+
+    def project_event(self, record: JournalEventRecord) -> None:
         del record
 
     def delete_session_projection(self, session_id: str) -> None:
