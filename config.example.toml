@@ -62,7 +62,8 @@ minimum_recent_exchanges = 1
 # The rebuildable local semantic projection is enabled by default. If the
 # configured model is unavailable, exact/prefix retrieval remains usable.
 enabled = true
-model = "multilingual-e5-large-instruct"
+# Ollama tag as installed (namespace + tag), so /api/embeddings resolves it.
+model = "blaifa/multilingual-e5-large-instruct:latest"
 query_prefix = "query: "
 passage_prefix = "passage: "
 # Provisional hot-path deadline for semantic query embeddings.

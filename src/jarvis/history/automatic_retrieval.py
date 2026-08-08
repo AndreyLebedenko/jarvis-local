@@ -240,6 +240,8 @@ def _to_retrieved_history_passage(
         text=candidate.text,
         truncated=False,
         text_is_transcript=candidate.text_is_transcript,
+        kind=candidate.kind,
+        annotation=candidate.annotation,
     )
 
 

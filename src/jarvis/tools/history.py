@@ -7,6 +7,7 @@ from datetime import date
 
 from jarvis.core.config import HISTORY_TOOL_PROVIDER_NAME, DataBoundary
 from jarvis.journal import (
+    AnnotationCandidateIdentity,
     HistoryBatchRead,
     HistoryBatchReadStatus,
     HistoryCorpusEvent,
@@ -17,6 +18,7 @@ from jarvis.journal import (
     HistoryEventRefsRead,
     HistoryEventRefsReadStatus,
     HistoryRetrievalCandidate,
+    HistoryRetrievalCandidateKind,
     HistoryRetrievalQuery,
     HistoryRetrievalResult,
     HistoryRetrievalService,
@@ -768,25 +770,41 @@ def _serialize_retrieval_candidates(
     serialized: list[JSONObject] = []
     truncated_count = 0
     for candidate in candidates:
-        event_text = _truncate_text(candidate.text)
-        truncated_count += int(event_text.truncated or candidate.truncated)
-        serialized.append(
-            {
-                "reference": _reference_payload(candidate.reference),
-                "timestamp": candidate.timestamp,
-                "role": candidate.role,
-                "source": candidate.source,
-                "text": event_text.payload["text"],
-                "truncated": event_text.truncated or candidate.truncated,
-                "text_is_transcript": candidate.text_is_transcript,
-                "source_mode": candidate.source_mode.value,
-                "combined_rank": candidate.combined_rank,
-                "semantic_score": candidate.semantic_score,
-                "lexical_score": candidate.lexical_score,
-                "lexical_rank": candidate.lexical_rank,
-            }
-        )
+        text = _truncate_text(candidate.text)
+        truncated = text.truncated or candidate.truncated
+        truncated_count += int(truncated)
+        payload: JSONObject = {
+            "kind": candidate.kind.value,
+            "timestamp": candidate.timestamp,
+            "source": candidate.source,
+            "text": text.payload["text"],
+            "truncated": truncated,
+            "source_mode": candidate.source_mode.value,
+            "combined_rank": candidate.combined_rank,
+            "semantic_score": candidate.semantic_score,
+            "lexical_score": candidate.lexical_score,
+            "lexical_rank": candidate.lexical_rank,
+        }
+        if (
+            candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
+            and candidate.annotation is not None
+        ):
+            payload["annotation_id"] = candidate.annotation.annotation_id
+            payload["target"] = _annotation_target_payload(candidate.annotation)
+        else:
+            payload["reference"] = _reference_payload(candidate.reference)
+            payload["role"] = candidate.role
+            payload["text_is_transcript"] = candidate.text_is_transcript
+        serialized.append(payload)
     return serialized, truncated_count
+
+
+def _annotation_target_payload(annotation: AnnotationCandidateIdentity) -> JSONObject:
+    return {
+        "session_id": annotation.session_id,
+        "start_position": annotation.start_position,
+        "end_position": annotation.end_position,
+    }
 
 
 def _serialize_events(

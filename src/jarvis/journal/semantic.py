@@ -118,6 +118,33 @@ class OllamaEmbeddingProvider:
         return vectors
 
 
+class CachingQueryEmbeddingProvider:
+    """Memoizes the most recent embedding request.
+
+    Both the event and annotation semantic indices embed the same per-turn
+    query string (identical prefix and model), one after the other, when the
+    retrieval service fuses their candidates. Sharing one instance of this
+    wrapper as their ``query_embedder`` collapses those two calls into a single
+    model forward pass: the second lookup hits the cache. The cache holds only
+    the last request as one atomically-assigned ``(key, value)`` tuple, so a
+    concurrent turn with a different query can at worst force a recompute, never
+    return a vector for the wrong text.
+    """
+
+    def __init__(self, inner: EmbeddingProvider) -> None:
+        self._inner = inner
+        self._cache: tuple[tuple[str, ...], list[tuple[float, ...]]] | None = None
+
+    def embed(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        key = tuple(texts)
+        cache = self._cache
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        value = self._inner.embed(texts)
+        self._cache = (key, value)
+        return value
+
+
 @dataclass(frozen=True)
 class SemanticPassage:
     passage_id: str

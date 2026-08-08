@@ -11,6 +11,7 @@ from jarvis.history import (
     format_retrieved_history_passages,
 )
 from jarvis.history.context_budget import ContextBudgetError
+from jarvis.journal import AnnotationCandidateIdentity, HistoryRetrievalCandidateKind
 from jarvis.journal.events import JournalEventRef
 
 
@@ -61,6 +62,34 @@ def test_format_retrieved_history_passages_delimits_source_data():
     assert '"event_position":3' in content
     assert '"source":"journal"' in content
     assert '"text":"The relay failed after lunch."' in content
+
+
+def test_format_frames_annotation_passage_as_derived_not_a_turn():
+    passage = RetrievedHistoryPassage(
+        reference=None,
+        role="annotation",
+        source="generated",
+        timestamp="2026-08-01T10:00:00+00:00",
+        text="Пользователь предпочитает краткие ответы.",
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=AnnotationCandidateIdentity(
+            annotation_id="ann-1",
+            session_id="20260801-100000-ab12",
+            source="generated",
+            start_position=2,
+            end_position=5,
+        ),
+    )
+
+    content = format_retrieved_history_passages((passage,))
+
+    assert '"kind":"annotation"' in content
+    assert '"annotation_id":"ann-1"' in content
+    assert '"start_position":2' in content
+    assert '"end_position":5' in content
+    assert '"source":"generated"' in content
+    assert '"role"' not in content
+    assert '"reference"' not in content
 
 
 def test_assemble_working_context_orders_layers_and_keeps_current_media_current_only():

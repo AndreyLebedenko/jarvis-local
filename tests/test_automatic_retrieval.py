@@ -16,7 +16,9 @@ from jarvis.history.working_context import (
     format_retrieved_history_passages,
 )
 from jarvis.journal import (
+    AnnotationCandidateIdentity,
     HistoryRetrievalCandidate,
+    HistoryRetrievalCandidateKind,
     HistoryRetrievalSourceMode,
     JournalEventRef,
 )
@@ -538,3 +540,40 @@ def test_automatic_retrieval_passage_marks_transcript_source():
     assert passage.text_is_transcript is True
     formatted = format_retrieved_history_passages(selection.selected_passages)
     assert '"text_is_transcript":true' in formatted
+
+
+def test_automatic_retrieval_carries_annotation_kind_into_passage():
+    candidate = HistoryRetrievalCandidate(
+        reference=None,
+        text="Пользователь предпочитает краткие ответы.",
+        timestamp="2026-08-01T10:00:00+01:00",
+        role="annotation",
+        source="generated",
+        source_mode=HistoryRetrievalSourceMode.SEMANTIC,
+        combined_rank=1,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=AnnotationCandidateIdentity(
+            annotation_id="ann-1",
+            session_id="20260801-100000-ab12",
+            source="generated",
+        ),
+        semantic_score=0.9,
+    )
+    request = build_automatic_retrieval_request("краткие ответы", _recent_history())
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (candidate,),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.selected_passage_count == 1
+    passage = selection.selected_passages[0]
+    assert passage.kind is HistoryRetrievalCandidateKind.ANNOTATION
+    assert passage.reference is None
+    assert passage.annotation is not None
+    assert passage.annotation.annotation_id == "ann-1"
+    formatted = format_retrieved_history_passages(selection.selected_passages)
+    assert '"kind":"annotation"' in formatted
+    assert '"annotation_id":"ann-1"' in formatted

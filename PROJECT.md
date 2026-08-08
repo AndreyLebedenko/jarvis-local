@@ -224,16 +224,40 @@ system is intended to grow.
     surface: it queries the event and annotation lexical and semantic sources,
     fuses them into one ranked result, and reuses the single per-turn query
     embedding across both semantic indices (added live-path cost is one more ANN
-    lookup, not a second forward pass). A fully separate annotation retrieval API
-    was rejected (duplicated stack, contradicts "annotations join the retrieval
-    corpus", second surface against decisions 10/11).
+    lookup, not a second forward pass). The reuse is realized by wiring one
+    `CachingQueryEmbeddingProvider` (`semantic.py`) as the shared `query_embedder`
+    of both indices: they embed the identical `query_prefix + query` string back
+    to back, so the second call hits the last-request cache. The cache holds only
+    the last `(key, value)` tuple, assigned atomically, so a concurrent turn can
+    at worst force a recompute, never return a vector for the wrong text. A fully
+    separate annotation retrieval API was rejected (duplicated stack, contradicts
+    "annotations join the retrieval corpus", second surface against decisions
+    10/11).
   - **Typed candidates.** A retrieval candidate is a discriminated identity: an
     event (`JournalEventRef` -> `read_events`) or an annotation (`annotation_id`
     + `AnnotationTarget` -> `AnnotationOverlayRepository`). An annotation carries
     `kind=annotation`, `source` (`GENERATED`/`EDITED`), and its target, and is
     surfaced as delimited derived data, never as a user/assistant turn; the raw
     range it summarizes stays independently readable and byte-untouched. This is
-    how derived text is distinguished from raw by construction.
+    how derived text is distinguished from raw by construction. Implemented
+    (slice 2): `HistoryRetrievalCandidate` carries `kind`, a `reference`
+    (event, else `None`), and an `AnnotationCandidateIdentity` (annotation, else
+    `None`); the same discriminator rides `RetrievedHistoryPassage` into the
+    working-context payload and the `search_history` tool output, so annotation
+    passages render with `kind=annotation`, target, and source instead of a
+    `reference`/`role`. Annotation candidates hydrate from
+    `AnnotationOverlayRepository.read_annotation`, and a since-deleted or
+    now-dismissed annotation is dropped during hydration. Fusion no longer
+    truncates before hydration: the fully ranked list is walked in chunks
+    (each bounded by the `read_events` reference ceiling so event hydration stays
+    one batch), events hydrated per chunk and annotations read lazily, filling up
+    to `limit` from the candidates that survive hydration. A stale dropped row
+    therefore never consumes a slot a valid lower-ranked candidate should hold -
+    even one ranked past the first chunk - and a missing event ref becomes
+    fillable rather than slot-consuming. The event-centric
+    `roles`/`sources` filters are deliberately not forwarded to annotation
+    sources (different provenance vocabulary); annotation projections reporting
+    UNAVAILABLE/TIMEOUT contribute nothing and never fail event retrieval.
   - **Eligible for automatic and explicit retrieval.** Annotations are not
     filtered out of automatic pre-turn retrieval (a session summary is a
     high-density source-framed signal a bounded context wants). Anti-pollution
@@ -3290,7 +3314,9 @@ semantic (paraphrase, synonym). Measured recall@k on the benchmark:
   0.500, bge-m3 0.312.
 
 Selected backend: pymorphy3 morphology + `multilingual-e5-large-instruct`
-(Ollama) primary semantic + `embeddinggemma:300m` config-swappable latency
+(Ollama, configured by its installed tag `blaifa/multilingual-e5-large-instruct:latest`
+so `/api/embeddings` resolves it) primary semantic + `embeddinggemma:300m`
+config-swappable latency
 fallback. e5 wins semantic recall and rejects the distractor at the gentlest
 gate (relative `separation` 0.05 vs 0.2 for bge/gemma), with the lightest VRAM
 (335 MB). Rejected: bge-m3 (weakest semantic), Snowball, pymorphy2, and a fixed

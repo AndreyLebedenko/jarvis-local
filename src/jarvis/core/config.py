@@ -544,7 +544,8 @@ class HistorySemanticSettings:
 
     enabled: bool = True
     model: str = field(
-        default="multilingual-e5-large-instruct", metadata={"non_empty": True}
+        default="blaifa/multilingual-e5-large-instruct:latest",
+        metadata={"non_empty": True},
     )
     query_prefix: str = "query: "
     passage_prefix: str = "passage: "

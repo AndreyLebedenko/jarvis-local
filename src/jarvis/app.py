@@ -134,7 +134,11 @@ from jarvis.journal.lifecycle import (
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.retrieval import HistoryRetrievalService, Pymorphy3Normalizer
 from jarvis.journal.search import JournalSearchIndex
-from jarvis.journal.semantic import OllamaEmbeddingProvider, SemanticPassageIndex
+from jarvis.journal.semantic import (
+    CachingQueryEmbeddingProvider,
+    OllamaEmbeddingProvider,
+    SemanticPassageIndex,
+)
 from jarvis.journal.store import JournalReplay, JournalStore
 from jarvis.journal.transcript import (
     TranscriptOverlayRepository,
@@ -1290,11 +1294,16 @@ def build_app(
         settings.backend,
         settings.history.semantic,
     )
-    semantic_query_embedder = OllamaEmbeddingProvider(
-        settings.backend,
-        settings.history.semantic,
-        connect_timeout_seconds=settings.history.semantic.timeout_seconds,
-        read_timeout_seconds=settings.history.semantic.timeout_seconds,
+    # Shared across both semantic indices so one per-turn query embedding is
+    # computed once and reused by the second index instead of a second forward
+    # pass (task v1.8.0-23 retrieval contract).
+    semantic_query_embedder = CachingQueryEmbeddingProvider(
+        OllamaEmbeddingProvider(
+            settings.backend,
+            settings.history.semantic,
+            connect_timeout_seconds=settings.history.semantic.timeout_seconds,
+            read_timeout_seconds=settings.history.semantic.timeout_seconds,
+        )
     )
     semantic_projection = SemanticPassageIndex(
         history_corpus_repository,
@@ -1322,6 +1331,9 @@ def build_app(
         semantic_projection,
         settings.history.semantic,
         Pymorphy3Normalizer(),
+        annotation_lexical=annotation_search_index,
+        annotation_semantic=annotation_semantic_index,
+        annotation_repository=annotation_overlay_repository,
     )
     history_tool_provider = HistoryToolProvider(
         repository=history_corpus_repository,

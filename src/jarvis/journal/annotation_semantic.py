@@ -5,8 +5,9 @@ A rebuildable, source-grounded semantic index over annotation text, keyed by
 so an annotation vector can never replace a raw event passage. It reuses the
 same embedding backend and configuration (`HistorySemanticSettings`) as the
 event index - one query embedding is computed per turn and reused across both
-indices by the retrieval service, so adding annotations costs one extra ANN
-lookup, not a second model forward pass.
+indices via a shared ``CachingQueryEmbeddingProvider`` wired as their
+``query_embedder``, so adding annotations costs one extra ANN lookup, not a
+second model forward pass.
 
 Only ``ACTIVE`` annotations are indexed; a ``DISMISSED`` annotation is removed
 from retrieval without being deleted (story-v1.8.0 decision 5). Candidate

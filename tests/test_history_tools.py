@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HISTORY_TOOL_PROVIDER_NAME, DataBoundary, McpSettings
 from jarvis.journal import (
+    AnnotationCandidateIdentity,
     HistoryBatchRead,
     HistoryBatchReadStatus,
     HistoryCorpusEvent,
@@ -12,6 +13,7 @@ from jarvis.journal import (
     HistoryEventRefsRead,
     HistoryEventRefsReadStatus,
     HistoryRetrievalCandidate,
+    HistoryRetrievalCandidateKind,
     HistoryRetrievalQuery,
     HistoryRetrievalResult,
     HistoryRetrievalSourceMode,
@@ -189,6 +191,7 @@ async def test_search_history_returns_grounded_provenance_and_filters() -> None:
     )
     assert result.structured_content["truncated_count"] == 1
     [item] = result.structured_content["results"]
+    assert item["kind"] == "event"
     assert item["reference"] == {
         "session_id": "20260801-100000-ab12",
         "event_position": 3,
@@ -196,6 +199,54 @@ async def test_search_history_returns_grounded_provenance_and_filters() -> None:
     assert item["source_mode"] == "both"
     assert item["truncated"] is True
     assert str(item["text"]).endswith("...")
+
+
+async def test_search_history_frames_annotation_as_typed_derived_candidate() -> None:
+    candidate = HistoryRetrievalCandidate(
+        reference=None,
+        text="Пользователь предпочитает краткие ответы.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="annotation",
+        source="generated",
+        source_mode=HistoryRetrievalSourceMode.SEMANTIC,
+        combined_rank=1,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=AnnotationCandidateIdentity(
+            annotation_id="ann-1",
+            session_id="20260801-100000-ab12",
+            source="generated",
+            start_position=2,
+            end_position=5,
+        ),
+        semantic_score=0.88,
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            annotation_semantic_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "краткие ответы", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    assert item["kind"] == "annotation"
+    assert item["annotation_id"] == "ann-1"
+    assert item["target"] == {
+        "session_id": "20260801-100000-ab12",
+        "start_position": 2,
+        "end_position": 5,
+    }
+    assert item["source"] == "generated"
+    assert "reference" not in item
+    assert "text_is_transcript" not in item
+    assert item["source_mode"] == "semantic"
 
 
 async def test_read_history_reports_missing_reference_as_a_tool_error() -> None:

@@ -111,7 +111,9 @@ from jarvis.journal.lifecycle import (
 from jarvis.journal.recorder import JournalRecorder
 from jarvis.journal.retrieval import (
     HISTORY_RETRIEVAL_MAX_RESULTS,
+    AnnotationCandidateIdentity,
     HistoryRetrievalCandidate,
+    HistoryRetrievalCandidateKind,
     HistoryRetrievalFallbackMode,
     HistoryRetrievalQuery,
     HistoryRetrievalResult,
@@ -124,6 +126,7 @@ from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
 from jarvis.journal.semantic import (
     CURRENT_SEMANTIC_PROJECTION_SCHEMA_VERSION,
     SEMANTIC_MAX_RESULTS,
+    CachingQueryEmbeddingProvider,
     EmbeddingProvider,
     OllamaEmbeddingProvider,
     SemanticCandidate,
@@ -209,6 +212,7 @@ __all__ = [
     "Annotation",
     "AnnotationBackendError",
     "AnnotationBackendMetadata",
+    "AnnotationCandidateIdentity",
     "AnnotationDeleteResult",
     "AnnotationDeleteStatus",
     "AnnotationDerivedProjection",
@@ -244,6 +248,7 @@ __all__ = [
     "AnnotationWriteResult",
     "AnnotationWriteStatus",
     "AnnotationWriter",
+    "CachingQueryEmbeddingProvider",
     "CorpusHistoryProjection",
     "EmbeddingProvider",
     "EventReferenceResolver",
@@ -263,6 +268,7 @@ __all__ = [
     "HistoryProjectionLifecycle",
     "HistoryProjectionStatus",
     "HistoryRetrievalCandidate",
+    "HistoryRetrievalCandidateKind",
     "HistoryRetrievalFallbackMode",
     "HistoryRetrievalQuery",
     "HistoryRetrievalResult",
