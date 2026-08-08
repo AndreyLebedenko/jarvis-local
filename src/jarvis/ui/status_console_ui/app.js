@@ -2197,6 +2197,13 @@ function _journalTranscriptUrl(sessionId, position, suffix = "") {
 // loads for _journalSelectedSessionId when opened and reloads whenever the
 // selected session changes while it stays open.
 let _journalAnnotationOpen = false;
+// Bumped at the start of every _loadJournalAnnotations() call and captured
+// locally, so a response is applied only if no newer load has started since -
+// otherwise an older, slower load (e.g. the panel's own open-load) could
+// resolve after a newer one (e.g. the post-generate reload) and overwrite the
+// freshly generated list with the stale one. _journalContentGeneration alone
+// does not catch this: both loads target the same session and generation.
+let _journalAnnotationLoadToken = 0;
 let _journalAnnotationGenerateInFlight = false;
 // Bumped whenever a generate call starts or the panel is cleared (Hidden), and
 // captured locally by each _generateJournalAnnotation() call. Clearing while a
@@ -2222,6 +2229,7 @@ async function toggleJournalAnnotationPanel() {
 
 function _clearJournalAnnotationPanel() {
   _journalAnnotationOpen = false;
+  _journalAnnotationLoadToken += 1;
   _journalAnnotationGenerateInFlight = false;
   _journalAnnotationGenerateToken += 1;
   const panel = document.getElementById("journalAnnotationPanel");
@@ -2247,6 +2255,8 @@ async function _loadJournalAnnotations(sessionId) {
   const list = document.getElementById("journalAnnotationList");
   const empty = document.getElementById("journalAnnotationEmpty");
   const message = document.getElementById("journalAnnotationMessage");
+  _journalAnnotationLoadToken += 1;
+  const token = _journalAnnotationLoadToken;
   if (sessionId === null) {
     list.replaceChildren();
     empty.hidden = false;
@@ -2256,8 +2266,15 @@ async function _loadJournalAnnotations(sessionId) {
   const payload = await _fetchJournalJson(
     "/api/journal/annotations/" + encodeURIComponent(sessionId));
   // A slow response for a session the user has navigated away from (or that
-  // Hidden invalidated) must not overwrite the panel.
-  if (generation !== _journalContentGeneration || _journalSelectedSessionId !== sessionId) {
+  // Hidden invalidated) must not overwrite the panel; the token check also
+  // rejects an older overlapping load for the same session/generation
+  // finishing after a newer one (e.g. the panel's open-load racing a
+  // post-generate reload) so it cannot clobber the fresher list.
+  if (
+    generation !== _journalContentGeneration ||
+    _journalSelectedSessionId !== sessionId ||
+    token !== _journalAnnotationLoadToken
+  ) {
     return;
   }
   if (!payload) {

@@ -501,6 +501,22 @@ def test_journal_annotation_clear_invalidates_in_flight_generate_token():
     assert "_setJournalAnnotationGenerateButtonsDisabled(false);" in body
 
 
+def test_journal_annotation_load_is_token_guarded():
+    """An older overlapping load for the same session/generation (e.g. the
+    panel's own open-load racing a post-generate reload) must not overwrite
+    a newer load's result - only the response whose token still matches the
+    current one may touch the DOM."""
+    body = APP_JS.split("async function _loadJournalAnnotations(")[1].split("\n}")[0]
+    assert "_journalAnnotationLoadToken += 1;" in body
+    assert "const token = _journalAnnotationLoadToken;" in body
+    assert "token !== _journalAnnotationLoadToken" in body
+
+
+def test_journal_annotation_clear_invalidates_in_flight_load_token():
+    body = APP_JS.split("function _clearJournalAnnotationPanel(")[1].split("\n}")[0]
+    assert "_journalAnnotationLoadToken += 1;" in body
+
+
 def test_journal_annotation_strings_present_in_both_languages():
     for key in (
         "journal_annotation_open",
