@@ -415,6 +415,17 @@ a provenance-preserving one instead of inheriting a lossy one:
   `AnnotationGenerationService`. The Journal UI shows session and range
   annotations with their source references, editable, and Hidden mode suppresses
   annotation UI and API visibility. There is no automatic background generation.
+- **Derived read model is eventually consistent (task v1.8.0-23 slice 2).** The
+  raw journal and overlay stores are authoritative; the retrieval projections are
+  a derived read model that `HistoryProjectionLifecycle` reconciles off-thread.
+  Reads may observe a slightly earlier projection version during the reprojection
+  window - convergent and safe (stale rows drop on hydration), its only effect a
+  transient thin/late result. This is a contract, not a bug; see the
+  eventual-consistency decision in `PROJECT.md` and
+  `tasks/bug_reports/2026-08-08-annotation-fetch-factor-underfill.md`.
+  Future UI consideration (not scoped to task 23): a background-operation-queue
+  indicator, foremost for pending projection/DB work, so the user can see when
+  the derived model is still catching up.
 
 ### 6. Consolidation serves the unlimited-history goal
 

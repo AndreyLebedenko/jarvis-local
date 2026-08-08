@@ -282,6 +282,28 @@ system is intended to grow.
     shows session/range annotations with source references, editable, Hidden mode
     suppresses them, and there is no automatic background generation. Full
     contract in `story-v1.8.0` decision 5.
+- **Derived read model is eventually consistent, 2026-08-08 (task v1.8.0-23).**
+  The raw JSONL journal and the overlay stores (transcript, annotation) are the
+  authoritative record; every retrieval-facing projection (corpus/FTS, semantic,
+  annotation lexical/semantic) is a derived read model kept current by
+  `HistoryProjectionLifecycle` off-thread. Append, overlay edit, generate,
+  dismiss, and delete publish a change signal; reprojection runs asynchronously,
+  serialized and coalesced per key. Reads therefore observe the projections at a
+  slightly earlier version than the authoritative stores during the reprojection
+  window - this is a deliberate eventual-consistency contract, not a defect. It
+  is convergent (the queue drains to an exact reflection) and safe (a stale row
+  is dropped on hydration and never surfaced), and its only visible effect is a
+  transient: a query in the window may momentarily miss a just-written row or,
+  when many just-dismissed/deleted rows still sit in a projection, underfill a
+  result below the requested `limit` because the source fetch window
+  (`limit * _LEXICAL_FETCH_FACTOR`) is bounded before hydration. Boundary and the
+  rejected pagination fix are recorded in
+  `tasks/bug_reports/2026-08-08-annotation-fetch-factor-underfill.md`. Do not
+  "fix" this with synchronous reprojection or an inflated fetch factor; the
+  convergence guarantee is the design. Future UI consideration (not this card):
+  surface a background-operation-queue indicator - foremost for pending
+  projection/DB work - so a user can see when the derived model is still catching
+  up rather than inferring it from a momentarily thin result.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

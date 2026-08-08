@@ -1,7 +1,10 @@
 # Annotation fetch factor can underfill results when stale rows crowd the top
 
 **Detected at commit:** 30ab8ad (task v1.8.0-23 slice 2)
-**Status:** Accepted boundary, deferred by owner decision (2026-08-08).
+**Status:** Not a defect - a visible transient of the derived read model's
+eventual-consistency contract (owner decision, 2026-08-08). See the
+"Derived read model is eventually consistent" decision in `PROJECT.md`. Kept
+as a report so the boundary and the rejected pagination fix stay on record.
 
 ## Symptoms
 
