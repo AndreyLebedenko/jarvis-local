@@ -345,6 +345,53 @@ system is intended to grow.
   surface a background-operation-queue indicator - foremost for pending
   projection/DB work - so a user can see when the derived model is still catching
   up rather than inferring it from a momentarily thin result.
+- **Historical consolidation planner contract (task v1.8.0-24, owner-approved
+  2026-08-08).** `ConsolidationPlanner.plan_far_consolidation` in
+  `src/jarvis/journal/consolidation.py` is a pure read-only domain service: it
+  reads the raw journal (never a derived projection, for the same reason
+  `TranscriptionEventSource` does) plus the transcript and annotation overlay
+  stores, and returns a `ConsolidationPlan` without writing a file or a
+  database row - task 24's stop condition. Scope decided with the owner before
+  implementation: the only media action this card plans is a binary
+  `MediaAction.KEEP`/`REMOVE` on audio; there is no compression/bitrate-
+  reduction candidate, and images/screenshots are entirely out of scope for
+  this planner (never listed in a plan, untouched). Audio is a `REMOVE`
+  candidate only once `TranscriptOverlayRepository.read_transcript` finds an
+  overlay for that exact `JournalEventRef` - deterministic, no guessing
+  transcript completeness. File existence on disk is checked before the
+  transcript gate, so already-missing media (e.g. a prior partial run) reports
+  `ALREADY_ABSENT` and stays `KEEP` rather than being re-offered as
+  actionable. A session equal to the caller-supplied `active_session_id` short-
+  circuits to `ConsolidationPlanStatus.ACTIVE_SESSION` without reading its
+  events; an empty/unknown session short-circuits to `UNKNOWN_SESSION`. A plan
+  makes raw text, transcript, annotation, and retrieval impact visible per the
+  acceptance criteria even though this planner never proposes to change any of
+  them. Three rounds of Codex stop-time review pushed this further each time:
+  the first cut had no raw-text field at all; the second added a bare
+  `event_count`, correctly rejected as not actually visible (a count cannot be
+  independently checked); the third reused `HistoryEventRange` from
+  `jarvis.journal.corpus` for a `text_range` field, also correctly rejected -
+  that type's home module implies resolving it through
+  `HistoryCorpusRepository.read_events`, the derived, eventually-consistent
+  corpus projection, which can lag or be stale relative to the raw journal
+  this planner itself reads. The fix is `RawTextRange`, defined locally in
+  `consolidation.py` (no import from `corpus.py`) and exposed as
+  `ConsolidationPlan.raw_text_range`: its own docstring mandates resolving it
+  by slicing `JournalStore.read_session`/`JournalHistoryService.read_session`
+  - the raw journal - never through the corpus, so an auditor (or the task 25
+  executor) can open and verify the exact preserved text against the
+  authoritative source rather than a possibly-lagging projection.
+  `event_count` stays alongside it as the same quick summary
+  `HistorySessionMetadata` already reports for a session. `annotation_count`
+  reports how many annotations exist for the session.
+  `projection_updates_required` is always empty for this card's only action
+  type: removing audio bytes never requires reprojecting corpus/lexical/
+  semantic/annotation data, because none of those index audio bytes, only
+  text/transcripts/annotations, none of which this planner ever changes - the
+  field is still computed explicitly (not hand-waved) so a future action type
+  that does touch text has a real field to populate. Execution of a plan
+  (actually deleting files, with restart recovery) is task v1.8.0-25, not this
+  card.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

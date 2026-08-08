@@ -1,6 +1,11 @@
 # Task v1.8.0-24: Historical consolidation planner
 
-**Status:** Draft revision for owner review.
+**Status:** Completed 2026-08-08. Scope decided with the owner before
+implementation: audio media action is binary KEEP/REMOVE only (no
+compression/bitrate-reduction action in this card), and images/screenshots
+are out of scope for this planner (untouched, not part of the plan).
+Implemented and verified by `python -m pytest` (1896 passed, 1 skipped) and
+ruff; see the consolidation planner contract in `PROJECT.md`.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-18 through v1.8.0-23.
 
@@ -29,11 +34,11 @@ automatic deletion.
 
 ## Acceptance criteria
 
-- [ ] Plans are deterministic for fixed session state.
-- [ ] Active session is excluded.
-- [ ] Audio is not planned for removal without transcript coverage.
-- [ ] Raw text, transcript, annotation, and retrieval impact is visible.
-- [ ] No files or databases are mutated by planning.
+- [x] Plans are deterministic for fixed session state.
+- [x] Active session is excluded.
+- [x] Audio is not planned for removal without transcript coverage.
+- [x] Raw text, transcript, annotation, and retrieval impact is visible.
+- [x] No files or databases are mutated by planning.
 
 ## Stop conditions
 
