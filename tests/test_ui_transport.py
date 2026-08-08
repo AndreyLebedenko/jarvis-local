@@ -27,6 +27,12 @@ from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
     HISTORY_SEARCH_MAX_RESULTS,
+    AnnotationGenerationOutcome,
+    AnnotationGenerationResult,
+    AnnotationOverlayChanged,
+    AnnotationOverlayRepository,
+    AnnotationSource,
+    AnnotationTarget,
     CorpusHistoryProjection,
     HistoryProjectionLifecycle,
     JournalEvent,
@@ -2621,6 +2627,315 @@ async def test_transcript_generate_reports_no_audio(tmp_path: Path) -> None:
             response = await session.post(generate)
             assert response.status == 409
             assert (await response.json())["reason"] == "no_audio_media"
+    finally:
+        await server.stop()
+
+
+_ANNOTATION_SESSION = "20260801-130000-cd34"
+
+
+def _annotation_store(
+    tmp_path: Path,
+) -> tuple[JournalStore, AnnotationOverlayRepository]:
+    store = JournalStore(tmp_path / "journal")
+    for position, role, text in (
+        (0, "user", "первое событие"),
+        (1, "assistant", "ответ"),
+    ):
+        store.append(
+            _journal_event(
+                session_id=_ANNOTATION_SESSION,
+                timestamp=f"2026-08-01T13:0{position}:00+01:00",
+                source="text",
+                role=role,
+                text=text,
+            )
+        )
+    overlays = AnnotationOverlayRepository(
+        tmp_path / "derived", JournalStoreEventReferenceResolver(store)
+    )
+    return store, overlays
+
+
+class _FakeAnnotationGenerationService:
+    def __init__(self, result: AnnotationGenerationResult) -> None:
+        self._result = result
+        self.calls: list[AnnotationTarget] = []
+
+    async def generate_annotation(
+        self, target: AnnotationTarget
+    ) -> AnnotationGenerationResult:
+        self.calls.append(target)
+        return self._result
+
+
+@pytest.mark.asyncio
+async def test_annotation_api_list_read_edit_round_trip_and_publishes_change(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    _store, overlays = _annotation_store(tmp_path)
+    write = overlays.add_annotation(
+        AnnotationTarget(_ANNOTATION_SESSION, 0, 1),
+        "исходная заметка",
+        author="jarvis",
+        source=AnnotationSource.GENERATED,
+    )
+    annotation_id = write.annotation_id
+    assert annotation_id is not None
+    changed: list[tuple[str, str]] = []
+
+    async def _capture(event: AnnotationOverlayChanged) -> None:
+        changed.append((event.session_id, event.annotation_id))
+
+    bus.subscribe(AnnotationOverlayChanged, _capture)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+    )
+    info = await server.start()
+    root = f"http://127.0.0.1:{info.port}/api/journal/annotations"
+    try:
+        async with aiohttp.ClientSession() as session:
+            listing = await _get_json(
+                session, f"{root}/{_ANNOTATION_SESSION}?token=valid-token"
+            )
+            assert [item["annotation_id"] for item in listing["annotations"]] == [
+                annotation_id
+            ]
+            annotation = listing["annotations"][0]
+            assert annotation["source"] == "generated"
+            assert annotation["status"] == "active"
+            assert annotation["target"] == {
+                "session_id": _ANNOTATION_SESSION,
+                "start_position": 0,
+                "end_position": 1,
+            }
+
+            read = await _get_json(
+                session,
+                f"{root}/{_ANNOTATION_SESSION}/{annotation_id}?token=valid-token",
+            )
+            assert read["annotation"]["text"] == "исходная заметка"
+
+            written = await session.put(
+                f"{root}/{_ANNOTATION_SESSION}/{annotation_id}?token=valid-token",
+                json={"text": "поправленная заметка"},
+            )
+            assert written.status == 200
+            payload = await written.json()
+            assert payload["annotation"]["text"] == "поправленная заметка"
+            assert payload["annotation"]["source"] == "edited"
+
+            reread = await _get_json(
+                session,
+                f"{root}/{_ANNOTATION_SESSION}/{annotation_id}?token=valid-token",
+            )
+            assert reread["annotation"]["text"] == "поправленная заметка"
+    finally:
+        await server.stop()
+
+    assert changed == [(_ANNOTATION_SESSION, annotation_id)]
+
+
+@pytest.mark.asyncio
+async def test_annotation_api_edit_rejections(tmp_path: Path) -> None:
+    _store, overlays = _annotation_store(tmp_path)
+    write = overlays.add_annotation(
+        AnnotationTarget(_ANNOTATION_SESSION),
+        "заметка",
+        author="jarvis",
+        source=AnnotationSource.GENERATED,
+    )
+    annotation_id = write.annotation_id
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+    )
+    info = await server.start()
+    root = f"http://127.0.0.1:{info.port}/api/journal/annotations"
+    try:
+        async with aiohttp.ClientSession() as session:
+            empty = await session.put(
+                f"{root}/{_ANNOTATION_SESSION}/{annotation_id}?token=valid-token",
+                json={"text": ""},
+            )
+            assert empty.status == 400
+            assert (await empty.json())["reason"] == "text_empty"
+
+            too_long = await session.put(
+                f"{root}/{_ANNOTATION_SESSION}/{annotation_id}?token=valid-token",
+                json={"text": "x" * 20001},
+            )
+            assert too_long.status == 413
+            assert (await too_long.json())["reason"] == "text_too_long"
+
+            unknown = await session.put(
+                f"{root}/{_ANNOTATION_SESSION}/does-not-exist?token=valid-token",
+                json={"text": "no such annotation"},
+            )
+            assert unknown.status == 404
+
+            wrong_session = await session.put(
+                f"{root}/20260101-000000-zz99/{annotation_id}?token=valid-token",
+                json={"text": "wrong session"},
+            )
+            assert wrong_session.status == 404
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_annotation_api_hidden_and_token(tmp_path: Path) -> None:
+    _store, overlays = _annotation_store(tmp_path)
+    hidden = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+    )
+    hidden_info = await hidden.start()
+    base = (
+        f"http://127.0.0.1:{hidden_info.port}/api/journal/annotations/"
+        f"{_ANNOTATION_SESSION}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            hidden_get = await _get_json(session, base + "?token=valid-token")
+            assert hidden_get == {"status": "hidden"}
+            missing_token = await session.get(base)
+            assert missing_token.status == 401
+    finally:
+        await hidden.stop()
+
+
+@pytest.mark.asyncio
+async def test_annotation_generate_whole_session_and_range(tmp_path: Path) -> None:
+    _store, overlays = _annotation_store(tmp_path)
+    service = _FakeAnnotationGenerationService(
+        AnnotationGenerationResult(
+            AnnotationTarget(_ANNOTATION_SESSION),
+            AnnotationGenerationOutcome.GENERATED,
+            annotation_id="generated-id",
+            annotation="сводка сессии",
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+        journal_annotation_generation_service=service,
+    )
+    info = await server.start()
+    generate = (
+        f"http://127.0.0.1:{info.port}/api/journal/annotations/"
+        f"{_ANNOTATION_SESSION}/generate?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            whole = await session.post(generate)
+            assert whole.status == 200
+            whole_payload = await whole.json()
+            assert whole_payload["outcome"] == "generated"
+            assert whole_payload["annotation_id"] == "generated-id"
+            assert whole_payload["target"] == {
+                "session_id": _ANNOTATION_SESSION,
+                "start_position": None,
+                "end_position": None,
+            }
+
+            ranged = await session.post(
+                generate, json={"start_position": 0, "end_position": 1}
+            )
+            assert ranged.status == 200
+            assert (await ranged.json())["target"] == {
+                "session_id": _ANNOTATION_SESSION,
+                "start_position": 0,
+                "end_position": 1,
+            }
+    finally:
+        await server.stop()
+
+    assert service.calls == [
+        AnnotationTarget(_ANNOTATION_SESSION),
+        AnnotationTarget(_ANNOTATION_SESSION, 0, 1),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_annotation_generate_rejects_reversed_range_without_calling_service(
+    tmp_path: Path,
+) -> None:
+    _store, overlays = _annotation_store(tmp_path)
+    service = _FakeAnnotationGenerationService(
+        AnnotationGenerationResult(
+            AnnotationTarget(_ANNOTATION_SESSION),
+            AnnotationGenerationOutcome.GENERATED,
+            annotation_id="should-not-happen",
+            annotation="unreachable",
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+        journal_annotation_generation_service=service,
+    )
+    info = await server.start()
+    generate = (
+        f"http://127.0.0.1:{info.port}/api/journal/annotations/"
+        f"{_ANNOTATION_SESSION}/generate?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                generate, json={"start_position": 1, "end_position": 0}
+            )
+            assert response.status == 400
+    finally:
+        await server.stop()
+
+    assert service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_annotation_generate_reports_failure(tmp_path: Path) -> None:
+    _store, overlays = _annotation_store(tmp_path)
+    service = _FakeAnnotationGenerationService(
+        AnnotationGenerationResult(
+            AnnotationTarget(_ANNOTATION_SESSION, 0, 9),
+            AnnotationGenerationOutcome.UNKNOWN_RANGE,
+            detail="end 9 out of range",
+        )
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+        journal_annotation_generation_service=service,
+    )
+    info = await server.start()
+    generate = (
+        f"http://127.0.0.1:{info.port}/api/journal/annotations/"
+        f"{_ANNOTATION_SESSION}/generate?token=valid-token"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                generate, json={"start_position": 0, "end_position": 9}
+            )
+            assert response.status == 404
+            body = await response.json()
+            assert body["reason"] == "unknown_range"
+            assert body["detail"] == "end 9 out of range"
     finally:
         await server.stop()
 

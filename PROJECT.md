@@ -281,7 +281,21 @@ system is intended to grow.
     `AnnotationSource.EDITED`, generate runs the task-22 service. The Journal UI
     shows session/range annotations with source references, editable, Hidden mode
     suppresses them, and there is no automatic background generation. Full
-    contract in `story-v1.8.0` decision 5.
+    contract in `story-v1.8.0` decision 5. Implemented (slice 3):
+    `UiTransportServer` serves `GET /api/journal/annotations/{session}` (list),
+    `GET|PUT .../{session}/{annotation_id}` (read/edit), and
+    `POST .../{session}/generate`
+    (whole-session with no body, or event range via `{start_position,
+    end_position}`; a reversed range `start > end` is a 400 in the parser, so a
+    request violating the `AnnotationTarget` invariant never reaches the
+    generator). Edit is text-only (owner decision 2026-08-08) and forces
+    `AnnotationSource.EDITED`; read/edit are session-scoped (an `annotation_id`
+    whose target session does not match the path is a 404). Mirroring the
+    divergence noted above, the API edit path publishes `AnnotationOverlayChanged`
+    itself, while generate relies on the generation service's own publish. There
+    is no hard-delete endpoint - the card lists only read/list/edit/generate, and
+    `DISMISSED` is the audit-preserving hide (a future edit-surface extension, not
+    this slice).
 - **Derived read model is eventually consistent, 2026-08-08 (task v1.8.0-23).**
   The raw JSONL journal and the overlay stores (transcript, annotation) are the
   authoritative record; every retrieval-facing projection (corpus/FTS, semantic,

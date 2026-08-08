@@ -2107,6 +2107,8 @@ def run_with_status_console(
         ),
         journal_transcript_repository=app.transcript_overlay_repository,
         journal_transcription_service=app.transcription_service,
+        journal_annotation_repository=app.annotation_overlay_repository,
+        journal_annotation_generation_service=app.annotation_generation_service,
         memory_file_repository=app.memory_file_repository,
     )
     live_console.create_windows()

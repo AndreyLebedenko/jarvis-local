@@ -44,6 +44,21 @@ from jarvis.inputs.attachments import (
     AttachmentUpload,
     plan_attachments,
 )
+from jarvis.journal.annotation import (
+    ANNOTATION_MAX_TEXT_LENGTH,
+    Annotation,
+    AnnotationOverlayChanged,
+    AnnotationOverlayRepository,
+    AnnotationRead,
+    AnnotationSource,
+    AnnotationTarget,
+    AnnotationWriteStatus,
+)
+from jarvis.journal.annotation_generator import (
+    AnnotationGenerationOutcome,
+    AnnotationGenerationResult,
+    AnnotationGenerationService,
+)
 from jarvis.journal.corpus import HISTORY_SEARCH_MAX_RESULTS
 from jarvis.journal.events import JournalEvent, JournalEventAppended, JournalEventRef
 from jarvis.journal.fork import ForkSessionReason, ForkSessionResult
@@ -267,6 +282,10 @@ def token_matches(expected: str, actual: str | None) -> bool:
         hashlib.sha256(expected.encode("utf-8")).digest(),
         hashlib.sha256(actual.encode("utf-8")).digest(),
     )
+
+
+def _is_event_position(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 @web.middleware
@@ -584,6 +603,10 @@ class UiTransportServer:
         journal_active_session_id: Callable[[], str | None] | None = None,
         journal_transcript_repository: TranscriptOverlayRepository | None = None,
         journal_transcription_service: TranscriptionService | None = None,
+        journal_annotation_repository: AnnotationOverlayRepository | None = None,
+        journal_annotation_generation_service: (
+            AnnotationGenerationService | None
+        ) = None,
         memory_file_repository: MemoryFileRepository | None = None,
     ) -> None:
         self._bus = bus
@@ -605,6 +628,10 @@ class UiTransportServer:
         self._journal_active_session_id = journal_active_session_id or (lambda: None)
         self._journal_transcript_repository = journal_transcript_repository
         self._journal_transcription_service = journal_transcription_service
+        self._journal_annotation_repository = journal_annotation_repository
+        self._journal_annotation_generation_service = (
+            journal_annotation_generation_service
+        )
         self._memory_file_repository = memory_file_repository
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
@@ -665,6 +692,22 @@ class UiTransportServer:
         app.router.add_post(
             "/api/journal/transcripts/{session_id}/{event_position}/generate",
             self._journal_transcript_generate_handler,
+        )
+        app.router.add_get(
+            "/api/journal/annotations/{session_id}",
+            self._journal_annotation_list_handler,
+        )
+        app.router.add_post(
+            "/api/journal/annotations/{session_id}/generate",
+            self._journal_annotation_generate_handler,
+        )
+        app.router.add_get(
+            "/api/journal/annotations/{session_id}/{annotation_id}",
+            self._journal_annotation_get_handler,
+        )
+        app.router.add_put(
+            "/api/journal/annotations/{session_id}/{annotation_id}",
+            self._journal_annotation_put_handler,
         )
         app.router.add_get(
             "/api/journal/media/{session_id}/{media_path:.*}",
@@ -1218,6 +1261,102 @@ class UiTransportServer:
             )
         return self._transcript_generate_response(reference, result)
 
+    async def _journal_annotation_list_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        repository = self._journal_annotation_repository
+        if repository is None:
+            raise web.HTTPServiceUnavailable(text="annotations not available")
+        session_id = request.match_info["session_id"]
+        annotations = await asyncio.to_thread(
+            repository.read_session_annotations, session_id
+        )
+        return web.json_response(
+            {
+                "status": "ok",
+                "session_id": session_id,
+                "annotations": [
+                    self._annotation_payload(annotation) for annotation in annotations
+                ],
+            }
+        )
+
+    async def _journal_annotation_get_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        repository = self._journal_annotation_repository
+        if repository is None:
+            raise web.HTTPServiceUnavailable(text="annotations not available")
+        session_id = request.match_info["session_id"]
+        annotation_id = request.match_info["annotation_id"]
+        read = await asyncio.to_thread(repository.read_annotation, annotation_id)
+        annotation = self._scoped_annotation(read, session_id)
+        if annotation is None:
+            raise web.HTTPNotFound(text="annotation not found")
+        return web.json_response(
+            {"status": "ok", "annotation": self._annotation_payload(annotation)}
+        )
+
+    async def _journal_annotation_put_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        repository = self._journal_annotation_repository
+        if repository is None:
+            raise web.HTTPServiceUnavailable(text="annotations not available")
+        session_id = request.match_info["session_id"]
+        annotation_id = request.match_info["annotation_id"]
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+            raise web.HTTPBadRequest(text="request body requires string text")
+        read = await asyncio.to_thread(repository.read_annotation, annotation_id)
+        if self._scoped_annotation(read, session_id) is None:
+            raise web.HTTPNotFound(text="annotation not found")
+        result = await asyncio.to_thread(
+            repository.update_annotation,
+            annotation_id,
+            text=payload["text"],
+            source=AnnotationSource.EDITED,
+        )
+        if not result.accepted:
+            return self._annotation_write_rejection(result.status)
+        await self._bus.publish(
+            AnnotationOverlayChanged,
+            AnnotationOverlayChanged(session_id, annotation_id),
+        )
+        read = await asyncio.to_thread(repository.read_annotation, annotation_id)
+        annotation = self._scoped_annotation(read, session_id)
+        if annotation is None:
+            raise web.HTTPNotFound(text="annotation not found")
+        return web.json_response(
+            {"status": "ok", "annotation": self._annotation_payload(annotation)}
+        )
+
+    async def _journal_annotation_generate_handler(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        service = self._journal_annotation_generation_service
+        if service is None:
+            raise web.HTTPServiceUnavailable(text="annotation generation not available")
+        session_id = request.match_info["session_id"]
+        target = await self._parse_annotation_generate_target(request, session_id)
+        result = await service.generate_annotation(target)
+        return self._annotation_generate_response(target, result)
+
     async def _journal_media_handler(self, request: web.Request) -> web.StreamResponse:
         self._require_http_token(request)
         if self._is_hidden():
@@ -1356,6 +1495,111 @@ class UiTransportServer:
             {
                 "status": "rejected",
                 "reference": reference_payload,
+                "reason": result.outcome.value,
+                "detail": result.detail,
+            },
+            status=codes.get(result.outcome, 500),
+        )
+
+    @staticmethod
+    def _annotation_payload(annotation: Annotation) -> JsonObject:
+        return {
+            "annotation_id": annotation.annotation_id,
+            "target": {
+                "session_id": annotation.target.session_id,
+                "start_position": annotation.target.start_position,
+                "end_position": annotation.target.end_position,
+            },
+            "text": annotation.text,
+            "author": annotation.author,
+            "source": annotation.source.value,
+            "status": annotation.status.value,
+            "created_at": annotation.created_at,
+            "updated_at": annotation.updated_at,
+            "metadata": cast(JsonObject, annotation.metadata),
+        }
+
+    @staticmethod
+    def _scoped_annotation(read: AnnotationRead, session_id: str) -> Annotation | None:
+        annotation = read.annotation if read.found else None
+        if annotation is None or annotation.target.session_id != session_id:
+            return None
+        return annotation
+
+    @staticmethod
+    def _annotation_write_rejection(status: AnnotationWriteStatus) -> web.Response:
+        codes = {
+            AnnotationWriteStatus.UNKNOWN_ANNOTATION: 404,
+            AnnotationWriteStatus.TEXT_TOO_LONG: 413,
+        }
+        body: JsonObject = {"status": "rejected", "reason": status.value}
+        if status is AnnotationWriteStatus.TEXT_TOO_LONG:
+            body["max_chars"] = ANNOTATION_MAX_TEXT_LENGTH
+        return web.json_response(body, status=codes.get(status, 400))
+
+    @staticmethod
+    async def _parse_annotation_generate_target(
+        request: web.Request, session_id: str
+    ) -> AnnotationTarget:
+        raw = await request.read()
+        if not raw:
+            return AnnotationTarget(session_id)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="request body must be a JSON object")
+        unknown = set(payload) - {"start_position", "end_position"}
+        if unknown:
+            raise web.HTTPBadRequest(
+                text="body accepts only start_position and end_position"
+            )
+        start = payload.get("start_position")
+        end = payload.get("end_position")
+        if start is None and end is None:
+            return AnnotationTarget(session_id)
+        if not (_is_event_position(start) and _is_event_position(end)):
+            raise web.HTTPBadRequest(
+                text="start_position and end_position must both be integers >= 0"
+            )
+        if start > end:
+            raise web.HTTPBadRequest(text="start_position must be <= end_position")
+        return AnnotationTarget(session_id, start, end)
+
+    def _annotation_generate_response(
+        self, target: AnnotationTarget, result: AnnotationGenerationResult
+    ) -> web.Response:
+        target_payload = {
+            "session_id": target.session_id,
+            "start_position": target.start_position,
+            "end_position": target.end_position,
+        }
+        if result.generated:
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "target": target_payload,
+                    "outcome": result.outcome.value,
+                    "annotation_id": result.annotation_id,
+                    "annotation": result.annotation,
+                }
+            )
+        codes = {
+            AnnotationGenerationOutcome.UNKNOWN_RANGE: 404,
+            AnnotationGenerationOutcome.SOURCE_TOO_LARGE: 413,
+            AnnotationGenerationOutcome.SOURCE_TEXT_TOO_LARGE: 413,
+            AnnotationGenerationOutcome.EMPTY_SOURCE: 409,
+            AnnotationGenerationOutcome.EMPTY_ANNOTATION: 422,
+            AnnotationGenerationOutcome.OUTPUT_TOO_LONG: 422,
+            AnnotationGenerationOutcome.ANNOTATION_REJECTED: 500,
+            AnnotationGenerationOutcome.BACKEND_FAILED: 502,
+            AnnotationGenerationOutcome.CANCELLED: 409,
+        }
+        return web.json_response(
+            {
+                "status": "rejected",
+                "target": target_payload,
                 "reason": result.outcome.value,
                 "detail": result.detail,
             },
