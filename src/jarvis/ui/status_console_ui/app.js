@@ -265,6 +265,7 @@ function renderToolList(listId, emptyId, tools) {
     row.title = tool.description
       ? `${tool.name}\n${tool.description}`
       : tool.name;
+    row.dataset.toolName = tool.name;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = tool.enabled === true;
@@ -284,7 +285,17 @@ function renderToolList(listId, emptyId, tools) {
       parts.push(uiString("mcp_tool_unavailable"));
     }
     label.textContent = parts.join(" - ");
-    row.append(checkbox, label);
+    const menuButton = document.createElement("button");
+    menuButton.type = "button";
+    menuButton.className = "context-menu-button";
+    menuButton.textContent = "...";
+    menuButton.title = uiString("context_menu_open");
+    menuButton.setAttribute("aria-label", uiString("context_menu_open"));
+    menuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openItemContextMenu(row, menuButton, _toolRowMenuEntries);
+    });
+    row.append(checkbox, label, menuButton);
     list.appendChild(row);
   }
   document.getElementById(emptyId).hidden = list.children.length !== 0;
@@ -295,6 +306,7 @@ function renderToolList(listId, emptyId, tools) {
     onActivate: _toggleToolRowCheckbox,
     getLabel: (row) => row.querySelector("span")?.textContent || "",
   });
+  initContextMenuTrigger(list, "li", _toolRowMenuEntries);
 }
 
 function _toggleToolRowCheckbox(row) {
@@ -302,6 +314,27 @@ function _toggleToolRowCheckbox(row) {
   if (!checkbox || checkbox.disabled) return;
   checkbox.checked = !checkbox.checked;
   checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// Enable/Disable reuses set_tool_enabled (via the row's own checkbox, so
+// its change listener is the only place that ever sends the command);
+// Copy name is a local clipboard action, like Journal's copy actions -
+// neither is a new engine capability, only a new way to reach one that
+// already exists.
+function _toolRowMenuEntries(row) {
+  const checkbox = row.querySelector('input[type="checkbox"]');
+  const label = row.querySelector("span");
+  if (!checkbox) return [];
+  return [
+    !checkbox.disabled && {
+      label: uiString(checkbox.checked ? "mcp_disable" : "mcp_enable"),
+      run: () => _toggleToolRowCheckbox(row),
+    },
+    {
+      label: uiString("tool_row_copy_name"),
+      run: () => _copyToClipboardWithLabelFlash(row.dataset.toolName, label),
+    },
+  ];
 }
 
 function setMcpEnabled() {
@@ -1529,6 +1562,7 @@ async function refreshJournalSessions(refetchSelectedFeed = false) {
     },
     (item) => item.classList.contains("sel")
   );
+  initContextMenuTrigger(list, ".journal-session", _journalSessionMenuEntries);
   if (_journalSelectedSessionId === null && sessions.length !== 0) {
     selectJournalSession(sessions[0].id);
   } else if (refetchSelectedFeed && _journalSelectedSessionId !== null) {
@@ -1605,10 +1639,22 @@ function _journalSessionElement(session) {
     continueJournalSession(session.id);
   });
 
+  const menuButton = document.createElement("button");
+  menuButton.type = "button";
+  menuButton.className = "context-menu-button";
+  menuButton.textContent = "...";
+  menuButton.title = uiString("context_menu_open");
+  menuButton.setAttribute("aria-label", uiString("context_menu_open"));
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openItemContextMenu(row, menuButton, _journalSessionMenuEntries);
+  });
+
   const actions = document.createElement("div");
   actions.className = "journal-session-actions";
   if (session.id !== _journalActiveSessionId) actions.appendChild(continueButton);
   actions.appendChild(deleteButton);
+  actions.appendChild(menuButton);
 
   row.append(when, title, size, actions);
   row.addEventListener("click", () => selectJournalSession(session.id));
@@ -1617,6 +1663,34 @@ function _journalSessionElement(session) {
   // refreshJournalSessions()), not per-row - so a rebuilt list never leaks
   // per-row listeners the way the old per-row handler could.
   return row;
+}
+
+// Shared by the visible menu button above and the container-level
+// right-click/Shift+F10 trigger initContextMenuTrigger() wires in
+// refreshJournalSessions() - both resolve the same session from
+// row.dataset.sessionId (the roving-list handlers already use this same
+// lookup, see refreshJournalSessions()'s onActivate/onToggle), so there is
+// one place session-menu actions are decided, not three.
+function _journalSessionMenuEntries(row) {
+  const sessionId = row.dataset.sessionId;
+  const session = _journalSessions.find((item) => item.id === sessionId);
+  if (!session) return [];
+  const isActive = sessionId === _journalActiveSessionId;
+  return [
+    !isActive && {
+      label: uiString("journal_session_continue"),
+      run: () => continueJournalSession(sessionId),
+      disabled: sessionId === _journalForkInFlightSessionId,
+    },
+    !isActive && {
+      label: uiString("journal_session_delete"),
+      run: () => deleteJournalSession(sessionId),
+    },
+    {
+      label: uiString("journal_session_copy_title"),
+      run: () => _copyToClipboardWithJournalStatus(session.title),
+    },
+  ];
 }
 
 async function continueJournalSession(sessionId) {
@@ -2017,6 +2091,11 @@ function _renderJournalFeed(events, contextEventPosition = null) {
   for (const [position, event] of events.entries()) {
     feed.appendChild(_journalEventElement(event, position));
   }
+  // Bound once (initContextMenuTrigger() is idempotent via its own
+  // dataset flag): the container itself survives every replaceChildren(),
+  // so this single delegated listener also covers messages appended later
+  // by _appendJournalTurn() without needing to rebind per message.
+  initContextMenuTrigger(feed, ".journal-msg", _journalMessageMenuEntries);
   // Bottom-anchored: the newest turn sits just above the reserved input
   // dock, messenger-style.
   feed.scrollTop = feed.scrollHeight;
@@ -2054,17 +2133,29 @@ function _journalEventElement(event, position = null) {
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(event.timestamp);
   meta.append(source, time);
+  const metaSpacer = document.createElement("span");
+  metaSpacer.className = "journal-msg-meta-spacer";
+  meta.appendChild(metaSpacer);
   if (event.role === "assistant" && event.text) {
-    const spacer = document.createElement("span");
-    spacer.className = "journal-msg-meta-spacer";
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "journal-copy";
     copy.textContent = uiString("journal_copy_answer");
     copy.title = uiString("journal_copy_answer");
     copy.addEventListener("click", () => copyJournalAnswer(event.text, copy));
-    meta.append(spacer, copy);
+    meta.appendChild(copy);
   }
+  const menuButton = document.createElement("button");
+  menuButton.type = "button";
+  menuButton.className = "context-menu-button";
+  menuButton.textContent = "...";
+  menuButton.title = uiString("context_menu_open");
+  menuButton.setAttribute("aria-label", uiString("context_menu_open"));
+  menuButton.addEventListener("click", (clickEvent) => {
+    clickEvent.stopPropagation();
+    openItemContextMenu(message, menuButton, _journalMessageMenuEntries);
+  });
+  meta.appendChild(menuButton);
   message.appendChild(meta);
 
   for (const item of event.media || []) {
@@ -2098,6 +2189,45 @@ function _journalEventHasAudio(event) {
   return (event.media || []).some((item) =>
     item.path.toLowerCase().endsWith(".wav")
   );
+}
+
+// Reuses each existing per-message action verbatim - .click() on the same
+// button its own visible control already wires - rather than duplicating
+// their fetch/error/refs handling here. Generate transcript and Generate
+// annotation only appear when the message actually carries that control
+// (an audio turn for transcript; a known feed position, set only by the
+// full render and never a live append, for annotation - see the "known
+// event position" comment above _journalTranscriptPanel's call site).
+function _journalMessageMenuEntries(row) {
+  const copyButton = row.querySelector(".journal-copy");
+  const transcriptGenerate = row.querySelector(".journal-transcript-generate");
+  const position = row.dataset.eventPosition;
+  return [
+    copyButton && {
+      label: uiString("journal_copy_answer"),
+      run: () => copyButton.click(),
+    },
+    transcriptGenerate && {
+      label: uiString("journal_transcript_generate"),
+      run: () => transcriptGenerate.click(),
+      disabled: transcriptGenerate.disabled,
+    },
+    position !== undefined && {
+      label: uiString("journal_annotation_generate_message"),
+      run: () => _generateJournalAnnotationForMessage(Number(position)),
+    },
+  ];
+}
+
+// Composes two already-existing actions (open the panel, generate for an
+// explicit range) rather than adding a new endpoint: a single message's
+// own position as both the start and end of the existing range-generate
+// call is just a one-event range, the same request shape
+// generateJournalAnnotationRange() already sends by hand from the panel's
+// From/To inputs.
+async function _generateJournalAnnotationForMessage(position) {
+  if (!_journalAnnotationOpen) await toggleJournalAnnotationPanel();
+  await _generateJournalAnnotation(position, position);
 }
 
 // Derived transcript overlay controls for one voice event (task-v1.8.0-20).
@@ -2979,6 +3109,37 @@ async function _writeClipboardText(text) {
   if (!copied) throw new Error("document.execCommand copy failed");
 }
 
+// Copy feedback for context-menu actions (task-ui-ux-2), which have no
+// button of their own left on screen by the time the copy resolves - the
+// menu that triggered them is already closed. Journal actions (session
+// title, a feed message reached via its menu instead of its own Copy
+// button) report through the existing input-status line; a tool row has
+// no such line, so it flashes its own label the same way copyJournalAnswer
+// flashes its button.
+async function _copyToClipboardWithJournalStatus(text) {
+  try {
+    await _writeClipboardText(text);
+    _setJournalInputStatus(uiString("clipboard_copied"));
+  } catch (error) {
+    console.error("Copy failed:", error);
+    _setJournalInputStatus(uiString("clipboard_copy_failed"));
+  }
+}
+
+async function _copyToClipboardWithLabelFlash(text, label) {
+  const original = label.textContent;
+  try {
+    await _writeClipboardText(text);
+    label.textContent = uiString("clipboard_copied");
+  } catch (error) {
+    console.error("Copy failed:", error);
+    label.textContent = uiString("clipboard_copy_failed");
+  }
+  window.setTimeout(() => {
+    label.textContent = original;
+  }, 900);
+}
+
 function _journalImageThumbnail(mediaItem) {
   const tile = document.createElement("div");
   tile.className = "journal-image-tile";
@@ -3043,8 +3204,9 @@ function _formatJournalBytes(bytes) {
 // app.js (the live console and demo.html's QA harness alike) - unlike the
 // transport bootstrap below, which only runs where a real WS transport
 // exists. Escapables are registered in the order they should be checked
-// last-to-first (see interaction.js's handleGlobalEscape()): the shortcuts
-// overlay is the true top layer, so it registers last.
+// last-to-first (see interaction.js's handleGlobalEscape()): the context
+// menu (task-ui-ux-2) draws over everything else, including the shortcuts
+// overlay, so it registers last of all.
 // syncRadioGroup() also runs once here for each group, not only from
 // applyThinkingMode()/applyVisibilityMode()/setActiveView(): those only
 // fire on a later state change or click, so without this the roving
@@ -3078,6 +3240,7 @@ registerEscapable({
   isOpen: () => document.getElementById("shortcutsOverlay")?.hidden === false,
   close: closeShortcutsOverlay,
 });
+registerEscapable({ isOpen: _contextMenuOpen, close: _closeContextMenu });
 
 if (typeof startUiTransport === "function") {
   installJournalDocumentDropGuard();

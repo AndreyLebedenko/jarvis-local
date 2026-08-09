@@ -220,6 +220,168 @@ function enableStandaloneF2Edit(item) {
 }
 
 // ---------------------------------------------------------------------
+// Context menu (task-ui-ux-2): one reusable role="menu" popup, reachable
+// by right-click, Shift+F10, and a visible per-item menu button. Every
+// item type (Journal session, feed message, tool row) supplies only a
+// list of already-existing actions; this module owns positioning,
+// open/close, and roving arrow-key navigation between menu items.
+// ---------------------------------------------------------------------
+
+let _contextMenuEl = null;
+let _contextMenuReturnFocus = null;
+let _contextMenuOutsideHandler = null;
+
+function _contextMenuOpen() {
+  return _contextMenuEl !== null;
+}
+
+function _closeContextMenu() {
+  if (!_contextMenuEl) return;
+  _contextMenuEl.remove();
+  _contextMenuEl = null;
+  if (_contextMenuOutsideHandler) {
+    document.removeEventListener("click", _contextMenuOutsideHandler);
+    _contextMenuOutsideHandler = null;
+  }
+  _contextMenuReturnFocus?.focus?.();
+  _contextMenuReturnFocus = null;
+}
+
+// anchor is either an {x, y} pointer position (right-click) or an Element
+// to position just below (Shift+F10 / the visible menu button, so it is
+// reachable and positioned sensibly without a pointer).
+function _positionContextMenu(menu, anchor) {
+  const rect = anchor instanceof Element ? anchor.getBoundingClientRect() : null;
+  const x = rect ? rect.left : anchor.x;
+  const y = rect ? rect.bottom + 2 : anchor.y;
+  const maxX = Math.max(4, window.innerWidth - menu.offsetWidth - 8);
+  const maxY = Math.max(4, window.innerHeight - menu.offsetHeight - 8);
+  menu.style.left = `${Math.min(x, maxX)}px`;
+  menu.style.top = `${Math.min(y, maxY)}px`;
+}
+
+// entries: [{ label, run, disabled? }, ...]; falsy entries are dropped, so
+// a caller can inline a condition (e.g. `session.id !== activeId &&
+// {...}`) instead of building an array by hand. Only one menu is ever
+// open - opening a new one always closes whatever was open first.
+function openContextMenu(entries, anchor, returnFocusTo) {
+  _closeContextMenu();
+  const visible = entries.filter(Boolean);
+  if (visible.length === 0) return;
+  _contextMenuReturnFocus = returnFocusTo || document.activeElement;
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  menu.setAttribute("role", "menu");
+
+  const items = visible.map((entry) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "context-menu-item";
+    item.setAttribute("role", "menuitem");
+    item.tabIndex = -1;
+    item.textContent = entry.label;
+    if (entry.disabled) {
+      item.disabled = true;
+      item.setAttribute("aria-disabled", "true");
+    } else {
+      item.addEventListener("click", () => {
+        _closeContextMenu();
+        entry.run();
+      });
+    }
+    menu.appendChild(item);
+    return item;
+  });
+
+  menu.addEventListener("keydown", (event) => _onContextMenuKeydown(event, items));
+  document.body.appendChild(menu);
+  _positionContextMenu(menu, anchor);
+  _contextMenuEl = menu;
+
+  const firstEnabled = items.find((item) => !item.disabled) || items[0];
+  firstEnabled.tabIndex = 0;
+  firstEnabled.focus();
+
+  // Deferred so the same click/contextmenu event that opened the menu is
+  // not also seen by this listener as an "outside" click.
+  _contextMenuOutsideHandler = (event) => {
+    if (!menu.contains(event.target)) _closeContextMenu();
+  };
+  window.setTimeout(() => {
+    if (_contextMenuEl === menu) document.addEventListener("click", _contextMenuOutsideHandler);
+  }, 0);
+}
+
+function _onContextMenuKeydown(event, items) {
+  const enabled = items.filter((item) => !item.disabled);
+  if (enabled.length === 0) return;
+  const currentIndex = Math.max(0, enabled.indexOf(document.activeElement));
+  const focusItem = (index) => {
+    items.forEach((item) => { item.tabIndex = -1; });
+    enabled[index].tabIndex = 0;
+    enabled[index].focus();
+  };
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault();
+      focusItem((currentIndex + 1) % enabled.length);
+      return;
+    case "ArrowUp":
+      event.preventDefault();
+      focusItem((currentIndex - 1 + enabled.length) % enabled.length);
+      return;
+    case "Home":
+      event.preventDefault();
+      focusItem(0);
+      return;
+    case "End":
+      event.preventDefault();
+      focusItem(enabled.length - 1);
+      return;
+    case "Tab":
+      // A menu never traps Tab - it closes and lets Tab continue normally.
+      _closeContextMenu();
+      return;
+    default:
+      return;
+  }
+}
+
+// Wires right-click and Shift+F10 (fired only when the item itself has
+// focus, matching initRovingList()'s per-key guard) on every itemSelector
+// row inside container to open a menu built by buildEntries(item). The
+// visible per-item menu button is not created here - each row shape
+// differs too much - callers wire its click to openItemContextMenu()
+// directly instead, right where they build that button.
+function initContextMenuTrigger(container, itemSelector, buildEntries) {
+  if (!container || container.dataset.ctxMenuBound === "true") return;
+  container.dataset.ctxMenuBound = "true";
+  container.addEventListener("contextmenu", (event) => {
+    const item = event.target.closest(itemSelector);
+    if (!item) return;
+    event.preventDefault();
+    openContextMenu(buildEntries(item), { x: event.clientX, y: event.clientY }, item);
+  });
+  container.addEventListener("keydown", (event) => {
+    if (event.key !== "F10" || !event.shiftKey) return;
+    const item = event.target.closest(itemSelector);
+    if (!item || event.target !== item) return;
+    event.preventDefault();
+    openContextMenu(buildEntries(item), item, item);
+  });
+}
+
+function openItemContextMenu(item, anchorElement, buildEntries) {
+  // Return focus to the button that opened the menu, not to `item` - the
+  // two differ for every real caller (a per-row menu button is not the row
+  // itself), and closing must land focus back where the user's Tab stop
+  // already was, exactly like the shortcuts overlay's own return-focus
+  // contract.
+  openContextMenu(buildEntries(item), anchorElement, anchorElement);
+}
+
+// ---------------------------------------------------------------------
 // Escape stack
 // ---------------------------------------------------------------------
 //
@@ -260,15 +422,19 @@ function _isTextEditableElement(element) {
   return !["checkbox", "radio", "button", "submit", "range"].includes(type);
 }
 
-// True while a real modal (currently only the shortcuts overlay, but this
-// deliberately looks for the ARIA contract rather than a hardcoded id, so
-// any future `aria-modal="true"` dialog gets the same treatment for free)
-// is open. `inert` already stops Tab/click/focus from reaching the
-// background, but it does nothing about a document-level keydown listener
-// like this one - marking the background inert while still letting a
-// global shortcut act on it would make the dialog "modal" in name only.
+// True while a real modal (an `aria-modal="true"` dialog - deliberately
+// looked up by the ARIA contract rather than a hardcoded id, so any future
+// one gets the same treatment for free) or the context menu is open.
+// `inert` already stops Tab/click/focus from reaching the background, but
+// it does nothing about a document-level keydown listener like this one -
+// marking the background inert while still letting a global shortcut act
+// on it would make the dialog "modal" in name only. The context menu is
+// not `aria-modal` (it does not trap Tab - see _onContextMenuKeydown's
+// Tab case), but the same reasoning applies to it: Alt+N switching views
+// out from under an open menu would be surprising, not useful.
 function _hasOpenModal() {
-  return document.querySelector('[aria-modal="true"]:not([hidden])') !== null;
+  if (document.querySelector('[aria-modal="true"]:not([hidden])') !== null) return true;
+  return _contextMenuOpen();
 }
 
 // view switching, "/" to the Journal search box, "?" for the shortcuts

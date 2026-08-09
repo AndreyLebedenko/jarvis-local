@@ -1180,6 +1180,36 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
   color: var(--cyan);
 }
 
+/* ===== CONTEXT MENU (task-ui-ux-2) ===== */
+.context-menu {
+  position: fixed; z-index: 210; min-width: 168px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.context-menu-item {
+  display: block; width: 100%; text-align: left;
+  border: none; border-radius: 5px; background: transparent; color: var(--text-dim);
+  font-size: 12px; padding: 6px 10px; cursor: pointer;
+}
+.context-menu-item:hover,
+.context-menu-item:focus-visible { background: var(--cyan-tint); color: var(--cyan); }
+.context-menu-item:disabled { opacity: 0.35; cursor: not-allowed; }
+.context-menu-item:disabled:hover { background: transparent; color: var(--text-dim); }
+
+.context-menu-button {
+  width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text-faint); cursor: pointer; flex: none;
+  margin-left: 8px;
+  /* float has no effect inside a flex container (ignored by spec), so this
+     only does something in a plain-flow context like a tool-row <li> -
+     it puts the button at the row's right edge there without needing a
+     flex layout refactor those rows do not otherwise need. */
+  float: right;
+}
+.context-menu-button:hover,
+.context-menu-button:focus-visible { border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint); }
+
 /* ===== RESPONSIVE ===== */
 /* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).
    Below this, drop the fixed two-column grid and stack top-to-bottom so
