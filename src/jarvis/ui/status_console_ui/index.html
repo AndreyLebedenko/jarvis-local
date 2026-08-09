@@ -8,16 +8,46 @@
 </head>
 <body>
 
+<a class="skip-link" href="#" data-i18n="skip_to_content" onclick="skipToContent(); return false;">Skip to content</a>
+
+<!-- Placed before #journalView deliberately, not after: a pre-existing
+     test-only HTML-nesting tracker (test_journal_view_ui.py's
+     _JournalViewParser) does not account for #journalView's unclosed
+     void <input> elements and never returns to depth 0 for the rest of
+     the document once it has entered that id, so any hardcoded text
+     placed after #journalView would misread as "inside" it. Living
+     before #journalView opens sidesteps that without touching shared
+     test infrastructure for an unrelated reason. -->
+<div class="shortcuts-overlay" id="shortcutsOverlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsOverlayTitle" hidden>
+  <div class="shortcuts-panel">
+    <div class="shortcuts-head">
+      <h2 id="shortcutsOverlayTitle" data-i18n="shortcuts_title">Keyboard shortcuts</h2>
+      <button type="button" data-i18n="shortcuts_close" onclick="closeShortcutsOverlay()">Close</button>
+    </div>
+    <div class="shortcuts-list">
+      <div class="shortcuts-row"><span class="shortcuts-key">Alt+1 / 2 / 3</span><span data-i18n="shortcuts_views">Switch Status / Journal / Settings</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">&uarr; &darr; &larr; &rarr;</span><span data-i18n="shortcuts_arrows">Move within a list or toggle group</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Home / End</span><span data-i18n="shortcuts_home_end">Jump to the first or last item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span data-i18n="shortcuts_space">Select or toggle the focused item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Enter</span><span data-i18n="shortcuts_enter">Activate the focused item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">F2</span><span data-i18n="shortcuts_f2">Edit the focused item, where editable</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">/</span><span data-i18n="shortcuts_slash">Search the Journal</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Esc</span><span data-i18n="shortcuts_escape">Close the topmost panel or dialog</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">?</span><span data-i18n="shortcuts_question">Show this list</span></div>
+    </div>
+  </div>
+</div>
+
 <div class="topbar">
   <div class="brand">
     <div class="brand-mark">J</div>
     <div class="brand-name">JARVIS <span>Status Console</span></div>
   </div>
   <div class="topbar-right">
-    <div class="view-toggle" id="viewToggle">
-      <button data-view="status" class="sel" data-i18n="view_status" onclick="setActiveView('status')">Status</button>
-      <button data-view="journal" data-i18n="view_journal" onclick="setActiveView('journal')">Journal</button>
-      <button data-view="settings" data-i18n="view_settings" onclick="setActiveView('settings')">Settings</button>
+    <div class="view-toggle" id="viewToggle" role="radiogroup" aria-label="View">
+      <button data-view="status" class="sel" role="radio" aria-checked="true" data-i18n="view_status" onclick="setActiveView('status')">Status</button>
+      <button data-view="journal" role="radio" aria-checked="false" data-i18n="view_journal" onclick="setActiveView('journal')">Journal</button>
+      <button data-view="settings" role="radio" aria-checked="false" data-i18n="view_settings" onclick="setActiveView('settings')">Settings</button>
     </div>
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
@@ -32,14 +62,14 @@
       <span class="debug-banner-sep">&middot;</span>
       <span data-i18n="debug_mode_banner_privacy">PRIVACY NOT GUARANTEED</span>
     </div>
-    <div class="visibility-toggle" id="visibilityToggle">
-      <button data-mode="open" class="sel" onclick="setVisibilityMode('open')">Open</button>
-      <button data-mode="hidden" onclick="setVisibilityMode('hidden')">Hidden</button>
+    <div class="visibility-toggle" id="visibilityToggle" role="radiogroup" aria-label="Visibility">
+      <button data-mode="open" class="sel" role="radio" aria-checked="true" onclick="setVisibilityMode('open')">Open</button>
+      <button data-mode="hidden" role="radio" aria-checked="false" onclick="setVisibilityMode('hidden')">Hidden</button>
     </div>
   </div>
 </div>
 
-<div class="main">
+<div class="main" tabindex="-1">
 
   <div class="orb-wrap">
     <div class="ring" id="ring" data-anim="normal"></div>
@@ -61,11 +91,11 @@
       <div class="think-title"><span data-i18n="think_title">Thinking mode</span> <span class="think-tag" id="thinkTag">level: off</span></div>
       <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
     </div>
-    <div class="reasoning-level-toggle" id="reasoningLevelToggle">
-      <button data-level="off" data-i18n="reasoning_off" onclick="setReasoningLevel('off')">Off</button>
-      <button data-level="low" data-i18n="reasoning_low" onclick="setReasoningLevel('low')">Low</button>
-      <button data-level="medium" data-i18n="reasoning_medium" onclick="setReasoningLevel('medium')">Medium</button>
-      <button data-level="high" data-i18n="reasoning_high" onclick="setReasoningLevel('high')">High</button>
+    <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
+      <button data-level="off" role="radio" aria-checked="false" data-i18n="reasoning_off" onclick="setReasoningLevel('off')">Off</button>
+      <button data-level="low" role="radio" aria-checked="false" data-i18n="reasoning_low" onclick="setReasoningLevel('low')">Low</button>
+      <button data-level="medium" role="radio" aria-checked="false" data-i18n="reasoning_medium" onclick="setReasoningLevel('medium')">Medium</button>
+      <button data-level="high" role="radio" aria-checked="false" data-i18n="reasoning_high" onclick="setReasoningLevel('high')">High</button>
     </div>
   </div>
 
@@ -107,7 +137,7 @@
 
 </div>
 
-<div class="settings" id="settingsView">
+<div class="settings" id="settingsView" tabindex="-1">
   <div class="config-panel" id="configPanel">
     <div class="config-field">
       <label for="modelSelect" data-i18n="config_model_label">Model</label>
@@ -149,18 +179,24 @@
   </div>
 </div>
 
-<div class="journal" id="journalView">
+<div class="journal" id="journalView" tabindex="-1">
   <aside class="journal-sessions" aria-labelledby="journalSessionsHeading">
     <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
     <div class="journal-usage" id="journalUsageTotal"></div>
     <button class="journal-new-context" id="journalNewContextButton" type="button" data-i18n="journal_new_context" onclick="startNewJournalContext()">New context</button>
-    <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
-    <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" data-i18n="journal_annotation_open" onclick="toggleJournalAnnotationPanel()">Annotations</button>
-    <button class="journal-consolidation-toggle" id="journalConsolidationToggle" type="button" data-i18n="journal_consolidation_open" onclick="toggleJournalConsolidationPanel()">Consolidation</button>
-    <div id="journalSessionList"></div>
+    <div id="journalSessionList" role="listbox" aria-labelledby="journalSessionsHeading"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
   <section class="journal-feed-pane">
+    <!-- Panel togglers, not the sessions list above: they open the panels
+         immediately below in this same pane (task-ui-ux-1's sidebar
+         reorg), where a sibling-of-the-create-action placement previously
+         put them). -->
+    <div class="journal-feed-toolbar" id="journalFeedToolbar" role="toolbar" aria-label="Journal panels">
+      <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
+      <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" data-i18n="journal_annotation_open" onclick="toggleJournalAnnotationPanel()">Annotations</button>
+      <button class="journal-consolidation-toggle" id="journalConsolidationToggle" type="button" data-i18n="journal_consolidation_open" onclick="toggleJournalConsolidationPanel()">Consolidation</button>
+    </div>
     <section class="journal-memory-panel" id="journalMemoryPanel" hidden aria-labelledby="journalMemoryHeading">
       <div class="journal-memory-header">
         <div>
@@ -257,6 +293,7 @@
 
 <script src="contract.js"></script>
 <script src="strings.js"></script>
+<script src="interaction.js"></script>
 <script src="transport.js"></script>
 <script src="app.js"></script>
 </body>

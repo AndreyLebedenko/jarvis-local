@@ -60,6 +60,29 @@ html, body {
 
 .mono { font-family: "Consolas", "Cascadia Mono", monospace; }
 
+/* ===== FOCUS / KEYBOARD (task-ui-ux-1) ===== */
+/* One ring for every keyboard-focused control, in the brand accent rather
+   than the Chromium default blue. :focus-visible (not :focus) so a mouse
+   click never shows it - only real keyboard/roving-tabindex focus does.
+   Several text inputs already swap border-color on plain :focus (see
+   .journal-*-text/.journal-search input); this ring layers on top of that,
+   it does not replace it. */
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute; left: 12px; top: -48px;
+  background: var(--cyan); color: var(--bg);
+  font-size: 12.5px; font-weight: 600;
+  padding: 8px 14px; border-radius: 6px;
+  text-decoration: none; z-index: 100;
+  transition: top 0.15s;
+}
+.skip-link:focus-visible { top: 12px; outline-color: var(--bg); }
+
 * {
   scrollbar-color: var(--border) var(--panel);
   scrollbar-width: thin;
@@ -612,6 +635,17 @@ html[data-view="settings"] .settings {
 .journal-consolidation-toggle:hover,
 .journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* task-ui-ux-1 sidebar reorg: Memory/Annotations/Consolidation moved out
+   of the sessions aside (where they read as three more create-actions)
+   into a toolbar at the top of the pane whose panels they actually open.
+   Structural placement only - the shared button look above is untouched;
+   task-ui-ux-4 owns any further visual treatment. */
+.journal-feed-toolbar {
+  display: flex; gap: 6px; padding: 10px 20px 0;
+}
+.journal-feed-toolbar button { padding: 0 12px; }
+
 .journal-session {
   display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 3px 8px; text-align: left;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
@@ -1111,6 +1145,40 @@ html[data-view="settings"] .settings {
 html[data-visibility="hidden"] .journal-sessions,
 html[data-visibility="hidden"] .journal-feed-pane { display: none; }
 html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
+
+/* ===== SHORTCUTS OVERLAY (task-ui-ux-1) ===== */
+.shortcuts-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(10, 13, 20, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+.shortcuts-overlay[hidden] { display: none; }
+.shortcuts-panel {
+  width: min(440px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px); overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px;
+}
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.shortcuts-head h2 { font-size: 15px; font-weight: 600; }
+.shortcuts-head button {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+}
+.shortcuts-head button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.shortcuts-list { display: flex; flex-direction: column; gap: 8px; }
+.shortcuts-row {
+  display: flex; align-items: baseline; gap: 14px;
+  font-size: 12.5px; color: var(--text-dim);
+}
+.shortcuts-key {
+  flex: none; min-width: 108px;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px;
+  color: var(--cyan);
+}
 
 /* ===== RESPONSIVE ===== */
 /* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).

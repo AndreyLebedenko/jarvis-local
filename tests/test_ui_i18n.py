@@ -50,6 +50,7 @@ def _strings_js_keys() -> dict[str, set[str]]:
         "contract.js",
         "demo.html",
         "demo.js",
+        "interaction.js",
     ],
 )
 def test_default_ui_surfaces_contain_no_russian_text(filename):
@@ -72,7 +73,9 @@ def test_every_data_i18n_key_in_markup_exists_in_the_dictionary(filename):
     assert used <= keys
 
 
-@pytest.mark.parametrize("filename", ["app.js", "touchstrip.js", "transport.js"])
+@pytest.mark.parametrize(
+    "filename", ["app.js", "touchstrip.js", "transport.js", "interaction.js"]
+)
 def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
     keys = _strings_js_keys()["en"]
     used = set(re.findall(r'uiString\(\s*"(\w+)"', _read(filename)))
@@ -150,7 +153,7 @@ def test_served_pages_load_strings_js_before_the_scripts_that_use_it():
     for filename in ["index.html", "touchstrip.html", "demo.html"]:
         html = _read(filename)
         strings_at = html.index('src="strings.js"')
-        for consumer in ["transport.js", "app.js", "touchstrip.js"]:
+        for consumer in ["transport.js", "app.js", "touchstrip.js", "interaction.js"]:
             if f'src="{consumer}"' in html:
                 assert strings_at < html.index(f'src="{consumer}"')
 

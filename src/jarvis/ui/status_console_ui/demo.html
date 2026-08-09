@@ -41,6 +41,8 @@
      manual QA pass; this is a dev aid for task-ui-02 itself. -->
 <div class="demo-controls" id="demoControls"></div>
 
+<a class="skip-link" href="#" onclick="skipToContent(); return false;">Skip to content</a>
+
 <div class="topbar">
   <div class="brand">
     <div class="brand-mark">J</div>
@@ -49,9 +51,9 @@
   <div class="topbar-right">
     <!-- No Journal tab here: this harness has never carried journal
          markup, and the button would hide .main and blank the page. -->
-    <div class="view-toggle" id="viewToggle">
-      <button data-view="status" class="sel" onclick="setActiveView('status')">Status</button>
-      <button data-view="settings" onclick="setActiveView('settings')">Settings</button>
+    <div class="view-toggle" id="viewToggle" role="radiogroup" aria-label="View">
+      <button data-view="status" class="sel" role="radio" aria-checked="true" onclick="setActiveView('status')">Status</button>
+      <button data-view="settings" role="radio" aria-checked="false" onclick="setActiveView('settings')">Settings</button>
     </div>
     <div class="locality-badge" id="localityBadge" data-locality="local">
       <span class="locality-dot"></span>
@@ -62,14 +64,14 @@
       <span class="debug-banner-sep">&middot;</span>
       <span data-i18n="debug_mode_banner_privacy">PRIVACY NOT GUARANTEED</span>
     </div>
-    <div class="visibility-toggle" id="visibilityToggle">
-      <button data-mode="open" class="sel" onclick="setVisibilityMode('open')">Open</button>
-      <button data-mode="hidden" onclick="setVisibilityMode('hidden')">Hidden</button>
+    <div class="visibility-toggle" id="visibilityToggle" role="radiogroup" aria-label="Visibility">
+      <button data-mode="open" class="sel" role="radio" aria-checked="true" onclick="setVisibilityMode('open')">Open</button>
+      <button data-mode="hidden" role="radio" aria-checked="false" onclick="setVisibilityMode('hidden')">Hidden</button>
     </div>
   </div>
 </div>
 
-<div class="main">
+<div class="main" tabindex="-1">
   <div class="orb-wrap">
     <div class="ring" id="ring" data-anim="normal"></div>
     <div class="orb-core"><div class="orb-glyph">J</div></div>
@@ -113,11 +115,11 @@
       <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">level: off</span></div>
       <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
     </div>
-    <div class="reasoning-level-toggle" id="reasoningLevelToggle">
-      <button data-level="off" onclick="setReasoningLevel('off')">Off</button>
-      <button data-level="low" onclick="setReasoningLevel('low')">Low</button>
-      <button data-level="medium" onclick="setReasoningLevel('medium')">Medium</button>
-      <button data-level="high" onclick="setReasoningLevel('high')">High</button>
+    <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
+      <button data-level="off" role="radio" aria-checked="false" onclick="setReasoningLevel('off')">Off</button>
+      <button data-level="low" role="radio" aria-checked="false" onclick="setReasoningLevel('low')">Low</button>
+      <button data-level="medium" role="radio" aria-checked="false" onclick="setReasoningLevel('medium')">Medium</button>
+      <button data-level="high" role="radio" aria-checked="false" onclick="setReasoningLevel('high')">High</button>
     </div>
   </div>
 
@@ -135,7 +137,7 @@
 
 </div>
 
-<div class="settings" id="settingsView">
+<div class="settings" id="settingsView" tabindex="-1">
   <div class="config-panel" id="configPanel">
     <div class="config-field">
       <label for="modelSelect">Model</label>
@@ -191,8 +193,29 @@
   </div>
 </div>
 
+<div class="shortcuts-overlay" id="shortcutsOverlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsOverlayTitle" hidden>
+  <div class="shortcuts-panel">
+    <div class="shortcuts-head">
+      <h2 id="shortcutsOverlayTitle">Keyboard shortcuts</h2>
+      <button type="button" onclick="closeShortcutsOverlay()">Close</button>
+    </div>
+    <div class="shortcuts-list">
+      <div class="shortcuts-row"><span class="shortcuts-key">Alt+1 / 2 / 3</span><span>Switch Status / Journal / Settings</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">&uarr; &darr; &larr; &rarr;</span><span>Move within a list or toggle group</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Home / End</span><span>Jump to the first or last item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Space</span><span>Select or toggle the focused item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Enter</span><span>Activate the focused item</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">F2</span><span>Edit the focused item, where editable</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">/</span><span>Search the Journal</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">Esc</span><span>Close the topmost panel or dialog</span></div>
+      <div class="shortcuts-row"><span class="shortcuts-key">?</span><span>Show this list</span></div>
+    </div>
+  </div>
+</div>
+
 <script src="contract.js"></script>
 <script src="strings.js"></script>
+<script src="interaction.js"></script>
 <script src="app.js"></script>
 <script src="demo.js"></script>
 </body>

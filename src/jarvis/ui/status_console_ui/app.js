@@ -255,6 +255,7 @@ function renderToolList(listId, emptyId, tools) {
   list.replaceChildren();
   for (const tool of tools) {
     const row = document.createElement("li");
+    row.tabIndex = -1; // roving tabindex, set by initRovingList() below
     row.setAttribute("data-available", String(tool.available));
     row.setAttribute("data-provider-kind", tool.provider_kind || "mcp");
     const name = toolLabel(tool);
@@ -287,6 +288,20 @@ function renderToolList(listId, emptyId, tools) {
     list.appendChild(row);
   }
   document.getElementById(emptyId).hidden = list.children.length !== 0;
+  // Arrow-key roving across rows; Space/Enter on the row itself (not the
+  // checkbox, which already handles its own Space natively) toggles it.
+  initRovingList(list, "li", {
+    onToggle: _toggleToolRowCheckbox,
+    onActivate: _toggleToolRowCheckbox,
+    getLabel: (row) => row.querySelector("span")?.textContent || "",
+  });
+}
+
+function _toggleToolRowCheckbox(row) {
+  const checkbox = row.querySelector('input[type="checkbox"]');
+  if (!checkbox || checkbox.disabled) return;
+  checkbox.checked = !checkbox.checked;
+  checkbox.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function setMcpEnabled() {
@@ -363,6 +378,7 @@ function applyThinkingMode(payload) {
   document
     .querySelectorAll("#reasoningLevelToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.level === payload.level));
+  syncRadioGroup(document.getElementById("reasoningLevelToggle"));
   document.getElementById("thinkTag").textContent = "level: " + payload.level;
   document.getElementById("thinkStatus").textContent = uiString("think_status_" + payload.level);
 }
@@ -376,6 +392,54 @@ function requestModuleReset(moduleId) {
     throw new Error("Unknown module id: " + moduleId);
   }
   _sendControl("reset_module", { module_id: moduleId });
+}
+
+// task-ui-ux-1: keyboard shortcuts overlay. Remembers whatever had focus
+// before opening and restores it on close. `aria-modal="true"` on its own
+// is only a screen-reader hint - it does not stop real Tab from reaching
+// background controls - so opening also marks every OTHER direct child of
+// <body> `inert`: a real, spec-compliant focus trap (inert elements are
+// removed from the focus order and cannot be focused at all, by Tab or by
+// script) with no hand-rolled Tab-cycling code. Both the open and close
+// paths guard against re-entry, or a second "?" while already open would
+// re-capture the Close button itself (now the active element) as the
+// return-focus target instead of what was focused before opening.
+let _shortcutsOverlayReturnFocus = null;
+
+function _setBackgroundInert(makeInert, exceptElement) {
+  for (const child of document.body.children) {
+    if (child === exceptElement) continue;
+    if (makeInert) child.setAttribute("inert", "");
+    else child.removeAttribute("inert");
+  }
+}
+
+function openShortcutsOverlay() {
+  const overlay = document.getElementById("shortcutsOverlay");
+  if (!overlay || !overlay.hidden) return;
+  _shortcutsOverlayReturnFocus = document.activeElement;
+  _setBackgroundInert(true, overlay);
+  overlay.hidden = false;
+  overlay.querySelector(".shortcuts-head button")?.focus();
+}
+
+function closeShortcutsOverlay() {
+  const overlay = document.getElementById("shortcutsOverlay");
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  _setBackgroundInert(false, overlay);
+  _shortcutsOverlayReturnFocus?.focus?.();
+  _shortcutsOverlayReturnFocus = null;
+}
+
+// task-ui-ux-1: skip-link target. .main/.journal/.settings are mutually
+// exclusive siblings switched by data-view (see setActiveView()), not one
+// shared landmark, so the skip link resolves whichever is currently active
+// rather than a fixed href.
+function skipToContent() {
+  const view = document.documentElement.getAttribute("data-view");
+  const selector = { status: ".main", journal: ".journal", settings: ".settings" }[view] || ".main";
+  document.querySelector(selector)?.focus();
 }
 
 // story-v1.2.4-task-1: guarded Shutdown control. show/hide only toggles
@@ -418,6 +482,7 @@ function applyVisibilityMode(payload) {
   document
     .querySelectorAll("#visibilityToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
+  syncRadioGroup(document.getElementById("visibilityToggle"));
   renderModules();
   _onJournalVisibilityChanged(payload.mode);
 }
@@ -820,6 +885,7 @@ function setActiveView(view) {
   document
     .querySelectorAll("#viewToggle button")
     .forEach((button) => button.classList.toggle("sel", button.dataset.view === view));
+  syncRadioGroup(document.getElementById("viewToggle"));
   if (view === "journal" && !_isHiddenActive()) {
     refreshJournalSessions(true);
   } else if (view === "settings") {
@@ -942,11 +1008,15 @@ function _renderJournalMemoryFiles() {
   for (const fileId of _MEMORY_FILE_IDS) {
     container.appendChild(_journalMemoryFileElement(fileId));
   }
+  initRovingList(container, ".journal-memory-file", {
+    getLabel: (section) => section.querySelector("h3")?.textContent || "",
+  });
 }
 
 function _journalMemoryFileElement(fileId) {
   const state = _journalMemoryFiles.get(fileId);
   const section = document.createElement("section");
+  section.tabIndex = -1; // roving tabindex, set by initRovingList() above
   section.className = "journal-memory-file";
   section.dataset.fileId = fileId;
 
@@ -1449,6 +1519,16 @@ async function refreshJournalSessions(refetchSelectedFeed = false) {
   for (const session of sessions) {
     list.appendChild(_journalSessionElement(session));
   }
+  initRovingList(
+    list,
+    ".journal-session",
+    {
+      onActivate: (row) => selectJournalSession(row.dataset.sessionId),
+      onToggle: (row) => selectJournalSession(row.dataset.sessionId),
+      getLabel: (row) => row.querySelector(".journal-session-title")?.textContent || "",
+    },
+    (item) => item.classList.contains("sel")
+  );
   if (_journalSelectedSessionId === null && sessions.length !== 0) {
     selectJournalSession(sessions[0].id);
   } else if (refetchSelectedFeed && _journalSelectedSessionId !== null) {
@@ -1471,11 +1551,13 @@ function _applyJournalUsage(payload) {
 
 function _journalSessionElement(session) {
   const row = document.createElement("div");
-  row.tabIndex = 0;
-  row.setAttribute("role", "button");
+  row.tabIndex = -1; // roving tabindex, set by initRovingList() below
+  row.setAttribute("role", "option");
   row.className = "journal-session";
   row.dataset.sessionId = session.id;
-  row.classList.toggle("sel", session.id === _journalSelectedSessionId);
+  const selected = session.id === _journalSelectedSessionId;
+  row.classList.toggle("sel", selected);
+  row.setAttribute("aria-selected", String(selected));
 
   const when = document.createElement("div");
   when.className = "journal-session-when";
@@ -1530,9 +1612,10 @@ function _journalSessionElement(session) {
 
   row.append(when, title, size, actions);
   row.addEventListener("click", () => selectJournalSession(session.id));
-  row.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") selectJournalSession(session.id);
-  });
+  // Enter/Space/arrows/Home/End are handled by the roving-list keydown
+  // listener installed on #journalSessionList (initRovingList() in
+  // refreshJournalSessions()), not per-row - so a rebuilt list never leaks
+  // per-row listeners the way the old per-row handler could.
   return row;
 }
 
@@ -1629,9 +1712,13 @@ async function selectJournalSession(sessionId, contextEventPosition = null) {
   }
   const generation = _journalContentGeneration;
   _journalSelectedSessionId = sessionId;
-  document.querySelectorAll("#journalSessionList .journal-session").forEach((row) => {
-    row.classList.toggle("sel", row.dataset.sessionId === sessionId);
+  const sessionList = document.getElementById("journalSessionList");
+  sessionList.querySelectorAll(".journal-session").forEach((row) => {
+    const selected = row.dataset.sessionId === sessionId;
+    row.classList.toggle("sel", selected);
+    row.setAttribute("aria-selected", String(selected));
   });
+  refreshRovingList(sessionList, ".journal-session", (item) => item.classList.contains("sel"));
   _journalFeedFetchesInFlight += 1;
   let payload;
   try {
@@ -2053,6 +2140,7 @@ function _journalTranscriptPanel(event, position) {
   message.setAttribute("role", "status");
 
   panel.append(head, textarea, actions, message);
+  enableStandaloneF2Edit(panel);
 
   const refs = { panel, status, textarea, generate, save, message };
   generate.addEventListener("click", () =>
@@ -2290,10 +2378,14 @@ async function _loadJournalAnnotations(sessionId) {
   for (const annotation of annotations) {
     list.appendChild(_journalAnnotationElement(annotation));
   }
+  initRovingList(list, ".journal-annotation", {
+    getLabel: (card) => card.querySelector(".journal-annotation-target")?.textContent || "",
+  });
 }
 
 function _journalAnnotationElement(annotation) {
   const card = document.createElement("section");
+  card.tabIndex = -1; // roving tabindex, set by initRovingList() above
   card.className = "journal-annotation";
   card.dataset.annotationId = annotation.annotation_id;
 
@@ -2946,6 +3038,46 @@ function _formatJournalBytes(bytes) {
   }
   return `${scaled.toFixed(0)} TB`;
 }
+
+// task-ui-ux-1: interaction foundation. Runs on every surface that loads
+// app.js (the live console and demo.html's QA harness alike) - unlike the
+// transport bootstrap below, which only runs where a real WS transport
+// exists. Escapables are registered in the order they should be checked
+// last-to-first (see interaction.js's handleGlobalEscape()): the shortcuts
+// overlay is the true top layer, so it registers last.
+// syncRadioGroup() also runs once here for each group, not only from
+// applyThinkingMode()/applyVisibilityMode()/setActiveView(): those only
+// fire on a later state change or click, so without this the roving
+// tabindex those functions maintain would not exist yet at first paint -
+// every button would sit at the browser's native default tabIndex 0
+// (individually Tab-focusable) until the first real event arrived.
+initRadioGroup(document.getElementById("viewToggle"));
+syncRadioGroup(document.getElementById("viewToggle"));
+initRadioGroup(document.getElementById("visibilityToggle"));
+syncRadioGroup(document.getElementById("visibilityToggle"));
+initRadioGroup(document.getElementById("reasoningLevelToggle"));
+syncRadioGroup(document.getElementById("reasoningLevelToggle"));
+initGlobalKeymap();
+registerEscapable({
+  isOpen: () => document.getElementById("shutdownConfirmRow")?.classList.contains("show") === true,
+  close: hideShutdownConfirm,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("journalMemoryPanel")?.hidden === false,
+  close: toggleJournalMemoryPanel,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("journalAnnotationPanel")?.hidden === false,
+  close: toggleJournalAnnotationPanel,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("journalConsolidationPanel")?.hidden === false,
+  close: toggleJournalConsolidationPanel,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("shortcutsOverlay")?.hidden === false,
+  close: closeShortcutsOverlay,
+});
 
 if (typeof startUiTransport === "function") {
   installJournalDocumentDropGuard();
