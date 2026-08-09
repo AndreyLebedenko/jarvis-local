@@ -21,7 +21,7 @@ with no drift; items 2-3 surfaced a real, separately tracked defect instead
 of a clean measurement - see
 `tasks/bug_reports/2026-08-09-semantic-rebuild-500-on-long-passage-context-window.md`
 - and are left open by owner decision rather than blocking this card.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.0 (release-boundary card; see the story's release phasing
 section). Out of numeric sequence by design: committed cards 8-28 are not
 renumbered, and this card closes the v1.8.0 slice (cards 8-17).

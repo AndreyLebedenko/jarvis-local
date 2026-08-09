@@ -1,7 +1,18 @@
 # Task v1.8.0-28: Final documentation and release verification
 
-**Status:** Draft revision for owner review.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Status:** Completed 2026-08-09. Docs-only card, no code changed. Added a
+consolidated "Architecture v1.8.0-v1.8.2 (unlimited conversation history)"
+section to `PROJECT.md`; flipped `README.md`/`README.ru.md`'s consolidation
+framing from "later work" to shipped, added the local-only-retrieval/
+exact-fallback release-notes callout, and closed the now-stale "no retention
+policy" Known Issues bullet; closed
+`tasks/bug_reports/2026-07-17-journal-retention-policy.md` (its own named
+closure condition - the consolidation pipeline shipping - is met); confirmed
+config examples need no changes; consolidated every manual handoff command
+from the whole story into one list. Full record in `PROJECT.md`'s "v1.8.2
+final documentation and release verification" entry. This closes the whole
+`story-v1.8.0-unlimited-conversation-history.md` story.
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.2 (final release-boundary card; see the story's release
 phasing section).
 **Depends on:** task v1.8.0-27.
@@ -35,12 +46,12 @@ and post-release roadmap expansion.
 
 ## Acceptance criteria
 
-- [ ] Architecture docs match implementation.
-- [ ] User docs explain what history retrieval can and cannot do.
-- [ ] Config docs are complete and default-safe.
-- [ ] Manual handoff commands are exact.
-- [ ] Pure automated suite and Ruff checks are green.
-- [ ] Release notes call out local-only retrieval and exact fallback.
+- [x] Architecture docs match implementation.
+- [x] User docs explain what history retrieval can and cannot do.
+- [x] Config docs are complete and default-safe.
+- [x] Manual handoff commands are exact.
+- [x] Pure automated suite and Ruff checks are green.
+- [x] Release notes call out local-only retrieval and exact fallback.
 
 ## Stop conditions
 

@@ -1,7 +1,7 @@
 # Task v1.8.0-5: Derived history corpus schema and rebuild
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-1.
 
 ## Summary

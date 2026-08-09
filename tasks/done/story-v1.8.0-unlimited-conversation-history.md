@@ -1,6 +1,13 @@
 # Story v1.8.0: Unlimited conversation history
 
-**Status:** Approved.
+**Status:** Completed 2026-08-09. All 30 task cards (1-30) implemented and
+verified; the three release-boundary cards (29, 30, 27) each closed their
+release's shared invariants and acceptance-criteria group (checked below,
+with pointers), and card 28 closed the story with a consolidated
+architecture summary in `PROJECT.md` and final doc reconciliation. See
+`PROJECT.md`'s "Architecture v1.8.0-v1.8.2 (unlimited conversation history)"
+section for the stable summary, and its "v1.8.2 final documentation and
+release verification" entry for this closing card's own record.
 **Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.8.0 section).
 **Created:** 2026-07-29.
 **Revised:** 2026-08-01 after owner review of the exact-first retrieval plan.
@@ -576,34 +583,34 @@ earlier implementation slice.
 
 Completed cards 1-7 stay valid and are not reopened by this story rewrite:
 
-1. [Stable journal event references](done/task-v1.8.0-1-journal-event-references.md)
+1. [Stable journal event references](task-v1.8.0-1-journal-event-references.md)
    define one typed provenance identity without changing raw JSONL.
-2. [Ollama prompt-token metrics](done/task-v1.8.0-2-ollama-prompt-metrics.md)
+2. [Ollama prompt-token metrics](task-v1.8.0-2-ollama-prompt-metrics.md)
    expose `prompt_eval_count` through existing completion metrics.
-3. [Context token-budget spike](done/task-v1.8.0-3-context-token-budget-spike.md)
+3. [Context token-budget spike](task-v1.8.0-3-context-token-budget-spike.md)
    measure estimators against live Ollama and record the selected policy.
-4. [Context budget configuration and pure policy](done/task-v1.8.0-4-context-budget-core.md)
+4. [Context budget configuration and pure policy](task-v1.8.0-4-context-budget-core.md)
    implement only the approved estimator, validation, and allocations.
-5. [Derived history corpus schema and rebuild](done/task-v1.8.0-5-derived-corpus-rebuild.md)
+5. [Derived history corpus schema and rebuild](task-v1.8.0-5-derived-corpus-rebuild.md)
    create the disposable normalized projection from raw sessions.
-6. [Typed history event and range reads](done/task-v1.8.0-6-history-read-api.md)
+6. [Typed history event and range reads](task-v1.8.0-6-history-read-api.md)
    add bounded event, context, range, session, and batch reads.
-7. [Exact and prefix history search](done/task-v1.8.0-7-exact-history-search.md)
+7. [Exact and prefix history search](task-v1.8.0-7-exact-history-search.md)
    add FTS over raw text while preserving the current Journal search adapter.
 
 Revised remaining sequence:
 
-8. [Local hybrid retrieval design spike](done/task-v1.8.0-8-hybrid-retrieval-design-spike.md)
+8. [Local hybrid retrieval design spike](task-v1.8.0-8-hybrid-retrieval-design-spike.md)
    compare candidate local semantic/hybrid backends and choose one with owner
    approval before any retrieval consumer is wired. Completed: pymorphy3 + e5-large-instruct
    (embeddinggemma fallback) + relative gate; see `PROJECT.md`.
 9. [History projection lifecycle and incremental indexing](task-v1.8.0-9-history-projection-lifecycle.md)
    move startup, append, deletion, and rebuild ownership for corpus, lexical,
    and semantic projections out of the UI.
-10. [Semantic passage and index store](done/task-v1.8.0-10-semantic-passage-index-store.md)
+10. [Semantic passage and index store](task-v1.8.0-10-semantic-passage-index-store.md)
     persist rebuildable source-grounded semantic passages/vectors for the
     selected backend.
-11. [Hybrid retrieval domain API and quality gate](done/task-v1.8.0-11-hybrid-retrieval-api-quality-gate.md)
+11. [Hybrid retrieval domain API and quality gate](task-v1.8.0-11-hybrid-retrieval-api-quality-gate.md)
     combine semantic and lexical candidates, hydrate references through typed
     reads, and pass the fixed Russian retrieval benchmark.
 12. [Native read-only history tool provider](task-v1.8.0-12-history-tool-provider.md)
@@ -637,10 +644,10 @@ Revised remaining sequence:
     calculate safe near/far media operations without performing them.
 25. [Consolidation executor and control](task-v1.8.0-25-consolidation-executor-and-control.md)
     execute explicit plans with restart recovery, API, and UI control.
-26. [Retrieval quality regression](done/task-v1.8.0-26-retrieval-quality-regression.md)
+26. [Retrieval quality regression](task-v1.8.0-26-retrieval-quality-regression.md)
     rerun the fixed retrieval-quality benchmark after transcripts and
     annotations join the retrieval corpus.
-27. [Final integrated scale, recovery, and e2e](done/task-v1.8.0-27-scale-recovery-and-e2e.md)
+27. [Final integrated scale, recovery, and e2e](task-v1.8.0-27-scale-recovery-and-e2e.md)
     test the fully integrated design (through consolidation) on large synthetic
     history and failure paths. v1.8.2 boundary.
 28. [Final documentation and release verification](task-v1.8.0-28-docs-and-release-verification.md)
@@ -651,10 +658,10 @@ Release-boundary cards, out of numeric sequence because committed cards 8-28
 are not renumbered (execution order is set by the release phasing section and
 each card's dependencies):
 
-29. [v1.8.0 core release verification and docs](done/task-v1.8.0-29-core-release-verification.md)
+29. [v1.8.0 core release verification and docs](task-v1.8.0-29-core-release-verification.md)
     close the v1.8.0 text-history core (cards 8-17) with core-scoped scale,
     recovery, e2e, and docs.
-30. [v1.8.1 voice and annotation release verification and docs](done/task-v1.8.0-30-voice-annotation-release-verification.md)
+30. [v1.8.1 voice and annotation release verification and docs](task-v1.8.0-30-voice-annotation-release-verification.md)
     close the v1.8.1 slice (cards 18-23, 26) with scoped scale, e2e, and docs.
 
 The old task 7a exact retrieval quality gate is replaced by task 8 and task

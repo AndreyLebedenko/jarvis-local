@@ -414,13 +414,23 @@ regardless of how large the local journal grows.
   retrieval block the same way a relevant passage does - presented to the
   model as clearly derived, labeled data, never as a raw turn.
 
-Explicit near/far consolidation of older sessions remains later, separately
-released work on top of this same architecture.
+- **Explicit consolidation reduces old audio, never text.** On an explicit,
+  per-session command (there is no automatic sweep, no age policy, and no
+  config setting for one), a session's audio recording can be removed once a
+  transcript exists for it - the transcript, raw text, annotations, and
+  their retrievability are completely unaffected; only the `.wav` file is
+  gone. The session currently in progress can never be consolidated.
+
+Retrieval, storage, indexing, and the local embedding model all run without
+network access; the only local-network exception is a separately enabled,
+unrelated MCP tool. When the semantic layer is unavailable for any reason,
+exact/prefix search keeps working on its own - names, dates, identifiers,
+and numbers stay findable without it.
 
 Full design decisions, the retrieval-quality benchmark, and configuration
 knobs (`[history]`, `[history.semantic]`, `[history.transcription]`, and
 `[history.annotation]` in `config.example.toml`) are recorded in
-`PROJECT.md` and `tasks/story-v1.8.0-unlimited-conversation-history.md`.
+`PROJECT.md` and `tasks/done/story-v1.8.0-unlimited-conversation-history.md`.
 
 ## Architecture
 
@@ -458,9 +468,11 @@ This repository was built with an agent-assisted workflow: project facts were re
   live WebView window(s). `Ctrl+C` from the terminal is still not a
   reliable stop path while `pywebview` owns the foreground UI loop.
 - A true cold Ollama start can take long enough to require a generous read timeout.
-- Journal logs, audio, and screenshots have no automatic retention policy yet;
-  use the Journal view's manual per-session deletion controls until a
-  disk-growth policy is decided.
+- Journal logs, audio, and screenshots have no *automatic* retention policy,
+  and none is planned - deletion and audio consolidation are both explicit,
+  user-initiated actions (manual per-session deletion, or the "Unlimited
+  conversation history" section's consolidation) by design, not a gap
+  waiting to be closed.
 - Closing the Status Console can expose a microphone shutdown race around a
   blocking executor read; see
   [the open bug report](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md).

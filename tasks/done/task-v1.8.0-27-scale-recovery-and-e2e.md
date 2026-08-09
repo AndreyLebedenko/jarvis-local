@@ -17,7 +17,7 @@ purely the story's conceptual naming for "not yet explicitly
 far-consolidated" vs "explicitly far-consolidated", never an age policy.
 Full record in `PROJECT.md`'s "v1.8.2 final integrated release verification"
 entry.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.2 (final release-boundary card; see the story's release
 phasing section).
 **Depends on:** tasks v1.8.0-24, v1.8.0-25, and v1.8.0-30.

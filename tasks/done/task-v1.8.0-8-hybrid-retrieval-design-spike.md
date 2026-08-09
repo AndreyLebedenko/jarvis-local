@@ -1,7 +1,7 @@
 # Task v1.8.0-8: Local hybrid retrieval design spike
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** completed tasks v1.8.0-1 through v1.8.0-7.
 
 ## Decision (owner-ratified 2026-08-01)

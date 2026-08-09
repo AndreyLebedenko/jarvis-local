@@ -6,7 +6,7 @@ compression/bitrate-reduction action in this card), and images/screenshots
 are out of scope for this planner (untouched, not part of the plan).
 Implemented and verified by `python -m pytest` (1896 passed, 1 skipped) and
 ruff; see the consolidation planner contract in `PROJECT.md`.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-18 through v1.8.0-23.
 
 ## Summary

@@ -2,7 +2,14 @@
 
 **Detected commit:** `3e0484a`
 **Detected during:** task-journal-08 screenshot and release preparation on 2026-07-17
-**Status:** Open
+**Status:** Closed 2026-08-09 (task v1.8.0-28). The named closure condition -
+"stays open until that pipeline ships" - is met: explicit near/far
+consolidation shipped and was verified end to end in tasks v1.8.0-24, -25,
+and -27 (`PROJECT.md`'s "v1.8.2 final integrated release verification"
+entry). Automatic deletion is still, deliberately, never implemented -
+consolidation is explicit-only, per session, and media-only (never removes
+text/transcripts/annotations); that remains the permanent policy, not a
+future gap.
 
 ## Symptoms
 

@@ -1,7 +1,7 @@
 # Task v1.8.0-3: Context token-budget spike
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** completed v1.7.3 and task v1.8.0-2.
 
 ## Summary

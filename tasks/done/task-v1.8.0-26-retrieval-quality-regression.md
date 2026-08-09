@@ -3,7 +3,7 @@
 **Status:** Completed.
 Full record in `PROJECT.md`'s "Retrieval-quality regression (task v1.8.0-26)"
 entry.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-20 and v1.8.0-23.
 
 ## Summary

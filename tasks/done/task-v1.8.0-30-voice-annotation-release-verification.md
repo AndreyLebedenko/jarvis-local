@@ -19,7 +19,7 @@ corrected during card 29 was the lesson carried forward here). Card 26's
 retrieval-quality regression result was confirmed as already closed and
 cited, not rerun. Full record in `PROJECT.md`'s "v1.8.1 voice and annotation
 release verification" entry.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.1 (release-boundary card; see the story's release phasing
 section). Out of numeric sequence by design: committed cards 8-28 are not
 renumbered, and this card closes the v1.8.1 slice (cards 18-23, 26).

@@ -544,7 +544,7 @@ Boundary:
   retention rules.
 
 Story/task readiness: umbrella story card exists at
-`tasks/story-v1.8.0-unlimited-conversation-history.md`. Implementation task
+`tasks/done/story-v1.8.0-unlimited-conversation-history.md`. Implementation task
 cards are opened one at a time in the dependency order recorded there.
 
 ## Unversioned - Conversational fluidity candidates

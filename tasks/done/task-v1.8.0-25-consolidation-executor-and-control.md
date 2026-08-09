@@ -24,7 +24,7 @@ app requires audio hardware and a running Ollama endpoint this environment
 does not have; structural UI tests (`tests/test_journal_view_ui.py`,
 `tests/test_ui_i18n.py`) are the automated substitute this project already
 uses for the same reason on every other Journal panel.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-24.
 
 ## Summary

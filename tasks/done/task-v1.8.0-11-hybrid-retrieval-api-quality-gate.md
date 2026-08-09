@@ -1,7 +1,7 @@
 # Task v1.8.0-11: Hybrid retrieval domain API and quality gate
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-8 through v1.8.0-10.
 
 ## Summary

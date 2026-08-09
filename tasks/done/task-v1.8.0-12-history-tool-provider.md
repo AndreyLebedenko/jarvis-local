@@ -1,7 +1,7 @@
 # Task v1.8.0-12: Native read-only history tool provider
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** task v1.8.0-11.
 
 ## Summary

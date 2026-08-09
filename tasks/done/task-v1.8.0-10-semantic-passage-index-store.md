@@ -1,7 +1,7 @@
 # Task v1.8.0-10: Semantic passage and index store
 
 **Status:** Completed.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-8 and v1.8.0-9.
 
 ## Summary

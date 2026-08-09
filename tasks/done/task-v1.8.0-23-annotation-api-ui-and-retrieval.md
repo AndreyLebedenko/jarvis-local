@@ -7,7 +7,7 @@ pytest`: 1882 passed, 1 skipped; ruff clean) and manual Journal UI playtest
 (edited annotation not recalled in a fresh context shortly after save) is
 deferred to task v1.8.0-26 rather than blocking this card - see
 `tasks/bug_reports/2026-08-08-edited-annotation-recall-miss-in-new-context.md`.
-**Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
+**Story:** `tasks/done/story-v1.8.0-unlimited-conversation-history.md`
 **Depends on:** tasks v1.8.0-21 and v1.8.0-22.
 
 ## Summary

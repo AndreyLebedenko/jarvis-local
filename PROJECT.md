@@ -937,6 +937,36 @@ system is intended to grow.
     release reconciliation across the whole story, including flipping
     README's "consolidation is later work" framing now that it is
     verified) is the one remaining card.
+- **v1.8.2 final documentation and release verification (task v1.8.0-28,
+  2026-08-09).** Closes the whole story. No code changed - documentation
+  reconciliation only, per the card's own boundary.
+  - Added the consolidated "Architecture v1.8.0-v1.8.2 (unlimited
+    conversation history)" section (below the Working agreements section)
+    as the stable summary for a future reader, alongside the chronological
+    per-card entries which stay as the detailed audit trail.
+  - `README.md`/`README.ru.md`: flipped consolidation from "later, separately
+    released work" to a documented, shipped feature (explicit, per-session,
+    media-only, no age policy); added an explicit local-only-retrieval and
+    exact-fallback callout per this card's release-notes acceptance
+    criterion; closed the stale "no retention policy" Known Issues bullet -
+    the policy is now "explicit-only by design," not an open question.
+  - Closed `tasks/bug_reports/2026-07-17-journal-retention-policy.md`: its
+    own stated closure condition ("stays open until that pipeline ships")
+    is met by tasks 24/25/27.
+  - Config examples: confirmed unchanged and already accurate (`[history]`,
+    `[history.semantic]`, `[history.transcription]`, `[history.annotation]`)
+    - no new settings were introduced by cards 24-27, matching tasks 29/30's
+      earlier findings for the core/voice slices.
+  - Consolidated every live/hardware-dependent manual handoff command from
+    across the whole story into one list (see the architecture section
+    above) so a human does not have to hunt the chronological log.
+  - Task-card statuses reconciled: all 30 cards (1-27, 29, 30) already
+    correctly filed in `tasks/done/`; this card and the story card itself
+    are the last two to move.
+  - **Release decision: proceed - story complete.** `python -m pytest`
+    (1963 passed, 1 skipped, unchanged - this card touched no test or
+    production code), `ruff check .`, and `ruff format --check .` are
+    green.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`
@@ -3801,6 +3831,169 @@ original AEC-hard-gate premise:**
   with `outcome: failed`. Per-turn state and journal ordering guards ensure
   an outcome record belongs to its own user entry and cannot be written twice
   or attributed to a later turn.
+
+## Architecture v1.8.0-v1.8.2 (unlimited conversation history)
+
+Closes `tasks/done/story-v1.8.0-unlimited-conversation-history.md` (30 task
+cards). Full decision-by-decision detail, benchmarks, and per-card owner
+approvals live in the chronological "Verified facts" entries above (search
+for "task v1.8.0-") and in the story card itself; this section is the stable
+summary a future reader needs without replaying the whole log.
+
+**The four-layer architecture.** (1) The raw journal - append-only JSONL per
+session plus original media - is never rewritten by any feature in this
+story. (2) Rebuildable typed read projections (`HistoryCorpusRepository`)
+normalize raw events into a queryable form. (3) Rebuildable lexical
+(SQLite FTS5 + `pymorphy3` morphology) and semantic (local embedding)
+retrieval projections index that same corpus. (4) A finite working context
+(`assemble_working_context`) is assembled fresh per turn from a bounded
+recent-history tail, a bounded set of retrieved passages, and the current
+request - never a copy of the journal, never itself long-term storage. Every
+layer is disposable and rebuilds from the layer below it except the raw
+journal itself.
+
+**Hybrid retrieval, and why it is hybrid.** A morphology-aware lexical
+baseline was measured and shown insufficient for Russian paraphrase/synonym
+recall before any embedding layer was added (task 8's spike: FTS5 alone
+scores 0.00 on semantic recall; `pymorphy3` fixes word-form/name recall but
+not paraphrase). The shipped design is `pymorphy3` lexical +
+`blaifa/multilingual-e5-large-instruct` semantic, fused by
+`HistoryRetrievalService`, with a per-query relative gate (not a fixed
+cosine threshold) rejecting weak semantic matches. Every retrieved candidate
+is hydrated back through the typed read API before reaching a prompt or tool
+result - a vector or FTS hit is never itself authoritative content.
+
+**Exact/prefix fallback is unconditional, not best-effort.** If the semantic
+projection is disabled, unbuilt, backend-mismatched, or times out on its
+query-embedding call, retrieval degrades to lexical-only automatically and
+silently (from the user's perspective) - literal names, dates, identifiers,
+and numbers stay findable with no semantic layer involved at all. The two
+degradation reasons (timeout vs. unavailable) are reported distinctly in
+`ModelRequestStarted.prompt_budget` telemetry, not collapsed into one flag.
+
+**Automatic vs. explicit retrieval are not the same reach.** Automatic
+(implicit, pre-turn) retrieval is deliberately narrow: it defaults to
+`sources=("text",)`, so it only ever surfaces typed/spoken-as-text
+user/assistant turns and annotations (annotations are never filtered by
+role/source at all - a different vocabulary, per task 23's design). A
+transcribed voice turn (`source="voice"`) is fully retrievable, but only
+through explicit search - the Journal search box, or the model's own
+`search_history` tool - both of which query unfiltered. This split is by
+design, confirmed structurally in task 30, not a gap to be closed by a later
+card.
+
+**Projection lifecycle is incremental and owned outside the UI.**
+`HistoryProjectionLifecycle` performs one full rebuild at startup and then
+reprojects single events/annotations/transcripts as they change - an
+appended event, an edited transcript, an edited annotation - without ever
+re-deriving a whole session. None of this depends on `UiTransportServer` or
+the Journal view being open.
+
+**Deletion is irreversible by construction, not by convention.**
+`JournalHistoryService.delete_session()` removes the raw session directory
+*before* fanning out to every derived store (corpus, lexical, semantic,
+transcript overlay, annotation overlay, annotation lexical, annotation
+semantic, archive run). Because the raw source is gone first, a subsequent
+full rebuild of any derived store has nothing left to resurrect a deleted
+session from - proven, not assumed, by tests that delete through the real
+production service, rebuild every store, and query each one directly
+(not only through the retrieval service, whose candidate hydration can mask
+a stale row left behind in a derived store it doesn't itself read from).
+
+**Voice and annotations are explicit-only, source-grounded, and audited.**
+Local transcription and annotation generation both run only on an explicit
+user/UI command, never automatically, and both are strictly source-grounded
+- an annotation summarizes only its cited event range, with an explicit
+attribution instruction so an assistant's own claim cannot be silently
+presented as the user's fact. Annotations are size-capped (20000 chars text,
+200 per session), visible, editable, and always traceable back to their
+exact source session or event range; edits reproject incrementally, not via
+a whole-session rebuild.
+
+**Consolidation touches media bytes only, and only on explicit command.**
+There is no age-based near/far policy or `[consolidation]` config section
+anywhere in the shipped system - "near" and "far" are the story's
+conceptual names for "not yet explicitly far-consolidated" vs. "explicitly
+far-consolidated" via `ConsolidationExecutor.execute_far_consolidation`,
+called one session at a time. A session's audio becomes a removal candidate
+only once a transcript exists for it; the executor's constructor holds no
+reference to any text/transcript/annotation store, so it is structurally
+incapable of touching them - confirmed by tests that consolidate a session
+and then retrieve its (still-present) transcript text with unchanged
+provenance. The active session can never be consolidated; the guard is
+evaluated inside the per-session lock specifically so a session cannot
+become active while a call was queued waiting for that lock.
+
+**Known accepted limitation: unbounded semantic-scan latency at scale.**
+`SemanticPassageIndex.query()` does a brute-force cosine scan with no
+candidate cap; per-turn latency grows near-linearly with corpus size
+(measured: ~500 events -> 7ms, ~20,000 -> 209ms at a small fixture
+dimension). The query-embedding call itself is time-bounded and degrades to
+lexical-only on timeout, but the scan after it is not separately bounded.
+Owner decision (task 29, 2026-08-09): accept this as a known limit at the
+personal-journal scale this project targets rather than block the release;
+tracked in `tasks/bug_reports/2026-08-02-semantic-hot-path-scan-remains-unbounded.md`.
+
+**Everything else in the story's boundaries held with no exceptions**: raw
+JSONL is never rewritten by any feature added in this story; runtime
+inference, storage, indexing, and retrieval stayed fully local throughout
+(no cloud dependency was introduced); fork, blank-context, interrupted-turn,
+time-context, reasoning-prompt, and current-turn media behavior were
+preserved unchanged (verified by the existing `tests/test_main.py` suite
+staying green alongside every new test this story added, never by
+re-implementing those contracts).
+
+**User-visible limitations, stated once, for a reader who wants the summary
+without the architecture:** semantic retrieval quality depends on the
+configured local embedding model and is not perfect on hard paraphrase
+cases (measured `RATIFIED_THRESHOLDS`, not 100%); voice transcripts are not
+found by ordinary conversation unless explicitly searched for; per-turn
+retrieval latency is not capped at very large local journal sizes (accepted
+limitation above); and consolidation only ever removes audio bytes for
+sessions the user explicitly consolidates - nothing is deleted or archived
+automatically.
+
+**Consolidated manual handoff (task v1.8.0-28), every live/hardware-
+dependent check this story ever needed, in one place - each already run
+and recorded at its own release boundary above, listed here so a human does
+not have to hunt through the chronological log to re-run one:**
+
+1. Live semantic embedding quality/latency/VRAM (task 8/11, reconfirmed at
+   task 29, 2026-08-09 - no drift):
+   ```powershell
+   $env:PYTHONPATH = 'tests'
+   python -m retrieval_benchmark.measure_semantic `
+       blaifa/multilingual-e5-large-instruct --hybrid --separation 0.05 `
+       --query-prefix 'query: ' --passage-prefix 'passage: '
+   ```
+2. Real-journal-scale semantic retrieval sanity check (task 29): drive a few
+   ordinary turns through `python -m jarvis --status-console` against a real
+   Journal and read `retrieval_elapsed_ms` from the request telemetry.
+3. Live transcription fidelity (task 19/22/30):
+   ```powershell
+   python -m manual.manual_check_transcription_service --latest
+   ```
+4. Live annotation generation quality (task 19/22/30):
+   ```powershell
+   python -m manual.manual_check_annotation_generator --session <id>
+   ```
+5. Live retrieval sanity with real transcribed/annotated data (task 30):
+   confirm a transcript surfaces only through explicit search (Journal
+   search box or a tool-using turn) and an annotation surfaces through an
+   ordinary automatic-retrieval turn, matching the documented
+   explicit-vs-automatic split above.
+6. Journal UI consolidation controls, visual/WebView check (task 25/27 - no
+   script, consolidation itself calls no live model or hardware): preview
+   and execute a real far-consolidation from the Journal panel and confirm
+   the UI's preview/execute separation and confirmation flow behave as
+   documented.
+
+Live e5-large-instruct/embeddinggemma quality, real Ollama transcription/
+annotation fidelity, and real-journal retrieval latency were all confirmed
+by the owner during tasks 29 and 30 with no drift from their originally
+recorded figures; nothing above is a *known-failing* check waiting on the
+next release - it is the standing re-verification list for whenever the
+embedding model, Ollama version, or host changes.
 
 ## Project verification contract (v1.2.2)
 
