@@ -847,6 +847,96 @@ system is intended to grow.
     v1.8.1 slice (cards 18-23, 26) is verified; no new stop condition was
     hit (unlike card 29's semantic-latency finding, which remains that
     card's own open item, not reopened here).
+- **v1.8.2 final integrated release verification, with consolidation (task
+  v1.8.0-27, 2026-08-09).** Closes the whole story's implementation arc
+  (cards 8-26, depends on 24, 25, 30) with
+  `tests/test_consolidation_release_e2e.py` (4 tests): the real
+  `ConsolidationPlanner`/`ConsolidationExecutor`/`ArchiveOverlayRepository`
+  stack, wired exactly as `jarvis/app.py` wires it, added to the same real
+  corpus/semantic/transcript/annotation/retrieval stack from cards 29-30.
+  Consolidation's own crash-recovery, partial-failure, and per-session-lock
+  behavior are already thoroughly covered by task v1.8.0-25's own suite
+  (`tests/test_consolidation_executor.py`) and were not repeated here; this
+  card's job was the integration delta only.
+  - **Correction to the story's "near/far" terminology, confirmed by
+    reading the code, not assumed.** There is no age-based near/far window
+    or `[consolidation]` config section anywhere in the shipped system
+    (grepped `src/jarvis/core/config.py`, both `config*.toml` files - zero
+    matches). "Near" is the story's conceptual name (decision 6) for "a
+    session nobody has explicitly far-consolidated yet"; the only
+    mechanism is `ConsolidationPlanner.plan_far_consolidation`/
+    `ConsolidationExecutor.execute_far_consolidation`, called one session
+    at a time, entirely explicitly, exactly matching decision 6's
+    "consolidation starts only through an explicit user or UI command." A
+    session becomes far-eligible the moment it has audio media *and* a
+    transcript overlay for that exact event - not by age.
+  - **Structural guarantee confirmed: consolidation touches media bytes
+    only, never text/transcript/annotation/provenance stores.**
+    `ConsolidationExecutor`'s constructor holds only `planner`, `source`,
+    `archive` - no reference to `JournalStore`, `HistoryCorpusRepository`,
+    `SemanticPassageIndex`, `TranscriptOverlayRepository`, or
+    `AnnotationOverlayRepository` - and its only mutation call is
+    `source.delete_media(...)`, a plain filesystem unlink of one named
+    file. `test_consolidation_removes_audio_but_retrieval_stays_unaffected`
+    proves this end to end: a session's transcript is retrieved with
+    identical text and provenance before and after consolidation removes
+    its `.wav` file - the only observable difference is the file's absence
+    from disk. (Already separately regression-tested at the byte level by
+    task 25's own `test_execution_never_mutates_the_raw_journal`.)
+  - **Active-session protection holds at integration scale, alongside a
+    sibling session that *is* eligible.** Executing far-consolidation on
+    the active session returns `ConsolidationExecutionOutcome.ACTIVE_SESSION`,
+    `executed=False`, and its audio file is untouched, while a
+    simultaneously-eligible non-active session in the same journal executes
+    normally
+    (`test_consolidation_never_touches_the_active_session`).
+  - **Archive run metadata joins the deletion-cannot-resurrect guarantee.**
+    Deleting a session that was previously far-consolidated also clears its
+    `ArchiveOverlayRepository` run record via `ArchiveHistoryProjection`'s
+    fan-out, and a subsequent full rebuild (including
+    `ArchiveOverlayRepository.rebuild()`, a schema-only operation - a run is
+    never derived from a raw event, so there is nothing to resurrect from)
+    leaves it absent
+    (`test_deletion_after_consolidation_clears_archive_run_and_rebuild_cannot_resurrect`).
+    Codex stop-time review caught this test (and, on inspection, the
+    equivalent deletion tests already merged from cards 29/30) constructing
+    deletion by calling each store's `delete_session_projection()`
+    individually instead of the real production path -
+    `JournalHistoryService.delete_session()` through a real
+    `HistoryProjectionLifecycle` matching `app.py`'s actual wiring. That
+    hand-rolled substitute could pass even if production forgot to register
+    a store (verified concretely: temporarily dropping
+    `ArchiveHistoryProjection` from the lifecycle and re-running the old
+    assertion style left the archive run silently present after "deletion").
+    All three cards' deletion tests (27, and retroactively 29 and 30) now
+    route through the real service.
+  - **Fully integrated proof.** A 3000-filler-event synthetic journal with
+    one far-consolidated session and one separate annotation, driven
+    through a real `Orchestrator.submit_text_input()` turn, shows the
+    annotation still reaching automatic retrieval with its typed
+    `"kind":"annotation"` framing exactly as task 30 proved - completely
+    unaffected by the unrelated session's consolidation having already run
+    (`test_annotation_reachable_via_automatic_retrieval_after_consolidation`).
+  - **Fork, blank-context, interrupted-turn, time-context, reasoning-prompt,
+    and current-media behavior**: not re-tested here (no orchestration code
+    changed by this card), and continue to hold per the existing
+    `tests/test_main.py` suite staying green in the same `python -m pytest`
+    run - the same reasoning card 29 already applied to this requirement.
+  - **Manual handoff: none new.** Consolidation itself calls no live model
+    and touches no hardware (pure local file and SQLite operations,
+    confirmed by the constructor/mutation-surface reading above), so there
+    is nothing live-dependent to hand off beyond what cards 8/11 (embedding
+    quality) and 19/22 (transcription/annotation quality) already cover.
+    The one remaining human-run check is visual: the Journal UI's
+    consolidation preview/execute controls, via a live WebView session -
+    the same "usual human-run handoff" already named in task 25's own
+    completion note, not a new script.
+  - **Release decision: proceed.** `python -m pytest` (1963 passed, 1
+    skipped), `ruff check .`, and `ruff format --check .` are green. This
+    is the final implementation-arc verification; card 28 (final docs and
+    release reconciliation across the whole story, including flipping
+    README's "consolidation is later work" framing now that it is
+    verified) is the one remaining card.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

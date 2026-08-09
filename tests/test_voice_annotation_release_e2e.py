@@ -49,6 +49,8 @@ from jarvis.journal import (
     HistoryRetrievalQuery,
     HistoryRetrievalService,
     JournalEvent,
+    JournalHistoryService,
+    JournalSearchIndex,
     JournalStore,
     JournalStoreEventReferenceResolver,
     JournalStoreTranscriptionSource,
@@ -139,6 +141,7 @@ class _CallCounter:
 
 @dataclass
 class _VoiceAnnotationJournal:
+    root: Path
     store: JournalStore
     corpus: HistoryCorpusRepository
     semantic: SemanticPassageIndex
@@ -272,6 +275,7 @@ def _build_journal(root: Path, *, filler_events: int = 500) -> _VoiceAnnotationJ
     )
 
     return _VoiceAnnotationJournal(
+        root,
         store,
         corpus,
         semantic,
@@ -571,17 +575,37 @@ def test_deletion_prevents_rebuild_resurrection_of_transcript_and_annotation(
         for c in before.candidates
     )
 
-    journal.store.delete_session(voice_session)
-    journal.corpus.delete_session_projection(voice_session)
-    journal.semantic.delete_session_projection(voice_session)
-    journal.transcripts.delete_session(voice_session)
+    # Deliberately routed through the real production deletion path -
+    # JournalHistoryService.delete_session() + HistoryProjectionLifecycle -
+    # not manual per-store delete_session_projection() calls: only the real
+    # fan-out proves app.py's actual wiring (which projections are
+    # registered, in what order, under the same lock) actually clears every
+    # store, not a hand-rolled substitute that could pass even if the
+    # production wiring forgot one.
+    bus = EventBus()
+    lifecycle = HistoryProjectionLifecycle(
+        bus,
+        projections=(
+            CorpusHistoryProjection(journal.corpus),
+            TranscriptHistoryProjection(journal.transcripts),
+            AnnotationHistoryProjection(journal.annotations),
+        ),
+        semantic_projection=journal.semantic,
+        annotation_projections=(
+            journal.annotation_lexical,
+            journal.annotation_semantic,
+        ),
+        annotation_source=journal.annotations,
+    )
+    search_index = JournalSearchIndex(
+        journal.store,
+        journal.root / "derived",
+        TranscriptOverlayTextResolver(journal.transcripts),
+    )
+    service = JournalHistoryService(journal.store, lifecycle, search_index)
 
-    journal.store.delete_session(annotation_session)
-    journal.corpus.delete_session_projection(annotation_session)
-    journal.semantic.delete_session_projection(annotation_session)
-    journal.annotations.delete_session(annotation_session)
-    journal.annotation_lexical.delete_session_projection(annotation_session)
-    journal.annotation_semantic.delete_session_projection(annotation_session)
+    service.delete_session(voice_session)
+    service.delete_session(annotation_session)
 
     # Direct index-level checks, deliberately not routed through
     # HistoryRetrievalService: its candidate hydration re-reads the

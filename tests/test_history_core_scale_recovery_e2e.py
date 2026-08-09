@@ -28,10 +28,14 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import HistorySemanticSettings
 from jarvis.core.lifecycle import ModelRequestStarted, TextSubmissionReason
 from jarvis.journal import (
+    CorpusHistoryProjection,
     HistoryCorpusRepository,
+    HistoryProjectionLifecycle,
     HistoryRetrievalQuery,
     HistoryRetrievalService,
     JournalEvent,
+    JournalHistoryService,
+    JournalSearchIndex,
     JournalStore,
     Pymorphy3Normalizer,
     SemanticCandidateResult,
@@ -123,6 +127,7 @@ def _filler_text(index: int) -> str:
 
 @dataclass
 class _ScaleJournal:
+    root: Path
     store: JournalStore
     corpus: HistoryCorpusRepository
     semantic: SemanticPassageIndex
@@ -198,7 +203,7 @@ def _build_scale_journal(root: Path, *, filler_events: int) -> _ScaleJournal:
     )
     semantic.rebuild()
     return _ScaleJournal(
-        store, corpus, semantic, old_fact_reference, identifier_fact_reference
+        root, store, corpus, semantic, old_fact_reference, identifier_fact_reference
     )
 
 
@@ -455,9 +460,20 @@ def test_deletion_prevents_rebuild_resurrection_across_corpus_lexical_semantic(
         for candidate in before.candidates
     )
 
-    journal.store.delete_session(victim_session)
-    journal.corpus.delete_session_projection(victim_session)
-    journal.semantic.delete_session_projection(victim_session)
+    # Deliberately routed through the real production deletion path -
+    # JournalHistoryService.delete_session() + HistoryProjectionLifecycle -
+    # not manual per-store delete_session_projection() calls: only the real
+    # fan-out proves app.py's actual wiring, not a hand-rolled substitute
+    # that could pass even if the production wiring forgot a store.
+    bus = EventBus()
+    lifecycle = HistoryProjectionLifecycle(
+        bus,
+        projections=(CorpusHistoryProjection(journal.corpus),),
+        semantic_projection=journal.semantic,
+    )
+    search_index = JournalSearchIndex(journal.store, journal.root / "derived")
+    service = JournalHistoryService(journal.store, lifecycle, search_index)
+    service.delete_session(victim_session)
 
     # Direct semantic-index check, deliberately not routed through
     # HistoryRetrievalService: its event-candidate hydration reads back

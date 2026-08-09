@@ -640,7 +640,7 @@ Revised remaining sequence:
 26. [Retrieval quality regression](done/task-v1.8.0-26-retrieval-quality-regression.md)
     rerun the fixed retrieval-quality benchmark after transcripts and
     annotations join the retrieval corpus.
-27. [Final integrated scale, recovery, and e2e](task-v1.8.0-27-scale-recovery-and-e2e.md)
+27. [Final integrated scale, recovery, and e2e](done/task-v1.8.0-27-scale-recovery-and-e2e.md)
     test the fully integrated design (through consolidation) on large synthetic
     history and failure paths. v1.8.2 boundary.
 28. [Final documentation and release verification](task-v1.8.0-28-docs-and-release-verification.md)
@@ -732,14 +732,17 @@ shared invariants hold for the code shipped in it.
 
 ### Shared invariants (must hold at every release boundary)
 
-- [ ] Raw JSONL events are never rewritten by transcription, annotation,
+Confirmed across all three release-boundary cards (29, 30, 27) as of
+2026-08-09.
+
+- [x] Raw JSONL events are never rewritten by transcription, annotation,
       indexing, retrieval, or consolidation.
-- [ ] Session deletion removes every derived record that exists in the shipped
+- [x] Session deletion removes every derived record that exists in the shipped
       release, and a rebuild cannot restore it.
-- [ ] Runtime inference, storage, indexing, embeddings, and retrieval are
+- [x] Runtime inference, storage, indexing, embeddings, and retrieval are
       local except for separately enabled external tools unrelated to this
       story.
-- [ ] Pure automated tests, Ruff format/check, and the release's end-to-end
+- [x] Pure automated tests, Ruff format/check, and the release's end-to-end
       fake backend slice are green; hardware/model-dependent verification is
       handed to the human with exact commands.
 
@@ -801,10 +804,18 @@ Verified by task v1.8.0-30, 2026-08-09 (`tasks/done/task-v1.8.0-30-voice-annotat
 
 ### v1.8.2 - Consolidation and media lifecycle (cards 24-25)
 
-- [ ] The active session is never archived; audio is never automatically
+Verified by task v1.8.0-27, 2026-08-09 (`tasks/done/task-v1.8.0-27-scale-recovery-and-e2e.md`,
+`tests/test_consolidation_release_e2e.py`), building on task 24/25's own
+dedicated suites for the planner/executor mechanics themselves.
+
+- [x] The active session is never archived; audio is never automatically
       deleted before successful transcription.
-- [ ] Near/far consolidation runs only through an explicit command and keeps
-      model, GPU, and turn-latency work predictable and user-visible.
+- [x] Near/far consolidation runs only through an explicit command and keeps
+      model, GPU, and turn-latency work predictable and user-visible. ("Near"
+      vs "far" is not an age policy - there is no such config in the shipped
+      system; every far-consolidation is an explicit, single-session call
+      with no model/GPU involvement at all - see the task-27 PROJECT.md
+      entry.)
 
 ## End-to-end feature test
 
