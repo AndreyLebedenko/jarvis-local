@@ -394,16 +394,33 @@ regardless of how large the local journal grows.
   events, and read bounded ranges through its own tool-call budget, in
   addition to the automatic retrieval above.
 
-**Voice turns are not yet retrievable.** Retrieval covers typed/spoken text
-turns only; a voice utterance's transcript is not part of the searchable
-history in this release. Closing that gap (local transcription, session
-annotations, and explicit near/far consolidation of older sessions) is later,
-separately released work on top of this same architecture.
+- **Voice turns are retrievable after explicit transcription - through
+  explicit search, not automatically.** A voice utterance's transcript
+  (produced on command from the Journal, never automatically) joins the same
+  corpus, lexical, and semantic indexes as typed text, with full provenance
+  back to its source event. It is reachable through explicit search - the
+  Journal's search box and Jarvis's own native history-search tool both query
+  unfiltered - but the automatic, pre-turn retrieval that runs on every
+  ordinary turn only searches typed/spoken-as-text input by default, so a
+  transcript will not surface there on its own unless you ask for it
+  explicitly. This is a deliberate default, not a bug: automatic retrieval
+  stays scoped to what the user is currently typing/saying as text.
+- **Auditable session annotations join automatic retrieval too.** An
+  annotation is a bounded, source-grounded summary of a session or event
+  range, generated on command (never automatically) from only the material
+  it covers, and it is always visible, editable, and traceable back to its
+  exact source range. Unlike voice transcripts, annotations are not filtered
+  by input medium, so a relevant annotation can surface in the automatic
+  retrieval block the same way a relevant passage does - presented to the
+  model as clearly derived, labeled data, never as a raw turn.
+
+Explicit near/far consolidation of older sessions remains later, separately
+released work on top of this same architecture.
 
 Full design decisions, the retrieval-quality benchmark, and configuration
-knobs (`[history]` and `[history.semantic]` in `config.example.toml`) are
-recorded in `PROJECT.md` and
-`tasks/story-v1.8.0-unlimited-conversation-history.md`.
+knobs (`[history]`, `[history.semantic]`, `[history.transcription]`, and
+`[history.annotation]` in `config.example.toml`) are recorded in
+`PROJECT.md` and `tasks/story-v1.8.0-unlimited-conversation-history.md`.
 
 ## Architecture
 

@@ -1,6 +1,24 @@
 # Task v1.8.0-30: v1.8.1 voice and annotation release verification and docs
 
-**Status:** Draft revision for owner review.
+**Status:** Completed 2026-08-09. Implemented and verified by
+`tests/test_voice_annotation_release_e2e.py` (6 tests, real
+`TranscriptOverlayRepository`/`AnnotationOverlayRepository`/
+`AnnotationSearchIndex`/`AnnotationSemanticIndex` plus task-29's corpus/
+semantic/retrieval-service stack, wired through a real
+`HistoryProjectionLifecycle` matching production and a real `Orchestrator`,
+no live Ollama). Key finding, not a bug: voice transcripts are retrievable
+only through explicit search (the Journal search box / native history
+tools), not through automatic per-turn retrieval, because
+`build_automatic_retrieval_request()`'s `sources=("text",)` default excludes
+`source="voice"` events and the orchestration call site never overrides it;
+annotations are unaffected since the retrieval service deliberately does not
+forward roles/sources to annotation candidates. README.md/README.ru.md's
+"Unlimited conversation history" section states this precisely instead of a
+blanket "voice is retrievable" claim (the wrong overclaim already once
+corrected during card 29 was the lesson carried forward here). Card 26's
+retrieval-quality regression result was confirmed as already closed and
+cited, not rerun. Full record in `PROJECT.md`'s "v1.8.1 voice and annotation
+release verification" entry.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.1 (release-boundary card; see the story's release phasing
 section). Out of numeric sequence by design: committed cards 8-28 are not
@@ -43,15 +61,15 @@ card 24-25 or final card 27-28 responsibility.
 
 ## Acceptance criteria
 
-- [ ] Voice turns are retrievable after transcription in a pure fake-backend
+- [x] Voice turns are retrievable after transcription in a pure fake-backend
       test.
-- [ ] Annotation retrieval and audit constraints are tested.
-- [ ] The card 26 regression result is recorded and does not weaken thresholds
+- [x] Annotation retrieval and audit constraints are tested.
+- [x] The card 26 regression result is recorded and does not weaken thresholds
       after seeing results.
-- [ ] Incremental update and deletion for transcripts and annotations are
+- [x] Incremental update and deletion for transcripts and annotations are
       tested.
-- [ ] v1.8.1 docs match the shipped code.
-- [ ] Pure automated suite and Ruff checks are green.
+- [x] v1.8.1 docs match the shipped code.
+- [x] Pure automated suite and Ruff checks are green.
 
 ## Stop conditions
 

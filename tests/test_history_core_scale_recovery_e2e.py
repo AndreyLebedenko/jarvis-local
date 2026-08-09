@@ -459,6 +459,17 @@ def test_deletion_prevents_rebuild_resurrection_across_corpus_lexical_semantic(
     journal.corpus.delete_session_projection(victim_session)
     journal.semantic.delete_session_projection(victim_session)
 
+    # Direct semantic-index check, deliberately not routed through
+    # HistoryRetrievalService: its event-candidate hydration reads back
+    # through the *corpus* table (already correctly deleted above), so a
+    # stale row left behind purely in SemanticPassageIndex would be silently
+    # dropped at hydration and never fail a retrieval-service-only
+    # assertion. Query the semantic index's own contents directly instead.
+    assert not any(
+        p.reference.session_id == victim_session
+        for p in journal.semantic.list_passages()
+    )
+
     # A subsequent crash-recovery full rebuild has no raw data left to
     # resurrect the deleted session from.
     journal.corpus.rebuild()
@@ -468,6 +479,10 @@ def test_deletion_prevents_rebuild_resurrection_across_corpus_lexical_semantic(
         summary.session_id for summary in journal.store.list_sessions()
     }
     assert victim_session not in remaining_sessions
+    assert not any(
+        p.reference.session_id == victim_session
+        for p in journal.semantic.list_passages()
+    )
 
     after = journal.service().retrieve(HistoryRetrievalQuery(PARAPHRASE_QUERY, limit=5))
     assert not any(

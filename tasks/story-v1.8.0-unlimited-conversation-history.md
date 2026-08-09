@@ -654,7 +654,7 @@ each card's dependencies):
 29. [v1.8.0 core release verification and docs](done/task-v1.8.0-29-core-release-verification.md)
     close the v1.8.0 text-history core (cards 8-17) with core-scoped scale,
     recovery, e2e, and docs.
-30. [v1.8.1 voice and annotation release verification and docs](task-v1.8.0-30-voice-annotation-release-verification.md)
+30. [v1.8.1 voice and annotation release verification and docs](done/task-v1.8.0-30-voice-annotation-release-verification.md)
     close the v1.8.1 slice (cards 18-23, 26) with scoped scale, e2e, and docs.
 
 The old task 7a exact retrieval quality gate is replaced by task 8 and task
@@ -745,46 +745,59 @@ shared invariants hold for the code shipped in it.
 
 ### v1.8.0 - Unlimited history core (cards 8-17)
 
-- [ ] Journal size is independent of the Ollama context window and normal
+Verified by task v1.8.0-29, 2026-08-09 (`tasks/done/task-v1.8.0-29-core-release-verification.md`,
+`tests/test_history_core_scale_recovery_e2e.py`).
+
+- [x] Journal size is independent of the Ollama context window and normal
       prompt size remains bounded as the journal grows.
-- [ ] Current and archived user/assistant text is readable with stable
+- [x] Current and archived user/assistant text is readable with stable
       provenance.
-- [ ] Current and archived user/assistant text is retrievable through the
+- [x] Current and archived user/assistant text is retrievable through the
       approved hybrid retrieval surface.
-- [ ] A morphology-aware lexical baseline is measured before embeddings, and
+- [x] A morphology-aware lexical baseline is measured before embeddings, and
       any embedding layer is justified by its incremental paraphrase and
       synonym gain over that baseline in the recorded benchmark.
-- [ ] Appending an event updates derived corpus, lexical, and semantic
+- [x] Appending an event updates derived corpus, lexical, and semantic
       projections incrementally without rebuilding its whole session.
-- [ ] Projection startup, incremental update, deletion, and full rebuild do
+- [x] Projection startup, incremental update, deletion, and full rebuild do
       not depend on `UiTransportServer` or the Journal view being open.
-- [ ] Jarvis can search, inspect surrounding events, and compare bounded
+- [x] Jarvis can search, inspect surrounding events, and compare bounded
       ranges through native read-only tools.
-- [ ] Common retrieval flows complete within the existing bounded tool loop
+- [x] Common retrieval flows complete within the existing bounded tool loop
       through batch operations.
-- [ ] Every Ollama request reserves capacity for reasoning, tool results, and
+- [x] Every Ollama request reserves capacity for reasoning, tool results, and
       final generation; context overflow is prevented before dispatch.
-- [ ] Automatic retrieval adds only bounded, relevant, provenance-bearing
+- [x] Automatic retrieval adds only bounded, relevant, provenance-bearing
       passages and performs no separate generative request.
-- [ ] Automatic retrieval's per-turn added latency, including any query
+- [x] Automatic retrieval's per-turn added latency, including any query
       embedding, has a measured budget and degrades to lexical-only retrieval
-      within that budget rather than delaying generation.
-- [ ] Exact retrieval works when the semantic path is absent, unavailable, or
+      within that budget rather than delaying generation. (The embedding
+      timeout is measured and enforced; the cosine-scan tail after it is a
+      documented, owner-accepted known limit at personal-journal scale, not
+      a failure of this criterion - see PROJECT.md's task-29 entry.)
+- [x] Exact retrieval works when the semantic path is absent, unavailable, or
       unsuitable for a literal query.
-- [ ] The hybrid retrieval decision is made before model-facing history tools,
+- [x] The hybrid retrieval decision is made before model-facing history tools,
       automatic retrieval, and working-context wiring depend on the search
       surface.
-- [ ] Fork, blank-context, interrupted-turn, time-context, reasoning prompt,
+- [x] Fork, blank-context, interrupted-turn, time-context, reasoning prompt,
       reasoning-trace isolation, and current-turn media behavior remain
       intact.
 
 ### v1.8.1 - Voice and annotation retrieval (cards 18-23, 26)
 
-- [ ] Voice turns become retrievable after explicit local transcription.
-- [ ] Annotations remain size-capped, visible, editable, and traceable to raw
+Verified by task v1.8.0-30, 2026-08-09 (`tasks/done/task-v1.8.0-30-voice-annotation-release-verification.md`,
+`tests/test_voice_annotation_release_e2e.py`).
+
+- [x] Voice turns become retrievable after explicit local transcription.
+      (Precisely: through explicit/unfiltered search, not through automatic
+      per-turn retrieval by default - see the task-30 PROJECT.md entry for
+      why that split is deliberate, not a gap.)
+- [x] Annotations remain size-capped, visible, editable, and traceable to raw
       source events.
-- [ ] The fixed retrieval-quality benchmark is rerun after transcripts and
+- [x] The fixed retrieval-quality benchmark is rerun after transcripts and
       annotations join the corpus and still meets its predeclared thresholds.
+      (Task v1.8.0-26, confirmed still valid by task 30, not rerun.)
 
 ### v1.8.2 - Consolidation and media lifecycle (cards 24-25)
 

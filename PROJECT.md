@@ -750,6 +750,103 @@ system is intended to grow.
        whole session), so this reading reflects the lexical-only path's
        resource cost, not the embedding-active case item 3 was meant to
        observe. Worth re-checking once item 2 is unblocked.
+- **v1.8.1 voice and annotation release verification (task v1.8.0-30,
+  2026-08-09).** Closes the voice/annotation slice (cards 18-23, 26) with
+  `tests/test_voice_annotation_release_e2e.py`: real
+  `TranscriptOverlayRepository`/`AnnotationOverlayRepository`/
+  `AnnotationSearchIndex`/`AnnotationSemanticIndex` instances plus the same
+  `HistoryCorpusRepository`/`SemanticPassageIndex`/`HistoryRetrievalService`
+  stack from task 29, wired through a real `HistoryProjectionLifecycle`
+  (matching `app.py`'s production wiring) and a real `Orchestrator` with a
+  fake chat backend - no live Ollama, network, or hardware.
+  - **Voice is retrievable, but only through explicit search, not
+    automatic retrieval - a real, load-bearing finding, not an oversight.**
+    A transcribed voice event (`source="voice"`, `role="user"`) is fully
+    retrievable with `text_is_transcript=True` framing and provenance
+    through an unfiltered `HistoryRetrievalQuery` (the same path the
+    `search_history` tool and the Journal search box use). But
+    `Orchestrator._resolve_automatic_retrieval()`
+    (`src/jarvis/app.py:842-894`) builds its query via
+    `build_automatic_retrieval_request()`, whose `sources` default is
+    `_DEFAULT_SOURCES = ("text",)` (`src/jarvis/history/automatic_retrieval.py:29`)
+    with no override at that call site - so a voice transcript never enters
+    the *automatic*, pre-turn retrieval block by default, only explicit
+    search. Both directions are tested:
+    `test_voice_transcript_reachable_through_explicit_unfiltered_retrieval`
+    and `test_voice_transcript_is_not_reached_by_automatic_retrieval_by_default`
+    (the latter is a regression guard on the limitation itself, not a bug
+    report - the default is deliberate: automatic retrieval stays scoped to
+    what the user is currently saying/typing as text). README.md/README.ru.md
+    updated to state this precisely instead of a blanket "voice is now
+    retrievable" claim.
+  - **Annotations reach automatic retrieval, unlike voice - because they
+    are not filtered by role/source at all.**
+    `HistoryRetrievalService._annotation_lexical_candidates()`/
+    `_annotation_semantic_candidates()` (`retrieval.py:432-498`) deliberately
+    do not forward `request.roles`/`request.sources` (annotation provenance
+    and event role/source are different vocabularies), so a relevant
+    annotation surfaces in an ordinary automatic-retrieval turn with no
+    override needed. Confirmed end to end through a real
+    `Orchestrator.submit_text_input()` call
+    (`test_annotation_reachable_through_automatic_retrieval_with_typed_framing`):
+    the assembled prompt's retrieved-history block contains
+    `"kind":"annotation"`, the annotation id, its target session id, and
+    `"source":"generated"`.
+  - **Editable and traceable.** Updating an annotation's text
+    (`AnnotationSource.EDITED`) and reprojecting it replaces the retrievable
+    content immediately - the old text is gone, the new text is retrieved,
+    and the candidate's `AnnotationCandidateIdentity` still carries the exact
+    source session and whole-session/range target
+    (`test_annotation_edit_is_reflected_and_traceable_to_its_target`). Size
+    caps (20000 chars text, 200 annotations/session, etc.) are already
+    exhaustively covered at the store level by `tests/test_annotation_overlay.py`
+    and were not re-tested here.
+  - **Incremental reprojection confirmed against the real production stores,
+    not just a spy.** Wrapping the real `HistoryCorpusRepository`,
+    `SemanticPassageIndex`, `AnnotationSearchIndex`, and
+    `AnnotationSemanticIndex` with call-counters and driving one transcript
+    upsert (`TranscriptOverlayChanged`) and one annotation edit
+    (`AnnotationOverlayChanged`) through a real `HistoryProjectionLifecycle`
+    - mirroring exactly how `src/jarvis/ui/transport.py`'s edit/generate
+    handlers publish those events in production - shows zero `rebuild()`
+    calls and exactly one single-item `project_event()`/`reproject_annotation()`
+    call each, with an unrelated session's corpus rows provably byte-for-byte
+    unchanged before/after
+    (`test_transcript_and_annotation_edits_reproject_incrementally`).
+  - **Deletion cannot be resurrected by rebuild, extended to all four
+    transcript/annotation stores** (beyond task 29's corpus/semantic
+    coverage): deleting a session removes its transcript overlay row,
+    annotation overlay row, and annotation lexical/semantic projection
+    rows; a subsequent full `rebuild()` of every store leaves them all
+    absent, since the raw journal source is gone first
+    (`test_deletion_prevents_rebuild_resurrection_of_transcript_and_annotation`).
+  - **Card 26 retrieval-quality regression: already closed, cited not
+    rerun.** Per its own PASS record above (base/transcript/annotation
+    slices all meet `RATIFIED_THRESHOLDS`, no threshold weakened) - this
+    card's job was to confirm that record stands, not repeat the benchmark.
+  - **v1.8.1 manual handoff (human-run; existing task-19/22 tooling, no new
+    scripts needed):**
+    1. Live transcription fidelity:
+       `python -m manual.manual_check_transcription_service --latest`
+       (or `--list` first to pick a specific recorded voice event) against a
+       real recorded utterance; confirm the transcript is a faithful verbatim
+       match, consistent with the day-0 fidelity check already on record.
+    2. Live annotation quality:
+       `python -m manual.manual_check_annotation_generator --session <id>`
+       against a real session; confirm the summary only reflects the cited
+       material and correctly attributes assistant statements (never
+       presenting them as the user's own facts).
+    3. Live retrieval sanity with real data: after step 1, ask Jarvis a
+       question whose answer exists only in that transcript through the
+       Journal search box or a tool-using turn (explicit path); after step
+       2, ask an ordinary follow-up touching the annotated topic and confirm
+       it surfaces through automatic retrieval - both matching the
+       documented explicit-vs-automatic split above.
+  - **Release decision: proceed.** `python -m pytest` (1959 passed, 1
+    skipped), `ruff check .`, and `ruff format --check .` are green. The
+    v1.8.1 slice (cards 18-23, 26) is verified; no new stop condition was
+    hit (unlike card 29's semantic-latency finding, which remains that
+    card's own open item, not reopened here).
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`
