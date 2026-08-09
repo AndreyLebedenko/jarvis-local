@@ -1,6 +1,26 @@
 # Task v1.8.0-29: v1.8.0 core release verification and docs
 
-**Status:** Draft revision for owner review.
+**Status:** Completed 2026-08-09. Implemented and verified by
+`tests/test_history_core_scale_recovery_e2e.py` (10 tests, real
+`HistoryCorpusRepository`/`SemanticPassageIndex`/`HistoryRetrievalService`
+instances wired into a real `Orchestrator`, no live Ollama). The scale sweep
+hit the card's own "stop if scale behavior grows linearly in ... turn
+latency" condition for real: `SemanticPassageIndex.query()` does an unbounded
+brute-force cosine scan with measurable near-linear growth (500 events 7ms ->
+20,000 events 209ms). Owner decision, 2026-08-09: accept as a known,
+documented limit at personal-journal scale rather than fix it here (out of
+this card's no-backend-change boundary); recorded in `PROJECT.md` and
+`tasks/bug_reports/2026-08-02-semantic-hot-path-scan-remains-unbounded.md`.
+Docs were initially under-scoped (README left untouched, and then the voice
+limitation was phrased in a way that read as advertising unreleased
+voice/annotation/consolidation capability) - both caught and fixed via
+Codex stop-time review; see `README.md`/`README.ru.md`'s "Unlimited
+conversation history" sections. The owner's live manual handoff (2026-08-09)
+confirmed item 1 (semantic quality) matches the task-8 record almost exactly
+with no drift; items 2-3 surfaced a real, separately tracked defect instead
+of a clean measurement - see
+`tasks/bug_reports/2026-08-09-semantic-rebuild-500-on-long-passage-context-window.md`
+- and are left open by owner decision rather than blocking this card.
 **Story:** `tasks/story-v1.8.0-unlimited-conversation-history.md`
 **Release:** v1.8.0 (release-boundary card; see the story's release phasing
 section). Out of numeric sequence by design: committed cards 8-28 are not
@@ -48,16 +68,16 @@ new UI behavior, and any card 18-28 responsibility.
 
 ## Acceptance criteria
 
-- [ ] Pure end-to-end fake backend test covers old-fact text retrieval.
-- [ ] Prompt budget remains bounded under large text history.
-- [ ] Per-turn retrieval budget, degradation, and fallback-mode reporting are
+- [x] Pure end-to-end fake backend test covers old-fact text retrieval.
+- [x] Prompt budget remains bounded under large text history.
+- [x] Per-turn retrieval budget, degradation, and fallback-mode reporting are
       tested.
-- [ ] Recovery and deletion paths are tested for corpus, lexical, and semantic
+- [x] Recovery and deletion paths are tested for corpus, lexical, and semantic
       projections.
-- [ ] No raw journal or curated memory file is modified by retrieval.
-- [ ] Core architecture, user, and config docs match the shipped code and name
+- [x] No raw journal or curated memory file is modified by retrieval.
+- [x] Core architecture, user, and config docs match the shipped code and name
       the voice limitation.
-- [ ] Pure automated suite and Ruff checks are green.
+- [x] Pure automated suite and Ruff checks are green.
 
 ## Stop conditions
 

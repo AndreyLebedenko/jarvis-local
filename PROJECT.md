@@ -606,6 +606,150 @@ system is intended to grow.
     measurement of annotation-passage reprojection (mirroring
     `measure_semantic.py`), and a scoped fix task if that measurement shows a
     non-trivial window.
+- **v1.8.0 core release verification: scale, recovery, e2e (task v1.8.0-29,
+  2026-08-09).** Closes the text-history core slice (cards 8-17) with
+  `tests/test_history_core_scale_recovery_e2e.py`: a large synthetic journal
+  (up to 16,000 filler events per test) drives real
+  `HistoryCorpusRepository`/`SemanticPassageIndex`/`HistoryRetrievalService`
+  instances - no live Ollama, network, or hardware; a deterministic tagged
+  fixture embedder (one-hot concept buckets, filler hashed into disjoint
+  buckets) stands in for the real backend - wired into a real `Orchestrator`
+  with a fake chat backend, per the project testing protocol.
+  - **Prompt size stays bounded under scale.** The same neutral query against
+    journals of 300/3000/12000 filler events produces an identical assembled
+    message count and identical estimated prompt tokens at every size -
+    automatic retrieval and the working-context assembler cap output
+    regardless of corpus size.
+  - **Semantic retrieval carries a paraphrase with provenance.** A garage-code
+    fact and its paraphrase query share zero lexical tokens (verified: no
+    common word or pymorphy lemma) and are connected only through the fixture
+    embedder's shared concept bucket; the retrieved fact and its
+    `session_id`/`event_position` reach the final backend-bound messages,
+    with no filler note or unrelated fact alongside it.
+  - **Lexical/exact fallback retrieves a literal identifier.** With the
+    semantic candidate source forced `UNAVAILABLE`, a bare identifier query
+    (`"XK4821PLM"`) still resolves through FTS alone to the event that
+    contains it.
+  - **Automatic retrieval degrades correctly, and the two failure modes are
+    distinguishable.** A semantic candidate source that raises
+    `httpx.TimeoutException`-equivalent (`SemanticCandidateStatus.TIMEOUT`)
+    sets `retrieval_lexical_by_timeout=True`; one that reports `UNAVAILABLE`
+    sets `retrieval_lexical_by_unavailable=True` with the timeout flag false,
+    and in both cases generation still dispatches (the backend is called
+    exactly once) rather than the turn stalling on the semantic path.
+  - **Projection rebuild recovers from a simulated crash.** Deleting the
+    corpus and semantic SQLite files out from under a live index, then
+    calling `rebuild()` on each, fully restores both lexical search and
+    semantic retrieval of the same fact from the untouched raw journal.
+  - **Deletion cannot be resurrected by rebuild.** Deleting a session (raw
+    journal directory removed, then corpus and semantic projection rows for
+    that session removed) followed by a full `rebuild()` of both projections
+    leaves the deleted session absent from `list_sessions()`, lexical search,
+    and semantic retrieval - the raw source is gone before any rebuild can
+    run, so there is nothing left to resurrect from.
+  - **Retrieval and rebuild never touch raw journal bytes.** A byte-for-byte
+    snapshot of every session's `events.jsonl` is unchanged after a live
+    turn, a direct retrieval call, and two full projection rebuilds.
+  - **Semantic hot-path latency: measured, real, and accepted as a known
+    limit at personal-journal scale - not fixed here.** Confirms
+    `tasks/bug_reports/2026-08-02-semantic-hot-path-scan-remains-unbounded.md`
+    with a live measurement, not just structural reading:
+    `SemanticPassageIndex._read_candidate_rows()` issues an unfiltered
+    `SELECT ... FROM semantic_passages` with no `LIMIT`, and `query()` then
+    computes a Python cosine for every returned row before sorting - `
+    timeout_seconds` only wraps the query-embedding HTTP call, not this scan.
+    Measured on a synthetic corpus (dimension 16, fixture embedder, no live
+    Ollama): 500 events -> 7.0 ms, 2,000 -> 21.8 ms, 8,000 -> 82.6 ms,
+    20,000 -> 208.6 ms average `SemanticPassageIndex.query()` time - an
+    almost exactly linear relationship (~10.3-10.9 microseconds/row once
+    warmed up), reproduced again inside this card's own
+    `test_semantic_scan_latency_stays_within_a_generous_regression_guard`
+    (500/4,000/16,000 events through a real `Orchestrator` turn). This is
+    the literal condition of card 29's own stop condition ("stop if scale
+    behavior grows linearly in ... turn latency"); prompt *size* stays
+    bounded (see above) but semantic-path turn *latency* does not have a
+    ceiling independent of corpus size. **Owner decision, 2026-08-09:**
+    document as a known, accepted limit for the personal-journal scale this
+    project targets, and continue the release rather than fixing the scan
+    now - fixing it (a bounded candidate prefilter, an ANN index, or a real
+    whole-path deadline around the scan itself, not only the embedding call)
+    is out of card 29's boundary (no backend/feature change) and stays open
+    as the bug report's tracked follow-up. The card's own latency test is a
+    regression guard against a *worse* (e.g. quadratic or effectively
+    unbounded) blowup, not an assertion that growth is absent.
+  - **Voice limitation, reconfirmed, not reopened.** Voice turns remain
+    non-retrievable in this release (automatic retrieval's default source
+    filter admits only `source="text"`; voice events still store empty text
+    per the story's "current system facts"). This is the pre-existing,
+    already-documented v1.8.0/v1.8.1 boundary, not a new finding - closed by
+    transcription in v1.8.1 (cards 18-20).
+  - **Release decision: proceed.** `python -m pytest` (1953 passed, 1
+    skipped), `ruff check .`, and `ruff format --check .` are green. The
+    v1.8.0 core (cards 8-17) is verified at scale and through recovery paths;
+    the only open item is the documented, owner-accepted semantic-latency
+    characteristic above.
+  - **v1.8.0 manual handoff (human-run, unchanged tooling, no new
+    hardware-dependent surface added by this card):**
+    1. Live semantic quality: rerun the task-8/11 handoff command against a
+       live Ollama endpoint (PowerShell, from the repo root; the module uses
+       relative imports, so it must be run with `-m` and `PYTHONPATH` set to
+       `tests`, not as a bare script path):
+       ```powershell
+       $env:PYTHONPATH = 'tests'
+       python -m retrieval_benchmark.measure_semantic `
+           blaifa/multilingual-e5-large-instruct --hybrid --separation 0.05 `
+           --query-prefix 'query: ' --passage-prefix 'passage: '
+       ```
+       and confirm recall/precision are unchanged from the recorded
+       human-run figures.
+       **Done (owner-run, 2026-08-09).** Matches the task-8 record almost
+       exactly: semantic recall@k 0.562 (recorded 0.562), lexical-strength
+       precision@k 0.905 (recorded 0.905), distractor FP 0.000, overall
+       recall@k 0.816 / precision@k 0.907 (both above `RATIFIED_THRESHOLDS`),
+       query-embedding latency mean 117.1 ms / p95 120.7 ms (within the
+       recorded ~120-140 ms), resident VRAM 335 MB via `ollama ps` (matches
+       the recorded figure exactly). No drift since the task-8 spike; item 1
+       closed.
+    2. Real-scale semantic latency sanity check: with a real or copied large
+       Journal directory, drive a few ordinary turns through the running app
+       and read `retrieval_elapsed_ms` from the existing prompt-budget
+       telemetry (Status Console / logs). At the real embedding dimension
+       (1024, versus this card's 16-dimension fixture) and real HTTP latency,
+       confirm the semantic path still degrades to lexical-only within its
+       configured `history.semantic.timeout_seconds` budget when expected, and
+       that turn latency stays practically acceptable at the owner's actual
+       journal size - not a hard threshold (see the accepted-limit decision
+       above), a lived-experience check.
+       **Blocked (owner-run, 2026-08-09), and a real finding, not a
+       measurement.** Startup semantic rebuild against the owner's real
+       journal (274 events) failed:
+       `httpx.HTTPStatusError: 500 Internal Server Error` from
+       `/api/embeddings`, caught by `_mark_unavailable()`, leaving the
+       projection `UNAVAILABLE` for the whole session - so `mode=full_hybrid`
+       was never exercised this run and item 2's latency figure could not be
+       collected. The degradation contract itself worked correctly in
+       production as a side effect: the next turn correctly reported
+       `mode=lexical-by-unavailable`, `elapsed=387ms`, and generation
+       dispatched normally with no user-visible failure. Leading (unconfirmed)
+       cause: a structural scan of the owner's journal (lengths only) found a
+       15,997-character `source="text"` passage, while `ollama ps` showed the
+       loaded embedding model at `CONTEXT 512` tokens - `rebuild()` embeds
+       full uncapped passage text (`src/jarvis/journal/semantic.py:284-304`,
+       no `max_source_chars`-style cap unlike the annotation generator) and
+       aborts the *entire* index on any one passage's embedding failure.
+       Recorded, not fixed (out of card 29's no-backend-change boundary); see
+       `tasks/bug_reports/2026-08-09-semantic-rebuild-500-on-long-passage-context-window.md`.
+    3. Resource check: watch VRAM/CPU (Task Manager or `nvidia-smi`) during a
+       short burst of ordinary turns to confirm the embedding model's
+       resident-vs-per-query behavior matches decision 10's expectation and
+       does not destabilize concurrent Ollama generation.
+       **Partially done (owner-run, 2026-08-09).** GPU snapshot during the
+       session: 0% utilization, 13.1/31.5 GB GPU memory, 11.4/16.0 GB
+       dedicated, 37degC - no sign of destabilization, but item 2's blocker
+       meant the semantic path was never actually active (`UNAVAILABLE` the
+       whole session), so this reading reflects the lexical-only path's
+       resource cost, not the embedding-active case item 3 was meant to
+       observe. Worth re-checking once item 2 is unblocked.
 - Manual TTS spike on 2026-07-08, using `backend.flash_attention = true` and
   `backend.kv_cache_type = q8_0`: backend wall 3.68 s, load 3.47 s,
   prompt_eval 0.12 s, eval 0.08 s, eval_count 6; Silero speaker `baya`

@@ -1,7 +1,14 @@
 # Semantic hot-path timeout still leaves the in-process cosine scan unbounded
 
 **Detected at commit:** `f63e961` (`codex/v1.8.0-task17-automatic-retrieval-wiring`).
-**Status:** Open, documented as a known limitation for task v1.8.0-17.
+**Status:** Open, measured and reconfirmed by task v1.8.0-29 (2026-08-09).
+Owner decision: accept as a known, documented limit for the personal-journal
+scale this project targets; not fixed by card 29 (out of its no-backend-
+change boundary). See the task v1.8.0-29 entry in `PROJECT.md` for the
+measured numbers (500/2,000/8,000/20,000-event sweep, ~10.3-10.9
+microseconds/row, near-linear) and `tests/test_history_core_scale_recovery_e2e.py::test_semantic_scan_latency_stays_within_a_generous_regression_guard`
+for the regression guard that now watches for a *worse* (not merely linear)
+regression.
 
 ## Symptoms
 
@@ -42,10 +49,11 @@ not a release blocker.
 
 ## Future considerations and boundaries
 
-- The follow-up should happen with the scale/recovery/e2e work in
-  `tasks/task-v1.8.0-27-scale-recovery-and-e2e.md`, where a larger synthetic
-  corpus can prove whether the semantic scan needs its own budget or a
-  bounded candidate prefilter.
+- Measured by the scale/recovery/e2e work in task v1.8.0-29 (this story's
+  release phasing later split the original single card 27 into 29/30/27;
+  the measurement landed in 29, the v1.8.0 core release-verification card).
+  The actual fix - a bounded candidate prefilter, an ANN index, or a real
+  whole-path deadline around the scan itself - remains open and unscheduled.
 - If the scan ever becomes visible in turn latency, the fix should be a real
   whole-path budget or a smaller bounded scan, not an artificial sleep-based
   guard.

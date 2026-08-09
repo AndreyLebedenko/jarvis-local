@@ -651,7 +651,7 @@ Release-boundary cards, out of numeric sequence because committed cards 8-28
 are not renumbered (execution order is set by the release phasing section and
 each card's dependencies):
 
-29. [v1.8.0 core release verification and docs](task-v1.8.0-29-core-release-verification.md)
+29. [v1.8.0 core release verification and docs](done/task-v1.8.0-29-core-release-verification.md)
     close the v1.8.0 text-history core (cards 8-17) with core-scoped scale,
     recovery, e2e, and docs.
 30. [v1.8.1 voice and annotation release verification and docs](task-v1.8.0-30-voice-annotation-release-verification.md)

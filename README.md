@@ -81,8 +81,12 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   ("continue this conversation"), explicit blank-context creation, editable
   `memory.md`/`self.md` curated memory files, and Hidden-mode privacy
   enforcement. Journal media and memory files are served through the
-  authenticated local transport; search is exact/prefix matching for Russian
-  text.
+  authenticated local transport; the Journal search box uses the same hybrid
+  retrieval surface described in
+  [Unlimited conversation history](#unlimited-conversation-history) below.
+- Unlimited conversation history: the normal request to Ollama stays a bounded
+  working context regardless of how large the local journal grows. See
+  [Unlimited conversation history](#unlimited-conversation-history).
 - Journal attachments are current-turn only and stay local. The first
   iteration supports one text file (`.txt`, `.md`, `.csv`, `.json`, `.log`,
   UTF-8, 2 MB upload cap, 20000 model-facing characters), up to four images
@@ -349,6 +353,57 @@ remains possible. Print the exact human verification steps with:
 python -m manual.manual_check_mcp_providers --profile local
 python -m manual.manual_check_mcp_providers --profile lan
 ```
+
+## Unlimited conversation history
+
+Jarvis can use its complete local conversation history without that history
+needing to fit in Ollama's context window. The normal request sent to
+Ollama stays a bounded working context - instructions, a recent-turn tail,
+a small set of relevant retrieved passages, and the current request -
+regardless of how large the local journal grows.
+
+- **Hybrid retrieval, not just exact search.** Retrieval combines a
+  morphology-aware lexical search (SQLite FTS5 plus a `pymorphy3` normalizer,
+  so Russian word-form variation is handled without a model) with a local
+  semantic passage index (`blaifa/multilingual-e5-large-instruct` through
+  Ollama's embedding endpoint by default). The lexical baseline was measured
+  before the embedding layer was added, and the embedding layer is only kept
+  because it demonstrably closes a paraphrase/synonym recall gap the
+  lexical baseline cannot reach - see `PROJECT.md`'s hybrid-retrieval design
+  spike and quality-gate entries for the recorded benchmark.
+- **Exact/prefix fallback.** If the semantic index is unavailable (disabled,
+  unbuilt, or its stored backend no longer matches configuration), retrieval
+  degrades to lexical-only automatically - names, dates, identifiers, and
+  numbers stay findable without the semantic layer.
+- **Bounded per-turn retrieval budget.** Automatic retrieval runs once per
+  ordinary turn, with a measured deadline on the query-embedding call
+  (`[history.semantic].timeout_seconds`); a turn that would exceed it
+  degrades to lexical-only rather than delaying generation, and the two
+  degradation reasons (timeout vs. an unavailable projection) are reported
+  distinctly in the console's request telemetry.
+- **Everything retrieved carries provenance.** A retrieved passage is
+  presented to the model as delimited source data - never as a new
+  instruction or a promoted fact - and always traces back to its source
+  session and event position.
+- **Rebuildable, and deletion is final.** The corpus, lexical, and semantic
+  indexes are disposable projections derived from the append-only raw
+  journal; they rebuild from scratch on demand. Deleting a Journal session
+  removes it from every derived index too, and a later rebuild cannot bring
+  it back, because the raw source is gone first.
+- **Native read-only history tools.** Jarvis can search, inspect surrounding
+  events, and read bounded ranges through its own tool-call budget, in
+  addition to the automatic retrieval above.
+
+**Voice turns are not yet retrievable.** Retrieval covers typed/spoken text
+turns only; a voice utterance's transcript is not part of the searchable
+history in this release. Closing that gap (local transcription, session
+annotations, and explicit near/far consolidation of older sessions) is later,
+separately released work on top of this same architecture.
+
+Full design decisions, the retrieval-quality benchmark, and configuration
+knobs (`[history]` and `[history.semantic]` in `config.example.toml`) are
+recorded in `PROJECT.md` and
+`tasks/story-v1.8.0-unlimited-conversation-history.md`.
 
 ## Architecture
 
