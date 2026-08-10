@@ -39,6 +39,9 @@ class UiConfigSelection:
     # language (build_tts_engine's coverage rule); None keeps the
     # Silero-only default.
     tts_routes: dict[str, TtsLanguageSettings] | None = None
+    # Restart-to-apply master default (task-ui-ux-3), independent of
+    # tts_routes; None keeps whatever config.toml/the built-in default says.
+    tts_enabled: bool | None = None
 
 
 def validate_selection(selection: UiConfigSelection) -> list[str]:

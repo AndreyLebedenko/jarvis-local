@@ -47,6 +47,31 @@ function buildControls() {
     root.appendChild(button);
   }
 
+  // task-ui-ux-3: the TTS chip's toggle button and muted/ready/off-by-
+  // failure distinction, exercised the same way as every other control -
+  // through applyTtsState()/applyModuleHealth(), never a direct DOM poke.
+  const ttsGroup = document.createElement("span");
+  ttsGroup.textContent = "tts:";
+  root.appendChild(ttsGroup);
+  for (const [label, enabled] of [["enable", true], ["mute", false]]) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.onclick = () => {
+      applyTtsState({ enabled });
+      applyModuleHealth({
+        module: "tts",
+        status: enabled ? "ok" : "unavailable",
+        detail: enabled ? "demo:speaking" : "demo:muted",
+      });
+    };
+    root.appendChild(button);
+  }
+  const ttsLoadFailedButton = document.createElement("button");
+  ttsLoadFailedButton.textContent = "load failed";
+  ttsLoadFailedButton.onclick = () =>
+    applyModuleHealth({ module: "tts", status: "error", detail: "demo:load failed" });
+  root.appendChild(ttsLoadFailedButton);
+
   // task-debug-mode-and-request-transcript: the banner only ever appears
   // during a real --debug session (gated behind the console, off by
   // default), which this harness cannot start - these buttons are the
@@ -321,6 +346,7 @@ function _demoConfigValues(bilingual) {
       resume_cooldown_seconds: [0.0, 10.0],
     },
     tts: {
+      enabled: true,
       languages: ["en", "ru"],
       engines: ["piper", "silero"],
       schemas,

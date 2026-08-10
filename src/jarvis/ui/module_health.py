@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from jarvis.audio.input import MicrophoneCaptureFailed, MicSleepToggled
 from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
+from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import ResponseComplete
@@ -65,6 +66,7 @@ class ModuleHealthTracker:
             (MicrophoneCaptureFailed, self._on_microphone_capture_failed),
             (TtsEngineLoadFailed, self._on_tts_engine_load_failed),
             (TtsSynthesisResult, self._on_tts_synthesis_result),
+            (TtsSpeechEnabledChanged, self._on_tts_speech_enabled_changed),
             (ScreenshotCaptured, self._on_screenshot_captured),
             (CaptureFailed, self._on_capture_failed),
             (CameraStateChanged, self._on_camera_state_changed),
@@ -141,6 +143,31 @@ class ModuleHealthTracker:
         await self._transition(
             ModuleId.TTS, HealthStatus.ERROR, "tts_detail_load_failed"
         )
+
+    async def _on_tts_speech_enabled_changed(
+        self, event: TtsSpeechEnabledChanged
+    ) -> None:
+        # Mirrors _on_camera_state_changed/_publish_camera_reachability: an
+        # explicit on/off control gets its own honest transition, distinct
+        # from the synthesis-driven ready/failed signals above. While muted,
+        # TtsOutput schedules no synthesis (see tts.py), so no
+        # TtsSynthesisResult/TtsEngineLoadFailed can race this transition.
+        if not event.enabled:
+            await self._transition(
+                ModuleId.TTS, HealthStatus.UNAVAILABLE, "tts_detail_muted"
+            )
+            return
+        await self._publish_tts_status()
+
+    async def _publish_tts_status(self) -> None:
+        # Re-enabling does not claim OK for a route that never recovered -
+        # same honesty rule as camera reachability on re-enable.
+        if self._failed_tts_routes:
+            await self._transition(
+                ModuleId.TTS, HealthStatus.ERROR, "tts_detail_load_failed"
+            )
+            return
+        await self._transition(ModuleId.TTS, HealthStatus.OK, "tts_detail_ready")
 
     async def _on_screenshot_captured(self, event: ScreenshotCaptured) -> None:
         del event

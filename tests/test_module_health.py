@@ -2,6 +2,7 @@
 
 from jarvis.audio.input import MicrophoneCaptureFailed, MicSleepToggled
 from jarvis.audio.tts import TtsEngineLoadFailed, TtsSynthesisResult
+from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import BackendRequestFailed, WarmupCompleted
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete
@@ -197,6 +198,53 @@ async def test_success_on_another_route_does_not_hide_terminal_load_failure():
 
     assert [(e.module, e.status) for e in recorder.events] == [
         (ModuleId.TTS, HealthStatus.ERROR)
+    ]
+
+
+async def test_tts_mute_reports_unavailable_distinct_from_load_failure():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False))
+
+    assert [(e.module, e.status, e.detail_key) for e in recorder.events] == [
+        (ModuleId.TTS, HealthStatus.UNAVAILABLE, "tts_detail_muted")
+    ]
+
+
+async def test_tts_unmute_after_no_prior_failure_reports_ready():
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False))
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=True))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.UNAVAILABLE, "tts_detail_muted"),
+        (HealthStatus.OK, "tts_detail_ready"),
+    ]
+
+
+async def test_tts_unmute_after_a_load_failure_does_not_claim_ready():
+    """Mirrors test_sleep_wake_after_a_capture_failure_never_says_listening_
+    again: re-enabling speech must not repaint a still-broken route as
+    working just because the user flipped a switch."""
+    bus, recorder = _tracked_bus()
+
+    await bus.publish(
+        TtsEngineLoadFailed,
+        TtsEngineLoadFailed(
+            language="en",
+            engine="piper",
+            model="voices/en.onnx",
+            message="model file missing",
+        ),
+    )
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False))
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=True))
+
+    assert [(e.status, e.detail_key) for e in recorder.events] == [
+        (HealthStatus.ERROR, "tts_detail_load_failed"),
+        (HealthStatus.UNAVAILABLE, "tts_detail_muted"),
+        (HealthStatus.ERROR, "tts_detail_load_failed"),
     ]
 
 

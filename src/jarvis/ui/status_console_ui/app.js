@@ -30,6 +30,7 @@
 const _moduleHealth = new Map();
 let _modelLabel = "";
 let _mcpEnabled = false;
+let _ttsEnabled = true;
 
 // Caps DOM growth for a long-running process feeding a live-appending log
 // (task-ui-03's Scope: "recent events", not an unbounded transcript).
@@ -61,6 +62,7 @@ function _applyStateSnapshot(state) {
   applyDataSource(state.data_source || { source: "local_only" });
   applyDebugMode(state.debug || { enabled: false });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
+  applyTtsState(state.tts || { enabled: true });
   applyModelLabel(state.model);
   _clearSystemEvents();
   (state.system_events || []).forEach(appendSystemEvent);
@@ -81,6 +83,7 @@ function _applyStateDelta(payload) {
     data_source: applyDataSource,
     debug: applyDebugMode,
     mcp: applyMcpState,
+    tts: applyTtsState,
     model: applyModelLabel,
     system_event: appendSystemEvent,
     thinking: applyThinkingMode,
@@ -153,12 +156,23 @@ function renderModules() {
     meta.textContent = _moduleDetail(module, detail);
     body.append(label, meta);
 
+    chip.append(dot, body);
+    if (module === "tts") {
+      const toggle = document.createElement("button");
+      toggle.className = "chip-toggle";
+      toggle.id = "btnTtsToggle";
+      toggle.textContent = uiString(_ttsEnabled ? "tts_mute" : "tts_unmute");
+      toggle.title = uiString(_ttsEnabled ? "tts_mute" : "tts_unmute");
+      toggle.addEventListener("click", setTtsEnabled);
+      chip.append(toggle);
+    }
+
     const reset = document.createElement("button");
     reset.className = "chip-reset";
     reset.title = uiString("chip_reset_" + module);
     reset.textContent = "↻";
     reset.addEventListener("click", () => requestModuleReset(module));
-    chip.append(dot, body, reset);
+    chip.append(reset);
     panel.appendChild(chip);
   }
 }
@@ -339,6 +353,19 @@ function _toolRowMenuEntries(row) {
 
 function setMcpEnabled() {
   _sendControl("set_mcp_enabled", { enabled: !_mcpEnabled });
+}
+
+// Deliberately does not optimistically flip _ttsEnabled/re-render itself -
+// same rule as every other control here (see this file's header comment):
+// the toggle button only ever changes via applyTtsState(), driven by the
+// real TtsSpeechEnabledChanged projection coming back through the socket.
+function applyTtsState(payload) {
+  _ttsEnabled = payload.enabled === true;
+  renderModules();
+}
+
+function setTtsEnabled() {
+  _sendControl("set_tts_enabled", { enabled: !_ttsEnabled });
 }
 
 function applyModelLabel(payload) {
@@ -656,8 +683,20 @@ function applyConfigValues(payload) {
   document.getElementById("vadMaxChunk").value = payload.vad.max_chunk_seconds;
   document.getElementById("vadEndPause").value = payload.vad.request_end_pause_seconds;
   document.getElementById("vadCooldown").value = payload.vad.resume_cooldown_seconds;
+  document.getElementById("ttsEnabled").checked = payload.tts.enabled;
+  document.getElementById("ttsCustomRoutes").disabled = !payload.tts.enabled;
   const custom = payload.tts.languages.every((lang) => lang in payload.tts.routes);
   document.getElementById("ttsCustomRoutes").checked = custom;
+  _renderTtsRouteRows();
+  onConfigInputChanged();
+}
+
+function onTtsEnabledChanged() {
+  // Gates the per-language voice block beneath the master switch (task-
+  // ui-ux-3): while off, the block is disabled but its values are kept and
+  // still collected/saved - only editing is blocked, not the selection.
+  document.getElementById("ttsCustomRoutes").disabled =
+    !document.getElementById("ttsEnabled").checked;
   _renderTtsRouteRows();
   onConfigInputChanged();
 }
@@ -666,7 +705,9 @@ function _renderTtsRouteRows() {
   const container = document.getElementById("ttsRouteRows");
   container.innerHTML = "";
   if (_configValues === null) return;
-  const enabled = document.getElementById("ttsCustomRoutes").checked;
+  const enabled =
+    document.getElementById("ttsEnabled").checked &&
+    document.getElementById("ttsCustomRoutes").checked;
   for (const lang of _configValues.tts.languages) {
     const route = _configValues.tts.routes[lang] || null;
     const row = document.createElement("div");
@@ -836,6 +877,7 @@ function applyConfigSelection() {
       resume_cooldown_seconds: Number(document.getElementById("vadCooldown").value),
     },
     tts_routes: _collectTtsRoutes(),
+    tts_enabled: document.getElementById("ttsEnabled").checked,
   });
 }
 

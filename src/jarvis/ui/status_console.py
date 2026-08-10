@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Protocol
 
 from jarvis.audio.devices import enumerate_input_devices
+from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_UI_CONFIG_PATH,
@@ -339,6 +340,7 @@ def config_values_payload(settings: Settings) -> dict:
             "resume_cooldown_seconds": list(VAD_RESUME_COOLDOWN_RANGE),
         },
         "tts": {
+            "enabled": settings.tts.enabled,
             "languages": sorted(SUPPORTED_TTS_LANGUAGES),
             "engines": sorted(SUPPORTED_TTS_ENGINES),
             "schemas": {
@@ -546,6 +548,7 @@ class StatusConsoleApi:
         mcp_host: McpControl | None = None,
         camera_state: CameraState | None = None,
         camera_capture: CameraCapture | None = None,
+        tts_mute_state: TtsMuteState | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -567,6 +570,7 @@ class StatusConsoleApi:
         self._mcp_host = mcp_host
         self._camera_state = camera_state
         self._camera_capture = camera_capture
+        self._tts_mute_state = tts_mute_state or TtsMuteState(bus)
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -628,6 +632,9 @@ class StatusConsoleApi:
         if self._mcp_host is None:
             return
         self._schedule(self._set_mcp_enabled_async(enabled))
+
+    def set_tts_enabled(self, enabled: bool) -> None:
+        self._schedule(self._tts_mute_state.set_enabled(enabled))
 
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         if name == CAMERA_TOOL_NAME and self._camera_state is not None:
@@ -867,6 +874,7 @@ class StatusConsoleApi:
         ui_language: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
+        tts_enabled: bool | None = None,
     ) -> None:
         selection = UiConfigSelection(
             model=model,
@@ -875,6 +883,7 @@ class StatusConsoleApi:
             ui_language=ui_language,
             vad=vad,
             tts_routes=tts_routes,
+            tts_enabled=tts_enabled,
         )
         self._schedule(self._save_config_selection_async(selection))
 
@@ -908,6 +917,7 @@ class StatusConsoleApi:
             ui_language=selection.ui_language,
             vad=selection.vad,
             tts_routes=selection.tts_routes,
+            tts_enabled=selection.tts_enabled,
             mcp_enabled=(
                 self._mcp_host.enabled
                 if self._mcp_host is not None
@@ -926,7 +936,8 @@ class StatusConsoleApi:
                 f"microphone_host_api={selection.microphone_host_api!r}, "
                 f"ui_language={selection.ui_language!r}, "
                 f"vad={'set' if selection.vad else 'default'}, "
-                f"tts_routes={'set' if selection.tts_routes else 'default'}); "
+                f"tts_routes={'set' if selection.tts_routes else 'default'}, "
+                f"tts_enabled={selection.tts_enabled!r}); "
                 "restart to apply"
             ),
             ui_message=ui_text("config_saved_restart_to_apply", self._language),

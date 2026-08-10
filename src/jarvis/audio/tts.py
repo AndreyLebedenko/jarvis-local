@@ -15,6 +15,7 @@ from jarvis.audio.language_segments import (
     DEFAULT_LANGUAGE,
     CharsetLanguageStream,
 )
+from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
@@ -337,9 +338,14 @@ class TtsOutput:
         play: Callable[[bytes], Awaitable[None]] | None = None,
         playback_lock: asyncio.Lock | None = None,
         bus: "EventBus | None" = None,
+        mute_state: TtsMuteState | None = None,
     ) -> None:
         self._settings = settings
         self._bus = bus
+        # Reads the state owner rather than caching a flag of its own - see
+        # tts_mute.py's docstring. None (no state owner injected) means
+        # always-enabled, matching every test/caller that predates muting.
+        self._mute_state = mute_state
         # Carrying a short language-switch remainder into the next unit is
         # only safe when one engine voices everything; with per-language
         # engines it would hand text to an engine that cannot pronounce it
@@ -364,10 +370,14 @@ class TtsOutput:
         self._reported_load_failures: set[tuple[str, str, str]] = set()
 
     async def on_token(self, event: ResponseToken) -> None:
+        if self._mute_state is not None and not self._mute_state.enabled:
+            return
         for text, language in self._units.feed(event.text):
             self._schedule(text, language)
 
     async def on_response_complete(self, event: ResponseComplete) -> None:
+        if self._mute_state is not None and not self._mute_state.enabled:
+            return
         for text, language in self._units.flush():
             self._schedule(text, language)
 

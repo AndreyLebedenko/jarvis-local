@@ -18,6 +18,7 @@ from jarvis.audio.tts import (
     _append_wav_tail_silence,
 )
 from jarvis.audio.tts_factory import build_tts_engine
+from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.audio.tts_piper import (
     PiperEngine,
 )
@@ -883,6 +884,70 @@ async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     await tts.wait_for_pending()
 
     assert played == ["Без точки в конце"]
+
+
+async def test_on_token_schedules_no_synthesis_while_muted():
+    played = []
+    engine = _FakeEngine()
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    bus = EventBus()
+    mute_state = TtsMuteState(bus, enabled=False)
+    tts = TtsOutput(TtsSettings(), engine=engine, play=fake_play, mute_state=mute_state)
+
+    await tts.on_token(ResponseToken(text="Первое предложение. "))
+    await tts.wait_for_pending()
+
+    assert played == []
+
+
+async def test_on_response_complete_schedules_no_synthesis_while_muted():
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    bus = EventBus()
+    mute_state = TtsMuteState(bus, enabled=False)
+    tts = TtsOutput(
+        TtsSettings(), engine=_FakeEngine(), play=fake_play, mute_state=mute_state
+    )
+
+    await tts.on_token(ResponseToken(text="Без точки в конце"))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+    assert played == []
+
+
+async def test_on_token_speaks_again_once_unmuted():
+    played = []
+    engine = _FakeEngine()
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    bus = EventBus()
+    mute_state = TtsMuteState(bus, enabled=False)
+    tts = TtsOutput(TtsSettings(), engine=engine, play=fake_play, mute_state=mute_state)
+
+    await tts.on_token(ResponseToken(text="Заглушено. "))
+    await mute_state.set_enabled(True)
+    await tts.on_token(ResponseToken(text="Услышано. "))
+    await tts.wait_for_pending()
+
+    assert played == ["Услышано."]
 
 
 def test_append_wav_tail_silence_extends_audio_duration():

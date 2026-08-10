@@ -1127,6 +1127,29 @@ def test_tts_language_routes_default_to_current_silero_behavior(tmp_path):
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
 
 
+def test_tts_enabled_defaults_to_true(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.tts.enabled is True
+
+
+def test_tts_enabled_parses_explicit_false(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("[tts]\nenabled = false\n", encoding="utf-8")
+
+    settings = load_settings(config_path)
+
+    assert settings.tts.enabled is False
+
+
+def test_tts_enabled_rejects_non_bool(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[tts]\nenabled = "yes"\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"\[tts\]\.enabled must be bool"):
+        load_settings(config_path)
+
+
 def test_tts_language_routes_reject_unknown_language(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -1871,6 +1894,35 @@ def test_write_ui_config_iteration_2_fields_round_trip(tmp_path):
             volume=0.9,
         ),
     }
+
+
+def test_write_ui_config_tts_enabled_round_trips_alongside_tts_routes(tmp_path):
+    """[tts] enabled=... must be written before any [tts.languages.*]
+    section - opening a table header after TOML has already implicitly
+    created it via a child table is invalid, so ordering matters here."""
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="d",
+        tts_enabled=False,
+        tts_routes={"ru": SileroTtsSettings(), "en": PiperTtsSettings(model="en.onnx")},
+    )
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.tts.enabled is False
+    assert settings.tts.languages["en"] == PiperTtsSettings(model="en.onnx")
+
+
+def test_write_ui_config_tts_enabled_round_trips_alone(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(ui_config_path, model="m", microphone_device="d", tts_enabled=True)
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.tts.enabled is True
+    assert settings.tts.languages == {"ru": SileroTtsSettings()}
 
 
 def test_write_ui_config_omits_sections_left_as_none(tmp_path):

@@ -166,6 +166,12 @@ resume_cooldown_seconds = 1.0
 
 # TTS parameters are route-specific. Config parsing validates their shape;
 # model files and model/parameter compatibility are checked on first use.
+[tts]
+# Master on/off default. The dashboard also has a live mute toggle, but that
+# runtime toggle does not persist here - this is only the value the next
+# restart seeds the toggle from.
+enabled = true
+
 [tts.languages.ru]
 engine = "silero"
 model = "v3_1_ru"

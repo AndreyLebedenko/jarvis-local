@@ -57,6 +57,7 @@ from jarvis.audio.input import (
 )
 from jarvis.audio.sound_cues import SoundCuePlayer
 from jarvis.audio.tts import BilingualTtsEngine
+from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
@@ -2836,6 +2837,9 @@ class _FakeAudioInput:
 
 
 class _FakeTtsOutput:
+    def __init__(self) -> None:
+        self.cancel_calls = 0
+
     async def on_token(self, event) -> None:
         pass
 
@@ -2844,6 +2848,9 @@ class _FakeTtsOutput:
 
     async def wait_for_pending(self) -> None:
         return None
+
+    def cancel(self) -> None:
+        self.cancel_calls += 1
 
 
 class _FakeCaptureInput:
@@ -2945,12 +2952,38 @@ def test_wire_registers_expected_subscriptions():
     assert event_types.count(MicSleepToggled) == 1
     assert event_types.count(ReasoningLevelChanged) == 1
     assert event_types.count(InterruptRequested) == 1
+    assert event_types.count(TtsSpeechEnabledChanged) == 1
 
     handlers = [handler for _event_type, handler in subscriptions]
     assert app.orchestrator.on_utterance in handlers
     assert on_utterance_captured in handlers
     assert app.orchestrator.on_screenshot in handlers
     assert app.orchestrator.on_clipboard in handlers
+
+
+async def test_muting_tts_cancels_in_flight_speech_but_unmuting_does_not():
+    app = _fake_app()
+    wire(app)
+
+    await app.bus.publish(
+        TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False)
+    )
+    await app.bus.publish(
+        TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=True)
+    )
+
+    assert app.tts_output.cancel_calls == 1
+
+
+def test_build_app_seeds_tts_mute_state_from_settings():
+    settings = Settings(
+        journal=JournalSettings(enabled=False), tts=TtsSettings(enabled=False)
+    )
+
+    app = build_app(settings, backend=_FakeBackend(), tts_output=_FakeTtsOutput())
+
+    assert app.tts_mute_state is not None
+    assert app.tts_mute_state.enabled is False
 
 
 def test_create_live_status_console_shares_one_api_between_surfaces():
@@ -3087,6 +3120,12 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
                 detail="privacy off",
             ),
         ),
+        (
+            "module",
+            ModuleHealth(
+                module=ModuleId.TTS, status=HealthStatus.OK, detail="speaking"
+            ),
+        ),
     ]
 
     unwire(app, subscriptions)
@@ -3139,9 +3178,9 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    # Only the seven snapshot seeds: mic-toggle projection belongs to the
+    # Only the eight snapshot seeds: mic-toggle projection belongs to the
     # real transport server's own bus subscription, not to this wiring.
-    assert len(transport.calls) == 7
+    assert len(transport.calls) == 8
     assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)
@@ -3442,6 +3481,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
+        tts_mute_state=None,
         orchestrator=types.SimpleNamespace(
             submit_text_input=object(),
             on_attachment_submission=object(),

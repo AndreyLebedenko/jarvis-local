@@ -1,9 +1,9 @@
 # Task: TTS enable/disable - runtime toggle plus config default
 
 **Story:** `tasks/story-ui-ux-maturity.md`
-**Status:** Proposed. Independent of tasks 1-2 (may be done in parallel);
-its Status-view toggle benefits from task 1's focus/radiogroup work but
-does not require it.
+**Status:** Completed. Human review passed 2026-08-10; merged to main.
+Independent of tasks 1-2 (may be done in parallel); its Status-view toggle
+benefits from task 1's focus/radiogroup work but does not require it.
 **Release:** post-v1.8.0 (owner to assign).
 **Created:** 2026-08-09.
 **Scope class:** engine + config + transport + front-end. The only task in
@@ -81,26 +81,56 @@ UI/config control only.
 
 ## Acceptance criteria
 
-- [ ] A single owner holds TTS speech-enabled state and publishes its
+- [x] A single owner holds TTS speech-enabled state and publishes its
       change event; startup seeds it from `[tts].enabled`.
-- [ ] While muted, `TtsOutput` schedules no synthesis, and switching to
+- [x] While muted, `TtsOutput` schedules no synthesis, and switching to
       muted cancels in-flight speech; sound cues still play.
-- [ ] `set_tts_enabled` is validated and dispatched like `set_mcp_enabled`;
+- [x] `set_tts_enabled` is validated and dispatched like `set_mcp_enabled`;
       a bad payload raises `ProtocolError`.
-- [ ] The Status view shows a working toggle and distinguishes muted vs
+- [x] The Status view shows a working toggle and distinguishes muted vs
       off-by-failure vs speaking honestly.
-- [ ] `[tts].enabled` parses, defaults to true, round-trips through
+- [x] `[tts].enabled` parses, defaults to true, round-trips through
       config save, and is documented in `config.example.toml`.
-- [ ] Settings renders the default as a master on/off switch at the top of
+- [x] Settings renders the default as a master on/off switch at the top of
       the "Синтез речи (TTS)" section, gating the per-language voice block.
-- [ ] Pure tests cover: mute-gating in `TtsOutput` (no synthesis while
+- [x] Pure tests cover: mute-gating in `TtsOutput` (no synthesis while
       muted, cancel on disable, cues untouched), `[tts].enabled`
       parse/write round trip, and `set_tts_enabled` validation.
-- [ ] Human hardware handoff prepared for live speaker on/off (per the
+- [x] Human hardware handoff prepared for live speaker on/off (per the
       testing protocol - agent does not run speaker tests).
-- [ ] `python -m pytest` passes; `ruff check` and `ruff format --check`
+- [x] `python -m pytest` passes; `ruff check` and `ruff format --check`
       are clean.
 
 ## Verification record
 
-(to be filled at completion)
+- `python -m pytest`: 1986 passed, 1 skipped (full suite, twice). One
+  unrelated pre-existing flake observed once under full-suite load -
+  `test_save_config_selection_rejects_an_empty_model[   ]` - reproduces
+  only under full-suite timing pressure (fixed `asyncio.sleep(0.05)`),
+  passes reliably standalone and file-scoped; does not touch TTS and
+  predates this branch. Not investigated further (out of task scope,
+  CLAUDE.md 0.5/0.9).
+- `ruff check .`: all checks passed (fixed one import-order issue and one
+  `wire_status_console` cyclomatic-complexity violation introduced by this
+  change, extracted into `_seed_tts_module_health`).
+- `ruff format --check .`: 222 files already formatted.
+- Browser-preview verification: done directly against `index.html`
+  (`demo.html`'s module chips are static markup predating the
+  `#modulesPanel` refactor and cannot exercise this - see
+  `tasks/bug_reports/2026-08-10-demo-html-static-module-chips.md`).
+  Confirmed: TTS chip renders speaking/muted/off-by-failure with distinct
+  status dots and detail text; the chip's Mute/Unmute button sends
+  `set_tts_enabled` over the (absent, in preview) transport and does not
+  optimistically flip; the Settings master "Speak responses" checkbox
+  reflects `config_values.tts.enabled`, gates (disables without clearing)
+  the per-language block when off, and `save_config_selection`'s payload
+  includes the current `tts_enabled` value.
+- Human hardware handoff (not run by the agent, per the testing
+  protocol): with a real Ollama endpoint and speakers, verify (1) muting
+  mid-response stops audio immediately and the Status chip reads "muted";
+  (2) unmuting resumes normal speech on the next turn and the chip reads
+  "speaking"; (3) sound cues (listening/done chimes) still play while
+  muted; (4) setting `[tts].enabled = false` in config and restarting
+  starts the session muted, with the Settings "Speak responses" checkbox
+  unchecked; (5) toggling per-language voices while the master switch is
+  off, then re-enabling, applies the previously-chosen route.

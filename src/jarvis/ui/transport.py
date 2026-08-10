@@ -15,6 +15,7 @@ from urllib.parse import quote, unquote
 from aiohttp import web
 from aiohttp.multipart import BodyPartReader
 
+from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_FORK_SEED_MAX_CHARS,
@@ -251,6 +252,14 @@ def _parse_vad(raw: JSONValue) -> VadSettings | None:
     return VadSettings(**kwargs)  # type: ignore[arg-type]
 
 
+def _parse_tts_enabled(raw: JSONValue) -> bool | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, bool):
+        raise ProtocolError("tts_enabled must be a boolean")
+    return raw
+
+
 def _parse_tts_routes(raw: JSONValue) -> dict[str, TtsLanguageSettings] | None:
     if raw is None:
         return None
@@ -335,6 +344,8 @@ class ControlApi(Protocol):
 
     def set_mcp_enabled(self, enabled: bool) -> None: ...
 
+    def set_tts_enabled(self, enabled: bool) -> None: ...
+
     def set_tool_enabled(self, name: str, enabled: bool) -> None: ...
 
     def reset_context(self) -> None: ...
@@ -358,6 +369,7 @@ class ControlApi(Protocol):
         ui_language: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
+        tts_enabled: bool | None = None,
     ) -> None: ...
 
 
@@ -398,6 +410,7 @@ class UiStateStore:
         data_source: DataSource = DataSource.LOCAL_ONLY,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
+        tts_enabled: bool = True,
         language: str = DEFAULT_UI_LANGUAGE,
         config_values: JsonObject | None = None,
         debug: bool = False,
@@ -417,6 +430,7 @@ class UiStateStore:
             # without depending on catching the original announcement.
             "debug": {"enabled": debug},
             "mcp": {"status": "off", "enabled": False, "tools": []},
+            "tts": {"enabled": tts_enabled},
             "model": {"label": model_label},
             "system_events": [],
             "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
@@ -499,6 +513,9 @@ class UiStateStore:
 
     def set_mcp_state(self, state: JsonObject) -> JsonObject | None:
         return self._replace("mcp", state)
+
+    def set_tts_state(self, enabled: bool) -> JsonObject | None:
+        return self._replace("tts", {"enabled": enabled})
 
     def set_last_model_request(self, summary: ModelRequestSummary) -> JsonObject | None:
         return self._replace(
@@ -786,6 +803,9 @@ class UiTransportServer:
     def set_mcp_state(self, state: JsonObject) -> None:
         self._publish_delta(self._state.set_mcp_state(state))
 
+    def set_tts_enabled(self, enabled: bool) -> None:
+        self._publish_delta(self._state.set_tts_state(enabled))
+
     def set_last_model_request(self, summary: ModelRequestSummary) -> None:
         self._publish_delta(self._state.set_last_model_request(summary))
 
@@ -804,6 +824,7 @@ class UiTransportServer:
             (SystemEvent, self._on_system_event),
             (ReasoningLevelChanged, self._on_reasoning_level_changed),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
+            (TtsSpeechEnabledChanged, self._on_tts_speech_enabled_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
             (ToolCallStarted, self._on_tool_call_started),
@@ -827,6 +848,11 @@ class UiTransportServer:
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self.set_visibility_mode(event.mode)
+
+    async def _on_tts_speech_enabled_changed(
+        self, event: TtsSpeechEnabledChanged
+    ) -> None:
+        self.set_tts_enabled(event.enabled)
 
     async def _on_module_health_changed(self, event: ModuleHealthChanged) -> None:
         # One mechanism for every module (v1.2.14 task 2): the tracker
@@ -2129,6 +2155,7 @@ class UiTransportServer:
             "toggle_thinking": self._toggle_thinking,
             "set_reasoning_level": self._set_reasoning_level,
             "set_mcp_enabled": self._set_mcp_enabled,
+            "set_tts_enabled": self._set_tts_enabled,
             "set_tool_enabled": self._set_tool_enabled,
             "reset_context": self._reset_context,
             "reset_module": self._reset_module,
@@ -2162,6 +2189,12 @@ class UiTransportServer:
         if not isinstance(enabled, bool):
             raise ProtocolError("set_mcp_enabled requires arguments.enabled boolean")
         self._control_api.set_mcp_enabled(enabled)
+
+    def _set_tts_enabled(self, arguments: JsonObject) -> None:
+        enabled = arguments.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ProtocolError("set_tts_enabled requires arguments.enabled boolean")
+        self._control_api.set_tts_enabled(enabled)
 
     def _set_tool_enabled(self, arguments: JsonObject) -> None:
         name = arguments.get("name")
@@ -2230,6 +2263,7 @@ class UiTransportServer:
             ui_language=_parse_ui_language(arguments.get("ui_language")),
             vad=_parse_vad(arguments.get("vad")),
             tts_routes=_parse_tts_routes(arguments.get("tts_routes")),
+            tts_enabled=_parse_tts_enabled(arguments.get("tts_enabled")),
         )
 
     @staticmethod

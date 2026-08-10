@@ -4,6 +4,7 @@ from pathlib import Path
 import aiohttp
 import pytest
 
+from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_FORK_SEED_MAX_CHARS,
@@ -106,6 +107,9 @@ class _FakeControlApi:
     def set_mcp_enabled(self, enabled: bool) -> None:
         self.calls.append(("set_mcp_enabled", str(enabled)))
 
+    def set_tts_enabled(self, enabled: bool) -> None:
+        self.calls.append(("set_tts_enabled", str(enabled)))
+
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         self.calls.append(("set_tool_enabled", name, str(enabled)))
 
@@ -136,6 +140,7 @@ class _FakeControlApi:
         ui_language=None,
         vad=None,
         tts_routes=None,
+        tts_enabled=None,
     ) -> None:
         self.calls.append(("save_config_selection", f"{model}|{microphone_device}"))
         self.config_kwargs = {
@@ -143,6 +148,7 @@ class _FakeControlApi:
             "ui_language": ui_language,
             "vad": vad,
             "tts_routes": tts_routes,
+            "tts_enabled": tts_enabled,
         }
 
 
@@ -824,6 +830,39 @@ def test_set_mcp_enabled_control_requires_boolean_target():
         server._dispatch_control("set_mcp_enabled", {"enabled": "true"})
 
 
+def test_set_tts_enabled_control_requires_boolean_target():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control("set_tts_enabled", {"enabled": False})
+
+    assert control_api.calls == [("set_tts_enabled", "False")]
+    with pytest.raises(ProtocolError, match="arguments.enabled"):
+        server._dispatch_control("set_tts_enabled", {"enabled": "false"})
+
+
+def test_tts_enabled_defaults_to_true_in_the_snapshot():
+    state = UiStateStore()
+
+    assert state.snapshot()["tts"] == {"enabled": True}
+
+
+def test_tts_enabled_seeds_from_constructor():
+    state = UiStateStore(tts_enabled=False)
+
+    assert state.snapshot()["tts"] == {"enabled": False}
+
+
+async def test_tts_speech_enabled_changed_projects_into_the_tts_state():
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+
+    await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False))
+
+    assert server.state.snapshot()["tts"] == {"enabled": False}
+
+
 def test_set_tool_enabled_control_requires_name_and_boolean_target():
     control_api = _FakeControlApi()
     server = UiTransportServer(EventBus(), control_api)
@@ -904,6 +943,7 @@ def _full_config_arguments() -> dict:
                 "volume": 0.9,
             },
         },
+        "tts_enabled": False,
     }
 
 
@@ -937,6 +977,19 @@ def test_save_config_selection_parses_iteration_2_arguments():
             volume=0.9,
         ),
     }
+    assert control_api.config_kwargs["tts_enabled"] is False
+
+
+def test_save_config_selection_rejects_non_boolean_tts_enabled():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+    arguments = _full_config_arguments()
+    arguments["tts_enabled"] = "false"
+
+    with pytest.raises(ProtocolError, match="tts_enabled"):
+        server._dispatch_control("save_config_selection", arguments)
+
+    assert control_api.calls == []
 
 
 @pytest.mark.parametrize(
@@ -982,6 +1035,7 @@ def test_save_config_selection_without_new_fields_passes_none():
         "ui_language": None,
         "vad": None,
         "tts_routes": None,
+        "tts_enabled": None,
     }
 
 
@@ -1031,6 +1085,7 @@ def test_snapshot_contains_config_values_section():
     values = snapshot["config_values"]
     assert values["ui_language"] == "en"
     assert values["vad"]["threshold"] == 0.5
+    assert values["tts"]["enabled"] is True
     assert values["tts"]["routes"]["ru"] == {
         "engine": "silero",
         "model": "v3_1_ru",
