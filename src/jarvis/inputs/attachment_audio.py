@@ -84,11 +84,19 @@ def _decode_mono_16k(data: bytes) -> torch.Tensor:
 
 
 def normalize_audio_attachment(
-    filename: str, pending: PendingAudioMedia
+    filename: str,
+    pending: PendingAudioMedia,
+    *,
+    max_clips: int = MAX_CLIPS_PER_FILE,
 ) -> NormalizedAudioAttachment:
     """Turns validated raw upload bytes into ordered model-safe clips.
     Never raises on bad input - every failure becomes a rejection with a
-    user-facing reason, mirroring plan_attachments()."""
+    user-facing reason, mirroring plan_attachments().
+
+    max_clips is the one caller-overridable knob (config's
+    [attachments].max_audio_clips) - MAX_CLIP_SECONDS itself stays fixed,
+    it is the verified Ollama per-clip ceiling (PROJECT.md), not a policy
+    choice."""
     try:
         mono = _decode_mono_16k(pending.data)
     except Exception:
@@ -111,12 +119,12 @@ def normalize_audio_attachment(
     # claim. Re-enforce the cap on what was actually decoded, per the
     # policy's reject-outright rule (never silently send a truncated
     # first 90 seconds).
-    if clip_count > MAX_CLIPS_PER_FILE:
+    if clip_count > max_clips:
         return _rejected(
             filename,
             f"{filename}: audio is {duration_seconds:.1f} s after decoding, "
-            f"exceeds the {MAX_AUDIO_SECONDS:.0f} s "
-            f"({MAX_CLIPS_PER_FILE} clip) limit; trim or split the file "
+            f"exceeds the {max_clips * MAX_CLIP_SECONDS:.0f} s "
+            f"({max_clips} clip) limit; trim or split the file "
             "and re-upload.",
         )
 

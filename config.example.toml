@@ -306,6 +306,23 @@ host_api = ""
 # visible in-band marker, never silently cut.
 max_chars = 20000
 
+[attachments]
+# Uploaded audio attachments (Journal input dock), not microphone speech.
+# Files are decoded and split into sequential 30 s clips before reaching
+# the model - 30 s is a verified Ollama per-clip ceiling (PROJECT.md) and
+# is NOT configurable. A file that would chunk into more than
+# max_audio_clips clips is rejected outright with a message asking the
+# user to trim/split, never silently sent as a truncated prefix.
+#
+# WARNING: DO NOT SET THIS ABOVE 10 (= 300 s / 5 min) UNLESS YOU KNOW WHAT
+# YOU ARE DOING. Every extra clip is another ~30 s of decoded audio
+# base64-encoded into the SAME prompt as every other attachment and the
+# conversation history - raising this multiplies upload processing time,
+# prompt size, and per-turn model latency, and has not been verified past
+# the default. 3 clips (90 s) is the attachment policy's own default
+# (tasks/attachment-policy-v1.6.0.md).
+max_audio_clips = 3
+
 [journal]
 # Append-only local dialog journal. One app run creates one lazy session on
 # the first accepted turn; voice audio is stored as .wav files next to the

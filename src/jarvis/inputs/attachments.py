@@ -342,7 +342,9 @@ def _plan_image(filename: str, data: bytes) -> AttachmentPlanItem:
     )
 
 
-def _plan_audio(filename: str, content_type: str, data: bytes) -> AttachmentPlanItem:
+def _plan_audio(
+    filename: str, content_type: str, data: bytes, max_audio_seconds: float
+) -> AttachmentPlanItem:
     try:
         info = sf.info(io.BytesIO(data))
     except Exception:
@@ -353,12 +355,12 @@ def _plan_audio(filename: str, content_type: str, data: bytes) -> AttachmentPlan
         )
 
     duration_seconds = info.frames / info.samplerate if info.samplerate else 0.0
-    if duration_seconds > MAX_AUDIO_SECONDS:
+    if duration_seconds > max_audio_seconds:
         return _rejected(
             filename,
             AttachmentClass.AUDIO,
             f"{filename}: audio is {duration_seconds:.1f}s, "
-            f"exceeds the {MAX_AUDIO_SECONDS:.0f}s limit.",
+            f"exceeds the {max_audio_seconds:.0f}s limit.",
         )
 
     return AttachmentPlanItem(
@@ -372,19 +374,32 @@ def _plan_audio(filename: str, content_type: str, data: bytes) -> AttachmentPlan
 
 
 def _plan_by_class(
-    attachment_class: AttachmentClass, filename: str, content_type: str, data: bytes
+    attachment_class: AttachmentClass,
+    filename: str,
+    content_type: str,
+    data: bytes,
+    max_audio_seconds: float,
 ) -> AttachmentPlanItem:
     if attachment_class is AttachmentClass.TEXT:
         return _plan_text(filename, data)
     if attachment_class is AttachmentClass.IMAGE:
         return _plan_image(filename, data)
-    return _plan_audio(filename, content_type, data)
+    return _plan_audio(filename, content_type, data, max_audio_seconds)
 
 
-def plan_attachments(uploads: Sequence[AttachmentUpload]) -> AttachmentPlan:
+def plan_attachments(
+    uploads: Sequence[AttachmentUpload],
+    *,
+    max_audio_seconds: float = MAX_AUDIO_SECONDS,
+) -> AttachmentPlan:
     """Validates and plans each upload in order, enforcing per-file and
     per-turn policy. Never raises on bad input - every failure becomes a
-    rejected AttachmentPlanItem with a user-facing reason."""
+    rejected AttachmentPlanItem with a user-facing reason.
+
+    max_audio_seconds is the one caller-overridable knob (config's
+    [attachments].max_audio_clips * the fixed 30 s per-clip ceiling,
+    computed by the caller) - this module still takes no config/bus
+    import itself, per this file's "no wiring" contract above."""
     items: list[AttachmentPlanItem] = []
     accepted_counts: dict[AttachmentClass, int] = dict.fromkeys(AttachmentClass, 0)
     accepted_total = 0
@@ -425,7 +440,9 @@ def plan_attachments(uploads: Sequence[AttachmentUpload]) -> AttachmentPlan:
             items.append(_rejected(filename, attachment_class, reason))
             continue
 
-        item = _plan_by_class(attachment_class, filename, content_type, data)
+        item = _plan_by_class(
+            attachment_class, filename, content_type, data, max_audio_seconds
+        )
         if item.accepted:
             accepted_counts[attachment_class] += 1
             accepted_total += 1

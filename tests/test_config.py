@@ -9,6 +9,7 @@ from jarvis.core.config import (
     DEFAULT_USB_SOURCE_DESCRIPTION,
     HISTORY_TOOL_PROVIDER_NAME,
     TTS_ROUTE_TYPES,
+    AttachmentSettings,
     BackendSettings,
     ClipboardSettings,
     ConfigError,
@@ -741,6 +742,57 @@ def test_clipboard_max_chars_wrong_type_raises_config_error(tmp_path):
     )
 
     with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_attachments_max_audio_clips_parses_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [attachments]
+        max_audio_clips = 5
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.attachments.max_audio_clips == 5
+
+
+def test_attachments_max_audio_clips_defaults_when_section_omitted(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.attachments == AttachmentSettings()
+    assert settings.attachments.max_audio_clips == 3
+
+
+def test_attachments_max_audio_clips_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [attachments]
+        max_audio_clips = "not-a-number"
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+@pytest.mark.parametrize("bad_value", [0, -1, -5])
+def test_attachments_max_audio_clips_rejects_non_positive(tmp_path, bad_value):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+        [attachments]
+        max_audio_clips = {bad_value}
+        """,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="positive integer"):
         load_settings(config_path)
 
 

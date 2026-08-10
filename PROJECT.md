@@ -4329,6 +4329,36 @@ latency-for-quality trade.
   exercised there; see `tasks/bug_reports/2026-08-10-demo-html-static-
   module-chips.md`. Verified directly against `index.html` instead.
 
+## Architecture (configurable audio attachment clip cap, 2026-08-10)
+
+- `[attachments].max_audio_clips` (`AttachmentSettings`, default 3) is the
+  one configurable knob for uploaded-audio attachments (Journal input
+  dock). `MAX_CLIP_SECONDS` (30 s) stays fixed and is not configurable -
+  it is the verified Ollama per-clip ceiling recorded in this file's
+  Verified facts, not a policy choice. Parsed via the generic
+  `_build_plain_section` path plus one extra check (`ConfigError` if not
+  a positive integer); no upper bound is enforced in code - the danger of
+  a high value is a `config.example.toml` comment only (raising it
+  multiplies per-turn base64 payload size and model latency, unverified
+  past the default), per explicit owner instruction: it is a warning, not
+  a rejection.
+- `attachments.py`'s `plan_attachments()` and `attachment_audio.py`'s
+  `normalize_audio_attachment()` both keep their pre-existing "no
+  config/bus import" purity: each gained one caller-overridable keyword
+  parameter (`max_audio_seconds` / `max_clips` respectively) defaulting
+  to the existing module constant, so every untouched caller/test is
+  unaffected. The composition root (`app.py`'s `build_app()` and
+  `run_with_status_console()`) is what reads `settings.attachments.
+  max_audio_clips` and threads it into both `Orchestrator` (as
+  `max_audio_attachment_clips`, mirroring the existing `text_input_max_
+  chars` pattern) and `UiTransportServer` (which converts clips to
+  seconds itself via `max_audio_attachment_clips * MAX_CLIP_SECONDS`
+  before calling `plan_attachments()`, since that pure module's check is
+  duration-based, not clip-count-based).
+- Not plumbed through `UiConfigSelection`/`write_ui_config`/the Settings
+  form - this is a `config.toml`-only value (no live dashboard control
+  requested), unlike `[tts].enabled`.
+
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).

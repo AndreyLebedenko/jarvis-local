@@ -173,6 +173,23 @@ def test_audio_one_sample_over_the_90_s_cap_is_rejected_after_decoding():
     assert "trim or split" in normalized.rejection_reason
 
 
+def test_max_clips_override_rejects_below_the_default_cap():
+    normalized = normalize_audio_attachment("memo.wav", _wav_pending(65.0), max_clips=2)
+
+    assert normalized.accepted is False
+    assert normalized.clips == ()
+    assert "exceeds" in normalized.rejection_reason
+
+
+def test_max_clips_override_accepts_above_the_default_cap():
+    normalized = normalize_audio_attachment(
+        "long.wav", _wav_pending(MAX_AUDIO_SECONDS + 30.0), max_clips=5
+    )
+
+    assert normalized.accepted is True
+    assert len(normalized.clips) == 4
+
+
 # --- rejection --------------------------------------------------------------
 
 

@@ -83,6 +83,7 @@ from jarvis.history import (
     turns_as_messages,
 )
 from jarvis.inputs.attachment_audio import (
+    MAX_CLIPS_PER_FILE,
     compose_audio_cue,
     compose_audio_media,
     normalize_audio_attachment,
@@ -340,6 +341,7 @@ class Orchestrator:
         system_prompt_provider: Callable[[], str] | None = None,
         reasoning_prompt_settings: PromptSettings | None = None,
         history_limits: ContextBudgetLimits | None = None,
+        max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -359,6 +361,7 @@ class Orchestrator:
         self._history_retrieval_service = history_retrieval_service
         self._clock = clock or time.time
         self._text_input_max_chars = text_input_max_chars
+        self._max_audio_attachment_clips = max_audio_attachment_clips
         self._automatic_retrieval_limits = AutomaticRetrievalSelectionLimits(
             token_budget=self._history_limits.automatic_retrieval_max_tokens
         )
@@ -642,7 +645,9 @@ class Orchestrator:
         )
         if pending_audio_item is not None:
             normalized = normalize_audio_attachment(
-                pending_audio_item.filename, pending_audio_item.pending_audio
+                pending_audio_item.filename,
+                pending_audio_item.pending_audio,
+                max_clips=self._max_audio_attachment_clips,
             )
             if normalized.accepted:
                 media.extend(compose_audio_media(normalized))
@@ -1453,6 +1458,7 @@ def build_app(
         ),
         reasoning_prompt_settings=settings.prompts,
         history_limits=_history_limits_from_settings(settings.history),
+        max_audio_attachment_clips=settings.attachments.max_audio_clips,
     )
     return App(
         bus=bus,
@@ -2185,6 +2191,7 @@ def run_with_status_console(
         journal_consolidation_planner=app.consolidation_planner,
         journal_consolidation_executor=app.consolidation_executor,
         memory_file_repository=app.memory_file_repository,
+        max_audio_attachment_clips=settings.attachments.max_audio_clips,
     )
     live_console.create_windows()
 

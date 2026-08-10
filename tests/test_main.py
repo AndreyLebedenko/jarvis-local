@@ -290,6 +290,7 @@ def _orchestrator(
     journal_recorder=None,
     history_retrieval_service=None,
     text_input_max_chars=main_module.DEFAULT_TEXT_INPUT_MAX_CHARS,
+    max_audio_attachment_clips=main_module.MAX_CLIPS_PER_FILE,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -305,6 +306,7 @@ def _orchestrator(
         history_retrieval_service=history_retrieval_service,
         clock=clock,
         text_input_max_chars=text_input_max_chars,
+        max_audio_attachment_clips=max_audio_attachment_clips,
     )
     return orchestrator, backend, sound_cues
 
@@ -1078,6 +1080,40 @@ async def test_on_attachment_submission_normalizes_audio_and_appends_clip_and_cu
     [(messages, media)] = backend.calls
     assert len(media) == 1  # one <=30s clip for a 2s file
     assert messages[-1]["content"] == "[Attached audio: memo.wav, 2.0 s]"
+
+
+async def test_on_attachment_submission_respects_configured_max_audio_clips():
+    # 65 s of audio is 3 clips at the 30 s/clip window (30, 30, 5), which
+    # the default cap (3) accepts but a configured cap of 2 must reject -
+    # confirms build_app()'s settings.attachments.max_audio_clips actually
+    # reaches normalize_audio_attachment(), not just its own default.
+    bus = EventBus()
+    events: list[SystemEvent] = []
+
+    async def on_system_event(event: SystemEvent) -> None:
+        events.append(event)
+
+    bus.subscribe(SystemEvent, on_system_event)
+    orchestrator, backend, _sound_cues = _orchestrator(
+        bus=bus, max_audio_attachment_clips=2
+    )
+    plan = AttachmentPlan(
+        items=(
+            _text_plan_item("notes.txt", "hello"),
+            _audio_plan_item("long.wav", duration_seconds=65.0),
+        )
+    )
+
+    await orchestrator.on_attachment_submission("", plan)
+
+    # the turn still went through with what was left (the text attachment)
+    [(messages, _media)] = backend.calls
+    assert "hello" in messages[-1]["content"]
+    assert "[Attached audio" not in messages[-1]["content"]
+    # ... and the audio-specific rejection was not silently dropped
+    assert len(events) == 1
+    assert events[0].level is EventLevel.WARN
+    assert "exceeds" in events[0].message
 
 
 async def test_on_attachment_submission_orders_media_images_then_audio():
