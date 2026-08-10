@@ -4264,6 +4264,71 @@ fallback, preserves lexical/morphology safety, keeps distractor false positives
 at 0.0, and records lower semantic recall (0.500) as the deliberate
 latency-for-quality trade.
 
+## Architecture (task-ui-ux-3: TTS speech-enabled toggle, 2026-08-10)
+
+- `TtsMuteState` (`src/jarvis/audio/tts_mute.py`) is the single runtime owner
+  of whether Jarvis speaks at all, mirroring `VisibilityModeState`/
+  `ReasoningLevelState`: it holds `enabled: bool` and publishes
+  `TtsSpeechEnabledChanged` on a real change only. Seeded at `build_app()`
+  time from `settings.tts.enabled`; `StatusConsoleApi` falls back to
+  constructing its own default-enabled instance when none is injected
+  (test-fixture convenience, matching `VisibilityModeState`'s own pattern).
+- Mute silences speech only. `TtsOutput.on_token`/`on_response_complete`
+  read the injected `mute_state` and schedule no synthesis while disabled;
+  `SoundCuePlayer` is untouched. `TtsOutput` itself does not react to the
+  mute transition - `app.py`'s `wire()` subscribes `TtsSpeechEnabledChanged`
+  and calls the existing `tts_output.cancel()` on mute, the same call used
+  for barge-in interrupt (task-v1.7.0-2), so in-flight speech stops the
+  instant the user mutes.
+- `set_tts_enabled` is a plain control command (`transport.py`
+  `_dispatch_control`, `ControlApi.set_tts_enabled`,
+  `StatusConsoleApi.set_tts_enabled`), validated exactly like
+  `set_mcp_enabled` - a non-boolean payload raises `ProtocolError`.
+- The runtime mute is **not** self-persisting - unlike the live MCP toggle
+  (`update_ui_config_mcp_enabled`, which does self-persist), a
+  `set_tts_enabled` call never touches config. `[tts].enabled` (default
+  `true`) is a separate, ordinary `UiConfigSelection`/`write_ui_config`
+  field, restart-to-apply, saved only from the Settings form's explicit
+  Apply action alongside `tts_routes`/`vad`/`ui_language`. `write_ui_config`
+  writes an explicit `[tts]` header (with `enabled`) before any
+  `[tts.languages.*]` section when both are given, since TOML forbids
+  reopening a table that was only ever implicitly created by a child
+  table header.
+- `UiStateStore` projects a `tts: {enabled}` snapshot/delta key (own
+  top-level key, like `visibility`/`thinking`, not folded into `modules`)
+  so the Settings/Status toggle controls have a value independent of the
+  module-health chip. `config_values_payload()`'s `tts` section also grew
+  an `enabled` field for the Settings form's own current-value read.
+- The TTS module-health chip (`ModuleId.TTS`, already existing since
+  v1.2.15) grew a third distinguishable state via the existing three-value
+  vocabulary, no new `HealthStatus`: `UNAVAILABLE`/`tts_detail_muted` on
+  mute, mirroring `CameraStateChanged`'s own on/off handling in
+  `module_health.py` (`_on_camera_state_changed`/
+  `_publish_camera_reachability`) rather than mic-sleep's pattern. On
+  unmute, the tracker re-derives `OK`/`tts_detail_ready` ("speaking") or
+  `ERROR`/`tts_detail_load_failed` from the existing `_failed_tts_routes`
+  latch - re-enabling never claims a still-broken route is ready, the same
+  honesty rule already used for camera reachability and mic capture
+  failure. Since `TtsOutput` schedules no synthesis while muted, no
+  `TtsSynthesisResult`/`TtsEngineLoadFailed` can race the mute transition.
+  `wire_status_console()` seeds this chip's initial state from
+  `TtsMuteState.enabled` at startup (`_seed_tts_module_health`), the same
+  pattern as the microphone/camera chips' own initial seed.
+- Front-end (`status_console_ui/`): the Settings "Speech synthesis (TTS)"
+  section gained a master "Speak responses" checkbox above the existing
+  per-language block, gating (disabling, not clearing) `ttsCustomRoutes`
+  and its route fields while off; the underlying route values are still
+  collected and saved regardless of the master switch's state. The Status
+  view's TTS chip gained a `Mute`/`Unmute` button (`chip-toggle`, alongside
+  the existing per-chip reset button), driven the same way as every other
+  control here - `set_tts_enabled` is sent, and the button only actually
+  flips once the real `tts` state delta comes back over the socket, never
+  optimistically. `demo.html`'s module chips are static markup predating
+  `index.html`'s `#modulesPanel` refactor, so the module-health side of
+  this (and the pre-existing "backend health" demo buttons) cannot be
+  exercised there; see `tasks/bug_reports/2026-08-10-demo-html-static-
+  module-chips.md`. Verified directly against `index.html` instead.
+
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).

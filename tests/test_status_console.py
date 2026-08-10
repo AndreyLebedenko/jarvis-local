@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     LanCameraSource,
@@ -1922,6 +1923,43 @@ async def test_save_config_selection_writes_iteration_2_sections(tmp_path):
     assert settings.ui.language == "ru"
     assert settings.vad.threshold == 0.7
     assert settings.tts.languages["en"].model == "voices/en.onnx"
+
+
+async def test_save_config_selection_writes_tts_enabled(tmp_path):
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection("new-model", "USB Headset", tts_enabled=False)
+    await asyncio.sleep(0.05)
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.tts.enabled is False
+
+
+async def test_set_tts_enabled_schedules_the_mute_state_transition():
+    bus = EventBus()
+    changes: list[TtsSpeechEnabledChanged] = []
+
+    async def on_changed(event: TtsSpeechEnabledChanged) -> None:
+        changes.append(event)
+
+    bus.subscribe(TtsSpeechEnabledChanged, on_changed)
+    tts_mute_state = TtsMuteState(bus)
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        tts_mute_state=tts_mute_state,
+    )
+
+    api.set_tts_enabled(False)
+    await asyncio.sleep(0.05)
+
+    assert tts_mute_state.enabled is False
+    assert changes == [TtsSpeechEnabledChanged(enabled=False)]
 
 
 async def test_save_config_selection_rejects_out_of_range_vad(tmp_path):

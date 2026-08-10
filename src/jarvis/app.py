@@ -23,6 +23,7 @@ from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_liste
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
+from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BUILTIN_TOOL_PROVIDER_NAME,
@@ -1162,6 +1163,7 @@ class App:
     mcp_host: McpHost | None = None
     camera_state: CameraState = field(default_factory=CameraState)
     camera_capture: CameraCapture | None = None
+    tts_mute_state: TtsMuteState | None = None
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1248,11 +1250,13 @@ def build_app(
     # for why (sounddevice's play()/wait() share one implicit stream per
     # process; concurrent calls stop/replace each other, not mix).
     playback_lock = asyncio.Lock()
+    tts_mute_state = TtsMuteState(bus, enabled=settings.tts.enabled)
     tts_output = tts_output or TtsOutput(
         settings.tts,
         engine=build_tts_engine(settings.tts),
         playback_lock=playback_lock,
         bus=bus,
+        mute_state=tts_mute_state,
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
     camera_state = CameraState(settings.camera.enabled)
@@ -1478,6 +1482,7 @@ def build_app(
         mcp_host=mcp_host,
         camera_state=camera_state,
         camera_capture=camera_capture,
+        tts_mute_state=tts_mute_state,
     )
 
 
@@ -1537,6 +1542,30 @@ def _camera_health(is_enabled: bool, language: str) -> ModuleHealth:
     )
 
 
+def _tts_health(is_enabled: bool, language: str) -> ModuleHealth:
+    # Mirrors _microphone_health/_camera_health: seeds the honest muted/
+    # ready distinction (module_health.py's own transition rules apply
+    # afterward) so a muted-by-default config never starts the session
+    # looking like an unremarkable "unavailable" chip.
+    return ModuleHealth(
+        module=ModuleId.TTS,
+        status=HealthStatus.OK if is_enabled else HealthStatus.UNAVAILABLE,
+        detail=ui_text(
+            "tts_detail_ready" if is_enabled else "tts_detail_muted", language
+        ),
+    )
+
+
+def _seed_tts_module_health(app: App, live_console: LiveStatusConsole) -> None:
+    # None only for test fixtures that construct App(...) directly without
+    # build_app() (matches visibility_mode/mcp_host's own None convention).
+    if app.tts_mute_state is None or live_console.transport is None:
+        return
+    live_console.transport.set_module_health(
+        _tts_health(app.tts_mute_state.enabled, app.settings.ui.language)
+    )
+
+
 def create_live_status_console(
     app: App,
     *,
@@ -1556,6 +1585,7 @@ def create_live_status_console(
         mcp_host=app.mcp_host,
         camera_state=app.camera_state,
         camera_capture=app.camera_capture,
+        tts_mute_state=app.tts_mute_state,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
@@ -1589,6 +1619,7 @@ def wire_status_console(
     live_console.transport.set_module_health(
         _camera_health(app.camera_state.enabled, app.settings.ui.language)
     )
+    _seed_tts_module_health(app, live_console)
 
     async def on_runtime_state_changed(event: RuntimeStateChanged) -> None:
         substatus = event.substatus_text
@@ -1847,6 +1878,14 @@ def wire(app: App) -> list[Subscription]:
     async def on_interrupt_requested(event: InterruptRequested) -> None:
         await _on_interrupt_requested(app, event)
 
+    async def on_tts_speech_enabled_changed(event: TtsSpeechEnabledChanged) -> None:
+        # Mute-gating (on_token/on_response_complete) reads the state owner
+        # directly (see tts.py); this is the other half - stopping whatever
+        # is already in flight the instant the user mutes, mirroring the
+        # existing barge-in interrupt's own tts_output.cancel() call above.
+        if not event.enabled:
+            app.tts_output.cancel()
+
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
         # Unconditional, like every subscription here: on_utterance_captured
@@ -1862,6 +1901,7 @@ def wire(app: App) -> list[Subscription]:
         (MicrophoneCaptureFailed, on_microphone_capture_failed),
         (ReasoningLevelChanged, on_reasoning_level_changed),
         (InterruptRequested, on_interrupt_requested),
+        (TtsSpeechEnabledChanged, on_tts_speech_enabled_changed),
     ]
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
@@ -2117,6 +2157,11 @@ def run_with_status_console(
             runtime_state=RuntimeState.WARMING,
             reasoning_level=app.thinking_mode.level,
             visibility_mode=app.visibility_mode.mode,
+            tts_enabled=(
+                app.tts_mute_state.enabled
+                if app.tts_mute_state is not None
+                else settings.tts.enabled
+            ),
             language=settings.ui.language,
             config_values=config_values_payload(settings),
             debug=debug,

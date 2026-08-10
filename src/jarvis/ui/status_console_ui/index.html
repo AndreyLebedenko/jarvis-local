@@ -154,6 +154,10 @@
     </div>
     <div class="config-section-label" data-i18n="config_tts_section_label">Speech synthesis (TTS)</div>
     <div class="config-field config-field-checkbox">
+      <label for="ttsEnabled" data-i18n="config_tts_enabled_label">Speak responses</label>
+      <input type="checkbox" id="ttsEnabled" onchange="onTtsEnabledChanged()">
+    </div>
+    <div class="config-field config-field-checkbox">
       <label for="ttsCustomRoutes" data-i18n="config_tts_custom_label">Configure per-language voices</label>
       <input type="checkbox" id="ttsCustomRoutes" onchange="onTtsRoutingModeChanged()">
     </div>
