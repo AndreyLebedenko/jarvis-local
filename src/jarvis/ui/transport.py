@@ -36,6 +36,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import (
     MAX_ATTACHMENTS_PER_TURN,
     MAX_TOTAL_UPLOAD_BYTES_PER_TURN,
@@ -617,6 +618,7 @@ class UiTransportServer:
         journal_consolidation_planner: ConsolidationPlanner | None = None,
         journal_consolidation_executor: ConsolidationExecutor | None = None,
         memory_file_repository: MemoryFileRepository | None = None,
+        max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
     ) -> None:
         self._bus = bus
         self._control_api = control_api
@@ -644,6 +646,9 @@ class UiTransportServer:
         self._journal_consolidation_planner = journal_consolidation_planner
         self._journal_consolidation_executor = journal_consolidation_executor
         self._memory_file_repository = memory_file_repository
+        self._max_audio_attachment_seconds = (
+            max_audio_attachment_clips * MAX_CLIP_SECONDS
+        )
         visibility = cast(JsonObject, self._state.snapshot()["visibility"])
         self._visibility_mode = VisibilityMode(cast(str, visibility["mode"]))
         self._runner: web.AppRunner | None = None
@@ -971,7 +976,9 @@ class UiTransportServer:
             payload["files"] = []
             return web.json_response(payload)
 
-        plan = plan_attachments(uploads)
+        plan = plan_attachments(
+            uploads, max_audio_seconds=self._max_audio_attachment_seconds
+        )
         result = await self._journal_attachment_submitter(typed_text, plan)
         return web.json_response(
             self._attachment_submission_payload(result, plan, pre_rejected_files)

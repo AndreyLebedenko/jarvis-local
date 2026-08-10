@@ -24,6 +24,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import AttachmentPlan
 from jarvis.journal import (
     HISTORY_SEARCH_MAX_RESULTS,
@@ -796,6 +797,20 @@ def test_turn_data_source_keeps_the_widest_declared_boundary():
     state.record_tool_boundary(DataBoundary.LAN)
 
     assert state.snapshot()["data_source"] == {"source": "internet"}
+
+
+def test_max_audio_attachment_clips_defaults_to_the_attachment_policy_cap():
+    server = UiTransportServer(EventBus(), _FakeControlApi())
+
+    assert server._max_audio_attachment_seconds == MAX_CLIPS_PER_FILE * MAX_CLIP_SECONDS
+
+
+def test_max_audio_attachment_clips_is_configurable():
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), max_audio_attachment_clips=7
+    )
+
+    assert server._max_audio_attachment_seconds == 7 * MAX_CLIP_SECONDS
 
 
 def test_debug_is_off_by_default_in_the_snapshot():

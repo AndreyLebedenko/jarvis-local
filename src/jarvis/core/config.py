@@ -407,6 +407,16 @@ class ClipboardSettings:
 
 
 @dataclass(frozen=True)
+class AttachmentSettings:
+    # Clips, not seconds: MAX_CLIP_SECONDS (30 s) is the verified Ollama
+    # per-clip ceiling (PROJECT.md) and is not configurable here. 3 clips
+    # (90 s) is the attachment policy's own default
+    # (tasks/attachment-policy-v1.6.0.md) - see config.example.toml for the
+    # danger warning above this field.
+    max_audio_clips: int = 3
+
+
+@dataclass(frozen=True)
 class McpToolAdapterSettings:
     """Maps one provider tool onto Jarvis's stable public tool surface."""
 
@@ -651,6 +661,7 @@ class Settings:
     camera: CameraSettings = field(default_factory=CameraSettings)
     sound_cues: SoundCueSettings = field(default_factory=SoundCueSettings)
     clipboard: ClipboardSettings = field(default_factory=ClipboardSettings)
+    attachments: AttachmentSettings = field(default_factory=AttachmentSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
     ui: UiSettings = field(default_factory=UiSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
@@ -670,6 +681,7 @@ _SECTIONS: dict[str, type] = {
     "camera": CameraSettings,
     "sound_cues": SoundCueSettings,
     "clipboard": ClipboardSettings,
+    "attachments": AttachmentSettings,
     "microphone": MicrophoneSettings,
     "ui": UiSettings,
     "prompts": PromptSettings,
@@ -737,6 +749,8 @@ def _build_section(
         return _build_history_section(section_name, raw)
     if cls is CameraSettings:
         return _build_camera_section(section_name, raw)
+    if cls is AttachmentSettings:
+        return _build_attachments_section(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -876,6 +890,18 @@ def _build_plain_section(section_name: str, cls: type, raw: dict[str, Any]) -> A
             )
         kwargs[name] = value
     return cls(**kwargs)
+
+
+def _build_attachments_section(
+    section_name: str, raw: dict[str, Any]
+) -> "AttachmentSettings":
+    settings = _build_plain_section(section_name, AttachmentSettings, raw)
+    if settings.max_audio_clips < 1:
+        raise ConfigError(
+            f"[{section_name}].max_audio_clips must be a positive integer, "
+            f"got {settings.max_audio_clips}"
+        )
+    return settings
 
 
 def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":

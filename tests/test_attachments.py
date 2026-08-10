@@ -304,6 +304,25 @@ def test_rejects_audio_over_the_max_duration():
     assert "exceeds" in item.rejection_reason
 
 
+def test_max_audio_seconds_override_rejects_below_the_default_limit():
+    upload = _audio_upload("memo.wav", duration_seconds=15.0)
+
+    plan = plan_attachments([upload], max_audio_seconds=10.0)
+
+    (item,) = plan.items
+    assert item.accepted is False
+    assert "exceeds" in item.rejection_reason
+
+
+def test_max_audio_seconds_override_accepts_above_the_default_limit():
+    upload = _audio_upload("long.wav", duration_seconds=MAX_AUDIO_SECONDS + 30.0)
+
+    plan = plan_attachments([upload], max_audio_seconds=MAX_AUDIO_SECONDS + 60.0)
+
+    (item,) = plan.items
+    assert item.accepted is True
+
+
 def test_rejects_corrupt_audio_bytes():
     upload = AttachmentUpload(
         filename="broken.wav", content_type="audio/wav", data=b"not a wav file"
