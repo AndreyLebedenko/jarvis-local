@@ -250,6 +250,61 @@ function applyMcpState(payload) {
   renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
 }
 
+// task-ui-ux-5: the approved icon set (outline style, 24px viewBox,
+// currentColor - see .icon in style.css). One source of truth here rather
+// than duplicating path data into index.html/demo.html; static buttons
+// that need one (New context, the Memory/Annotations/Consolidation
+// toolbar) get it attached once at load by _attachStaticIcons() below.
+const ICON_PATHS = {
+  new: '<path d="M12 5v14M5 12h14"/>',
+  continue: '<path d="M6 4v7a4 4 0 0 0 4 4h8"/><path d="M14 11l4 4-4 4"/>',
+  delete: '<path d="M5 7h14"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>' +
+    '<path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>',
+  memory: '<path d="M6 4h11a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/>' +
+    '<path d="M8 8h2M11 8h6M11 12h6M11 16h4"/>',
+  annotations: '<path d="M12 3h6a1 1 0 0 1 1 1v6l-9 9-7-7 9-9z"/>' +
+    '<circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
+  consolidation: '<path d="M12 4l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>',
+};
+
+// aria-hidden because every call site pairs the icon with a text label or
+// sets its own aria-label on the button - the icon carries no meaning a
+// screen reader user would otherwise miss (test_the_tool_row_tooltip_
+// never_becomes_the_accessible_name's rule extends to icons the same way
+// it already applies to the tooltip: decoration is not the accessible
+// name).
+function _icon(name) {
+  // A throwaway HTML wrapper, not createElementNS: the HTML parser enters
+  // SVG insertion mode on its own the moment it sees an <svg> start tag
+  // (same rule that lets `<svg>...</svg>` sit directly in index.html), so
+  // the returned node is a real, correctly-namespaced SVG element without
+  // this file ever writing out the XML namespace URI - which is also
+  // exactly what tripped the "no network-loaded assets" check style.css
+  // hit under task-ui-ux-4 (see that file's select rule): the URI string
+  // is never fetched, but the literal text alone is enough to match.
+  const wrapper = document.createElement("span");
+  wrapper.innerHTML = `<svg viewBox="0 0 24 24" class="icon" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
+  return wrapper.firstElementChild;
+}
+
+// Static markup (index.html) ships icon-less on purpose, so ICON_PATHS
+// above stays the only place an icon's shape is written down. Runs on
+// every surface that loads app.js; demo.html has no Journal markup, so
+// its lookups simply miss and skip, same pattern as the radio-group init
+// below.
+function _attachStaticIcons() {
+  for (const [id, icon] of [
+    ["journalNewContextButton", "new"],
+    ["journalMemoryToggle", "memory"],
+    ["journalAnnotationToggle", "annotations"],
+    ["journalConsolidationToggle", "consolidation"],
+  ]) {
+    const button = document.getElementById(id);
+    if (button) button.prepend(_icon(icon));
+  }
+}
+
 // The visible label names a capability, because this list is a list of
 // permissions - a user hunting for the camera switch should not have to
 // read snake_case. Only tools we ship get a curated label: inventing a
@@ -369,6 +424,7 @@ function _toolRowMenuEntries(row) {
     },
     {
       label: uiString("tool_row_copy_name"),
+      icon: _icon("copy"),
       run: () => _copyToClipboardWithLabelFlash(row.dataset.toolName, label),
     },
   ];
@@ -1083,7 +1139,10 @@ async function toggleJournalMemoryPanel() {
   if (_journalMemoryOpen && !_confirmDiscardJournalMemoryChanges()) return;
   _journalMemoryOpen = !_journalMemoryOpen;
   document.getElementById("journalMemoryPanel").hidden = !_journalMemoryOpen;
-  document.getElementById("journalMemoryToggle").textContent = uiString(
+  // task-ui-ux-5: targets the inner .toggle-label span, not the button
+  // itself - the button now also carries a prepended icon (_attachStaticIcons())
+  // that a blind button.textContent write would silently delete.
+  document.querySelector("#journalMemoryToggle .toggle-label").textContent = uiString(
     _journalMemoryOpen ? "journal_memory_close" : "journal_memory_open");
   if (_journalMemoryOpen) await loadJournalMemoryFiles();
 }
@@ -1093,8 +1152,8 @@ function _clearJournalMemoryPanel() {
   _journalMemoryFiles = new Map();
   const panel = document.getElementById("journalMemoryPanel");
   if (panel) panel.hidden = true;
-  const toggle = document.getElementById("journalMemoryToggle");
-  if (toggle) toggle.textContent = uiString("journal_memory_open");
+  const toggleLabel = document.querySelector("#journalMemoryToggle .toggle-label");
+  if (toggleLabel) toggleLabel.textContent = uiString("journal_memory_open");
   const files = document.getElementById("journalMemoryFiles");
   if (files) files.replaceChildren();
 }
@@ -1678,8 +1737,15 @@ function _journalSessionElement(session) {
   row.classList.toggle("sel", selected);
   row.setAttribute("aria-selected", String(selected));
 
-  const when = document.createElement("div");
-  when.className = "journal-session-when";
+  // task-ui-ux-5: title leads (the session's identity); date/time/duration/
+  // size collapse into one dimmed meta line beneath it, replacing the old
+  // separate when/size rows - see the CSS comment on .journal-session-title.
+  const title = document.createElement("div");
+  title.className = "journal-session-title";
+  title.textContent = session.title;
+
+  const meta = document.createElement("div");
+  meta.className = "journal-session-meta";
   const date = document.createElement("span");
   date.textContent = _formatJournalDate(session.start_timestamp);
   const time = document.createElement("span");
@@ -1687,24 +1753,19 @@ function _journalSessionElement(session) {
   const duration = document.createElement("span");
   duration.textContent = _formatJournalDuration(
     session.start_timestamp, session.end_timestamp);
-  when.append(date, time, duration);
-
-  const title = document.createElement("div");
-  title.className = "journal-session-title";
-  title.textContent = session.title;
-
-  const size = document.createElement("div");
-  size.className = "journal-session-size";
+  const size = document.createElement("span");
   size.textContent = _formatJournalBytes(_journalUsageBySession.get(session.id) || 0);
+  meta.append(date, time, duration, size);
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.className = "journal-session-delete";
-  deleteButton.textContent = "×";
+  deleteButton.appendChild(_icon("delete"));
   deleteButton.title = uiString(
     session.id === _journalActiveSessionId
       ? "journal_session_active"
       : "journal_session_delete");
+  deleteButton.setAttribute("aria-label", deleteButton.title);
   deleteButton.disabled = session.id === _journalActiveSessionId;
   deleteButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -1714,8 +1775,9 @@ function _journalSessionElement(session) {
   const continueButton = document.createElement("button");
   continueButton.type = "button";
   continueButton.className = "journal-session-continue";
-  continueButton.textContent = "↪";
+  continueButton.appendChild(_icon("continue"));
   continueButton.title = uiString("journal_session_continue");
+  continueButton.setAttribute("aria-label", continueButton.title);
   continueButton.disabled =
     session.id === _journalActiveSessionId ||
     session.id === _journalForkInFlightSessionId;
@@ -1741,7 +1803,7 @@ function _journalSessionElement(session) {
   actions.appendChild(deleteButton);
   actions.appendChild(menuButton);
 
-  row.append(when, title, size, actions);
+  row.append(title, meta, actions);
   row.addEventListener("click", () => selectJournalSession(session.id));
   // Enter/Space/arrows/Home/End are handled by the roving-list keydown
   // listener installed on #journalSessionList (initRovingList() in
@@ -1773,6 +1835,7 @@ function _journalSessionMenuEntries(row) {
     },
     {
       label: uiString("journal_session_copy_title"),
+      icon: _icon("copy"),
       run: () => _copyToClipboardWithJournalStatus(session.title),
     },
   ];
@@ -2225,9 +2288,17 @@ function _journalEventElement(event, position = null) {
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "journal-copy";
-    copy.textContent = uiString("journal_copy_answer");
     copy.title = uiString("journal_copy_answer");
-    copy.addEventListener("click", () => copyJournalAnswer(event.text, copy));
+    copy.appendChild(_icon("copy"));
+    // task-ui-ux-5: the flash-to-"Copied" text lands on this label span,
+    // not the button itself - flashing button.textContent would also wipe
+    // the icon just appended above and never bring it back (textContent
+    // read/write only sees flattened text, so "restoring the original"
+    // afterward would restore flat text, permanently losing the icon).
+    const copyLabel = document.createElement("span");
+    copyLabel.textContent = uiString("journal_copy_answer");
+    copy.appendChild(copyLabel);
+    copy.addEventListener("click", () => copyJournalAnswer(event.text, copyLabel));
     meta.appendChild(copy);
   }
   const menuButton = document.createElement("button");
@@ -2290,6 +2361,7 @@ function _journalMessageMenuEntries(row) {
   return [
     copyButton && {
       label: uiString("journal_copy_answer"),
+      icon: _icon("copy"),
       run: () => copyButton.click(),
     },
     transcriptGenerate && {
@@ -2527,7 +2599,7 @@ async function toggleJournalAnnotationPanel() {
   }
   _journalAnnotationOpen = !_journalAnnotationOpen;
   document.getElementById("journalAnnotationPanel").hidden = !_journalAnnotationOpen;
-  document.getElementById("journalAnnotationToggle").textContent = uiString(
+  document.querySelector("#journalAnnotationToggle .toggle-label").textContent = uiString(
     _journalAnnotationOpen ? "journal_annotation_close" : "journal_annotation_open");
   if (_journalAnnotationOpen) await _loadJournalAnnotations(_journalSelectedSessionId);
 }
@@ -2539,8 +2611,8 @@ function _clearJournalAnnotationPanel() {
   _journalAnnotationGenerateToken += 1;
   const panel = document.getElementById("journalAnnotationPanel");
   if (panel) panel.hidden = true;
-  const toggle = document.getElementById("journalAnnotationToggle");
-  if (toggle) toggle.textContent = uiString("journal_annotation_open");
+  const toggleLabel = document.querySelector("#journalAnnotationToggle .toggle-label");
+  if (toggleLabel) toggleLabel.textContent = uiString("journal_annotation_open");
   const list = document.getElementById("journalAnnotationList");
   if (list) list.replaceChildren();
   const message = document.getElementById("journalAnnotationMessage");
@@ -2830,7 +2902,7 @@ async function toggleJournalConsolidationPanel() {
   _journalConsolidationOpen = !_journalConsolidationOpen;
   document.getElementById("journalConsolidationPanel").hidden =
     !_journalConsolidationOpen;
-  document.getElementById("journalConsolidationToggle").textContent = uiString(
+  document.querySelector("#journalConsolidationToggle .toggle-label").textContent = uiString(
     _journalConsolidationOpen
       ? "journal_consolidation_close"
       : "journal_consolidation_open");
@@ -2847,8 +2919,8 @@ function _clearJournalConsolidationPanel() {
   _journalConsolidationRemovableCount = 0;
   const panel = document.getElementById("journalConsolidationPanel");
   if (panel) panel.hidden = true;
-  const toggle = document.getElementById("journalConsolidationToggle");
-  if (toggle) toggle.textContent = uiString("journal_consolidation_open");
+  const toggleLabel = document.querySelector("#journalConsolidationToggle .toggle-label");
+  if (toggleLabel) toggleLabel.textContent = uiString("journal_consolidation_open");
   const summary = document.getElementById("journalConsolidationSummary");
   if (summary) summary.textContent = "";
   const list = document.getElementById("journalConsolidationMediaList");
@@ -3163,13 +3235,13 @@ function _toggleJournalPlayback(audio) {
   });
 }
 
-async function copyJournalAnswer(text, button) {
+async function copyJournalAnswer(text, label) {
   try {
     await _writeClipboardText(text);
-    const original = button.textContent;
-    button.textContent = uiString("journal_copy_done");
+    const original = label.textContent;
+    label.textContent = uiString("journal_copy_done");
     window.setTimeout(() => {
-      button.textContent = original;
+      label.textContent = original;
     }, 900);
   } catch (error) {
     console.error("Journal copy failed:", error);
@@ -3305,6 +3377,7 @@ syncRadioGroup(document.getElementById("visibilityToggle"));
 initRadioGroup(document.getElementById("reasoningLevelToggle"));
 syncRadioGroup(document.getElementById("reasoningLevelToggle"));
 initGlobalKeymap();
+_attachStaticIcons();
 registerEscapable({
   isOpen: () => document.getElementById("shutdownConfirmRow")?.classList.contains("show") === true,
   close: hideShutdownConfirm,

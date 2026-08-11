@@ -188,7 +188,7 @@
   <aside class="journal-sessions" aria-labelledby="journalSessionsHeading">
     <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
     <div class="journal-usage" id="journalUsageTotal"></div>
-    <button class="journal-new-context" id="journalNewContextButton" type="button" data-i18n="journal_new_context" onclick="startNewJournalContext()">New context</button>
+    <button class="journal-new-context" id="journalNewContextButton" type="button" onclick="startNewJournalContext()"><span data-i18n="journal_new_context">New context</span></button>
     <label class="journal-solo-toggle" for="journalSoloToggle" title="Restricts this session to its own history: no automatic retrieval, search, or memory files from other sessions.">
       <input type="checkbox" id="journalSoloToggle" onchange="setSoloSessionEnabled()">
       <span data-i18n="journal_solo_label">Solo</span>
@@ -202,9 +202,9 @@
          reorg), where a sibling-of-the-create-action placement previously
          put them). -->
     <div class="journal-feed-toolbar" id="journalFeedToolbar" role="toolbar" aria-label="Journal panels">
-      <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" data-i18n="journal_memory_open" onclick="toggleJournalMemoryPanel()">Memory</button>
-      <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" data-i18n="journal_annotation_open" onclick="toggleJournalAnnotationPanel()">Annotations</button>
-      <button class="journal-consolidation-toggle" id="journalConsolidationToggle" type="button" data-i18n="journal_consolidation_open" onclick="toggleJournalConsolidationPanel()">Consolidation</button>
+      <button class="journal-memory-toggle" id="journalMemoryToggle" type="button" onclick="toggleJournalMemoryPanel()"><span class="toggle-label" data-i18n="journal_memory_open">Memory</span></button>
+      <button class="journal-annotation-toggle" id="journalAnnotationToggle" type="button" onclick="toggleJournalAnnotationPanel()"><span class="toggle-label" data-i18n="journal_annotation_open">Annotations</span></button>
+      <button class="journal-consolidation-toggle" id="journalConsolidationToggle" type="button" onclick="toggleJournalConsolidationPanel()"><span class="toggle-label" data-i18n="journal_consolidation_open">Consolidation</span></button>
     </div>
     <section class="journal-memory-panel" id="journalMemoryPanel" hidden aria-labelledby="journalMemoryHeading">
       <div class="journal-memory-header">

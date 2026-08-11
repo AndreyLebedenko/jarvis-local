@@ -1,6 +1,6 @@
 # Task: TTS enable/disable - runtime toggle plus config default
 
-**Story:** `tasks/story-ui-ux-maturity.md`
+**Story:** `tasks/done/story-ui-ux-maturity.md`
 **Status:** Completed. Human review passed 2026-08-10; merged to main.
 Independent of tasks 1-2 (may be done in parallel); its Status-view toggle
 benefits from task 1's focus/radiogroup work but does not require it.

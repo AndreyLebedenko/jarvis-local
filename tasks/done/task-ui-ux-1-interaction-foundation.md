@@ -1,6 +1,6 @@
 # Task: Interaction foundation - focus, keymap, radiogroup/listbox helpers
 
-**Story:** `tasks/story-ui-ux-maturity.md`
+**Story:** `tasks/done/story-ui-ux-maturity.md`
 **Status:** Completed.
 **Release:** post-v1.8.0 (owner to assign).
 **Created:** 2026-08-09.

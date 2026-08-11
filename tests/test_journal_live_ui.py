@@ -184,7 +184,10 @@ def test_natural_end_releases_the_active_audio_and_resets_the_button():
 def test_assistant_copy_button_copies_recorded_text():
     body = _function_body("_journalEventElement")
     assert 'event.role === "assistant" && event.text' in body
-    assert "copyJournalAnswer(event.text, copy)" in body
+    # task-ui-ux-5: the flash-to-"Copied" text lands on the inner label
+    # span, not the button itself - flashing button.textContent would also
+    # wipe the icon the button now carries and never bring it back.
+    assert "copyJournalAnswer(event.text, copyLabel)" in body
     copy_body = _function_body("copyJournalAnswer", prefix="async function ")
     assert "navigator.clipboard.writeText" in APP_JS
     assert 'document.execCommand("copy")' in APP_JS

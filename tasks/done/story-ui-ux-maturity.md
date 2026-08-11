@@ -1,6 +1,8 @@
 # Story: Status Console UI/UX maturity - interaction, keyboard, TTS toggle
 
-**Status:** Proposed. Task cards 1-4 created 2026-08-09.
+**Status:** Completed 2026-08-11. All task cards done: 1 (interaction
+foundation), 2 (context menus), 3 (TTS toggle), 4 (visual pass - objective
+fixes), 5 (visual pass - subjective restyle, split from 4 on its close).
 **Release:** post-v1.8.0 polish; version to be assigned by the owner. No
 major architectural output (the roadmap's one-major-decision-per-release
 rule is not triggered): this is an interaction-quality pass plus one small
@@ -131,7 +133,7 @@ its mockup-approval gate.
    themed dark, inconsistent local-tool labels fixed (human label primary,
    identifier secondary/dimmed).
 5. **Visual language pass, subjective restyle**
-   (`tasks/task-ui-ux-5-visual-restyle.md`) - design-first, front-end only.
+   (`tasks/task-ui-ux-5-visual-restyle.md`, done) - front-end only.
    Monospace scope, an accent-emphasis scale reconciling the lone purple
    reasoning chip, an icon set, session-card weight. Split out of task 4 on
    its close: the mockup gating this work was produced and approved by the

@@ -1,6 +1,6 @@
 # Task: Visual language pass - hierarchy, typography, honesty fixes
 
-**Story:** `tasks/story-ui-ux-maturity.md`
+**Story:** `tasks/done/story-ui-ux-maturity.md`
 **Status:** Completed.
 **Release:** post-v1.8.0 (owner to assign).
 **Created:** 2026-08-09 (from the owner's live-interface review).
@@ -14,7 +14,7 @@ This card originally carried both the objective fixes (1-3) and the
 subjective design items (4-7). The owner approved the mockup for 4-7 but
 asked to close and merge this card for its objective scope only, splitting
 the (already-approved) subjective restyle into its own follow-up card:
-`tasks/task-ui-ux-5-visual-restyle.md`. Items 4-7 below are kept verbatim
+`tasks/done/task-ui-ux-5-visual-restyle.md`. Items 4-7 below are kept verbatim
 for history/context; they are no longer this card's acceptance criteria -
 see the new card for those.
 
@@ -48,7 +48,7 @@ choices (which do, and go through a mockup the owner signs off first).
    `description`; a `ui_description`/label source may be needed rather
    than reusing the model-facing text - decide in the mockup).
 
-## Subjective design (moved to `task-ui-ux-5-visual-restyle.md`)
+## Subjective design (moved to `tasks/done/task-ui-ux-5-visual-restyle.md`)
 
 4. **Monospace scope.** Reserve the monospace face for genuinely technical
    or tabular data (timestamps, byte sizes, model ids, log lines) and move
@@ -73,13 +73,13 @@ choices (which do, and go through a mockup the owner signs off first).
 - No editable session titles, no command palette, no Status-chip roving
   navigation (those belong to other tasks or are out of story scope).
 - Subjective items (4-7) are out of this card's closed scope; see
-  `task-ui-ux-5-visual-restyle.md`.
+  `tasks/done/task-ui-ux-5-visual-restyle.md`.
 
 ## Acceptance criteria
 
 - [x] An annotated before/after mockup (Status, Journal sidebar/feed,
       Settings TTS section) is produced and approved by the owner
-      (2026-08-11) - implementation moved to `task-ui-ux-5-visual-restyle.md`.
+      (2026-08-11) - implementation moved to `tasks/done/task-ui-ux-5-visual-restyle.md`.
 - [x] Module-chip reset affordances are hidden while `reset_module` is a
       stub; wiring is untouched.
 - [x] Checkboxes and selects match the dark theme in all three views and
@@ -125,7 +125,7 @@ choices (which do, and go through a mockup the owner signs off first).
   name). CSS reuses the existing `--text`/`--text-faint` hierarchy
   (`.chip-label`/`.chip-meta`'s pattern) and does not touch font-family -
   the row stays in its current inherited monospace; swapping that face is
-  item 4, still mockup-gated.
+  item 4, done separately in `tasks/done/task-ui-ux-5-visual-restyle.md`.
 - Verified live in the Browser pane against `index.html` (seeded via the
   exposed `apply*()` functions) across Status, Settings, and Journal:
   reset buttons absent, tool-row checkboxes and Settings
@@ -142,7 +142,7 @@ Journal sidebar/feed, and Settings TTS, plus reference specimens for the
 accent-emphasis scale and icon set. Verified rendering in both light and
 dark themes. Owner reviewed and approved the mockup (2026-08-11), then
 asked to close this card for its objective scope only and split
-implementation of 4-7 into `tasks/task-ui-ux-5-visual-restyle.md`. No
+implementation of 4-7 into `tasks/done/task-ui-ux-5-visual-restyle.md`. No
 CSS/JS for items 4-7 was touched under this card.
 
 **Closed 2026-08-11.** Merged to `main`.
