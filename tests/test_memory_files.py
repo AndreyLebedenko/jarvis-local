@@ -45,6 +45,22 @@ def test_memory_prompt_injects_self_before_memory_with_delimiters() -> None:
     )
 
 
+def test_memory_prompt_omits_files_when_include_memory_is_false() -> None:
+    settings = MemorySettings(root="unused")
+    specs = build_memory_file_specs(settings)
+    reader_values = {
+        specs[MemoryFileId.SELF].path: "persona",
+        specs[MemoryFileId.MEMORY].path: "durable facts",
+    }
+    loader = MemoryFileLoader(specs, reader=reader_values.get)
+
+    prompt = loader.compose_system_prompt("base", include_memory=False)
+
+    assert prompt == "base"
+    assert "persona" not in prompt
+    assert "durable facts" not in prompt
+
+
 def test_memory_prompt_preserves_utf8_content() -> None:
     settings = MemorySettings(root="unused")
     specs = build_memory_file_specs(settings)

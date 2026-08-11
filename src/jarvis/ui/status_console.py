@@ -24,6 +24,7 @@ from jarvis.core.config import (
     update_ui_config_mcp_enabled,
     write_ui_config,
 )
+from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
 from jarvis.inputs.camera import (
@@ -549,6 +550,7 @@ class StatusConsoleApi:
         camera_state: CameraState | None = None,
         camera_capture: CameraCapture | None = None,
         tts_mute_state: TtsMuteState | None = None,
+        solo_session_state: SoloSessionState | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -571,6 +573,7 @@ class StatusConsoleApi:
         self._camera_state = camera_state
         self._camera_capture = camera_capture
         self._tts_mute_state = tts_mute_state or TtsMuteState(bus)
+        self._solo_session_state = solo_session_state or SoloSessionState(bus)
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -635,6 +638,9 @@ class StatusConsoleApi:
 
     def set_tts_enabled(self, enabled: bool) -> None:
         self._schedule(self._tts_mute_state.set_enabled(enabled))
+
+    def set_solo_session_enabled(self, enabled: bool) -> None:
+        self._schedule(self._solo_session_state.set_enabled(enabled))
 
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         if name == CAMERA_TOOL_NAME and self._camera_state is not None:

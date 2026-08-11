@@ -19,6 +19,7 @@ from jarvis.core.config import (
     load_settings,
 )
 from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.core.solo_session import SoloSessionChanged, SoloSessionState
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -1960,6 +1961,31 @@ async def test_set_tts_enabled_schedules_the_mute_state_transition():
 
     assert tts_mute_state.enabled is False
     assert changes == [TtsSpeechEnabledChanged(enabled=False)]
+
+
+async def test_set_solo_session_enabled_schedules_the_state_transition():
+    bus = EventBus()
+    changes: list[SoloSessionChanged] = []
+
+    async def on_changed(event: SoloSessionChanged) -> None:
+        changes.append(event)
+
+    bus.subscribe(SoloSessionChanged, on_changed)
+    solo_session_state = SoloSessionState(bus)
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        solo_session_state=solo_session_state,
+    )
+
+    api.set_solo_session_enabled(True)
+    await asyncio.sleep(0.05)
+
+    assert solo_session_state.enabled is True
+    assert changes == [SoloSessionChanged(enabled=True)]
 
 
 async def test_save_config_selection_rejects_out_of_range_vad(tmp_path):

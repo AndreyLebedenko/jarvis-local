@@ -24,6 +24,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionReason,
     TextSubmissionResult,
 )
+from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import AttachmentPlan
@@ -110,6 +111,9 @@ class _FakeControlApi:
 
     def set_tts_enabled(self, enabled: bool) -> None:
         self.calls.append(("set_tts_enabled", str(enabled)))
+
+    def set_solo_session_enabled(self, enabled: bool) -> None:
+        self.calls.append(("set_solo_session_enabled", str(enabled)))
 
     def set_tool_enabled(self, name: str, enabled: bool) -> None:
         self.calls.append(("set_tool_enabled", name, str(enabled)))
@@ -856,6 +860,17 @@ def test_set_tts_enabled_control_requires_boolean_target():
         server._dispatch_control("set_tts_enabled", {"enabled": "false"})
 
 
+def test_set_solo_session_enabled_control_requires_boolean_target():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control("set_solo_session_enabled", {"enabled": True})
+
+    assert control_api.calls == [("set_solo_session_enabled", "True")]
+    with pytest.raises(ProtocolError, match="arguments.enabled"):
+        server._dispatch_control("set_solo_session_enabled", {"enabled": "true"})
+
+
 def test_tts_enabled_defaults_to_true_in_the_snapshot():
     state = UiStateStore()
 
@@ -876,6 +891,28 @@ async def test_tts_speech_enabled_changed_projects_into_the_tts_state():
     await bus.publish(TtsSpeechEnabledChanged, TtsSpeechEnabledChanged(enabled=False))
 
     assert server.state.snapshot()["tts"] == {"enabled": False}
+
+
+def test_solo_session_enabled_defaults_to_false_in_the_snapshot():
+    state = UiStateStore()
+
+    assert state.snapshot()["solo_session"] == {"enabled": False}
+
+
+def test_solo_session_enabled_seeds_from_constructor():
+    state = UiStateStore(solo_session_enabled=True)
+
+    assert state.snapshot()["solo_session"] == {"enabled": True}
+
+
+async def test_solo_session_changed_projects_into_the_solo_session_state():
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+
+    await bus.publish(SoloSessionChanged, SoloSessionChanged(enabled=True))
+
+    assert server.state.snapshot()["solo_session"] == {"enabled": True}
 
 
 def test_set_tool_enabled_control_requires_name_and_boolean_target():

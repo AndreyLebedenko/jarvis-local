@@ -36,6 +36,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionReason,
     TextSubmissionResult,
 )
+from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import (
@@ -347,6 +348,8 @@ class ControlApi(Protocol):
 
     def set_tts_enabled(self, enabled: bool) -> None: ...
 
+    def set_solo_session_enabled(self, enabled: bool) -> None: ...
+
     def set_tool_enabled(self, name: str, enabled: bool) -> None: ...
 
     def reset_context(self) -> None: ...
@@ -412,6 +415,7 @@ class UiStateStore:
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         tts_enabled: bool = True,
+        solo_session_enabled: bool = False,
         language: str = DEFAULT_UI_LANGUAGE,
         config_values: JsonObject | None = None,
         debug: bool = False,
@@ -432,6 +436,7 @@ class UiStateStore:
             "debug": {"enabled": debug},
             "mcp": {"status": "off", "enabled": False, "tools": []},
             "tts": {"enabled": tts_enabled},
+            "solo_session": {"enabled": solo_session_enabled},
             "model": {"label": model_label},
             "system_events": [],
             "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
@@ -517,6 +522,9 @@ class UiStateStore:
 
     def set_tts_state(self, enabled: bool) -> JsonObject | None:
         return self._replace("tts", {"enabled": enabled})
+
+    def set_solo_session_state(self, enabled: bool) -> JsonObject | None:
+        return self._replace("solo_session", {"enabled": enabled})
 
     def set_last_model_request(self, summary: ModelRequestSummary) -> JsonObject | None:
         return self._replace(
@@ -811,6 +819,9 @@ class UiTransportServer:
     def set_tts_enabled(self, enabled: bool) -> None:
         self._publish_delta(self._state.set_tts_state(enabled))
 
+    def set_solo_session_enabled(self, enabled: bool) -> None:
+        self._publish_delta(self._state.set_solo_session_state(enabled))
+
     def set_last_model_request(self, summary: ModelRequestSummary) -> None:
         self._publish_delta(self._state.set_last_model_request(summary))
 
@@ -830,6 +841,7 @@ class UiTransportServer:
             (ReasoningLevelChanged, self._on_reasoning_level_changed),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (TtsSpeechEnabledChanged, self._on_tts_speech_enabled_changed),
+            (SoloSessionChanged, self._on_solo_session_changed),
             (ModuleHealthChanged, self._on_module_health_changed),
             (ModelRequestStarted, self._on_model_request_started),
             (ToolCallStarted, self._on_tool_call_started),
@@ -858,6 +870,9 @@ class UiTransportServer:
         self, event: TtsSpeechEnabledChanged
     ) -> None:
         self.set_tts_enabled(event.enabled)
+
+    async def _on_solo_session_changed(self, event: SoloSessionChanged) -> None:
+        self.set_solo_session_enabled(event.enabled)
 
     async def _on_module_health_changed(self, event: ModuleHealthChanged) -> None:
         # One mechanism for every module (v1.2.14 task 2): the tracker
@@ -2163,6 +2178,7 @@ class UiTransportServer:
             "set_reasoning_level": self._set_reasoning_level,
             "set_mcp_enabled": self._set_mcp_enabled,
             "set_tts_enabled": self._set_tts_enabled,
+            "set_solo_session_enabled": self._set_solo_session_enabled,
             "set_tool_enabled": self._set_tool_enabled,
             "reset_context": self._reset_context,
             "reset_module": self._reset_module,
@@ -2202,6 +2218,14 @@ class UiTransportServer:
         if not isinstance(enabled, bool):
             raise ProtocolError("set_tts_enabled requires arguments.enabled boolean")
         self._control_api.set_tts_enabled(enabled)
+
+    def _set_solo_session_enabled(self, arguments: JsonObject) -> None:
+        enabled = arguments.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ProtocolError(
+                "set_solo_session_enabled requires arguments.enabled boolean"
+            )
+        self._control_api.set_solo_session_enabled(enabled)
 
     def _set_tool_enabled(self, arguments: JsonObject) -> None:
         name = arguments.get("name")

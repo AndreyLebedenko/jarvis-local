@@ -71,8 +71,12 @@ class MemoryFileLoader:
             truncated=truncated,
         )
 
-    def compose_system_prompt(self, base_prompt: str) -> str:
+    def compose_system_prompt(
+        self, base_prompt: str, *, include_memory: bool = True
+    ) -> str:
         parts = [base_prompt]
+        if not include_memory:
+            return "\n\n".join(parts)
         for file_id in (MemoryFileId.SELF, MemoryFileId.MEMORY):
             loaded = self.load(file_id)
             if loaded.content == "":

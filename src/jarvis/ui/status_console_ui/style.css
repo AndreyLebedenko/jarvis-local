@@ -641,6 +641,12 @@ html[data-view="settings"] .settings {
 .journal-consolidation-toggle:hover,
 .journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
+.journal-solo-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font: 11px "Consolas", "Cascadia Mono", monospace; color: var(--text-dim);
+  cursor: pointer; padding: 2px 0;
+}
+.journal-solo-toggle:hover { color: var(--cyan); }
 
 /* task-ui-ux-1 sidebar reorg: Memory/Annotations/Consolidation moved out
    of the sessions aside (where they read as three more create-actions)
