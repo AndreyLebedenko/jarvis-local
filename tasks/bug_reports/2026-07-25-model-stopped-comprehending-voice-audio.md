@@ -4,8 +4,10 @@
 tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
-**Status:** Open, blocked on the debug mode
-(`tasks/done/task-debug-mode-and-request-transcript.md`). One mechanism
+**Status:** Open and unblocked as of 2026-08-11. The named blocker, the debug
+mode (`tasks/done/task-debug-mode-and-request-transcript.md`), has shipped, so
+the next step - reproducing the refusal with a full request transcript in hand
+- is now actionable rather than waiting on tooling. One mechanism
 confirmed, one input taxonomy established, and the live first refusal not
 reproducible from anything that can be reconstructed - which is the
 argument for stopping reconstruction here.

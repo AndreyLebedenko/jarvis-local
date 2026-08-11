@@ -3,6 +3,14 @@
 **Detected at commit:** 1539c2abf5388c11a4482f7a583a2a17a67d2e9b
 (task-journal-06 human-run handoff, 2026-07-17, uncommitted working tree
 on branch `task-journal-06-live-feed-and-playback`)
+**Status:** Closed 2026-08-11 as superseded. This report is the first,
+unreproduced sighting of a class of bug that was later reproduced on demand
+and root-caused in
+`tasks/bug_reports/done/2026-07-18-microphone-post-mute-first-capture-degraded.md`
+and fixed by `tasks/done/task-fix-mic-silence-buffer-vad-overload.md`, with
+human-run hardware verification. The recurrence protocol below stays valid as
+a procedure if distorted captures ever reappear; it is no longer a standing
+open investigation.
 
 ## Symptoms
 

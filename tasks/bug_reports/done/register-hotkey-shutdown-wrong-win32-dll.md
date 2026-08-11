@@ -1,6 +1,9 @@
 # RegisterHotKey shutdown uses the wrong Win32 DLL
 
 **Detected at commit:** `65f1e57`
+**Status:** Fixed and verified 2026-07-10; see "Resolution status" below.
+`_CtypesWin32Api.wake()` now calls `user32.PostThreadMessageW`
+(`src/jarvis/inputs/hotkeys.py`), guarded by an injected-DLL regression test.
 
 ## Symptoms
 

@@ -4,6 +4,15 @@ Commit: HEAD at time of writing is `77cc1f1` (task-12 merge); observed on
 the in-progress task-13 branch during its manual handoff (task-13's
 `main.py`/`thinking_mode.py` wiring, not yet committed at observation time).
 
+**Status:** Open as a deferred input, not as an active investigation. The
+symptom was seen once and never reproduced; the buffer-hygiene class of cause
+was separately fixed
+(`tasks/bug_reports/done/stale-audio-buffer-replay-after-mic-stall.md`). What
+keeps this report open is the two follow-ups under "Future considerations",
+both explicitly deferred to "roadmap item 7 (real echo cancellation)" and
+neither implemented. That item now lives in
+`tasks/backlog/experimental-voice-barge-in.md`, which points back here.
+
 ## Symptoms
 
 Human report from `python main.py`, thinking mode enabled via

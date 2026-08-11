@@ -1,7 +1,8 @@
 # Semantic hot-path timeout still leaves the in-process cosine scan unbounded
 
 **Detected at commit:** `f63e961` (`codex/v1.8.0-task17-automatic-retrieval-wiring`).
-**Status:** Open, measured and reconfirmed by task v1.8.0-29 (2026-08-09).
+**Status:** Rejected (will not fix), 2026-08-11. Measured and reconfirmed by
+task v1.8.0-29 (2026-08-09).
 Owner decision: accept as a known, documented limit for the personal-journal
 scale this project targets; not fixed by card 29 (out of its no-backend-
 change boundary). See the task v1.8.0-29 entry in `PROJECT.md` for the

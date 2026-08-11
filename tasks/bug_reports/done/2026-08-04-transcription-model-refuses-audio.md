@@ -3,6 +3,10 @@
 **Detected at commit:** 9248a9f (task-v1.8.0-19 merged into main).
 **Component:** `src/jarvis/journal/transcription.py` (historical transcription
 service), model `gemma4:12b-it-qat` via local Ollama.
+**Status:** Resolved (owner-run, 2026-08-04). The English verbatim framing
+default produced a real transcript instead of a refusal; see "Resolved" at
+the end of this report. The refusal-detection gap listed under "Future
+considerations" is a separate concern and was never part of this symptom.
 
 ## Symptoms
 
