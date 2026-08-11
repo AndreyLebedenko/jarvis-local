@@ -3,8 +3,7 @@
 **Story:** none (standalone, owner request 2026-08-10, follow-up to a Q&A about
 whether Jarvis can create a session that does not reach into past sessions'
 data).
-**Status:** Implemented, pending human review (branch
-`task-solo-session-mode`).
+**Status:** Completed. Human review passed 2026-08-10; merged to main.
 **Created:** 2026-08-10.
 **Scope class:** engine + transport + front-end. No config default (runtime-
 only toggle, like visibility mode/TTS mute).
