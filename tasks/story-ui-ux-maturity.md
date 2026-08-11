@@ -125,13 +125,18 @@ its mockup-approval gate.
      existing per-language voice block beneath it (which today is a wall
      of raw fields with no on/off).
 
-4. **Visual language pass** (`tasks/task-ui-ux-4-visual-pass.md`) -
-   design-first, front-end only. Splits objective fixes (dead `↺` reset
-   affordances, OS-light native form controls, inconsistent local-tool
-   labels) from subjective design work (monospace scope, an accent-emphasis
-   scale reconciling the lone purple reasoning chip, an icon set, session-
-   card weight). Gated on an annotated mockup approved by the owner before
-   any restyle lands.
+4. **Visual language pass, objective fixes** (`tasks/task-ui-ux-4-visual-
+   pass.md`, done) - front-end only. Dead `↺` reset affordances hidden
+   (wiring untouched), OS-light native form controls (checkboxes, selects)
+   themed dark, inconsistent local-tool labels fixed (human label primary,
+   identifier secondary/dimmed).
+5. **Visual language pass, subjective restyle**
+   (`tasks/task-ui-ux-5-visual-restyle.md`) - design-first, front-end only.
+   Monospace scope, an accent-emphasis scale reconciling the lone purple
+   reasoning chip, an icon set, session-card weight. Split out of task 4 on
+   its close: the mockup gating this work was produced and approved by the
+   owner (2026-08-11) as part of task 4, and this card implements exactly
+   that approved design.
 
 ## Boundary (whole story)
 

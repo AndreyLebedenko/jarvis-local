@@ -290,17 +290,38 @@ function renderToolList(listId, emptyId, tools) {
     checkbox.addEventListener("change", () => {
       _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
     });
+    // task-ui-ux-4 fix 3: one consistent rule across every row - the human
+    // label leads, the identifier trails as a secondary/dimmed suffix. Only
+    // shown when it differs from the label, so an unlabelled third-party
+    // MCP tool (name falls back to tool.name itself) does not repeat its
+    // own name next to itself.
     const label = document.createElement("span");
-    const parts = [name];
+    label.className = "tool-row-label";
+    const primary = document.createElement("span");
+    primary.className = "tool-row-name";
+    primary.textContent = name;
+    label.appendChild(primary);
+    if (name !== tool.name) {
+      const identifier = document.createElement("span");
+      identifier.className = "tool-row-id";
+      identifier.textContent = tool.name;
+      label.appendChild(identifier);
+    }
+    const metaParts = [];
     // The provider names which server answers; for a builtin tool the
     // card heading already said "local", so repeating it is noise.
     if (tool.provider_kind !== "builtin") {
-      parts.push(tool.provider);
+      metaParts.push(tool.provider);
     }
     if (tool.available !== true) {
-      parts.push(uiString("mcp_tool_unavailable"));
+      metaParts.push(uiString("mcp_tool_unavailable"));
     }
-    label.textContent = parts.join(" - ");
+    if (metaParts.length) {
+      const meta = document.createElement("span");
+      meta.className = "tool-row-meta";
+      meta.textContent = metaParts.join(" - ");
+      label.appendChild(meta);
+    }
     const menuButton = document.createElement("button");
     menuButton.type = "button";
     menuButton.className = "context-menu-button";

@@ -18,6 +18,11 @@ from jarvis.inputs.attachments import AttachmentClass
 from jarvis.journal.consolidation import MediaActionReason
 from jarvis.memory.files import MemoryFileRepository, build_memory_file_specs
 from jarvis.tools.builtin import BuiltinToolProvider
+from jarvis.tools.history import (
+    READ_HISTORY_RANGES_TOOL_NAME,
+    READ_HISTORY_TOOL_NAME,
+    SEARCH_HISTORY_TOOL_NAME,
+)
 from jarvis.tools.registry import ToolRegistry
 from jarvis.ui.status_console import UI_DIR
 
@@ -187,6 +192,26 @@ def test_every_builtin_tool_has_a_capability_label_in_every_language():
         ),
     ).register_tools(registry)
     expected = {f"tool_label_{tool.name}" for tool in registry.all()}
+
+    for language, keys in _strings_js_keys().items():
+        assert expected <= keys, language
+
+
+def test_every_history_tool_has_a_capability_label_in_every_language():
+    """HistoryToolProvider (jarvis.tools.history) is a separate provider
+    from BuiltinToolProvider, so the guard above does not cover it - this
+    was the actual gap behind task-ui-ux-4's "Локальные инструменты mixes
+    human labels with raw identifiers" finding: search_history/read_history/
+    read_history_ranges had no tool_label_* entry and fell back to their
+    snake_case name in the Local tools list."""
+    expected = {
+        f"tool_label_{name}"
+        for name in (
+            SEARCH_HISTORY_TOOL_NAME,
+            READ_HISTORY_TOOL_NAME,
+            READ_HISTORY_RANGES_TOOL_NAME,
+        )
+    }
 
     for language, keys in _strings_js_keys().items():
         assert expected <= keys, language

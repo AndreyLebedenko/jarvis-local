@@ -34,6 +34,11 @@
   --red-tint: rgba(232, 91, 91, 0.1);
   --gray: #6B7684;
   --gray-tint: rgba(107, 118, 132, 0.08);
+
+  /* task-ui-ux-4: tells the browser its own chrome (native select popup,
+     date/number spinners, default scrollbar) should render dark, so parts
+     this file cannot style directly do not fall back to OS-light. */
+  color-scheme: dark;
 }
 
 /* Runtime-state color mapping. WARMING deliberately reuses amber (see
@@ -105,6 +110,37 @@ html, body {
 *::-webkit-scrollbar-corner {
   background: var(--panel);
 }
+
+/* ===== NATIVE FORM CONTROLS (task-ui-ux-4) ===== */
+/* Checkboxes and selects previously rendered with OS-light chrome
+   regardless of color-scheme (see :root), breaking the dark theme.
+   accent-color/appearance keep both fully keyboard-operable - neither
+   property changes focus, Space/Enter, or arrow-key behavior. */
+input[type="checkbox"] {
+  accent-color: var(--cyan);
+  width: 15px; height: 15px;
+  cursor: pointer;
+}
+input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.45; }
+
+select {
+  appearance: none; -webkit-appearance: none;
+  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 12px;
+  padding: 7px 26px 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background-color: var(--panel); color: var(--text);
+  /* Two-gradient chevron (no image asset, so this stays subject to the
+     project's "no network-loaded assets" rule same as everything else
+     here) meeting at a point to read as a downward arrow. */
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+select:hover { border-color: var(--cyan-dim); }
+select:disabled { opacity: 0.45; cursor: not-allowed; }
 
 body {
   display: grid;
@@ -298,7 +334,13 @@ body {
   font-size: 10.5px; font-family: "Consolas", "Cascadia Mono", monospace; color: var(--text-dim);
   margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* task-ui-ux-4: reset_module (status_console.py) only ever publishes a
+   "not implemented" SystemEvent - six repeated affordances whose sole
+   effect was to log "unsupported". Hidden until a real per-module reset
+   exists; app.js's requestModuleReset()/reset_module wiring is untouched,
+   so restoring the affordance later is this one declaration, not a rebuild. */
 .chip-reset {
+  display: none;
   width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border);
   background: none; color: var(--text-faint); cursor: pointer; font-size: 12px;
   flex-shrink: 0; transition: all 0.15s;
@@ -371,6 +413,16 @@ body {
 }
 .mcp-tools li[data-available="false"] { color: var(--text-faint); }
 .mcp-tools-empty { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
+/* task-ui-ux-4 fix 3: human label primary, identifier secondary/dimmed -
+   same text/text-faint hierarchy .chip-label/.chip-meta already use, not a
+   new pattern. Font-family is untouched here (still the row's inherited
+   mono) - swapping the label to the proportional face is item 4, gated on
+   the mockup; this only fixes which text is bright vs dim. */
+.tool-row-label { display: inline-flex; align-items: baseline; gap: 7px; }
+.tool-row-name { color: var(--text); }
+.mcp-tools li[data-available="false"] .tool-row-name { color: var(--text-faint); }
+.tool-row-id { color: var(--text-faint); font-size: 10px; }
+.tool-row-meta { color: var(--text-dim); }
 
 /* Local builtin tools are their own card so the MCP status line and
    button can only be read as describing MCP. The second card costs
@@ -438,7 +490,6 @@ body {
 }
 .config-field { display: flex; flex-direction: column; gap: 4px; }
 .config-field label { font-size: 11.5px; color: var(--text-dim); }
-.config-field select,
 .config-field input[type="number"],
 .config-field input[type="text"] {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 12px;
