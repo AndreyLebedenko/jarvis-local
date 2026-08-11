@@ -4359,6 +4359,71 @@ latency-for-quality trade.
   form - this is a `config.toml`-only value (no live dashboard control
   requested), unlike `[tts].enabled`.
 
+## Architecture (Solo session mode, 2026-08-10)
+
+- `SoloSessionState` (`src/jarvis/core/solo_session.py`) is the single
+  runtime owner of whether the current session is restricted from
+  reading any *other* session's data, mirroring `TtsMuteState`/
+  `VisibilityModeState`: holds `enabled: bool`, publishes
+  `SoloSessionChanged` on a real change only, starts OFF, no config
+  default, never persisted, freely toggleable at any time.
+- **Read-side only by explicit owner decision (2026-08-10).** Turns
+  recorded while solo is on are journaled normally and remain findable
+  by later non-solo sessions once solo is turned off - there is no
+  write-side/permanent isolation and no JournalStore/corpus schema
+  change. A future task could add that; this one deliberately does not.
+- Three independent read channels are gated, each at its own natural
+  enforcement point:
+  1. **Automatic retrieval** (`Orchestrator._resolve_automatic_
+     retrieval`): while solo, `session_ids` is forced to
+     `(current_session_id,)`; if no session has started yet
+     (`journal_recorder` is `None` or has no `session_id`), retrieval is
+     skipped outright (`(), None`) rather than falling through to an
+     unrestricted query.
+  2. **`search_history`** (`tools/history.py`'s `HistoryToolProvider`):
+     while solo, `session_ids` is force-narrowed to the current session
+     regardless of what was requested (the model is never trusted to
+     self-limit), and the response carries `"solo_restricted": true` so
+     the model can honestly explain a narrower-than-usual result.
+  3. **`read_history`/`read_history_ranges`**: while solo, any requested
+     reference/anchor/range outside the current session is rejected with
+     an explicit error - deliberately not folded into the existing
+     `missing_references` signal, since "forbidden" and "absent" are
+     different facts. `HistoryToolProvider` gained `solo_session_state`
+     and a `current_session_id` callable (mirrors `journal_active_
+     session_id`'s existing callable-injection pattern in transport.py).
+- **Memory files** (`self.md`/`memory.md`): `MemoryFileLoader.
+  compose_system_prompt` gained `include_memory: bool = True`; solo
+  passes `False`. `Orchestrator.system_prompt_provider` changed shape
+  from `Callable[[], str]` to `Callable[[bool], str]` (the bool is "solo
+  active right now"), read at `__init__` and every `clear()` call - the
+  three existing session-start moments (`start_new_context`,
+  `fork_from_journal_session`, `reset_context`, all funnel through
+  `clear()`). **Boundary inherited from an existing invariant, not new**:
+  per this file's v1.5.3 note, system prompt composition is sampled at
+  session start only - toggling solo mid-conversation does not
+  retroactively strip memory text already baked into the running system
+  prompt, it takes effect from the next session-start moment, exactly
+  like every other prompt-composition-time setting already behaves.
+- `set_solo_session_enabled` is a plain control command
+  (`transport.py` `_dispatch_control`, `ControlApi.
+  set_solo_session_enabled`, `StatusConsoleApi.
+  set_solo_session_enabled`), validated exactly like `set_tts_enabled`.
+  `UiStateStore` projects a `solo_session: {enabled}` snapshot/delta key
+  (own top-level key, like `tts`), driven by `SoloSessionChanged`.
+- Front-end: a "Solo" checkbox in the Journal sessions sidebar, next to
+  "+ New context" (the sessions UI the owner asked for), non-optimistic
+  like every other control here - a click reverts the native checkbox to
+  its last-known state immediately and only actually flips once the real
+  `solo_session` state delta comes back over the socket.
+- `build_app()` constructs one `SoloSessionState` early and threads the
+  same instance into both `Orchestrator` and `HistoryToolProvider` (the
+  latter's `current_session_id` callable closes over `journal_recorder`,
+  a local assigned later in the same function - safe, since the closure
+  is only ever invoked long after `build_app()` returns, mirroring the
+  `journal_active_session_id` lambda pattern already used in
+  `run_with_status_console()`).
+
 ## Roadmap after v1.0
 
 1. emotion2vec+ intonation side channel (bus subscriber, CPU).

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HISTORY_TOOL_PROVIDER_NAME, DataBoundary, McpSettings
+from jarvis.core.solo_session import SoloSessionState
 from jarvis.journal import (
     AnnotationCandidateIdentity,
     HistoryBatchRead,
@@ -98,6 +99,8 @@ def _provider(
     read_events_result: HistoryEventRefsRead | None = None,
     read_surrounding_result: HistoryEventRangeRead | None = None,
     read_ranges_result: HistoryBatchRead | None = None,
+    solo_session_state: SoloSessionState | None = None,
+    current_session_id: str | None = None,
 ) -> tuple[FakeRepository, FakeRetrievalService, HistoryToolProvider]:
     repository = FakeRepository(
         read_events_result=read_events_result
@@ -110,7 +113,12 @@ def _provider(
     retrieval = FakeRetrievalService(
         retrieval_result or HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
     )
-    provider = HistoryToolProvider(repository=repository, retrieval_service=retrieval)  # type: ignore[arg-type]
+    provider = HistoryToolProvider(
+        repository=repository,  # type: ignore[arg-type]
+        retrieval_service=retrieval,  # type: ignore[arg-type]
+        solo_session_state=solo_session_state,
+        current_session_id=lambda: current_session_id,
+    )
     return repository, retrieval, provider
 
 
@@ -199,6 +207,160 @@ async def test_search_history_returns_grounded_provenance_and_filters() -> None:
     assert item["source_mode"] == "both"
     assert item["truncated"] is True
     assert str(item["text"]).endswith("...")
+
+
+async def test_search_history_reports_solo_restricted_false_by_default() -> None:
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED, returned_count=0
+        )
+    )
+
+    result = await provider.call_tool(SEARCH_HISTORY_TOOL_NAME, {"query": "relay"})
+
+    assert result.structured_content["solo_restricted"] is False
+
+
+async def test_search_history_forces_session_ids_to_current_session_while_solo() -> (
+    None
+):
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    _, retrieval, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED, returned_count=0
+        ),
+        solo_session_state=solo,
+        current_session_id="20260801-100000-ab12",
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "relay", "session_ids": ["20260731-090000-zz99"]},
+    )
+
+    assert result.is_error is False
+    [query] = retrieval.calls
+    assert query.session_ids == ("20260801-100000-ab12",)
+    assert result.structured_content["solo_restricted"] is True
+
+
+async def test_search_history_rejects_while_solo_active_with_no_current_session() -> (
+    None
+):
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    _, retrieval, provider = _provider(solo_session_state=solo, current_session_id=None)
+
+    result = await provider.call_tool(SEARCH_HISTORY_TOOL_NAME, {"query": "relay"})
+
+    assert result.is_error is True
+    assert retrieval.calls == []
+
+
+async def test_search_history_is_unrestricted_when_solo_is_off() -> None:
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=False)
+    _, retrieval, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED, returned_count=0
+        ),
+        solo_session_state=solo,
+        current_session_id="20260801-100000-ab12",
+    )
+
+    result = await provider.call_tool(SEARCH_HISTORY_TOOL_NAME, {"query": "relay"})
+
+    [query] = retrieval.calls
+    assert query.session_ids == ()
+    assert result.structured_content["solo_restricted"] is False
+
+
+async def test_read_history_rejects_reference_outside_current_session_while_solo() -> (
+    None
+):
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    repository, _, provider = _provider(
+        solo_session_state=solo, current_session_id="20260801-100000-ab12"
+    )
+
+    result = await provider.call_tool(
+        READ_HISTORY_TOOL_NAME,
+        {"references": [{"session_id": "20260731-090000-zz99", "event_position": 0}]},
+    )
+
+    assert result.is_error is True
+    assert "Solo mode" in str(result.content)
+    assert "20260731-090000-zz99" in str(result.content)
+    assert repository.read_events_calls == []
+
+
+async def test_read_history_allows_reference_inside_current_session_while_solo() -> (
+    None
+):
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    repository, _, provider = _provider(
+        solo_session_state=solo, current_session_id="20260801-100000-ab12"
+    )
+
+    result = await provider.call_tool(
+        READ_HISTORY_TOOL_NAME,
+        {"references": [{"session_id": "20260801-100000-ab12", "event_position": 0}]},
+    )
+
+    assert result.is_error is False
+    assert repository.read_events_calls == [
+        (JournalEventRef("20260801-100000-ab12", 0),)
+    ]
+
+
+async def test_read_history_anchor_outside_current_session_rejected_while_solo() -> (
+    None
+):
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    repository, _, provider = _provider(
+        solo_session_state=solo, current_session_id="20260801-100000-ab12"
+    )
+
+    result = await provider.call_tool(
+        READ_HISTORY_TOOL_NAME,
+        {"anchor": {"session_id": "20260731-090000-zz99", "event_position": 0}},
+    )
+
+    assert result.is_error is True
+    assert repository.read_surrounding_calls == []
+
+
+async def test_read_history_ranges_rejects_range_outside_session_while_solo() -> None:
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    repository, _, provider = _provider(
+        solo_session_state=solo, current_session_id="20260801-100000-ab12"
+    )
+
+    result = await provider.call_tool(
+        READ_HISTORY_RANGES_TOOL_NAME,
+        {
+            "ranges": [
+                {
+                    "start": {
+                        "session_id": "20260731-090000-zz99",
+                        "event_position": 0,
+                    },
+                    "end": {
+                        "session_id": "20260731-090000-zz99",
+                        "event_position": 1,
+                    },
+                }
+            ]
+        },
+    )
+
+    assert result.is_error is True
+    assert repository.read_ranges_calls == []
 
 
 async def test_search_history_frames_annotation_as_typed_derived_candidate() -> None:

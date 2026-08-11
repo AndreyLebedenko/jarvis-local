@@ -87,6 +87,7 @@ from jarvis.core.lifecycle import (
     TurnAccepted,
     TurnSource,
 )
+from jarvis.core.solo_session import SoloSessionState
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
@@ -291,6 +292,7 @@ def _orchestrator(
     history_retrieval_service=None,
     text_input_max_chars=main_module.DEFAULT_TEXT_INPUT_MAX_CHARS,
     max_audio_attachment_clips=main_module.MAX_CLIPS_PER_FILE,
+    solo_session_state=None,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -307,6 +309,7 @@ def _orchestrator(
         clock=clock,
         text_input_max_chars=text_input_max_chars,
         max_audio_attachment_clips=max_audio_attachment_clips,
+        solo_session_state=solo_session_state,
     )
     return orchestrator, backend, sound_cues
 
@@ -937,6 +940,67 @@ async def test_voice_turn_does_not_invoke_automatic_retrieval():
     assert messages[-1]["content"] == "[голосовое сообщение]"
 
 
+async def test_automatic_retrieval_scopes_to_current_session_while_solo():
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+    )
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus,
+        history_retrieval_service=retrieval_service,
+        journal_recorder=journal_recorder,
+        solo_session_state=solo,
+    )
+
+    await orchestrator.submit_text_input("what did we discuss")
+
+    [query] = retrieval_service.calls
+    assert query.session_ids == (journal_recorder.session_id,)
+
+
+async def test_automatic_retrieval_stays_unrestricted_when_solo_is_off():
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+    )
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=False)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        bus=bus,
+        history_retrieval_service=retrieval_service,
+        journal_recorder=_FakeJournalRecorder(),
+        solo_session_state=solo,
+    )
+
+    await orchestrator.submit_text_input("what did we discuss")
+
+    [query] = retrieval_service.calls
+    assert query.session_ids == ()
+
+
+async def test_automatic_retrieval_is_skipped_while_solo_with_no_session_yet():
+    retrieval_service = _FakeHistoryRetrievalService(
+        HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+    )
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=True)
+    orchestrator, backend, _sound_cues = _orchestrator(
+        bus=bus,
+        history_retrieval_service=retrieval_service,
+        journal_recorder=None,
+        solo_session_state=solo,
+    )
+
+    await orchestrator.submit_text_input("what did we discuss")
+
+    assert retrieval_service.calls == []
+    [(messages, _media)] = backend.calls
+    assert all(
+        "Retrieved history" not in str(message["content"]) for message in messages
+    )
+
+
 async def test_submit_text_input_rejections_are_structured_and_do_not_start_turn():
     still_busy = asyncio.Event()
 
@@ -1506,7 +1570,7 @@ async def test_start_new_context_clears_history_and_records_blank_session(
 ):
     prompts = ["base v1", "base v2"]
 
-    def next_prompt() -> str:
+    def next_prompt(_solo: bool = False) -> str:
         return prompts.pop(0)
 
     store = JournalStore(tmp_path)
@@ -1555,7 +1619,7 @@ async def test_start_new_context_rejects_busy_without_changing_history():
 async def test_system_prompt_provider_is_sampled_on_session_start_only():
     prompts = ["base v1", "base v2", "base v3"]
 
-    def next_prompt() -> str:
+    def next_prompt(_solo: bool = False) -> str:
         return prompts.pop(0)
 
     backend = _FakeBackend()
@@ -1580,6 +1644,40 @@ async def test_system_prompt_provider_is_sampled_on_session_start_only():
     orchestrator.clear()
     await orchestrator.submit_text_input("after reset")
     assert backend.calls[-1][0][0] == {"role": "system", "content": "base v2"}
+
+
+async def test_system_prompt_provider_receives_solo_state_at_session_start():
+    def prompt_for(solo: bool) -> str:
+        return "solo prompt" if solo else "normal prompt"
+
+    bus = EventBus()
+    solo = SoloSessionState(bus, enabled=False)
+    backend = _FakeBackend()
+    orchestrator = Orchestrator(
+        backend,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        system_prompt_provider=prompt_for,
+        solo_session_state=solo,
+    )
+
+    await orchestrator.submit_text_input("first")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "normal prompt"}
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    # Toggling solo mid-conversation must not retroactively change the
+    # prompt already baked into this running session - only the next
+    # session-start moment (clear()) re-samples it.
+    await solo.set_enabled(True)
+    await orchestrator.submit_text_input("still same session")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "normal prompt"}
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.finish_turn()
+
+    orchestrator.clear()
+    await orchestrator.submit_text_input("after new context, solo still on")
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "solo prompt"}
 
 
 async def test_busy_utterance_is_ignored_until_previous_turn_completes():
@@ -3022,6 +3120,18 @@ def test_build_app_seeds_tts_mute_state_from_settings():
     assert app.tts_mute_state.enabled is False
 
 
+def test_build_app_wires_one_shared_solo_session_state():
+    settings = Settings(journal=JournalSettings(enabled=False))
+
+    app = build_app(settings, backend=_FakeBackend(), tts_output=_FakeTtsOutput())
+
+    assert app.solo_session_state is not None
+    assert app.solo_session_state.enabled is False
+    # Same object reaches the Orchestrator - toggling app.solo_session_state
+    # actually changes what the running orchestrator sees, not a copy.
+    assert app.orchestrator._solo_session_state is app.solo_session_state
+
+
 def test_create_live_status_console_shares_one_api_between_surfaces():
     app = _fake_app()
     console = _FakeStatusSurface()
@@ -3518,6 +3628,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
         tts_mute_state=None,
+        solo_session_state=None,
         orchestrator=types.SimpleNamespace(
             submit_text_input=object(),
             on_attachment_submission=object(),

@@ -56,6 +56,7 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.core.log_config import configure_logging
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
+from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import (
@@ -338,16 +339,23 @@ class Orchestrator:
         history_retrieval_service: HistoryRetrievalService | None = None,
         clock: Callable[[], float] | None = None,
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
-        system_prompt_provider: Callable[[], str] | None = None,
+        system_prompt_provider: Callable[[bool], str] | None = None,
         reasoning_prompt_settings: PromptSettings | None = None,
         history_limits: ContextBudgetLimits | None = None,
         max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
+        solo_session_state: SoloSessionState | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
         self._sound_cues = sound_cues
-        self._system_prompt_provider = system_prompt_provider or (lambda: system_prompt)
-        self._system_prompt = self._system_prompt_provider()
+        self._solo_session_state = solo_session_state
+        # The bool argument is "solo active right now" - see clear()'s own
+        # call for why this is read fresh at every session-start moment
+        # rather than once.
+        self._system_prompt_provider = system_prompt_provider or (
+            lambda _solo: system_prompt
+        )
+        self._system_prompt = self._system_prompt_provider(self._is_solo_active())
         self._reasoning_prompt_settings = reasoning_prompt_settings or PromptSettings()
         self._history_limits = (
             history_limits
@@ -451,9 +459,12 @@ class Orchestrator:
         if self._active_chat_task is not None:
             self._active_chat_task.cancel()
 
+    def _is_solo_active(self) -> bool:
+        return self._solo_session_state is not None and self._solo_session_state.enabled
+
     def clear(self) -> None:
         self._history.clear()
-        self._system_prompt = self._system_prompt_provider()
+        self._system_prompt = self._system_prompt_provider(self._is_solo_active())
 
     async def start_new_context(self) -> NewContextResult:
         if self._busy:
@@ -855,7 +866,22 @@ class Orchestrator:
             max_tokens=self._history_limits.recent_history_max_tokens,
             minimum_recent_exchanges=self._history_limits.minimum_recent_exchanges,
         )
-        request = build_automatic_retrieval_request(history_text, recent_history)
+        session_ids: tuple[str, ...] = ()
+        if self._is_solo_active():
+            current_session_id = (
+                self._journal_recorder.session_id
+                if self._journal_recorder is not None
+                else None
+            )
+            # No session started yet: there is nothing of "this session"
+            # to search, and falling through to an unrestricted query
+            # would defeat solo mode rather than just finding nothing.
+            if current_session_id is None:
+                return (), None
+            session_ids = (current_session_id,)
+        request = build_automatic_retrieval_request(
+            history_text, recent_history, session_ids=session_ids
+        )
         if not request.query_text.strip():
             return (), None
 
@@ -1169,6 +1195,7 @@ class App:
     camera_state: CameraState = field(default_factory=CameraState)
     camera_capture: CameraCapture | None = None
     tts_mute_state: TtsMuteState | None = None
+    solo_session_state: SoloSessionState | None = None
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1242,6 +1269,7 @@ def build_app(
     see wire(). Hardware-touching modules (audio_input, tts_output,
     capture_input) are injectable so tests can substitute fakes."""
     bus = bus or EventBus()
+    solo_session_state = SoloSessionState(bus)
     backend = backend or OllamaBackend(bus, settings.backend)
     audio_input = audio_input or AudioInput(
         bus,
@@ -1371,6 +1399,15 @@ def build_app(
     history_tool_provider = HistoryToolProvider(
         repository=history_corpus_repository,
         retrieval_service=history_retrieval_service,
+        solo_session_state=solo_session_state,
+        # journal_recorder is assigned later in this same function; by the
+        # time this closure is actually called (a live tool invocation,
+        # long after build_app() returns) it is always bound.
+        current_session_id=(
+            lambda: journal_recorder.session_id
+            if journal_recorder is not None
+            else None
+        ),
     )
     history_tool_provider.register_tools(tool_registry)
     transcription_service = (
@@ -1454,11 +1491,14 @@ def build_app(
         history_retrieval_service=history_retrieval_service,
         text_input_max_chars=settings.clipboard.max_chars,
         system_prompt_provider=(
-            lambda: memory_loader.compose_system_prompt(settings.prompts.system)
+            lambda solo: memory_loader.compose_system_prompt(
+                settings.prompts.system, include_memory=not solo
+            )
         ),
         reasoning_prompt_settings=settings.prompts,
         history_limits=_history_limits_from_settings(settings.history),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
+        solo_session_state=solo_session_state,
     )
     return App(
         bus=bus,
@@ -1489,6 +1529,7 @@ def build_app(
         camera_state=camera_state,
         camera_capture=camera_capture,
         tts_mute_state=tts_mute_state,
+        solo_session_state=solo_session_state,
     )
 
 
@@ -1592,6 +1633,7 @@ def create_live_status_console(
         camera_state=app.camera_state,
         camera_capture=app.camera_capture,
         tts_mute_state=app.tts_mute_state,
+        solo_session_state=app.solo_session_state,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
@@ -2167,6 +2209,11 @@ def run_with_status_console(
                 app.tts_mute_state.enabled
                 if app.tts_mute_state is not None
                 else settings.tts.enabled
+            ),
+            solo_session_enabled=(
+                app.solo_session_state.enabled
+                if app.solo_session_state is not None
+                else False
             ),
             language=settings.ui.language,
             config_values=config_values_payload(settings),

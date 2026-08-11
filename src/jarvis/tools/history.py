@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 
 from jarvis.core.config import HISTORY_TOOL_PROVIDER_NAME, DataBoundary
+from jarvis.core.solo_session import SoloSessionState
 from jarvis.journal import (
     AnnotationCandidateIdentity,
     HistoryBatchRead,
@@ -55,9 +57,13 @@ class HistoryToolProvider:
         *,
         repository: HistoryCorpusRepository,
         retrieval_service: HistoryRetrievalService,
+        solo_session_state: SoloSessionState | None = None,
+        current_session_id: Callable[[], str | None] | None = None,
     ) -> None:
         self._repository = repository
         self._retrieval_service = retrieval_service
+        self._solo_session_state = solo_session_state
+        self._current_session_id = current_session_id or (lambda: None)
 
     def register_tools(self, registry: ToolRegistry) -> None:
         registry.set_provider_tools(HISTORY_TOOL_PROVIDER_NAME, _history_tools())
@@ -71,15 +77,57 @@ class HistoryToolProvider:
             return self._read_history_ranges(arguments)
         return ToolCallResult(content=f"Unknown history tool: {name}", is_error=True)
 
+    def _solo_active(self) -> bool:
+        return self._solo_session_state is not None and self._solo_session_state.enabled
+
+    def _solo_violation(self, session_ids: set[str]) -> ToolCallResult | None:
+        """None if the call is permitted. While solo is active, every
+        session id a read explicitly names must be the current session -
+        a forbidden reference is a different fact than a missing one, so
+        this is a distinct rejection, never folded into
+        `missing_references`."""
+        if not self._solo_active():
+            return None
+        current = self._current_session_id()
+        outside = session_ids - ({current} if current is not None else set())
+        if not outside:
+            return None
+        return ToolCallResult(
+            content=(
+                "Solo mode is active: history reads are restricted to the "
+                "current session; requested session(s) not permitted: "
+                f"{', '.join(sorted(outside))}"
+            ),
+            is_error=True,
+        )
+
     def _search_history(self, arguments: ToolArguments) -> ToolCallResult:
         parsed = _parse_search_call(arguments)
         if isinstance(parsed, ToolCallResult):
             return parsed
+        session_ids = parsed.session_ids
+        solo_restricted = False
+        if self._solo_active():
+            current = self._current_session_id()
+            if current is None:
+                return ToolCallResult(
+                    content=(
+                        "Solo mode is active but no session has started yet; "
+                        "there is nothing to search."
+                    ),
+                    is_error=True,
+                )
+            # Force-narrowed regardless of what was requested - the model
+            # is never trusted to self-limit; solo_restricted below tells
+            # it (and, if it explains itself, the user) that this search
+            # was narrower than a plain query would otherwise return.
+            session_ids = (current,)
+            solo_restricted = True
         result = self._retrieval_service.retrieve(
             HistoryRetrievalQuery(
                 query=parsed.query,
                 limit=parsed.limit,
-                session_ids=parsed.session_ids,
+                session_ids=session_ids,
                 date_from=parsed.date_from,
                 date_to=parsed.date_to,
                 roles=parsed.roles,
@@ -107,6 +155,7 @@ class HistoryToolProvider:
                 _reference_payload(reference) for reference in result.missing_references
             ],
             "truncated_count": truncated_count,
+            "solo_restricted": solo_restricted,
             "results": items,
         }
         return ToolCallResult(
@@ -119,8 +168,16 @@ class HistoryToolProvider:
         if isinstance(parsed, ToolCallResult):
             return parsed
         if isinstance(parsed, _ReferenceReadCall):
+            violation = self._solo_violation(
+                {reference.session_id for reference in parsed.references}
+            )
+            if violation is not None:
+                return violation
             result = self._repository.read_events(parsed.references)
             return _event_refs_result(result, max_tokens=parsed.max_tokens)
+        violation = self._solo_violation({parsed.anchor.session_id})
+        if violation is not None:
+            return violation
         result = self._repository.read_surrounding(
             parsed.anchor, before=parsed.before, after=parsed.after
         )
@@ -137,6 +194,11 @@ class HistoryToolProvider:
         parsed = _parse_ranges_call(arguments)
         if isinstance(parsed, ToolCallResult):
             return parsed
+        violation = self._solo_violation(
+            {range_.start.session_id for range_ in parsed.ranges}
+        )
+        if violation is not None:
+            return violation
         result = self._repository.read_ranges(parsed.ranges)
         return _batch_read_result(result, max_tokens=parsed.max_tokens)
 

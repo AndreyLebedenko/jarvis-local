@@ -63,6 +63,7 @@ function _applyStateSnapshot(state) {
   applyDebugMode(state.debug || { enabled: false });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
   applyTtsState(state.tts || { enabled: true });
+  applySoloSessionState(state.solo_session || { enabled: false });
   applyModelLabel(state.model);
   _clearSystemEvents();
   (state.system_events || []).forEach(appendSystemEvent);
@@ -84,6 +85,7 @@ function _applyStateDelta(payload) {
     debug: applyDebugMode,
     mcp: applyMcpState,
     tts: applyTtsState,
+    solo_session: applySoloSessionState,
     model: applyModelLabel,
     system_event: appendSystemEvent,
     thinking: applyThinkingMode,
@@ -366,6 +368,26 @@ function applyTtsState(payload) {
 
 function setTtsEnabled() {
   _sendControl("set_tts_enabled", { enabled: !_ttsEnabled });
+}
+
+// Same non-optimistic rule as applyTtsState() above: the checkbox only
+// ever moves via the real solo_session state delta coming back, never on
+// the click itself.
+let _soloSessionEnabled = false;
+
+function applySoloSessionState(payload) {
+  _soloSessionEnabled = payload.enabled === true;
+  const checkbox = document.getElementById("journalSoloToggle");
+  if (checkbox) checkbox.checked = _soloSessionEnabled;
+}
+
+function setSoloSessionEnabled() {
+  const checkbox = document.getElementById("journalSoloToggle");
+  const requested = checkbox ? checkbox.checked : !_soloSessionEnabled;
+  // Revert the native checkbox state immediately - it only actually
+  // moves once applySoloSessionState() is driven by the real delta.
+  if (checkbox) checkbox.checked = _soloSessionEnabled;
+  _sendControl("set_solo_session_enabled", { enabled: requested });
 }
 
 function applyModelLabel(payload) {

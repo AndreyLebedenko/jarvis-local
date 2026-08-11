@@ -189,6 +189,10 @@
     <h2 id="journalSessionsHeading" data-i18n="journal_sessions_title">Sessions</h2>
     <div class="journal-usage" id="journalUsageTotal"></div>
     <button class="journal-new-context" id="journalNewContextButton" type="button" data-i18n="journal_new_context" onclick="startNewJournalContext()">New context</button>
+    <label class="journal-solo-toggle" for="journalSoloToggle" title="Restricts this session to its own history: no automatic retrieval, search, or memory files from other sessions.">
+      <input type="checkbox" id="journalSoloToggle" onchange="setSoloSessionEnabled()">
+      <span data-i18n="journal_solo_label">Solo</span>
+    </label>
     <div id="journalSessionList" role="listbox" aria-labelledby="journalSessionsHeading"></div>
     <div class="journal-empty" id="journalSessionsEmpty" data-i18n="journal_no_sessions">No sessions yet</div>
   </aside>
