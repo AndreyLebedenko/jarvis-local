@@ -233,8 +233,8 @@ body {
 }
 .visibility-toggle button {
   border: none; background: none; color: var(--text-dim);
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
-  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.5px;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 600;
+  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.3px;
 }
 .visibility-toggle button.sel[data-mode="open"] { background: var(--cyan); color: var(--bg); }
 .visibility-toggle button.sel[data-mode="hidden"] { background: var(--violet); color: var(--bg); }
@@ -249,8 +249,8 @@ body {
 }
 .view-toggle button {
   border: none; background: none; color: var(--text-dim);
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
-  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.5px;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 600;
+  padding: 5px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.3px;
 }
 .view-toggle button.sel { background: var(--cyan); color: var(--bg); }
 
@@ -295,7 +295,8 @@ body {
 .chip-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
 .modules-panel { width: min(760px, 100%); }
 .modules-panel h2 {
-  margin: 0 0 8px; color: var(--text-dim); font: 11px "Consolas", "Cascadia Mono", monospace;
+  margin: 0 0 8px; color: var(--text-dim);
+  font: 600 11px "Segoe UI", system-ui, sans-serif;
   letter-spacing: 0.8px; text-transform: uppercase;
 }
 
@@ -377,10 +378,15 @@ body {
 }
 .reasoning-level-toggle button {
   border: none; background: none; color: var(--text-dim);
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
-  padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.3px;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 600;
+  padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.2px;
 }
-.reasoning-level-toggle button.sel { background: var(--violet); color: var(--bg); }
+/* task-ui-ux-5: folded from --violet into the same cyan "selected" look
+   the View and Open/Hidden segmented toggles next to it already use - all
+   three are "one selected option in a row" controls, so the color no
+   longer needs to explain itself as a one-off. --violet stays reserved
+   for Hidden mode. */
+.reasoning-level-toggle button.sel { background: var(--cyan); color: var(--bg); }
 
 .mcp-card {
   width: min(760px, 100%); padding: 14px 18px;
@@ -419,7 +425,10 @@ body {
    mono) - swapping the label to the proportional face is item 4, gated on
    the mockup; this only fixes which text is bright vs dim. */
 .tool-row-label { display: inline-flex; align-items: baseline; gap: 7px; }
-.tool-row-name { color: var(--text); }
+/* task-ui-ux-5: the row itself stays in its inherited mono (.mcp-tools li)
+   for the identifier/meta - only the primary label moves to the
+   proportional face, matching every other capability label in the app. */
+.tool-row-name { color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
 .mcp-tools li[data-available="false"] .tool-row-name { color: var(--text-faint); }
 .tool-row-id { color: var(--text-faint); font-size: 10px; }
 .tool-row-meta { color: var(--text-dim); }
@@ -467,7 +476,7 @@ body {
 }
 .confirm-row.show { display: flex; }
 .confirm-row button {
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 11px; font-weight: 600;
   padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--panel); color: var(--text-dim); cursor: pointer;
 }
@@ -523,11 +532,15 @@ body {
   @media (max-width: 620px) {
     .config-tts-fields { grid-template-columns: 1fr; }
   }
+/* task-ui-ux-5: primary tier - the section's one commit action, solid
+   fill rather than the cyan-tint "secondary" look every other button here
+   used to share regardless of weight. See the ACCENT-EMPHASIS SCALE
+   section below for the other two tiers. */
 .btn-config-apply {
   align-self: flex-start;
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11px; letter-spacing: 0.4px;
-  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--cyan-dim);
-  background: var(--cyan-tint); color: var(--cyan); cursor: pointer; transition: all 0.15s;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 11.5px; font-weight: 700; letter-spacing: 0.2px;
+  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--cyan);
+  background: var(--cyan); color: var(--bg); cursor: pointer; transition: all 0.15s;
 }
 .btn-config-apply:hover { filter: brightness(1.1); }
 /* Disabled until both selectors actually load real options (see app.js's
@@ -550,7 +563,7 @@ body {
    project-wide (see PROJECT.md), so red keeps this visually the most
    severe control on the page. */
 .btn-shutdown {
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 11.5px; letter-spacing: 0.4px;
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.2px;
   padding: 9px 20px; border-radius: 8px; border: 1px solid var(--red-dim);
   background: var(--red-tint); color: var(--red); cursor: pointer; transition: all 0.15s;
 }
@@ -671,7 +684,8 @@ html[data-view="settings"] .settings {
   display: flex; flex-direction: column; gap: 10px;
 }
 .journal-sessions h2 {
-  margin: 0; color: var(--text-dim); font: 11px "Consolas", "Cascadia Mono", monospace;
+  margin: 0; color: var(--text-dim);
+  font: 600 11px "Segoe UI", system-ui, sans-serif;
   letter-spacing: 0.8px; text-transform: uppercase;
 }
 #journalSessionList { display: flex; flex-direction: column; gap: 6px; }
@@ -679,19 +693,31 @@ html[data-view="settings"] .settings {
   color: var(--text-faint);
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
 }
+/* task-ui-ux-5: secondary tier - same cyan-tint fill Enable/Disable and
+   Attach already use, applied consistently here too (these three used to
+   default to a neutral border-only look and only turn cyan-tint on
+   hover, which was the actual inconsistency the accent scale exists to
+   remove - New context has moved to the primary tier below instead). */
 .journal-memory-toggle,
 .journal-annotation-toggle,
-.journal-consolidation-toggle,
-.journal-new-context {
-  height: 28px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--panel-2); color: var(--text-dim); cursor: pointer;
-  font: 11px "Consolas", "Cascadia Mono", monospace;
+.journal-consolidation-toggle {
+  height: 28px; border: 1px solid var(--cyan-dim); border-radius: 6px;
+  background: var(--cyan-tint); color: var(--cyan); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 11px "Segoe UI", system-ui, sans-serif;
 }
 .journal-memory-toggle:hover,
 .journal-annotation-toggle:hover,
-.journal-consolidation-toggle:hover,
-.journal-new-context:hover { border-color: var(--cyan-dim); color: var(--cyan); }
-.journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; }
+.journal-consolidation-toggle:hover { filter: brightness(1.1); }
+/* task-ui-ux-5: primary tier - the sidebar's one create action. */
+.journal-new-context {
+  height: 28px; border: 1px solid var(--cyan); border-radius: 6px;
+  background: var(--cyan); color: var(--bg); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: 700 11px "Segoe UI", system-ui, sans-serif;
+}
+.journal-new-context:hover { filter: brightness(1.1); }
+.journal-new-context:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
 .journal-solo-toggle {
   display: flex; align-items: center; gap: 6px;
   font: 11px "Consolas", "Cascadia Mono", monospace; color: var(--text-dim);
@@ -717,26 +743,32 @@ html[data-view="settings"] .settings {
 }
 .journal-session:hover { border-color: var(--cyan-dim); }
 .journal-session.sel { border-color: var(--cyan-dim); background: var(--cyan-tint); color: var(--text); }
-.journal-session-when {
-  font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px;
-  color: var(--text-faint); display: flex; gap: 8px;
-}
-.journal-session.sel .journal-session-when { color: var(--cyan); }
+/* task-ui-ux-5: the session's identity is its title, so it leads - larger,
+   full-weight, first in both DOM order and reading order. Its color still
+   comes from .journal-session/.journal-session.sel above (dim by default,
+   full-bright when selected), same mechanism as before this task; only
+   the size/weight bump is new. Date/time/duration/size, previously two
+   separate rows (one of them turning cyan on selection - the actual
+   "reads as a clock, not a name" defect), now collapse into one dimmed
+   mono meta line that never changes color on selection - the border/tint
+   above already says "selected" without it. */
 .journal-session-title {
-  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.journal-session-size {
+.journal-session-meta {
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-faint); display: flex; gap: 7px; flex-wrap: wrap;
 }
 .journal-session-actions {
-  grid-row: 1 / span 3; grid-column: 2; align-self: center;
+  grid-row: 1 / span 2; grid-column: 2; align-self: center;
   display: flex; flex-direction: column; gap: 4px;
 }
 .journal-session-delete,
 .journal-session-continue {
   width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--panel); color: var(--text-faint); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
 }
 .journal-session-continue:hover { border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint); }
 .journal-session-delete:hover { border-color: var(--red-dim); color: var(--red); background: var(--red-tint); }
@@ -1018,8 +1050,9 @@ html[data-view="settings"] .settings {
   border-radius: 4px; background: var(--gray-tint); color: var(--text-dim);
 }
 .journal-copy {
+  display: inline-flex; align-items: center; gap: 4px;
   border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
-  color: var(--text-faint); font: 9.5px "Consolas", "Cascadia Mono", monospace;
+  color: var(--text-faint); font: 600 9.5px "Segoe UI", system-ui, sans-serif;
   padding: 2px 6px; cursor: pointer;
 }
 .journal-copy:hover { border-color: var(--cyan-dim); color: var(--cyan); }
@@ -1161,9 +1194,15 @@ html[data-view="settings"] .settings {
 .journal-input-dock button {
   height: 34px; padding: 0 14px; border: 1px solid var(--cyan-dim);
   border-radius: 7px; background: var(--cyan-tint); color: var(--cyan);
-  cursor: pointer; font-size: 12px;
+  cursor: pointer; font-size: 12px; font-weight: 600;
 }
 .journal-input-dock button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* task-ui-ux-5: primary tier - Send is the dock's one commit action;
+   Attach stays secondary (the shared rule above, unchanged look). */
+.journal-input-dock button[type="submit"] {
+  border-color: var(--cyan); background: var(--cyan); color: var(--bg); font-weight: 700;
+}
+.journal-input-dock button[type="submit"]:hover { filter: brightness(1.1); }
 .journal-attachment-list {
   grid-column: 1 / -1; display: flex; flex-direction: column; gap: 5px;
 }
@@ -1251,7 +1290,7 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
   display: flex; flex-direction: column; gap: 1px;
 }
 .context-menu-item {
-  display: block; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
   border: none; border-radius: 5px; background: transparent; color: var(--text-dim);
   font-size: 12px; padding: 6px 10px; cursor: pointer;
 }
@@ -1272,6 +1311,18 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
 }
 .context-menu-button:hover,
 .context-menu-button:focus-visible { border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint); }
+
+/* ===== ICON SET (task-ui-ux-5) ===== */
+/* Outline style matching the console's existing thin-line vocabulary
+   (chip borders, ring, dots): 24px viewBox, currentColor, no fill. Every
+   icon pairs with a visible label or an aria-label on its own button
+   (set in app.js alongside it) - the icon itself is aria-hidden and never
+   the sole accessible name. */
+.icon {
+  width: 13px; height: 13px; flex-shrink: 0;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* ===== RESPONSIVE ===== */
 /* Narrow-width rule (task-ui-02 AC: no overlapping text at narrow widths).

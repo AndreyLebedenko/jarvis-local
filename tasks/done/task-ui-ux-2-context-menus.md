@@ -1,6 +1,6 @@
 # Task: Context menus - reusable menu component, existing-action wiring
 
-**Story:** `tasks/story-ui-ux-maturity.md`
+**Story:** `tasks/done/story-ui-ux-maturity.md`
 **Status:** Completed. Depended on task 1 (uses its focus/keymap/listbox
 primitives).
 **Release:** post-v1.8.0 (owner to assign).

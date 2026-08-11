@@ -4,6 +4,9 @@
 // these to the concrete toggle groups and item lists; that keeps the
 // generic behavior testable/reasoned about on its own and keeps every
 // localized string in the one place strings.js's contract already covers.
+// The same separation holds for icons (task-ui-ux-5): a context-menu
+// entry may carry a prebuilt DOM node under entry.icon, but this file
+// never knows what an icon looks like - only app.js's ICON_PATHS does.
 
 // ---------------------------------------------------------------------
 // Radio groups (view / visibility / reasoning-level toggles)
@@ -280,7 +283,14 @@ function openContextMenu(entries, anchor, returnFocusTo) {
     item.className = "context-menu-item";
     item.setAttribute("role", "menuitem");
     item.tabIndex = -1;
-    item.textContent = entry.label;
+    // entry.icon, when present, is a caller-built DOM node (app.js's
+    // _icon()) - this file stays icon-shape-agnostic, same as it already
+    // stays uiString()-agnostic (see the header comment): it only knows
+    // "an entry may carry a node to prepend", never what an icon is.
+    if (entry.icon) item.appendChild(entry.icon);
+    const label = document.createElement("span");
+    label.textContent = entry.label;
+    item.appendChild(label);
     if (entry.disabled) {
       item.disabled = true;
       item.setAttribute("aria-disabled", "true");
