@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import httpx
@@ -139,6 +140,147 @@ def test_failed_rebuild_preserves_old_index_and_marks_state_unavailable(
     assert failing.state().status is HistoryProjectionStatus.UNAVAILABLE
     assert failing.state().stored_backend == first.configured_backend
     assert [passage.text for passage in failing.list_passages()] == ["old data"]
+
+
+def test_rebuild_skips_only_the_passage_that_fails_to_embed(
+    tmp_path: Path, caplog
+) -> None:
+    # Closes bug report 2026-08-09: one oversized passage rejected by the
+    # embedding backend must not void the whole semantic projection.
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "alpha short"))
+    store.append(_event("20260716-153000-ab12", 1, "assistant", "b" * 5000))
+    store.append(_event("20260716-153000-ab12", 2, "user", "alpha again"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    index = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        _semantic_settings(),
+        _OversizedRejectingEmbedder(max_text_length=100),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        index.rebuild()
+
+    assert index.state().status is HistoryProjectionStatus.ENABLED
+    assert [passage.text for passage in index.list_passages()] == [
+        "alpha short",
+        "alpha again",
+    ]
+    result = index.query(SemanticCandidateQuery("alpha", limit=5))
+    assert result.status is SemanticCandidateStatus.ACCEPTED
+    assert len(result.candidates) == 2
+    assert any(
+        "20260716-153000-ab12:1" in record.getMessage() for record in caplog.records
+    )
+
+
+def test_incomplete_rebuild_is_retried_on_next_startup(tmp_path: Path) -> None:
+    # Bug report 2026-08-09, retry half: a passage skipped because it failed to
+    # embed must get another chance on a normal restart, not stay missing until
+    # the backend identity changes.
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "alpha short"))
+    store.append(_event("20260716-153000-ab12", 1, "assistant", "b" * 5000))
+    repository = _build_corpus(store, tmp_path / "derived")
+    settings = _semantic_settings()
+    first = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        settings,
+        _OversizedRejectingEmbedder(max_text_length=100),
+    )
+    first.rebuild()
+    assert [passage.text for passage in first.list_passages()] == ["alpha short"]
+
+    healed_embedder = _FakeEmbedder()
+    restarted = SemanticPassageIndex(
+        repository, tmp_path / "derived", settings, healed_embedder
+    )
+    restarted.rebuild_if_backend_changed()
+
+    assert healed_embedder.calls  # the incomplete index forced a rebuild
+    assert [passage.text for passage in restarted.list_passages()] == [
+        "alpha short",
+        "b" * 5000,
+    ]
+
+
+def test_complete_rebuild_keeps_the_fast_path_on_next_startup(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "alpha"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    settings = _semantic_settings()
+    SemanticPassageIndex(
+        repository, tmp_path / "derived", settings, _FakeEmbedder()
+    ).rebuild()
+
+    idle_embedder = _FakeEmbedder()
+    restarted = SemanticPassageIndex(
+        repository, tmp_path / "derived", settings, idle_embedder
+    )
+    restarted.rebuild_if_backend_changed()
+
+    assert idle_embedder.calls == []  # complete index skipped the rebuild
+
+
+def test_failed_live_update_marks_index_incomplete_so_restart_rebuilds(
+    tmp_path: Path,
+) -> None:
+    # Bug report 2026-08-09, live-update half: an incremental update that fails
+    # to embed must not leave the persisted index marked complete, or the next
+    # startup would fast-path over the missing passage forever.
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "alpha"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    settings = _semantic_settings()
+    SemanticPassageIndex(
+        repository, tmp_path / "derived", settings, _FakeEmbedder()
+    ).rebuild()
+
+    updating = SemanticPassageIndex(
+        repository, tmp_path / "derived", settings, _FailingEmbedder()
+    )
+    failing = _event("20260716-153000-ab12", 1, "assistant", "beta")
+    updating.project_event(
+        JournalEventRecord(JournalEventRef(failing.session_id, 1), failing)
+    )
+    assert updating.state().status is HistoryProjectionStatus.UNAVAILABLE
+
+    healed = _FakeEmbedder()
+    restarted = SemanticPassageIndex(repository, tmp_path / "derived", settings, healed)
+    restarted.rebuild_if_backend_changed()
+
+    assert healed.calls  # the incomplete flag forced a rebuild
+
+
+def test_rebuild_marks_unavailable_without_leaking_content_when_all_fail(
+    tmp_path: Path, caplog
+) -> None:
+    # Bug report 2026-08-09, degradation half: when every passage fails, the
+    # projection goes unavailable without surfacing any backend error message
+    # (which can echo passage content) in last_error or the logged traceback.
+    secret = "confidential-passage-body-42"
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", secret))
+    store.append(_event("20260716-153000-ab12", 1, "assistant", "beta"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    index = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        _semantic_settings(),
+        _ContentEchoingFailingEmbedder(),
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        index.rebuild()
+
+    state = index.state()
+    assert state.status is HistoryProjectionStatus.UNAVAILABLE
+    assert index.list_passages() == ()
+    assert state.last_error is not None
+    assert secret not in state.last_error
+    assert secret not in caplog.text
 
 
 def test_query_returns_scored_references_without_passage_text(tmp_path: Path) -> None:
@@ -306,6 +448,41 @@ class _FailingEmbedder:
     def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
         del texts
         raise RuntimeError("embedding backend unavailable")
+
+
+class _ContentEchoingFailingEmbedder:
+    """Fails every request with the offending passage text in the message.
+
+    A stand-in for the worst case the projection must defend against: a backend
+    whose error string echoes the prompt. The projection must not surface that
+    message anywhere.
+    """
+
+    def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
+        raise RuntimeError(f"backend rejected prompt: {texts[0]}")
+
+
+class _OversizedRejectingEmbedder:
+    """Rejects any text longer than a cap, one request per text.
+
+    Mirrors ``OllamaEmbeddingProvider._embed_with_client``: it loops over the
+    batch and raises on the first request the backend refuses, exactly how a
+    single oversized passage 500s the whole-batch call while each shorter
+    passage embeds cleanly on its own.
+    """
+
+    def __init__(self, *, max_text_length: int) -> None:
+        self._max_text_length = max_text_length
+        self.calls: list[tuple[str, ...]] = []
+
+    def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
+        self.calls.append(tuple(texts))
+        vectors: list[tuple[float, ...]] = []
+        for text in texts:
+            if len(text) > self._max_text_length:
+                raise RuntimeError(f"passage too long to embed: {len(text)} chars")
+            vectors.append((1.0, 0.0) if "alpha" in text else (0.0, 1.0))
+        return vectors
 
 
 class _TimeoutEmbedder:
