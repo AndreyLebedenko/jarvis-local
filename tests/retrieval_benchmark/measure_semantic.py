@@ -103,12 +103,14 @@ def ollama_embed_function(
     index-time document embedding.
     """
 
-    endpoint = _normalize_host(host) + "/api/embeddings"
+    endpoint = _normalize_host(host) + "/api/embed"
 
     def embed(texts: Sequence[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for text in texts:
-            payload = json.dumps({"model": model, "prompt": text}).encode("utf-8")
+            payload = json.dumps(
+                {"model": model, "input": text, "truncate": True}
+            ).encode("utf-8")
             request = urllib.request.Request(
                 endpoint, data=payload, headers={"Content-Type": "application/json"}
             )
@@ -118,7 +120,7 @@ def ollama_embed_function(
             elapsed = time.perf_counter() - start
             if timings is not None and len(texts) == 1:
                 timings.append(elapsed)
-            vectors.append([float(value) for value in body["embedding"]])
+            vectors.append([float(value) for value in body["embeddings"][0]])
         return vectors
 
     return embed
