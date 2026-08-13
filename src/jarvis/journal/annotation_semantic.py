@@ -41,6 +41,7 @@ from jarvis.journal.lifecycle import (
 from jarvis.journal.semantic import (
     EmbeddingProvider,
     SemanticProjectionSchemaError,
+    embed_texts_resiliently,
 )
 
 CURRENT_ANNOTATION_SEMANTIC_SCHEMA_VERSION = 1
@@ -52,6 +53,7 @@ _MODEL_KEY = "model"
 _DIMENSION_KEY = "dimension"
 _QUERY_PREFIX_KEY = "query_prefix"
 _PASSAGE_PREFIX_KEY = "passage_prefix"
+_COMPLETE_KEY = "complete"
 
 
 class AnnotationSemanticStatus(Enum):
@@ -183,7 +185,10 @@ class AnnotationSemanticIndex:
         if not self._settings.enabled:
             return
         stored = self._read_backend_identity()
-        if stored == self.configured_backend:
+        # An incomplete stored index skipped an annotation that failed to embed;
+        # rebuild so it gets another chance now that a transient cause (a backend
+        # hiccup, a model reloaded with a larger context) may have cleared.
+        if stored == self.configured_backend and not self._stored_index_is_incomplete():
             self._runtime_error = None
             return
         self.rebuild()
@@ -198,11 +203,16 @@ class AnnotationSemanticIndex:
                 for annotation in self._repository.list_all_annotations()
                 if (passage := _passage_from_annotation(annotation)) is not None
             )
-            vectors = self._embedder.embed(
-                [self._settings.passage_prefix + passage.text for passage in passages]
+            texts = [self._settings.passage_prefix + p.text for p in passages]
+            labels = [p.annotation_id for p in passages]
+            kept, vectors = embed_texts_resiliently(
+                self._embedder, texts, labels, self._settings.dimension, self._logger
             )
-            _validate_vectors(vectors, len(passages), self._settings.dimension)
-            self._replace_index(passages, vectors)
+            self._replace_index(
+                [passages[index] for index in kept],
+                vectors,
+                complete=len(kept) == len(passages),
+            )
         except SemanticProjectionSchemaError:
             raise
         except Exception as exc:
@@ -230,6 +240,7 @@ class AnnotationSemanticIndex:
             raise
         except Exception as exc:
             self._mark_unavailable(exc, "annotation semantic update failed")
+            self._mark_stored_index_incomplete()
 
     def delete_annotation_projection(self, annotation_id: str) -> None:
         if not self._db_path.exists():
@@ -330,13 +341,15 @@ class AnnotationSemanticIndex:
         self,
         passages: Sequence[AnnotationSemanticPassage],
         vectors: Sequence[Sequence[float]],
+        *,
+        complete: bool,
     ) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection:
             connection.execute("BEGIN")
             _drop_schema(connection)
             _create_schema(connection)
-            _insert_metadata(connection, self.configured_backend)
+            _insert_metadata(connection, self.configured_backend, complete=complete)
             for passage, vector in zip(passages, vectors, strict=True):
                 _insert_passage(connection, passage, vector)
             connection.commit()
@@ -377,6 +390,39 @@ class AnnotationSemanticIndex:
             query_prefix=metadata[_QUERY_PREFIX_KEY],
             passage_prefix=metadata[_PASSAGE_PREFIX_KEY],
         )
+
+    def _stored_index_is_incomplete(self) -> bool:
+        # A pre-flag index (no "complete" row) is treated as complete: it was
+        # written before per-passage skipping existed, so it skipped nothing.
+        if not self._db_path.exists():
+            return False
+        self._check_existing_schema()
+        with closing(sqlite3.connect(self._db_path)) as connection:
+            row = connection.execute(
+                "SELECT value FROM annotation_semantic_meta WHERE key = ?",
+                (_COMPLETE_KEY,),
+            ).fetchone()
+        return row is not None and str(row[0]) == "0"
+
+    def _mark_stored_index_incomplete(self) -> None:
+        # A live update that failed to embed left this annotation missing or
+        # stale. Flip the persisted flag so the next startup rebuilds instead of
+        # trusting a complete-looking index. Best-effort: we are already on a
+        # failure path, so a meta-write problem is logged, not raised.
+        if not self._db_path.exists():
+            return
+        try:
+            self._check_existing_schema()
+            with closing(sqlite3.connect(self._db_path)) as connection, connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO annotation_semantic_meta (key, value) "
+                    "VALUES (?, '0')",
+                    (_COMPLETE_KEY,),
+                )
+        except Exception:
+            self._logger.exception(
+                "failed to mark annotation semantic index incomplete"
+            )
 
     def _check_existing_schema(self) -> None:
         if not self._db_path.exists():
@@ -506,7 +552,10 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 
 def _insert_metadata(
-    connection: sqlite3.Connection, identity: SemanticProjectionBackendIdentity
+    connection: sqlite3.Connection,
+    identity: SemanticProjectionBackendIdentity,
+    *,
+    complete: bool,
 ) -> None:
     connection.executemany(
         "INSERT INTO annotation_semantic_meta (key, value) VALUES (?, ?)",
@@ -516,6 +565,7 @@ def _insert_metadata(
             (_DIMENSION_KEY, str(identity.dimension)),
             (_QUERY_PREFIX_KEY, identity.query_prefix),
             (_PASSAGE_PREFIX_KEY, identity.passage_prefix),
+            (_COMPLETE_KEY, "1" if complete else "0"),
         ),
     )
 

@@ -38,10 +38,21 @@ _MODEL_KEY = "model"
 _DIMENSION_KEY = "dimension"
 _QUERY_PREFIX_KEY = "query_prefix"
 _PASSAGE_PREFIX_KEY = "passage_prefix"
+_COMPLETE_KEY = "complete"
 
 
 class SemanticProjectionSchemaError(Exception):
     """Raised when a semantic index cannot be safely interpreted."""
+
+
+class SemanticEmbeddingFailed(Exception):
+    """Raised when embedding fails for every passage during a rebuild.
+
+    Carries only a passage count and the backend error's type name, never a
+    passage's text or a backend error message. Either of those could contain
+    content, and the projection must not leak content through the failure it
+    reports.
+    """
 
 
 class EmbeddingProvider(Protocol):
@@ -99,16 +110,28 @@ class OllamaEmbeddingProvider:
         vectors: list[tuple[float, ...]] = []
         for text in texts:
             response = client.post(
-                f"{self._settings.endpoint.rstrip('/')}/api/embeddings",
-                json={"model": self._semantic_settings.model, "prompt": text},
+                f"{self._settings.endpoint.rstrip('/')}/api/embed",
+                # truncate: a passage longer than the model context is embedded
+                # from its leading tokens, not rejected with a 500 - the legacy
+                # /api/embeddings endpoint had no such option and aborted.
+                json={
+                    "model": self._semantic_settings.model,
+                    "input": text,
+                    "truncate": True,
+                },
             )
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):
                 raise ValueError("Ollama embedding response must be an object")
-            raw_vector = payload.get("embedding")
-            if not isinstance(raw_vector, list):
+            raw_vectors = payload.get("embeddings")
+            if (
+                not isinstance(raw_vectors, list)
+                or len(raw_vectors) != 1
+                or not isinstance(raw_vectors[0], list)
+            ):
                 raise ValueError("Ollama embedding response has no embedding list")
+            raw_vector = raw_vectors[0]
             if any(
                 not isinstance(value, int | float) or isinstance(value, bool)
                 for value in raw_vector
@@ -276,7 +299,10 @@ class SemanticPassageIndex:
         if not self._settings.enabled:
             return
         stored = self._read_backend_identity()
-        if stored == self.configured_backend:
+        # An incomplete stored index skipped a passage that failed to embed;
+        # rebuild so it gets another chance now that a transient cause (a backend
+        # hiccup, a model reloaded with a larger context) may have cleared.
+        if stored == self.configured_backend and not self._stored_index_is_incomplete():
             self._runtime_error = None
             return
         self.rebuild()
@@ -291,11 +317,16 @@ class SemanticPassageIndex:
                 for event in self._repository.list_events()
                 if (passage := _passage_from_corpus_event(event)) is not None
             )
-            vectors = self._embedder.embed(
-                [self._settings.passage_prefix + passage.text for passage in passages]
+            texts = [self._settings.passage_prefix + p.text for p in passages]
+            labels = [p.passage_id for p in passages]
+            kept, vectors = embed_texts_resiliently(
+                self._embedder, texts, labels, self._settings.dimension, self._logger
             )
-            _validate_vectors(vectors, len(passages), self._settings.dimension)
-            self._replace_index(passages, vectors)
+            self._replace_index(
+                [passages[index] for index in kept],
+                vectors,
+                complete=len(kept) == len(passages),
+            )
         except SemanticProjectionSchemaError:
             raise
         except Exception as exc:
@@ -323,6 +354,7 @@ class SemanticPassageIndex:
             raise
         except Exception as exc:
             self._mark_unavailable(exc, "semantic projection update failed")
+            self._mark_stored_index_incomplete()
 
     def delete_session_projection(self, session_id: str) -> None:
         if not self._db_path.exists():
@@ -407,13 +439,15 @@ class SemanticPassageIndex:
         self,
         passages: Sequence[SemanticPassage],
         vectors: Sequence[Sequence[float]],
+        *,
+        complete: bool,
     ) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection:
             connection.execute("BEGIN")
             _drop_schema(connection)
             _create_schema(connection)
-            _insert_metadata(connection, self.configured_backend)
+            _insert_metadata(connection, self.configured_backend, complete=complete)
             for passage, vector in zip(passages, vectors, strict=True):
                 self._insert_passage(connection, passage, vector)
             connection.commit()
@@ -492,6 +526,37 @@ class SemanticPassageIndex:
             query_prefix=metadata[_QUERY_PREFIX_KEY],
             passage_prefix=metadata[_PASSAGE_PREFIX_KEY],
         )
+
+    def _stored_index_is_incomplete(self) -> bool:
+        # A pre-flag index (no "complete" row) is treated as complete: it was
+        # written before per-passage skipping existed, so it skipped nothing.
+        if not self._db_path.exists():
+            return False
+        self._check_existing_schema()
+        with closing(sqlite3.connect(self._db_path)) as connection:
+            row = connection.execute(
+                "SELECT value FROM semantic_projection_meta WHERE key = ?",
+                (_COMPLETE_KEY,),
+            ).fetchone()
+        return row is not None and str(row[0]) == "0"
+
+    def _mark_stored_index_incomplete(self) -> None:
+        # A live update that failed to embed left this event's passage missing
+        # or stale. Flip the persisted flag so the next startup rebuilds instead
+        # of trusting a complete-looking index. Best-effort: we are already on a
+        # failure path, so a meta-write problem is logged, not raised.
+        if not self._db_path.exists():
+            return
+        try:
+            self._check_existing_schema()
+            with closing(sqlite3.connect(self._db_path)) as connection, connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO semantic_projection_meta (key, value) "
+                    "VALUES (?, '0')",
+                    (_COMPLETE_KEY,),
+                )
+        except Exception:
+            self._logger.exception("failed to mark semantic index incomplete")
 
     def _check_existing_schema(self) -> None:
         if not self._db_path.exists():
@@ -578,6 +643,80 @@ def _passage_from_corpus_event(event: HistoryCorpusEvent) -> SemanticPassage | N
 
 def _passage_id(reference: JournalEventRef) -> str:
     return f"{reference.session_id}:{reference.event_position}"
+
+
+def embed_texts_resiliently(
+    embedder: EmbeddingProvider,
+    texts: Sequence[str],
+    labels: Sequence[str],
+    dimension: int,
+    logger: logging.Logger,
+) -> tuple[tuple[int, ...], list[tuple[float, ...]]]:
+    """Embed texts batch-first, isolating per-text failures on the slow path.
+
+    Returns the indices of texts that embedded successfully and their vectors,
+    in order. A single text the backend rejects (an oversized passage is the
+    motivating case) is logged and skipped so it cannot void the whole
+    projection. If none survive, raises a content-free ``SemanticEmbeddingFailed``
+    so the caller can degrade the projection to unavailable.
+    """
+
+    try:
+        vectors = embedder.embed(list(texts))
+        _validate_vectors(vectors, len(texts), dimension)
+    except SemanticProjectionSchemaError:
+        raise
+    except Exception as batch_error:
+        return _embed_texts_individually(
+            embedder, texts, labels, dimension, logger, batch_error
+        )
+    return tuple(range(len(texts))), list(vectors)
+
+
+def _embed_texts_individually(
+    embedder: EmbeddingProvider,
+    texts: Sequence[str],
+    labels: Sequence[str],
+    dimension: int,
+    logger: logging.Logger,
+    batch_error: Exception,
+) -> tuple[tuple[int, ...], list[tuple[float, ...]]]:
+    kept: list[int] = []
+    vectors: list[tuple[float, ...]] = []
+    for index, (text, label) in enumerate(zip(texts, labels, strict=True)):
+        try:
+            embedded = embedder.embed([text])
+            _validate_vectors(embedded, 1, dimension)
+        except SemanticProjectionSchemaError:
+            raise
+        except Exception as exc:
+            # Type and length only: a backend error message can echo the
+            # passage text, which must not leak.
+            logger.warning(
+                "semantic projection skipped passage %s "
+                "(text_length=%d) after embedding failure: %s",
+                label,
+                len(text),
+                type(exc).__name__,
+            )
+            continue
+        kept.append(index)
+        vectors.append(embedded[0])
+    if not kept:
+        # from None: this runs inside the backend error's handler, so implicit
+        # chaining would leak its (possibly content-bearing) message into the
+        # traceback the caller logs.
+        raise SemanticEmbeddingFailed(
+            f"all {len(texts)} passages failed to embed ({type(batch_error).__name__})"
+        ) from None
+    logger.warning(
+        "semantic projection rebuilt with %d of %d passages; "
+        "%d skipped after per-passage embedding failures",
+        len(kept),
+        len(texts),
+        len(texts) - len(kept),
+    )
+    return tuple(kept), vectors
 
 
 def _validate_vectors(
@@ -681,7 +820,10 @@ def _create_schema(connection: sqlite3.Connection) -> None:
 
 
 def _insert_metadata(
-    connection: sqlite3.Connection, identity: SemanticProjectionBackendIdentity
+    connection: sqlite3.Connection,
+    identity: SemanticProjectionBackendIdentity,
+    *,
+    complete: bool,
 ) -> None:
     connection.executemany(
         "INSERT INTO semantic_projection_meta (key, value) VALUES (?, ?)",
@@ -691,6 +833,7 @@ def _insert_metadata(
             (_DIMENSION_KEY, str(identity.dimension)),
             (_QUERY_PREFIX_KEY, identity.query_prefix),
             (_PASSAGE_PREFIX_KEY, identity.passage_prefix),
+            (_COMPLETE_KEY, "1" if complete else "0"),
         ),
     )
 

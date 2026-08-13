@@ -76,6 +76,19 @@ class _TimeoutEmbedder:
         raise httpx.TimeoutException("query embedding timed out")
 
 
+class _OversizedRejectingEmbedder:
+    def __init__(self, *, max_text_length: int) -> None:
+        self._max_text_length = max_text_length
+
+    def embed(self, texts: tuple[str, ...] | list[str]) -> list[tuple[float, ...]]:
+        vectors: list[tuple[float, ...]] = []
+        for text in texts:
+            if len(text) > self._max_text_length:
+                raise RuntimeError(f"passage too long to embed: {len(text)} chars")
+            vectors.append((1.0, 0.0) if "alpha" in text else (0.0, 1.0))
+        return vectors
+
+
 def _index(
     tmp_path: Path,
     repo: AnnotationOverlayRepository,
@@ -102,6 +115,76 @@ def test_rebuild_embeds_only_active_annotations(tmp_path: Path) -> None:
 
     assert index.state().status is HistoryProjectionStatus.ENABLED
     assert [passage.text for passage in index.list_passages()] == ["alpha passage"]
+
+
+def test_rebuild_skips_only_the_annotation_that_fails_to_embed(
+    tmp_path: Path,
+) -> None:
+    # Closes bug report 2026-08-09 for the annotation index: one oversized
+    # annotation rejected by the backend must not void the whole projection.
+    repo = _repo(tmp_path)
+    _add(repo, "alpha short")
+    _add(repo, "b" * 5000)
+    _add(repo, "alpha again")
+    index = _index(tmp_path, repo, _OversizedRejectingEmbedder(max_text_length=100))
+
+    index.rebuild()
+
+    assert index.state().status is HistoryProjectionStatus.ENABLED
+    assert {passage.text for passage in index.list_passages()} == {
+        "alpha short",
+        "alpha again",
+    }
+
+
+def test_incomplete_rebuild_is_retried_on_next_startup(tmp_path: Path) -> None:
+    # Bug report 2026-08-09, retry half for the annotation index: a skipped
+    # annotation gets another chance on a normal restart.
+    repo = _repo(tmp_path)
+    _add(repo, "alpha short")
+    _add(repo, "b" * 5000)
+    settings = _settings()
+    first = _index(
+        tmp_path, repo, _OversizedRejectingEmbedder(max_text_length=100), settings
+    )
+    first.rebuild()
+    assert [passage.text for passage in first.list_passages()] == ["alpha short"]
+
+    healed_embedder = _FakeEmbedder()
+    restarted = _index(tmp_path, repo, healed_embedder, settings)
+    restarted.rebuild_if_backend_changed()
+
+    assert healed_embedder.calls  # the incomplete index forced a rebuild
+    assert {passage.text for passage in restarted.list_passages()} == {
+        "alpha short",
+        "b" * 5000,
+    }
+
+
+def test_failed_live_update_marks_index_incomplete_so_restart_rebuilds(
+    tmp_path: Path,
+) -> None:
+    # Bug report 2026-08-09, live-update half for the annotation index: a failed
+    # reprojection must not leave the persisted index marked complete.
+    repo = _repo(tmp_path)
+    annotation_id = _add(repo, "alpha passage")
+    settings = _settings()
+    _index(tmp_path, repo, _FakeEmbedder(), settings).rebuild()
+
+    updating = _index(
+        tmp_path, repo, _OversizedRejectingEmbedder(max_text_length=0), settings
+    )
+    repo.update_annotation(annotation_id, text="beta passage")
+    updated = repo.read_annotation(annotation_id).annotation
+    assert updated is not None
+    updating.reproject_annotation(updated)
+    assert updating.state().status is HistoryProjectionStatus.UNAVAILABLE
+
+    healed = _FakeEmbedder()
+    restarted = _index(tmp_path, repo, healed, settings)
+    restarted.rebuild_if_backend_changed()
+
+    assert healed.calls  # the incomplete flag forced a rebuild
 
 
 def test_query_returns_scored_annotation_ids(tmp_path: Path) -> None:

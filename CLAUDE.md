@@ -44,6 +44,21 @@
 5. Work in TDD style where practical.
 6. Each test must be self-explanatory.
 7. Prefer self-explanatory code over comments.
+   7.1. A comment that explains *what* the code does is a smell: it duplicates
+        the code and signals weak names or structure. Fix the code instead of
+        annotating it.
+   7.2. The only comment worth keeping is a minimal *why-not-the-obvious* note:
+        one that protects a specific line where the obvious edit is a silent
+        bug the compiler and reviewer would not catch (for example
+        `raise ... from None` to stop a traceback leaking content). Keep it to
+        one or two lines, at that line.
+   7.3. A test proves an invariant but sits far from the line of temptation; it
+        does not stop a future edit at that line. That gap is exactly what 7.2
+        fills - and nothing more.
+   7.4. Never reference a bug report, task card, or issue id from logic code. A
+        bug report is closed and kept honest by the test(s) that reproduce it;
+        the reference belongs in those tests, next to the assertion, not in the
+        code under test.
 8. Do not add code documentation to compensate for unclear design.
 9. Use ASCII punctuation and status markers in documentation, code comments,
    logs, and UI text unless a non-ASCII character is required by existing

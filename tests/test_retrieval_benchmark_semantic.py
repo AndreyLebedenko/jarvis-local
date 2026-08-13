@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -17,7 +19,10 @@ from retrieval_benchmark import (
     pymorphy3_normalizer,
     relative_embedding_retrieval,
 )
-from retrieval_benchmark.measure_semantic import _normalize_host
+from retrieval_benchmark.measure_semantic import (
+    _normalize_host,
+    ollama_embed_function,
+)
 
 
 @pytest.mark.parametrize(
@@ -33,6 +38,41 @@ from retrieval_benchmark.measure_semantic import _normalize_host
 )
 def test_normalize_host_produces_connectable_url(raw: str, expected: str) -> None:
     assert _normalize_host(raw) == expected
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def test_ollama_embed_function_uses_embed_endpoint_with_truncation(monkeypatch) -> None:
+    captured: list[urllib.request.Request] = []
+
+    def fake_urlopen(request: urllib.request.Request) -> _FakeResponse:
+        captured.append(request)
+        return _FakeResponse(json.dumps({"embeddings": [[1.0, 2.5]]}).encode("utf-8"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    embed = ollama_embed_function("embed-model", "http://ollama.local:11434")
+
+    vectors = embed(["one passage"])
+
+    assert vectors == [[1.0, 2.5]]
+    assert captured[0].full_url == "http://ollama.local:11434/api/embed"
+    assert json.loads(captured[0].data.decode("utf-8")) == {
+        "model": "embed-model",
+        "input": "one passage",
+        "truncate": True,
+    }
 
 
 def _recall_by_category(report) -> dict[RetrievalCategory, float | None]:
