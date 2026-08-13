@@ -84,10 +84,25 @@ logged content-free (label, `text_length`, error type name only). Regression
 tests: `tests/test_semantic_projection.py`,
 `tests/test_annotation_semantic_projection.py`.
 
-Still open: the underlying `/api/embeddings` 500 on the 15,997-char passage.
-Deciding between a passage-length cap (mirroring the annotation generator's
-`max_source_chars`) and a larger `num_ctx` on the embedding call needs a
-live-Ollama server-log capture (hardware handoff per the testing protocol).
+Root cause resolved (2026-08-13, same branch). A live-Ollama sweep pinned the
+cause exactly: `HTTP 500 {"error":"the input length exceeds the context
+length"}` from the legacy `/api/embeddings` endpoint, which has no truncation
+option and rejects any prompt over the model's context. For the configured
+`multilingual-e5-large-instruct` (512-token context) the ceiling is about
+3,000 chars of dense text; on the owner's real journal 17 of 189 passages
+(9%) exceeded it. Raising `num_ctx` on `/api/embeddings` was tested and does
+not help - the endpoint ignores it for this model.
+
+Fix: `OllamaEmbeddingProvider._embed_with_client` now calls the newer
+`/api/embed` endpoint with `truncate: true`, so an over-context passage is
+embedded from its leading tokens instead of 500ing. Verified end to end
+against live Ollama: a 24,000-char passage that previously 500ed now returns a
+1024-dim vector. The resilience fix above stays as the safety net for any
+other embedding failure. Model choice was benchmarked (see PROJECT.md, task
+v1.8.0-29 item 2): `e5-large` retained (best recall 0.562, fastest query
+latency ~120 ms); `bge-m3` rejected as a working alternative - its per-query
+p95 latency (~2,000 ms) breaks the 1 s semantic budget and it scored a 1.0
+distractor false-positive rate under the shared relative gate.
 
 ## Temporary decision
 
