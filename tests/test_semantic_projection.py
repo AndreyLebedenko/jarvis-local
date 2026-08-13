@@ -340,12 +340,12 @@ def test_query_reports_timeout_when_query_embedding_exceeds_deadline(
     assert query_embedder.calls == [("query: alpha",)]
 
 
-def test_ollama_embedding_provider_uses_local_embeddings_endpoint() -> None:
+def test_ollama_embedding_provider_uses_local_embed_endpoint_with_truncation() -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json={"embedding": [1, 2.5]})
+        return httpx.Response(200, json={"embeddings": [[1, 2.5]]})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     provider = OllamaEmbeddingProvider(
@@ -359,9 +359,9 @@ def test_ollama_embedding_provider_uses_local_embeddings_endpoint() -> None:
         client.close()
 
     assert vectors == [(1.0, 2.5)]
-    assert requests[0].url == "http://ollama.local/api/embeddings"
+    assert requests[0].url == "http://ollama.local/api/embed"
     assert requests[0].read().decode("utf-8") == (
-        '{"model":"embedding-model","prompt":"query text"}'
+        '{"model":"embedding-model","input":"query text","truncate":true}'
     )
 
 
@@ -510,4 +510,4 @@ class _RecordingClient:
     def post(self, url: str, json: dict[str, str]) -> httpx.Response:
         self.requests.append((url, json))
         request = httpx.Request("POST", url, json=json)
-        return httpx.Response(200, request=request, json={"embedding": [1, 2.5]})
+        return httpx.Response(200, request=request, json={"embeddings": [[1, 2.5]]})

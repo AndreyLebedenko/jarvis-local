@@ -752,11 +752,37 @@ system is intended to grow.
        withhold the `complete` marker. Pre-flag databases read as complete.
        So a partial index is usable-but-incomplete within the session and
        self-heals on the next startup rather than staying silently degraded.
-       Still open (this branch does *not* close it): the underlying
-       `/api/embeddings` 500 on the 15,997-char passage - whether to cap
-       passage length (mirroring the annotation generator's `max_source_chars`)
-       or raise the embedding call's `num_ctx` - which needs a live-Ollama log
-       capture. See
+       **Root cause resolved (same branch, 2026-08-13).** A live-Ollama sweep
+       pinned it exactly: `HTTP 500 {"error":"the input length exceeds the
+       context length"}` from the legacy `/api/embeddings` endpoint, which has
+       no truncation option and rejects any prompt over the model context. For
+       `multilingual-e5-large-instruct` (512-token context) the ceiling is
+       about 3,000 chars of dense text; on the owner's real journal 17 of 189
+       passages (9%) exceeded it. Raising `num_ctx` was tested and does *not*
+       help - `/api/embeddings` ignores it for this model.
+       Fix: `OllamaEmbeddingProvider._embed_with_client` now calls the newer
+       `/api/embed` endpoint with `truncate: true` (payload `input` instead of
+       `prompt`, response `embeddings[0]` instead of `embedding`), so an
+       over-context passage is embedded from its leading tokens rather than
+       500ing. Verified end to end against live Ollama: a 24,000-char passage
+       that previously 500ed now returns a 1024-dim vector. The resilience
+       fix above remains the safety net for any other embedding failure.
+       **Embedding-model decision (do not re-litigate without new evidence):**
+       a three-model mini-bench on the owner's real 189-passage corpus plus the
+       curated recall fixture kept `multilingual-e5-large-instruct` as the
+       backend - best semantic recall (0.562 vs 0.500 for the alternatives) and
+       fastest query-embedding latency (~120 ms), with `/api/embed`+`truncate`
+       lifting its whole-passage coverage from 91% to 100%. `embeddinggemma:300m`
+       (2K context, dim 768) fits 99.5% of passages whole but scores lower
+       recall and would force a dimension change plus a full re-benchmark; it
+       stays a possible future option only if whole-passage representation of
+       the long tail becomes a requirement. **`bge-m3` is rejected as a working
+       alternative and must not be reconsidered without new evidence:** its
+       per-query embedding p95 latency (~2,000 ms) breaks the 1 s
+       `history.semantic.timeout_seconds` budget - the semantic path would
+       degrade to lexical on slow turns - and it recorded a 1.0 distractor
+       false-positive rate under the shared relative gate (it matched the
+       negative control). See
        `tasks/bug_reports/2026-08-09-semantic-rebuild-500-on-long-passage-context-window.md`.
     3. Resource check: watch VRAM/CPU (Task Manager or `nvidia-smi`) during a
        short burst of ordinary turns to confirm the embedding model's

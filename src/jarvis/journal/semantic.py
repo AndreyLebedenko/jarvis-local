@@ -110,16 +110,28 @@ class OllamaEmbeddingProvider:
         vectors: list[tuple[float, ...]] = []
         for text in texts:
             response = client.post(
-                f"{self._settings.endpoint.rstrip('/')}/api/embeddings",
-                json={"model": self._semantic_settings.model, "prompt": text},
+                f"{self._settings.endpoint.rstrip('/')}/api/embed",
+                # truncate: a passage longer than the model context is embedded
+                # from its leading tokens, not rejected with a 500 - the legacy
+                # /api/embeddings endpoint had no such option and aborted.
+                json={
+                    "model": self._semantic_settings.model,
+                    "input": text,
+                    "truncate": True,
+                },
             )
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):
                 raise ValueError("Ollama embedding response must be an object")
-            raw_vector = payload.get("embedding")
-            if not isinstance(raw_vector, list):
+            raw_vectors = payload.get("embeddings")
+            if (
+                not isinstance(raw_vectors, list)
+                or len(raw_vectors) != 1
+                or not isinstance(raw_vectors[0], list)
+            ):
                 raise ValueError("Ollama embedding response has no embedding list")
+            raw_vector = raw_vectors[0]
             if any(
                 not isinstance(value, int | float) or isinstance(value, bool)
                 for value in raw_vector
