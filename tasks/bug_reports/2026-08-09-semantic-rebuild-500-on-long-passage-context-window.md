@@ -71,6 +71,24 @@ passage - lexical/exact retrieval keeps working (confirmed:
 `mode=lexical-by-unavailable`), but semantic/paraphrase retrieval is
 unavailable everywhere until a successful rebuild.
 
+## Status update (2026-08-13, branch `fix/semantic-rebuild-passage-resilience`)
+
+Resilience half fixed; root-cause 500 still open. `rebuild()` on both the
+event and annotation index now embeds the batch optimistically and, on any
+backend failure, falls back to per-passage embedding: the rejected passage is
+skipped, survivors are kept, and only a total failure degrades the index to
+`UNAVAILABLE`. A partial index reports `ENABLED` but persists a `complete=0`
+marker so a normal restart re-runs `rebuild()` and retries the skipped
+passages; failed live single-item updates withhold the same marker. Skips are
+logged content-free (label, `text_length`, error type name only). Regression
+tests: `tests/test_semantic_projection.py`,
+`tests/test_annotation_semantic_projection.py`.
+
+Still open: the underlying `/api/embeddings` 500 on the 15,997-char passage.
+Deciding between a passage-length cap (mirroring the annotation generator's
+`max_source_chars`) and a larger `num_ctx` on the embedding call needs a
+live-Ollama server-log capture (hardware handoff per the testing protocol).
+
 ## Temporary decision
 
 Not fixed here. This is real production behavior surfaced by the task

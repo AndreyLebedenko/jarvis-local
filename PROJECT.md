@@ -737,7 +737,26 @@ system is intended to grow.
        full uncapped passage text (`src/jarvis/journal/semantic.py:284-304`,
        no `max_source_chars`-style cap unlike the annotation generator) and
        aborts the *entire* index on any one passage's embedding failure.
-       Recorded, not fixed (out of card 29's no-backend-change boundary); see
+       **Whole-index abort fixed (branch
+       `fix/semantic-rebuild-passage-resilience`, 2026-08-13); root-cause 500
+       still open as a separate handoff.** `rebuild()` on both the event and
+       annotation index now embeds the batch optimistically and, on any
+       backend failure, falls back to per-passage embedding: a passage the
+       backend rejects is skipped (one content-free warning: label plus
+       `text_length` and the error's type name, never passage text or the
+       backend message), survivors are kept, and only a *total* failure still
+       degrades to `UNAVAILABLE`. Recovery semantics: a partial index reports
+       `ENABLED` but persists a `complete=0` marker, so a normal restart
+       re-runs `rebuild()` and retries the skipped passages; failed live
+       single-item updates (`project_event`, `reproject_annotation`) likewise
+       withhold the `complete` marker. Pre-flag databases read as complete.
+       So a partial index is usable-but-incomplete within the session and
+       self-heals on the next startup rather than staying silently degraded.
+       Still open (this branch does *not* close it): the underlying
+       `/api/embeddings` 500 on the 15,997-char passage - whether to cap
+       passage length (mirroring the annotation generator's `max_source_chars`)
+       or raise the embedding call's `num_ctx` - which needs a live-Ollama log
+       capture. See
        `tasks/bug_reports/2026-08-09-semantic-rebuild-500-on-long-passage-context-window.md`.
     3. Resource check: watch VRAM/CPU (Task Manager or `nvidia-smi`) during a
        short burst of ordinary turns to confirm the embedding model's
