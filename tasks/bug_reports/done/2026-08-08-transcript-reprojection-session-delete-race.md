@@ -4,6 +4,8 @@
 **Component:** `src/jarvis/journal/lifecycle.py` - transcript re-projection path
 (`_on_transcript_overlay_changed` / `_reproject_transcript_event`).
 **Severity:** low-probability data-correctness race; not user-reported.
+**Status:** Resolved 2026-08-14 on branch
+`fix/transcript-reprojection-session-delete-race`. See "Resolution" below.
 
 ## Symptoms
 
@@ -62,3 +64,24 @@ because the race is real and would otherwise be lost.
 - Boundary: this report covers only the delete-vs-reproject race. It is not a
   claim about any other transcript projection behavior, and it does not change
   the released transcript contract.
+
+## Resolution (2026-08-14)
+
+Fixed by taking the template path: `_reproject_transcript_event` now reads the
+source event and projects it as one critical section under the same lock
+`delete_session_projections` takes. Concretely, the annotation path's
+`_annotation_write_lock` was renamed to `_projection_write_lock` (it now
+serializes both re-projection kinds against deletion) and a new
+`_reproject_transcript_event_locked` holds it across the read-then-project,
+replacing the two separate `asyncio.to_thread` steps.
+
+Regression test mirrors the annotation template:
+`test_deleted_session_does_not_reappear_via_inflight_transcript_reprojection`
+in `tests/test_transcript_consumers.py` blocks a transcript re-projection
+mid-`project_event`, deletes the session concurrently, asserts the deletion
+blocks on the lock until the re-projection finishes, then asserts the corpus
+rows for that session do not reappear. It fails before the fix (deletion
+completes without blocking) and passes after.
+
+`PROJECT.md`'s annotation-memory decision was updated in the same change to
+record that both re-projection paths now share the deletion-serialization lock.

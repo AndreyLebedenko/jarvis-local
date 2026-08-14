@@ -262,6 +262,79 @@ async def test_lifecycle_serializes_concurrent_reprojections_for_one_event(
     assert projection.calls == 2
 
 
+class _BlockingCorpusProjection:
+    """Wraps the real corpus projection but blocks inside one project_event.
+
+    Lets a test hold a transcript re-projection open (inside the lifecycle's
+    write lock) while it attempts a concurrent session deletion, mirroring the
+    annotation path's _BlockingSearchProjection.
+    """
+
+    name = "blocking-corpus"
+
+    def __init__(self, corpus: HistoryCorpusRepository) -> None:
+        self._corpus = corpus
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def rebuild(self) -> None:
+        self._corpus.rebuild()
+
+    def project_event(self, record: JournalEventRecord) -> None:
+        self.entered.set()
+        self.release.wait(5)
+        self._corpus.project_event(record)
+
+    def delete_session_projection(self, session_id: str) -> None:
+        self._corpus.delete_session_projection(session_id)
+
+
+@pytest.mark.asyncio
+async def test_deleted_session_does_not_reappear_via_inflight_transcript_reprojection(
+    tmp_path: Path,
+) -> None:
+    bus = EventBus()
+    store, overlays, corpus = _build(tmp_path)
+    store.append(_voice_event("2026-08-01T12:00:00+01:00", ("utterance.wav",)))
+    reference = JournalEventRef(_SESSION, 0)
+    projection = _BlockingCorpusProjection(corpus)
+    lifecycle = HistoryProjectionLifecycle(
+        bus,
+        projections=(projection,),
+        semantic_projection=UnavailableSemanticHistoryProjection(),
+        transcript_event_source=JournalStoreTranscriptionSource(store),
+    )
+
+    await lifecycle.start()
+    try:
+        overlays.upsert_transcript(reference, _TRANSCRIPT, TranscriptSource.EDITED)
+        await bus.publish(TranscriptOverlayChanged, TranscriptOverlayChanged(reference))
+        # The re-projection is now inside the write lock, mid-write.
+        assert await asyncio.to_thread(projection.entered.wait, 5)
+
+        deletion = asyncio.ensure_future(
+            asyncio.to_thread(lifecycle.delete_session_projections, _SESSION)
+        )
+        await asyncio.sleep(0.05)
+        # Best-effort liveness check: deletion should still be blocked on the
+        # write lock here. It is scheduler-sensitive (a not-yet-started executor
+        # task also reads as not done), so it is not the deterministic
+        # discriminator - the hits==() assertion below is. Without the fix,
+        # deletion clears the row, then the unblocked write re-adds it, so that
+        # assertion fails regardless of how this one is scheduled.
+        assert not deletion.done()
+
+        projection.release.set()
+        await deletion
+        await lifecycle.wait_for_idle()
+
+        result = corpus.search(HistorySearchRequest("альфа", roles=("user",)))
+        assert result.hits == ()
+    finally:
+        projection.release.set()
+        await lifecycle.close()
+
+
 class _GatedProjection:
     name = "gated"
 
