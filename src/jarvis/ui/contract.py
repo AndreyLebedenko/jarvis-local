@@ -132,6 +132,7 @@ class JournalSessionPayload:
     start_timestamp: str
     end_timestamp: str
     title: str
+    folder_path: str
 
 
 @dataclass(frozen=True)
