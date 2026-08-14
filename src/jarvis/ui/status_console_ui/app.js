@@ -591,6 +591,45 @@ function closeShortcutsOverlay() {
   _shortcutsOverlayReturnFocus = null;
 }
 
+// task-ui-ux-6: session "Show info" modal. Same overlay contract as the
+// shortcuts overlay above (inert focus trap, focus capture/restore); it only
+// displays session metadata the session list already holds, plus the folder
+// path the sessions payload now carries. Read-only: no engine call, no state.
+let _sessionInfoReturnFocus = null;
+
+function openSessionInfoOverlay(sessionId) {
+  const overlay = document.getElementById("sessionInfoOverlay");
+  const session = _journalSessions.find((item) => item.id === sessionId);
+  if (!overlay || !overlay.hidden || !session) return;
+  document.getElementById("sessionInfoName").textContent = session.title;
+  document.getElementById("sessionInfoCreated").textContent =
+    _formatJournalDate(session.start_timestamp) +
+    " " +
+    _formatJournalTime(session.start_timestamp);
+  document.getElementById("sessionInfoSize").textContent = _formatJournalBytes(
+    _journalUsageBySession.get(session.id) || 0);
+  document.getElementById("sessionInfoFolder").textContent =
+    session.folder_path || "";
+  _sessionInfoReturnFocus = document.activeElement;
+  _setBackgroundInert(true, overlay);
+  overlay.hidden = false;
+  overlay.querySelector(".session-info-head button")?.focus();
+}
+
+function closeSessionInfoOverlay() {
+  const overlay = document.getElementById("sessionInfoOverlay");
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  _setBackgroundInert(false, overlay);
+  _sessionInfoReturnFocus?.focus?.();
+  _sessionInfoReturnFocus = null;
+}
+
+function copySessionInfoFolder() {
+  const path = document.getElementById("sessionInfoFolder")?.textContent || "";
+  if (path) _copyToClipboardWithJournalStatus(path);
+}
+
 // task-ui-ux-1: skip-link target. .main/.journal/.settings are mutually
 // exclusive siblings switched by data-view (see setActiveView()), not one
 // shared landmark, so the skip link resolves whichever is currently active
@@ -1837,6 +1876,10 @@ function _journalSessionMenuEntries(row) {
       label: uiString("journal_session_copy_title"),
       icon: _icon("copy"),
       run: () => _copyToClipboardWithJournalStatus(session.title),
+    },
+    {
+      label: uiString("journal_session_info"),
+      run: () => openSessionInfoOverlay(sessionId),
     },
   ];
 }
@@ -3397,6 +3440,10 @@ registerEscapable({
 registerEscapable({
   isOpen: () => document.getElementById("shortcutsOverlay")?.hidden === false,
   close: closeShortcutsOverlay,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("sessionInfoOverlay")?.hidden === false,
+  close: closeSessionInfoOverlay,
 });
 registerEscapable({ isOpen: _contextMenuOpen, close: _closeContextMenu });
 

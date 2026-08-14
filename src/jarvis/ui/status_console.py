@@ -234,6 +234,7 @@ def journal_session_payload(
         start_timestamp=summary.first_timestamp,
         end_timestamp=summary.last_timestamp,
         title=_journal_session_title(summary.session_id, store),
+        folder_path=str(store.root / summary.session_id),
     )
     return asdict(payload)
 

@@ -39,6 +39,24 @@
   </div>
 </div>
 
+<div class="session-info-overlay" id="sessionInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="sessionInfoTitle" hidden>
+  <div class="session-info-panel">
+    <div class="session-info-head">
+      <h2 id="sessionInfoTitle" data-i18n="journal_session_info_title">Session info</h2>
+      <button type="button" data-i18n="shortcuts_close" onclick="closeSessionInfoOverlay()">Close</button>
+    </div>
+    <dl class="session-info-list">
+      <div class="session-info-row"><dt data-i18n="journal_session_info_name">Name</dt><dd id="sessionInfoName"></dd></div>
+      <div class="session-info-row"><dt data-i18n="journal_session_info_created">Created</dt><dd id="sessionInfoCreated"></dd></div>
+      <div class="session-info-row"><dt data-i18n="journal_session_info_size">Size</dt><dd id="sessionInfoSize"></dd></div>
+      <div class="session-info-row session-info-row-path">
+        <dt data-i18n="journal_session_info_folder">Folder</dt>
+        <dd><span class="session-info-path" id="sessionInfoFolder"></span><button type="button" class="session-info-copy" data-i18n="journal_session_info_copy_path" onclick="copySessionInfoFolder()">Copy path</button></dd>
+      </div>
+    </dl>
+  </div>
+</div>
+
 <div class="topbar">
   <div class="brand">
     <div class="brand-mark">J</div>

@@ -1009,3 +1009,60 @@ def test_transcript_strings_present_in_both_languages():
         "journal_transcript_generating",
     ):
         assert STRINGS_JS.count(key + ":") == 2
+
+
+def test_session_menu_has_show_info_entry():
+    body = APP_JS.split("function _journalSessionMenuEntries(")[1].split("\n}")[0]
+    assert 'uiString("journal_session_info")' in body
+    assert "openSessionInfoOverlay(sessionId)" in body
+
+
+def test_session_info_overlay_markup_present():
+    head = INDEX_HTML.split('id="sessionInfoOverlay"')[1].split(">")[0]
+    assert 'role="dialog"' in head
+    assert 'aria-modal="true"' in head
+    for element_id in (
+        "sessionInfoName",
+        "sessionInfoCreated",
+        "sessionInfoSize",
+        "sessionInfoFolder",
+    ):
+        assert f'id="{element_id}"' in INDEX_HTML
+    assert 'onclick="closeSessionInfoOverlay()"' in INDEX_HTML
+    assert 'onclick="copySessionInfoFolder()"' in INDEX_HTML
+
+
+def test_session_info_overlay_populates_from_session_and_usage():
+    body = APP_JS.split("function openSessionInfoOverlay(")[1].split("\n}")[0]
+    assert "session.title" in body
+    assert "_formatJournalDate(session.start_timestamp)" in body
+    assert "_formatJournalTime(session.start_timestamp)" in body
+    assert "_journalUsageBySession.get(session.id)" in body
+    assert "session.folder_path" in body
+    # Reuses the shared inert focus trap, like the shortcuts overlay.
+    assert "_setBackgroundInert(true, overlay)" in body
+
+
+def test_session_info_folder_copies_via_journal_clipboard_helper():
+    body = APP_JS.split("function copySessionInfoFolder(")[1].split("\n}")[0]
+    assert "_copyToClipboardWithJournalStatus(path)" in body
+
+
+def test_session_info_overlay_is_escapable_and_restores_background():
+    assert 'document.getElementById("sessionInfoOverlay")?.hidden === false' in APP_JS
+    close_body = APP_JS.split("function closeSessionInfoOverlay(")[1].split("\n}")[0]
+    assert "overlay.hidden = true;" in close_body
+    assert "_setBackgroundInert(false, overlay)" in close_body
+
+
+def test_session_info_strings_present_in_both_languages():
+    for key in (
+        "journal_session_info",
+        "journal_session_info_title",
+        "journal_session_info_name",
+        "journal_session_info_created",
+        "journal_session_info_size",
+        "journal_session_info_folder",
+        "journal_session_info_copy_path",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2
