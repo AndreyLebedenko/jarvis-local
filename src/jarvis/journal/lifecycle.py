@@ -320,14 +320,14 @@ class HistoryProjectionLifecycle:
         self._reprojection_pending: set[JournalEventRef] = set()
         self._annotation_active: set[str] = set()
         self._annotation_pending: set[str] = set()
-        # Serializes one annotation's read-then-write re-projection against a
-        # concurrent session-projection deletion. Without it, a re-projection
-        # that read an annotation before its session was deleted could write the
-        # stale row back after deletion cleared the derived projections, so
-        # retrieval would resurface a deleted session. A threading lock (not an
-        # asyncio one) because it is held across the off-thread projection work
-        # and acquired by the on-loop deletion path.
-        self._annotation_write_lock = threading.Lock()
+        # Serializes one re-projection's read-then-write (transcript or
+        # annotation) against a concurrent session-projection deletion. Without
+        # it, a re-projection that read its source before the session was
+        # deleted could write the stale row back after deletion cleared the
+        # derived projections, so retrieval would resurface a deleted session.
+        # A threading lock (not an asyncio one) because it is held across the
+        # off-thread projection work and acquired by the on-loop deletion path.
+        self._projection_write_lock = threading.Lock()
         self._start_lock = asyncio.Lock()
         self._subscribed = False
 
@@ -380,12 +380,13 @@ class HistoryProjectionLifecycle:
             await asyncio.gather(*pending)
 
     def delete_session_projections(self, session_id: str) -> None:
-        # The lock makes deletion mutually exclusive with an in-flight annotation
-        # re-projection (see _reproject_annotation): either the re-projection
-        # commits first and this deletion then clears its row, or this deletion
-        # commits first and the re-projection observes the annotation is gone and
-        # writes nothing. Both orders end with no derived row for the session.
-        with self._annotation_write_lock:
+        # The lock makes deletion mutually exclusive with an in-flight
+        # re-projection (see _reproject_transcript_event_locked and
+        # _reproject_annotation_locked): either the re-projection commits first
+        # and this deletion then clears its row, or this deletion commits first
+        # and the re-projection observes its source is gone and writes nothing.
+        # Both orders end with no derived row for the session.
+        with self._projection_write_lock:
             for projection in self._projections:
                 projection.delete_session_projection(session_id)
             self._semantic_projection.delete_session_projection(session_id)
@@ -441,20 +442,32 @@ class HistoryProjectionLifecycle:
         if source is None:
             return
         try:
-            event = await asyncio.to_thread(source.read_event, reference)
-            if event is None:
-                # The overlay outlived its source event (e.g. a deleted
-                # session). Deletion already removed the derived rows; there is
-                # nothing to re-project.
-                return
-            record = JournalEventRecord(reference, event)
-            await asyncio.to_thread(self._project_event, record)
+            await asyncio.to_thread(self._reproject_transcript_event_locked, reference)
         except Exception:
             self._logger.exception(
                 "Transcript re-projection failed for %s:%s",
                 reference.session_id,
                 reference.event_position,
             )
+
+    def _reproject_transcript_event_locked(self, reference: JournalEventRef) -> None:
+        source = self._transcript_event_source
+        if source is None:
+            return
+        # Read the source event and write the derived rows as one critical
+        # section, so a concurrent session deletion cannot slip between the read
+        # and the write and let a stale row survive (see delete_session_
+        # projections). Re-reading under the lock is also what makes deletion win
+        # when it commits first: the source event is then already gone.
+        with self._projection_write_lock:
+            event = source.read_event(reference)
+            if event is None:
+                # The overlay outlived its source event (e.g. a deleted
+                # session). Deletion already removed the derived rows; there is
+                # nothing to re-project.
+                return
+            record = JournalEventRecord(reference, event)
+            self._project_event(record)
 
     async def _on_annotation_overlay_changed(
         self, event: AnnotationOverlayChanged
@@ -505,7 +518,7 @@ class HistoryProjectionLifecycle:
         # and the write and let a stale row survive (see delete_session_
         # projections). Re-reading under the lock is also what makes deletion win
         # when it commits first: the annotation is then already gone.
-        with self._annotation_write_lock:
+        with self._projection_write_lock:
             read = source.read_annotation(annotation_id)
             annotation = read.annotation if read.found else None
             if annotation is None:

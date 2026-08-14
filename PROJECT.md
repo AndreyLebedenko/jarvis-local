@@ -268,9 +268,11 @@ system is intended to grow.
     annotation's lexical and semantic rows off-thread, mirroring
     `TranscriptOverlayChanged`. `AnnotationHistoryProjection.project_event` stays
     a no-op. Session deletion also clears the annotation lexical/semantic
-    projections (decision 12). One annotation's read-then-write re-projection and
-    session-projection deletion are serialized under a shared lock, so a deletion
-    racing an in-flight re-projection cannot resurface a deleted session's rows.
+    projections (decision 12). Both the transcript and the annotation
+    read-then-write re-projection are serialized against session-projection
+    deletion under one shared lock, so a deletion racing an in-flight
+    re-projection of either kind cannot resurface a deleted session's rows
+    (transcript path serialized 2026-08-14; the annotation path had it first).
     Unlike the transcript path (where the API layer publishes), the generation
     service publishes on a successful write - it is the production writer, so
     co-locating the publish keeps a generated annotation retrievable regardless
@@ -583,7 +585,7 @@ system is intended to grow.
     from the one this race depends on
     (`AnnotationSemanticIndex.reproject_annotation`, embedding the full
     annotation passage up to the 20,000-char overlay limit, under
-    `_annotation_write_lock` alongside other pending reprojections). Treating
+    `_projection_write_lock` alongside other pending reprojections). Treating
     that figure as a bound on the reprojection window was an unsupported
     extrapolation and has been retracted from this record. Decision: the race
     is confirmed real (new, solid evidence for explanation 1) and the
