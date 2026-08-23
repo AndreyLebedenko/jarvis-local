@@ -1667,14 +1667,33 @@ function _journalAttachmentClassLabel(value) {
   return uiString("journal_attachment_class_" + (value || "unknown"));
 }
 
+// Input targets the active (live) session, never the one merely being viewed.
+// So the dock only accepts input while the selected session IS the active one;
+// for any other session it is hidden behind an explanatory note (CSS), and its
+// controls are disabled as defense in depth.
+function _journalInputTargetsSelectedSession() {
+  return (
+    _journalActiveSessionId !== null &&
+    _journalSelectedSessionId === _journalActiveSessionId);
+}
+
 function _syncJournalInputControls() {
-  const disabled = _journalInputInFlight || _isHiddenActive();
+  const inactiveSession = !_journalInputTargetsSelectedSession();
+  const disabled = _journalInputInFlight || _isHiddenActive() || inactiveSession;
+  const input = document.getElementById("journalTextInput");
   const send = document.getElementById("journalSendButton");
   const attach = document.getElementById("journalAttachButton");
   const fileInput = document.getElementById("journalFileInput");
+  const dock = document.getElementById("journalInputDock");
+  if (input) input.disabled = disabled;
   if (send) send.disabled = disabled;
   if (attach) attach.disabled = disabled;
   if (fileInput) fileInput.disabled = disabled;
+  // Hidden mode has its own whole-view placeholder, so the inactive-session
+  // note is suppressed there to avoid two competing messages.
+  if (dock) {
+    dock.classList.toggle("inactive-session", inactiveSession && !_isHiddenActive());
+  }
 }
 
 async function submitJournalInput() {
@@ -1837,6 +1856,7 @@ async function refreshJournalSessions(refetchSelectedFeed = false) {
 function _applyJournalUsage(payload) {
   const usage = payload || { total_bytes: 0, active_session_id: null, sessions: [] };
   _journalActiveSessionId = usage.active_session_id || null;
+  _syncJournalInputControls();
   _journalUsageBySession = new Map(
     (usage.sessions || []).map((session) => [session.id, session.bytes || 0]));
   document.getElementById("journalUsageTotal").textContent =
@@ -2054,6 +2074,7 @@ async function selectJournalSession(sessionId, contextEventPosition = null) {
   }
   const generation = _journalContentGeneration;
   _journalSelectedSessionId = sessionId;
+  _syncJournalInputControls();
   const sessionList = document.getElementById("journalSessionList");
   sessionList.querySelectorAll(".journal-session").forEach((row) => {
     const selected = row.dataset.sessionId === sessionId;

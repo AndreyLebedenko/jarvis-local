@@ -213,6 +213,43 @@ def test_input_dock_has_textarea_and_send_action():
     assert 'onkeydown="onJournalInputKeyDown(event)"' in INDEX_HTML
 
 
+def test_input_textarea_is_comfortably_tall_by_default():
+    # The textarea opens multi-line instead of a one-line strip the user has to
+    # drag every time; still user-resizable.
+    assert 'id="journalTextInput" rows="3"' in INDEX_HTML
+    rule = STYLE_CSS.split(".journal-input-dock textarea {")[1].split("}")[0]
+    assert "min-height: 72px" in rule
+    assert "resize: vertical" in rule
+
+
+def test_input_dock_is_inactive_for_a_non_active_session():
+    # Input targets the active session, so the dock is only live while the
+    # selected session IS the active one; any other session hides it behind a
+    # localized note and disables its controls.
+    target_body = APP_JS.split("function _journalInputTargetsSelectedSession()")[
+        1
+    ].split("\n}")[0]
+    assert "_journalActiveSessionId !== null" in target_body
+    assert "_journalSelectedSessionId === _journalActiveSessionId" in target_body
+
+    sync_body = APP_JS.split("function _syncJournalInputControls()")[1].split("\n}")[0]
+    assert "!_journalInputTargetsSelectedSession()" in sync_body
+    assert 'dock.classList.toggle("inactive-session"' in sync_body
+    assert "input.disabled = disabled;" in sync_body
+
+    # The dock must re-sync when the viewed or the active session changes.
+    select_body = APP_JS.split("async function selectJournalSession(")[1].split("\n}")[
+        0
+    ]
+    assert "_syncJournalInputControls();" in select_body
+    usage_body = APP_JS.split("function _applyJournalUsage(")[1].split("\n}")[0]
+    assert "_syncJournalInputControls();" in usage_body
+
+    assert 'id="journalInputInactiveNote"' in INDEX_HTML
+    assert 'data-i18n="journal_input_inactive_session"' in INDEX_HTML
+    assert ".journal-input-dock.inactive-session" in STYLE_CSS
+
+
 def test_input_dock_has_attachment_picker_and_drop_target():
     parser = _parse_journal_view()
     tags = {attrs.get("id"): tag for tag, attrs in parser.input_dock_tags}

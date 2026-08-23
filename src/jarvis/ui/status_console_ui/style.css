@@ -1186,11 +1186,25 @@ html[data-view="settings"] .settings {
   border-color: var(--cyan-dim); color: var(--cyan); background: var(--cyan-tint);
 }
 .journal-input-dock textarea {
-  min-height: 34px; max-height: 96px; resize: vertical;
+  min-height: 72px; max-height: 200px; resize: vertical;
   border: 1px solid var(--border); border-radius: 7px; background: var(--panel-2);
   color: var(--text); padding: 8px 10px; font: 12.5px system-ui, sans-serif;
 }
 .journal-input-dock textarea:focus { outline: none; border-color: var(--cyan-dim); }
+.journal-input-dock textarea:disabled { opacity: 0.45; cursor: not-allowed; }
+/* A session that is not the active one takes no input: hide the interactive
+   controls and show a note instead, so the dock cannot mislead the user into
+   typing where nothing will be sent. */
+.journal-input-inactive-note {
+  grid-column: 1 / -1; display: none; padding: 4px 2px;
+  color: var(--text-faint); font: 11px "Consolas", "Cascadia Mono", monospace;
+}
+.journal-input-dock.inactive-session .journal-drop-target,
+.journal-input-dock.inactive-session #journalAttachButton,
+.journal-input-dock.inactive-session #journalTextInput,
+.journal-input-dock.inactive-session #journalSendButton,
+.journal-input-dock.inactive-session .journal-attachment-list { display: none; }
+.journal-input-dock.inactive-session .journal-input-inactive-note { display: block; }
 .journal-input-dock button {
   height: 34px; padding: 0 14px; border: 1px solid var(--cyan-dim);
   border-radius: 7px; background: var(--cyan-tint); color: var(--cyan);
