@@ -6,7 +6,7 @@ import base64
 import concurrent.futures
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -46,6 +46,7 @@ from jarvis.core.lifecycle import (
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
+    PersistedFileOutcome,
     TextSubmissionReason,
     TextSubmissionResult,
     TurnAccepted,
@@ -70,6 +71,7 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
 from jarvis.files import (
+    SessionFileError,
     SessionFileRepository,
     SessionFileScope,
     resolve_session_file_scope,
@@ -96,6 +98,7 @@ from jarvis.inputs.attachment_audio import (
 )
 from jarvis.inputs.attachments import (
     AttachmentPlan,
+    AttachmentUpload,
     compose_turn_images,
     compose_turn_text,
 )
@@ -328,6 +331,19 @@ _INTERRUPTED_HISTORY_NOTE = (
 _FAILED_HISTORY_NOTE = "Ответ не был получен из-за технической ошибки бэкенда."
 
 
+def _compose_session_file_cue(storage_names: Sequence[str]) -> str:
+    """Model-facing cue naming the session files persisted this turn. ASCII and
+    English, matching the attachment cues (attachments.py) - it enters the
+    model prompt, not the recorded user event."""
+    if not storage_names:
+        return ""
+    listed = ", ".join(storage_names)
+    return (
+        f"[Session files saved this turn: {listed}. Use read_session_text, "
+        "view_session_image, or stat_session_file with a storage name to open one.]"
+    )
+
+
 class Orchestrator:
     """Owns per-turn orchestration across input, backend, history, and cues."""
 
@@ -349,6 +365,8 @@ class Orchestrator:
         history_limits: ContextBudgetLimits | None = None,
         max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
         solo_session_state: SoloSessionState | None = None,
+        session_file_repository: SessionFileRepository | None = None,
+        session_file_scope: Callable[[], SessionFileScope] | None = None,
     ) -> None:
         self._backend = backend
         self._history = history
@@ -375,6 +393,8 @@ class Orchestrator:
         self._clock = clock or time.time
         self._text_input_max_chars = text_input_max_chars
         self._max_audio_attachment_clips = max_audio_attachment_clips
+        self._session_file_repository = session_file_repository
+        self._session_file_scope = session_file_scope
         self._automatic_retrieval_limits = AutomaticRetrievalSelectionLimits(
             token_budget=self._history_limits.automatic_retrieval_max_tokens
         )
@@ -616,7 +636,10 @@ class Orchestrator:
         )
 
     async def on_attachment_submission(
-        self, typed_text: str, plan: AttachmentPlan
+        self,
+        typed_text: str,
+        plan: AttachmentPlan,
+        persistent_uploads: Sequence[AttachmentUpload] = (),
     ) -> AttachmentSubmissionResult:
         """Wires an already-validated attachment plan (task-v1.6.0-2's
         plan_attachments(), handed in by the future Journal input dock
@@ -688,10 +711,19 @@ class Orchestrator:
                     ui_message=reason,
                 )
 
-        if not history_text.strip() and not media and not inputs:
+        has_content = bool(history_text.strip()) or bool(media) or bool(inputs)
+        if not has_content and not persistent_uploads:
             return AttachmentSubmissionResult(
                 AttachmentSubmissionReason.NO_ACCEPTED_CONTENT
             )
+
+        persisted: list[PersistedFileOutcome] = []
+
+        async def persist_hook() -> str:
+            outcomes = await self._persist_uploads(persistent_uploads)
+            persisted.extend(outcomes)
+            storage_names = [o.storage_name for o in outcomes if o.storage_name]
+            return _compose_session_file_cue(storage_names)
 
         await self._start_turn(
             history_text,
@@ -701,8 +733,59 @@ class Orchestrator:
             audio_duration_seconds=audio_duration_seconds,
             voice_wav_bytes=None,
             screenshot_png_bytes=None,
+            post_journal_hook=persist_hook if persistent_uploads else None,
         )
-        return AttachmentSubmissionResult(AttachmentSubmissionReason.ACCEPTED)
+        return AttachmentSubmissionResult(
+            AttachmentSubmissionReason.ACCEPTED, persisted_files=tuple(persisted)
+        )
+
+    async def _persist_uploads(
+        self, uploads: Sequence[AttachmentUpload]
+    ) -> list[PersistedFileOutcome]:
+        if not uploads:
+            return []
+        if self._session_file_repository is None or self._session_file_scope is None:
+            return [
+                PersistedFileOutcome(upload.filename, error="session files unavailable")
+                for upload in uploads
+            ]
+        # The current session's user event was scheduled by _start_turn's
+        # record_text_user just before this hook runs; flush it so the session
+        # is journal-visible and write_bytes does not report no-active-session
+        # on the first turn of a new session.
+        if self._journal_recorder is not None:
+            await self._journal_recorder.wait_for_pending()
+        scope = self._session_file_scope()
+        return [self._persist_one(scope, upload) for upload in uploads]
+
+    async def _apply_post_journal_hook(
+        self, hook: Callable[[], Awaitable[str]] | None, history_text: str
+    ) -> str:
+        if hook is None:
+            return history_text
+        cue = await hook()
+        if not cue:
+            return history_text
+        history_text = f"{history_text}\n\n{cue}" if history_text else cue
+        self._current_turn_history_text = history_text
+        return history_text
+
+    def _persist_one(
+        self, scope: SessionFileScope, upload: AttachmentUpload
+    ) -> PersistedFileOutcome:
+        try:
+            result = self._session_file_repository.write_bytes(
+                scope, upload.filename, upload.data
+            )
+        except SessionFileError as exc:
+            return PersistedFileOutcome(upload.filename, error=str(exc))
+        except OSError as exc:
+            return PersistedFileOutcome(
+                upload.filename, error=f"filesystem error: {exc}"
+            )
+        return PersistedFileOutcome(
+            upload.filename, storage_name=result.storage_name, bytes=result.bytes
+        )
 
     async def _start_turn(
         self,
@@ -715,6 +798,7 @@ class Orchestrator:
         voice_wav_bytes: bytes | None,
         screenshot_png_bytes: bytes | None,
         journal_source: str | None = None,
+        post_journal_hook: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
@@ -793,6 +877,14 @@ class Orchestrator:
         # never races ahead of the user's own entry in the append-only
         # journal (task-v1.7.0-3 review, second round).
         journal_recording_done.set()
+        # Runs after the user event is recorded (so the session is
+        # journal-visible) and before the model dispatch, so a persisted
+        # session file's storage name can be surfaced to the model in this
+        # same turn. Only the attachment path passes a hook; it appends to the
+        # model-facing text without altering the already-recorded user event.
+        history_text = await self._apply_post_journal_hook(
+            post_journal_hook, history_text
+        )
         # Checked here and again after TurnAccepted (review finding 2,
         # round 2): an interrupt can be requested while still inside the
         # journal-recording await above, before _dispatch_backend_request()
@@ -1520,6 +1612,8 @@ def build_app(
         history_limits=_history_limits_from_settings(settings.history),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
         solo_session_state=solo_session_state,
+        session_file_repository=session_file_repository,
+        session_file_scope=current_session_file_scope,
     )
     return App(
         bus=bus,

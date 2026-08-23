@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 
 import aiohttp
@@ -21,13 +22,14 @@ from jarvis.core.lifecycle import (
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
+    PersistedFileOutcome,
     TextSubmissionReason,
     TextSubmissionResult,
 )
 from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
-from jarvis.inputs.attachments import AttachmentPlan
+from jarvis.inputs.attachments import AttachmentPlan, AttachmentUpload
 from jarvis.journal import (
     HISTORY_SEARCH_MAX_RESULTS,
     AnnotationGenerationOutcome,
@@ -168,15 +170,25 @@ class _FakeTextSubmitter:
 
 
 class _FakeAttachmentSubmitter:
-    def __init__(self, reason: AttachmentSubmissionReason) -> None:
+    def __init__(
+        self,
+        reason: AttachmentSubmissionReason,
+        persisted_files: tuple[PersistedFileOutcome, ...] = (),
+    ) -> None:
         self.reason = reason
+        self.persisted_files = persisted_files
         self.calls: list[tuple[str, AttachmentPlan]] = []
+        self.persistent_uploads: list[Sequence[AttachmentUpload]] = []
 
     async def __call__(
-        self, typed_text: str, plan: AttachmentPlan
+        self,
+        typed_text: str,
+        plan: AttachmentPlan,
+        persistent_uploads: Sequence[AttachmentUpload] = (),
     ) -> AttachmentSubmissionResult:
         self.calls.append((typed_text, plan))
-        return AttachmentSubmissionResult(self.reason)
+        self.persistent_uploads.append(tuple(persistent_uploads))
+        return AttachmentSubmissionResult(self.reason, self.persisted_files)
 
 
 class _FakeJournalForkHandler:
@@ -1488,6 +1500,149 @@ async def test_journal_input_endpoint_accepts_mixed_attachment_upload() -> None:
         [(typed_text, plan)] = attachment_submitter.calls
         assert typed_text == "look at these"
         assert [item.filename for item in plan.items] == ["photo.png", "manual.pdf"]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_marks_and_persists_selected_upload() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(
+        AttachmentSubmissionReason.ACCEPTED,
+        persisted_files=(
+            PersistedFileOutcome("photo.png", storage_name="photo-abcd.png", bytes=11),
+        ),
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("text", "keep the photo")
+        form.add_field("persist", "[0]")
+        form.add_field(
+            "files",
+            b"\x89PNG\r\n\x1a\nimage-bytes",
+            filename="photo.png",
+            content_type="image/png",
+        )
+        form.add_field(
+            "files", b"hello", filename="notes.txt", content_type="text/plain"
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            payload = await response.json()
+        [persistent] = attachment_submitter.persistent_uploads
+        assert [upload.filename for upload in persistent] == ["photo.png"]
+        assert persistent[0].data == b"\x89PNG\r\n\x1a\nimage-bytes"
+        assert payload["files"][0]["persistent"] == {
+            "status": "saved",
+            "storage_name": "photo-abcd.png",
+            "bytes": 11,
+        }
+        assert "persistent" not in payload["files"][1]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_reports_persistent_rejection() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(
+        AttachmentSubmissionReason.ACCEPTED,
+        persisted_files=(PersistedFileOutcome("doc.md", error="no active session"),),
+    )
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("persist", "[0]")
+        form.add_field("files", b"body", filename="doc.md", content_type="text/plain")
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            payload = await response.json()
+        assert payload["files"][0]["persistent"] == {
+            "status": "rejected",
+            "reason": "no active session",
+        }
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_does_not_persist_a_rejected_upload() -> None:
+    # A marked file the planner rejects (unsupported type here, but the same
+    # gate covers oversize/wrong-MIME/empty) is never written: it is not handed
+    # to the submitter and is reported persistent-rejected.
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        form = aiohttp.FormData()
+        form.add_field("persist", "[0]")
+        form.add_field(
+            "files", b"ignored", filename="manual.pdf", content_type="application/pdf"
+        )
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                data=form,
+            )
+            payload = await response.json()
+        assert attachment_submitter.persistent_uploads == [()]
+        assert payload["files"][0]["status"] == "rejected"
+        assert payload["files"][0]["persistent"] == {
+            "status": "rejected",
+            "reason": "attachment was rejected; not saved",
+        }
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_journal_input_endpoint_ignores_out_of_range_and_bad_persist() -> None:
+    attachment_submitter = _FakeAttachmentSubmitter(AttachmentSubmissionReason.ACCEPTED)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_attachment_submitter=attachment_submitter,
+    )
+    info = await server.start()
+    try:
+        for persist_value in ("[5]", "not-json", '{"a":1}'):
+            attachment_submitter.persistent_uploads.clear()
+            form = aiohttp.FormData()
+            form.add_field("persist", persist_value)
+            form.add_field(
+                "files", b"body", filename="doc.md", content_type="text/plain"
+            )
+            async with aiohttp.ClientSession() as session:
+                response = await session.post(
+                    f"http://127.0.0.1:{info.port}/api/journal/input?token=valid-token",
+                    data=form,
+                )
+                payload = await response.json()
+            assert attachment_submitter.persistent_uploads == [()]
+            assert "persistent" not in payload["files"][0]
     finally:
         await server.stop()
 

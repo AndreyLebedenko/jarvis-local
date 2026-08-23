@@ -59,8 +59,25 @@ class TextSubmissionResult:
 
 
 @dataclass(frozen=True)
+class PersistedFileOutcome:
+    """Outcome of persisting one user-marked upload as a session file
+    (story-v1.8.1 task 4). ``storage_name``/``bytes`` are set on success and
+    ``error`` on failure; the two are mutually exclusive."""
+
+    filename: str
+    storage_name: str | None = None
+    bytes: int | None = None
+    error: str | None = None
+
+    @property
+    def persisted(self) -> bool:
+        return self.storage_name is not None
+
+
+@dataclass(frozen=True)
 class AttachmentSubmissionResult:
     reason: AttachmentSubmissionReason
+    persisted_files: tuple[PersistedFileOutcome, ...] = ()
 
     @property
     def accepted(self) -> bool:

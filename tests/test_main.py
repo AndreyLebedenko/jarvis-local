@@ -61,6 +61,7 @@ from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    FilesSettings,
     HistoryAnnotationSettings,
     HistorySettings,
     JournalSettings,
@@ -101,11 +102,13 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
+from jarvis.files import SessionFileRepository, resolve_session_file_scope
 from jarvis.history.context_budget import ContextBudgetLimits
 from jarvis.inputs.attachments import (
     AttachmentClass,
     AttachmentPlan,
     AttachmentPlanItem,
+    AttachmentUpload,
     PendingAudioMedia,
     PlannedImageMedia,
     PlannedTextPart,
@@ -293,6 +296,8 @@ def _orchestrator(
     text_input_max_chars=main_module.DEFAULT_TEXT_INPUT_MAX_CHARS,
     max_audio_attachment_clips=main_module.MAX_CLIPS_PER_FILE,
     solo_session_state=None,
+    session_file_repository=None,
+    session_file_scope=None,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -310,6 +315,8 @@ def _orchestrator(
         text_input_max_chars=text_input_max_chars,
         max_audio_attachment_clips=max_audio_attachment_clips,
         solo_session_state=solo_session_state,
+        session_file_repository=session_file_repository,
+        session_file_scope=session_file_scope,
     )
     return orchestrator, backend, sound_cues
 
@@ -1196,6 +1203,110 @@ async def test_on_attachment_submission_orders_media_images_then_audio():
     image_b64 = base64.b64encode(b"png-bytes").decode()
     assert media[:2] == [image_b64, image_b64]  # images first, upload order
     assert len(media) == 3  # then the one audio clip
+
+
+def _persisting_orchestrator(tmp_path, chat_impl=None):
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(store, enabled=True)
+    repository = SessionFileRepository(
+        store.root,
+        config=FilesSettings(),
+        session_is_visible=lambda sid: bool(store.read_session(sid).records),
+    )
+    orchestrator, backend, sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        journal_recorder=recorder,
+        session_file_repository=repository,
+        session_file_scope=lambda: resolve_session_file_scope(
+            store, recorder.session_id
+        ),
+    )
+    return orchestrator, backend, store, recorder
+
+
+def _upload(filename: str, data: bytes = b"payload") -> AttachmentUpload:
+    return AttachmentUpload(filename=filename, content_type="", data=data)
+
+
+async def test_persistent_upload_is_written_and_storage_name_surfaced(tmp_path):
+    orchestrator, backend, store, recorder = _persisting_orchestrator(tmp_path)
+
+    result = await orchestrator.on_attachment_submission(
+        "keep this", AttachmentPlan(items=()), [_upload("plan.md", b"note body")]
+    )
+
+    assert result.reason is AttachmentSubmissionReason.ACCEPTED
+    [outcome] = result.persisted_files
+    assert outcome.persisted
+    assert outcome.storage_name.startswith("plan-")
+    assert outcome.storage_name.endswith(".md")
+    assert outcome.bytes == len(b"note body")
+    # The file is a loose file in the current session directory.
+    session_dir = store.root / recorder.session_id
+    assert (session_dir / outcome.storage_name).read_bytes() == b"note body"
+    # Its storage name reaches the model in the same turn.
+    [(messages, _media)] = backend.calls
+    assert outcome.storage_name in messages[-1]["content"]
+
+
+async def test_persistent_upload_works_on_first_turn_of_a_new_session(tmp_path):
+    # No session exists before this turn: the hook flushes the just-recorded
+    # user event so the write is not refused as no-active-session.
+    orchestrator, _backend, store, recorder = _persisting_orchestrator(tmp_path)
+    assert recorder.session_id is None
+
+    result = await orchestrator.on_attachment_submission(
+        "", AttachmentPlan(items=()), [_upload("note.txt", b"x")]
+    )
+
+    [outcome] = result.persisted_files
+    assert outcome.persisted
+    assert (store.root / recorder.session_id / outcome.storage_name).exists()
+
+
+async def test_persistent_upload_preserves_current_turn_image_media(tmp_path):
+    orchestrator, backend, _store, _recorder = _persisting_orchestrator(tmp_path)
+    plan = AttachmentPlan(items=(_image_plan_item("photo.png"),))
+
+    result = await orchestrator.on_attachment_submission(
+        "look", plan, [_upload("photo.png", b"png-bytes")]
+    )
+
+    # Persisted AND still delivered as this turn's transient image media.
+    assert result.persisted_files[0].persisted
+    [(_messages, media)] = backend.calls
+    assert media == list(compose_turn_images(plan))
+
+
+async def test_persistent_upload_reports_repository_rejection(tmp_path):
+    # A traversal filename is rejected by the repository and never becomes a
+    # storage path; no turn-aborting exception escapes.
+    orchestrator, _backend, store, recorder = _persisting_orchestrator(tmp_path)
+
+    result = await orchestrator.on_attachment_submission(
+        "hi", AttachmentPlan(items=()), [_upload("../escape.md", b"x")]
+    )
+
+    [outcome] = result.persisted_files
+    assert not outcome.persisted
+    assert outcome.error is not None
+    assert list((store.root / recorder.session_id).glob("*.md")) == []
+
+
+async def test_persistent_upload_reported_unavailable_without_repository(tmp_path):
+    # Journal recorder present but no session-file repository wired: the
+    # submission still proceeds and each marked file is reported unavailable.
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        journal_recorder=JournalRecorder(JournalStore(tmp_path), enabled=True)
+    )
+
+    result = await orchestrator.on_attachment_submission(
+        "hi", AttachmentPlan(items=()), [_upload("note.md", b"x")]
+    )
+
+    [outcome] = result.persisted_files
+    assert not outcome.persisted
+    assert outcome.error == "session files unavailable"
 
 
 async def test_on_attachment_submission_reports_source_and_input_metadata():
