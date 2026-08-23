@@ -33,6 +33,7 @@ from jarvis.core.lifecycle import (
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
+    PersistedFileOutcome,
     TextSubmissionReason,
     TextSubmissionResult,
 )
@@ -339,6 +340,34 @@ def hello_message(client_id: str, capabilities: Sequence[str]) -> JsonObject:
     )
 
 
+def _parse_persist_indices(raw: bytes) -> set[int]:
+    """The `persist` multipart field is a JSON array of 0-based upload indices
+    (in upload order) the client marked to keep as session files. Malformed
+    input yields no marks rather than an error - persistence is opt-in and a
+    bad marker must never reject an otherwise valid submission."""
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return set()
+    if not isinstance(value, list):
+        return set()
+    return {
+        item
+        for item in value
+        if isinstance(item, int) and not isinstance(item, bool) and item >= 0
+    }
+
+
+def _persistent_outcome_payload(outcome: PersistedFileOutcome) -> JsonObject:
+    if outcome.storage_name is not None:
+        return {
+            "status": "saved",
+            "storage_name": outcome.storage_name,
+            "bytes": outcome.bytes,
+        }
+    return {"status": "rejected", "reason": outcome.error}
+
+
 class ControlApi(Protocol):
     def toggle_thinking(self) -> None: ...
 
@@ -383,7 +412,10 @@ class TextInputSubmitter(Protocol):
 
 class AttachmentInputSubmitter(Protocol):
     async def __call__(
-        self, typed_text: str, plan: AttachmentPlan
+        self,
+        typed_text: str,
+        plan: AttachmentPlan,
+        persistent_uploads: Sequence[AttachmentUpload] = (),
     ) -> AttachmentSubmissionResult: ...
 
 
@@ -995,9 +1027,12 @@ class UiTransportServer:
                 text="journal attachment input not available"
             )
         try:
-            typed_text, uploads, pre_rejected_files = await self._read_multipart_input(
-                request
-            )
+            (
+                typed_text,
+                uploads,
+                pre_rejected_files,
+                persist_indices,
+            ) = await self._read_multipart_input(request)
         except UploadTooLargeError as error:
             return web.json_response(
                 {
@@ -1020,14 +1055,42 @@ class UiTransportServer:
         plan = plan_attachments(
             uploads, max_audio_seconds=self._max_audio_attachment_seconds
         )
-        result = await self._journal_attachment_submitter(typed_text, plan)
+        persist_order = [
+            index for index in sorted(persist_indices) if index < len(uploads)
+        ]
+        # Persistence rides the same validation gate as transient media: only a
+        # planner-accepted upload is written. A marked-but-rejected file is
+        # never saved (write_bytes is uncapped, so persisting a file the planner
+        # refused for size/type would silently bypass that validation); it is
+        # reported persistent-rejected instead.
+        persistable_order = [
+            index for index in persist_order if plan.items[index].accepted
+        ]
+        persistent_uploads = [uploads[index] for index in persistable_order]
+        result = await self._journal_attachment_submitter(
+            typed_text, plan, persistent_uploads
+        )
+        persistence_by_index: dict[int, JsonObject] = {
+            index: _persistent_outcome_payload(outcome)
+            for index, outcome in zip(
+                persistable_order, result.persisted_files, strict=False
+            )
+        }
+        for index in persist_order:
+            if index not in persistence_by_index:
+                persistence_by_index[index] = {
+                    "status": "rejected",
+                    "reason": "attachment was rejected; not saved",
+                }
         return web.json_response(
-            self._attachment_submission_payload(result, plan, pre_rejected_files)
+            self._attachment_submission_payload(
+                result, plan, pre_rejected_files, persistence_by_index
+            )
         )
 
     async def _read_multipart_input(
         self, request: web.Request
-    ) -> tuple[str, list[AttachmentUpload], list[JsonObject]]:
+    ) -> tuple[str, list[AttachmentUpload], list[JsonObject], set[int]]:
         try:
             reader = await request.multipart()
         except ValueError:
@@ -1036,6 +1099,7 @@ class UiTransportServer:
         typed_text = ""
         uploads: list[AttachmentUpload] = []
         pre_rejected_files: list[JsonObject] = []
+        persist_indices: set[int] = set()
         total_bytes = 0
 
         async for part in reader:
@@ -1043,6 +1107,9 @@ class UiTransportServer:
                 if part.name == "text":
                     raw_text = await self._read_multipart_text_part(part)
                     typed_text = raw_text.decode("utf-8", errors="replace")
+                elif part.name == "persist":
+                    raw_persist = await self._read_multipart_text_part(part)
+                    persist_indices = _parse_persist_indices(raw_persist)
                 else:
                     await part.release()
                 continue
@@ -1073,7 +1140,7 @@ class UiTransportServer:
                 )
             )
 
-        return typed_text, uploads, pre_rejected_files
+        return typed_text, uploads, pre_rejected_files, persist_indices
 
     async def _read_multipart_text_part(self, part: BodyPartReader) -> bytes:
         chunks: list[bytes] = []
@@ -1860,22 +1927,31 @@ class UiTransportServer:
         result: AttachmentSubmissionResult,
         plan: AttachmentPlan,
         pre_rejected_files: Sequence[JsonObject],
+        persistence_by_index: Mapping[int, JsonObject] | None = None,
     ) -> JsonObject:
         status = "accepted" if result.accepted else "rejected"
+        # plan.items is 1:1 with uploads, so an upload index maps a persistence
+        # outcome (built by the handler from the persist markers) onto its file.
+        persistence = persistence_by_index or {}
         return {
             "status": status,
             "reason": result.reason.value,
             "files": [
                 *(
-                    UiTransportServer._attachment_item_payload(item)
-                    for item in plan.items
+                    UiTransportServer._attachment_item_payload(
+                        item, persistence.get(index)
+                    )
+                    for index, item in enumerate(plan.items)
                 ),
                 *pre_rejected_files,
             ],
         }
 
     @staticmethod
-    def _attachment_item_payload(item: AttachmentPlanItem) -> JsonObject:
+    def _attachment_item_payload(
+        item: AttachmentPlanItem,
+        persistence: JsonObject | None = None,
+    ) -> JsonObject:
         if not item.accepted:
             status = "rejected"
         elif item.warnings:
@@ -1890,6 +1966,8 @@ class UiTransportServer:
         }
         if item.rejection_reason is not None:
             payload["reason"] = item.rejection_reason
+        if persistence is not None:
+            payload["persistent"] = persistence
         return payload
 
     @staticmethod
