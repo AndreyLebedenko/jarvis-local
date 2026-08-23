@@ -4042,6 +4042,89 @@ recorded figures; nothing above is a *known-failing* check waiting on the
 next release - it is the standing re-verification list for whenever the
 embedding model, Ollama version, or host changes.
 
+## Architecture v1.8.1 (session file operations)
+
+A session-scoped file capability the model can use for any purpose: save a
+text file, read text back, view an image, and stat/list files, over the
+existing per-session directories (`root/<session_id>/`, `JournalStore`). Do
+not re-litigate the locked decisions below without the owner's request.
+
+Loose files, not journal events. A model- or UI-written session file is a
+plain file in the session directory, never recorded as a `JournalEvent`: its
+content never enters the transcript, derived corpus, or semantic index. It is
+therefore discoverable only by its storage name (via `list_session_files` or
+the name returned at write/upload time) - it does not contradict the
+journal/history locality or corpus guarantees above, it sits beside them.
+
+Generated storage names, create-only for the model. The repository never
+writes the requested name directly. It generates a storage name from the
+requested label as `stem-<uuid>.ext` (or `stem-<uuid>` for a no-extension
+name), checks it does not already exist, and returns the actual storage name;
+on the impossible UUID collision it generates another and never touches an
+existing file. There is no overwrite, delete, or rename tool exposed to the
+model - destructive actions stay in the user's hands (deleting the whole
+session). The model-facing write tool is text-only; the repository owns an
+internal `write_bytes()` used by non-model callers (the UI upload path, and
+later media downloads). Storage-name generation lives only in the repository;
+no caller reinvents it.
+
+Write current, read inherited. A continued/forked session is a new session
+with its own provenance. Writes always target the current session id. Reads/
+list/stat/view use a runtime-injected `SessionFileScope` with a
+`write_session_id` and ordered `read_session_ids` (current first, then
+inherited ancestors followed live from `metadata.continued_from` provenance in
+the raw journal, bounded by a seen-set and depth). Inherited scopes are
+read-only and are live pointers, not snapshots: deleting an ancestor session
+removes access to its files with no restart. A storage name duplicated across
+scopes resolves by scope order (current shadows nearest ancestor) for read/
+stat/view; `list` reports every origin so the ambiguity stays visible.
+
+No-active-session invariant. Every file tool returns a typed no-active-session
+error unless there is an active current session that is journal-visible
+(`JournalStore.read_session(current).records` non-empty). A model file write
+does not force session creation, so a files-only directory cannot escape
+`usage()`/`delete_session()`. A written file counts in `JournalStore.usage()`
+and is removed by `delete_session` for its session.
+
+No model-supplied session id. Session-file scope is ambient runtime context
+injected into `BuiltinToolProvider`; no tool takes a `sessionId` argument (a
+model-named session id would be a cross-session read/write surface). Read
+inheritance is decided only by trusted fork/continue provenance.
+
+Seam. Pure `SessionFileRepository` (`src/jarvis/files/session_files.py`) owns
+name validation (reusing `events.validate_relative_media_path` plus a
+resolve()/relative_to boundary), storage-name generation, create-only writes,
+the write deny-list, size caps, typed read/list/stat, and image-format
+validation - it takes a `session_is_visible` predicate rather than importing
+`JournalStore`, staying pure. The journal-coupled scope builder
+`resolve_session_file_scope` (`src/jarvis/files/scope.py`) reads provenance.
+Five builtins (`write_session_file`, `read_session_text`,
+`view_session_image`, `stat_session_file`, `list_session_files`,
+`data_boundary=local`) are wired in `build_app` with a late-bound scope
+provider. Config section `[files]`: `write_ext_blacklist` (fail-open deny-list,
+Windows executable/script extensions by default, case-insensitive, writes
+only), `max_text_write_chars`, `max_text_read_bytes`, `max_image_view_bytes`.
+
+Persistent UI upload. A user may mark an uploaded attachment "keep in session"
+in the Journal input dock; the transport sends a `persist` field (JSON array of
+0-based indices in pending-file order). Persistence runs app-side in
+`Orchestrator.on_attachment_submission` via an optional `_start_turn`
+post-journal hook that fires after the user event is recorded (so the session
+is journal-visible, including the first event of a new session) and before
+model dispatch: it flushes pending journal writes, writes each marked upload
+through `write_bytes` using the upload basename as the label, and appends the
+generated storage names to the model-facing text of that same turn without
+altering the recorded user event. Only planner-accepted marked uploads are
+persisted; a persist failure is reported per file and never aborts the turn.
+
+Shared-directory consequence (intentional). Loose files with journal-media
+extensions live in the same session directory as event media, so
+`list_session_files` also surfaces the journal's own event media (utterance
+`.wav`, screenshots). This is a metadata-only surface (never transcript/corpus)
+and was accepted by the owner; see
+`tasks/bug_reports/session-file-list-surfaces-journal-media.md` for the
+declined `list`-filtering alternative and how to revisit it later.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

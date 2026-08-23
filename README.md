@@ -100,6 +100,18 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   the optional MCP module; successful builtin replace writes save the previous
   version as `memory.md.bak` or `self.md.bak`; privacy controls such as
   microphone sleep, Open/Hidden, and MCP enablement are not delegable.
+- Session files let Jarvis save and re-read files scoped to the current chat
+  session. Through the audited tool path it can write a text file, read text
+  back, look at a PNG/JPEG image, and stat/list files. Writes are create-only:
+  the model never overwrites, deletes, or renames, and the requested name is
+  turned into a generated storage handle (`name-<id>.ext`) that later reads use
+  - there is no per-file delete, rename, or arbitrary cross-session access. A
+  continued session can read (not write) files inherited from the session it
+  continued. You can also tick "Keep in session" on an uploaded attachment to
+  persist it as a session file and hand its handle to the model. Session files
+  are plain files beside the journal, kept out of the transcript and history
+  index, and are removed when you delete their session. See
+  [Session files](#session-files).
 - On-command camera capture from named USB and LAN (RTSP) sources, off by
   default and gated by a non-delegable switch. Frames are current-turn only,
   each frame stays bound to the source that produced it, and LAN captures are
@@ -312,6 +324,45 @@ opt-in rather than the camera switch. See
 reasoning. A consequence worth stating: a motorized lens shows wherever it
 was last aimed, including by the camera's own auto-tracking, so its captures
 are not reproducible and its description should say so.
+
+## Session files
+
+Jarvis can keep files scoped to the current chat session and reopen them
+later. Through the audited tool path it can save a UTF-8 text file
+(`write_session_file`), read text back (`read_session_text`), look at a PNG or
+JPEG image (`view_session_image`), and get metadata or a listing
+(`stat_session_file`, `list_session_files`). These are local builtins on the
+`local` data-source axis, like the memory tools.
+
+Writes are create-only and the name you ask for is a label, not the identity.
+The repository turns it into a generated storage handle - `notes-<id>.md` for
+`notes.md` - and that handle is what every later read, view, or stat uses. The
+model never overwrites, deletes, or renames a file, and never names a session
+id, so it cannot reach another session's files. There is no per-file delete
+control; the only way to remove session files is to delete the whole session,
+which removes them with it.
+
+A session started by continuing another one can read (never write) the files
+it inherited from its ancestors; those inherited files are live, so deleting an
+ancestor session removes the continued session's access to them. Because a
+session file has no journal event, it is discoverable only by its storage
+handle - ask Jarvis to `list_session_files` to see what a session holds.
+
+You can also persist an upload from the Journal input dock: tick "Keep in
+session" on an attached file before sending, and it is copied into the session
+under a generated handle and its name is handed to the model in that same turn.
+The dock shows "Saved as `<handle>`" or, if the save failed, why. Marking a
+file to keep does not change the current-turn attachment behavior - an image
+you keep is still shown to the model this turn.
+
+Session files are plain files stored beside the journal event log. Their
+contents never enter the transcript, the derived corpus, or the history search
+index. Size is bounded by `[files]` in `config.toml`
+(`max_text_write_chars`, `max_text_read_bytes`, `max_image_view_bytes`), and
+`[files].write_ext_blacklist` lists extensions the model may not create - a
+deny-list (anything not listed is allowed) of Windows executable/script types
+by default, which you own and can edit. See `config.example.toml` for the
+defaults and warnings.
 
 ## Optional MCP examples: DDGS and Qdrant
 
