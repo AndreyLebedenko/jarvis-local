@@ -1,3 +1,4 @@
+from jarvis.files.scope import resolve_session_file_scope
 from jarvis.files.session_files import (
     DeniedExtensionError,
     FileTooLargeError,
@@ -28,4 +29,5 @@ __all__ = [
     "SessionFileWriteResult",
     "SessionImageView",
     "UnsupportedImageError",
+    "resolve_session_file_scope",
 ]
