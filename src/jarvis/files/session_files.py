@@ -162,7 +162,6 @@ class SessionFileRepository:
     def list(self, scope: SessionFileScope) -> list[SessionFileStat]:
         self._require_active(scope)
         entries: list[SessionFileStat] = []
-        shadowed: set[str] = set()
         for index, session_id in enumerate(scope.read_session_ids):
             session_dir = self._session_dir(session_id)
             if not session_dir.is_dir():
@@ -171,9 +170,10 @@ class SessionFileRepository:
             for child in sorted(session_dir.iterdir()):
                 if not child.is_file() or child.name == _EVENTS_FILE_NAME:
                     continue
-                if child.name in shadowed:
-                    continue
-                shadowed.add(child.name)
+                # A storage name duplicated across scopes is reported once per
+                # origin, never deduped: read/stat resolve it by scope order
+                # (current shadows ancestor), but list must keep the ambiguity
+                # visible with each file's own session_id and scope.
                 entries.append(self._stat_for(child, session_id, label))
         return entries
 
