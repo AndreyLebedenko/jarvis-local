@@ -1226,6 +1226,16 @@ html[data-view="settings"] .settings {
 }
 .journal-attachment[data-status="rejected"] .journal-attachment-detail { color: var(--red); }
 .journal-attachment[data-status="warning"] .journal-attachment-detail { color: var(--amber); }
+.journal-attachment-persist {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+  color: var(--text-faint); font: 10px "Consolas", "Cascadia Mono", monospace;
+  cursor: pointer; user-select: none;
+}
+.journal-attachment-persist input { margin: 0; cursor: pointer; }
+.journal-attachment-persist-detail { color: var(--cyan); }
+.journal-attachment[data-status="rejected"] .journal-attachment-persist-detail {
+  color: var(--red);
+}
 .journal-attachment-remove {
   width: 26px; padding: 0; font-family: "Consolas", "Cascadia Mono", monospace;
 }

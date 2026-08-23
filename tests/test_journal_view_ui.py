@@ -231,6 +231,56 @@ def test_input_dock_has_attachment_picker_and_drop_target():
     assert 'data-i18n="journal_drop_target"' in INDEX_HTML
 
 
+def test_persistent_upload_marker_is_sent_in_pending_order():
+    # The persist field carries 0-based indices into the pending-file order
+    # (the same order FormData appends "files"), built by skipping sent entries.
+    assert 'body.append("persist", JSON.stringify(persistIndices))' in APP_JS
+    body = APP_JS.split("function _journalPersistIndices()")[1].split("\n}")[0]
+    assert "if (entry.sent) continue;" in body
+    assert "if (entry.persist) indices.push(pendingIndex);" in body
+
+
+def test_persistent_upload_has_a_per_file_toggle():
+    assert "function toggleJournalAttachmentPersist(index)" in APP_JS
+    assert "function _journalAttachmentPersistToggle(" in APP_JS
+    assert 'uiString("journal_attachment_persist")' in APP_JS
+    toggle_body = APP_JS.split("function toggleJournalAttachmentPersist(index)")[
+        1
+    ].split("\n}")[0]
+    # A sent file can no longer be re-marked.
+    assert "if (!entry || entry.sent) return;" in toggle_body
+
+
+def test_persistent_save_failure_survives_the_completed_clear():
+    """Regression (codex review): an accepted upload whose persistent save
+    failed still has transient status 'accepted', so clearing on status alone
+    would silently hide the 'Not saved' failure. The clear must keep it."""
+    clear_body = APP_JS.split("function _clearCompletedJournalAttachments()")[1].split(
+        "\n}"
+    )[0]
+    assert "_entryPersistFailed(entry)" in clear_body
+
+    failed_body = APP_JS.split("function _entryPersistFailed(entry)")[1].split("\n}")[0]
+    assert 'persistent.status === "rejected"' in failed_body
+
+
+def test_persistent_save_failure_is_dismissable():
+    element_body = APP_JS.split("function _journalAttachmentElement(entry, index)")[
+        1
+    ].split("\nfunction ")[0]
+    # The remove control shows while pending OR once sent with a failed save.
+    assert "if (!entry.sent || _entryPersistFailed(entry)) {" in element_body
+
+
+def test_persistent_save_outcome_is_rendered_from_the_payload():
+    detail_body = APP_JS.split("function _journalAttachmentPersistDetail(result)")[
+        1
+    ].split("\n}")[0]
+    assert 'persistent.status === "saved"' in detail_body
+    assert 'uiString("journal_attachment_persist_saved")' in detail_body
+    assert 'uiString("journal_attachment_persist_rejected")' in detail_body
+
+
 def test_hidden_placeholder_logic_present():
     """Hidden swaps the whole view for a generic placeholder: CSS does the
     swap, app.js drops fetched content and refetches on Open (defense in
