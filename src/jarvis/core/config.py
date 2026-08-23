@@ -642,6 +642,54 @@ class PromptSettings:
     reasoning_high: str | None = None
 
 
+# Windows executable/script extensions the model may not create as a session
+# file (story-v1.8.1 decision 3). Deny-list, not allow-list: files land in
+# Jarvis's own session directory and are never executed by Jarvis, so an
+# unlisted extension is allowed by design and the user owns the list.
+_DEFAULT_WRITE_EXT_BLACKLIST = (
+    "exe",
+    "bat",
+    "cmd",
+    "com",
+    "scr",
+    "msi",
+    "dll",
+    "ps1",
+    "psm1",
+    "vbs",
+    "vbe",
+    "js",
+    "jse",
+    "wsf",
+    "wsh",
+    "lnk",
+    "reg",
+    "sys",
+    "cpl",
+    "jar",
+)
+
+
+@dataclass(frozen=True)
+class FilesSettings:
+    """Bounds and policy for model-facing session files (story-v1.8.1).
+
+    Caps are asymmetric on purpose: a write is capped in characters (the model
+    produces a string) and a read in bytes (an on-disk file of unknown
+    encoding). max_image_view_bytes defaults to the attachment image cap."""
+
+    write_ext_blacklist: tuple[str, ...] = _DEFAULT_WRITE_EXT_BLACKLIST
+    max_text_write_chars: int = field(
+        default=20000, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    max_text_read_bytes: int = field(
+        default=65536, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+    max_image_view_bytes: int = field(
+        default=15 * 1024 * 1024, metadata={"minimum": 0, "exclusive_minimum": True}
+    )
+
+
 @dataclass(frozen=True)
 class UiSettings:
     """UI chrome language only (story-v1.2.11-ui-english-localization.md):
@@ -669,6 +717,7 @@ class Settings:
     attachments: AttachmentSettings = field(default_factory=AttachmentSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
     ui: UiSettings = field(default_factory=UiSettings)
+    files: FilesSettings = field(default_factory=FilesSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
@@ -689,6 +738,7 @@ _SECTIONS: dict[str, type] = {
     "attachments": AttachmentSettings,
     "microphone": MicrophoneSettings,
     "ui": UiSettings,
+    "files": FilesSettings,
     "prompts": PromptSettings,
     "mcp": McpSettings,
     "history": HistorySettings,
@@ -738,24 +788,11 @@ def _build_section(
     *,
     prompt_root: Path,
 ) -> Any:
-    if cls is TtsSettings:
-        return _build_tts_section(section_name, raw)
-    if cls is UiSettings:
-        return _build_ui_section(section_name, raw)
     if cls is PromptSettings:
         return _build_prompts_section(section_name, raw, prompt_root)
-    if cls is McpSettings:
-        return _build_mcp_section(section_name, raw)
-    if cls is MemorySettings:
-        return _build_memory_section(section_name, raw)
-    if cls is LoggingSettings:
-        return _build_logging_section(section_name, raw)
-    if cls is HistorySettings:
-        return _build_history_section(section_name, raw)
-    if cls is CameraSettings:
-        return _build_camera_section(section_name, raw)
-    if cls is AttachmentSettings:
-        return _build_attachments_section(section_name, raw)
+    builder = _SECTION_BUILDERS.get(cls)
+    if builder is not None:
+        return builder(section_name, raw)
     return _build_plain_section(section_name, cls, raw)
 
 
@@ -907,6 +944,42 @@ def _build_attachments_section(
             f"got {settings.max_audio_clips}"
         )
     return settings
+
+
+def _build_files_section(section_name: str, raw: dict[str, Any]) -> "FilesSettings":
+    scalars = {key: value for key, value in raw.items() if key != "write_ext_blacklist"}
+    settings = _build_plain_section(section_name, FilesSettings, scalars)
+    for name in ("max_text_write_chars", "max_text_read_bytes", "max_image_view_bytes"):
+        value = getattr(settings, name)
+        if value <= 0:
+            raise ConfigError(
+                f"[{section_name}].{name} must be a positive int, got {value!r}"
+            )
+    if "write_ext_blacklist" not in raw:
+        return settings
+    return replace(
+        settings,
+        write_ext_blacklist=_build_write_ext_blacklist(
+            section_name, raw["write_ext_blacklist"]
+        ),
+    )
+
+
+def _build_write_ext_blacklist(section_name: str, raw: object) -> tuple[str, ...]:
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise ConfigError(
+            f"[{section_name}].write_ext_blacklist must be a list of strings"
+        )
+    normalized: list[str] = []
+    for item in raw:
+        extension = item.strip().lstrip(".").casefold()
+        if not extension:
+            raise ConfigError(
+                f"[{section_name}].write_ext_blacklist must not contain empty "
+                "extensions"
+            )
+        normalized.append(extension)
+    return tuple(normalized)
 
 
 def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
@@ -1602,6 +1675,21 @@ def _merge_raw_section(
             languages[language] = ui_route
     merged["languages"] = languages
     return merged
+
+
+# Sections whose builder needs only (section_name, raw). PromptSettings is the
+# one exception (it also needs prompt_root) and is dispatched separately.
+_SECTION_BUILDERS: dict[type, Any] = {
+    TtsSettings: _build_tts_section,
+    UiSettings: _build_ui_section,
+    FilesSettings: _build_files_section,
+    McpSettings: _build_mcp_section,
+    MemorySettings: _build_memory_section,
+    LoggingSettings: _build_logging_section,
+    HistorySettings: _build_history_section,
+    CameraSettings: _build_camera_section,
+    AttachmentSettings: _build_attachments_section,
+}
 
 
 def load_settings(

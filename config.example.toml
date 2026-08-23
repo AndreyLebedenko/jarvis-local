@@ -379,6 +379,29 @@ thinking_off = "sounds/thinking_off.wav"
 # and TTS output are not affected by this setting.
 language = "en"
 
+[files]
+# Loose per-session files the model can create and read (story-v1.8.1).
+# They live in the session directory alongside the event log but are never
+# journal events, so their content stays out of the transcript, corpus, and
+# semantic index. The model only ever sees the generated storage name.
+#
+# write_ext_blacklist: extensions the model may NOT create. Deny-list, not
+# allow-list (fails open by design): files land in Jarvis's own session
+# directory and are never executed by Jarvis, so anything unlisted is
+# allowed and you own the list. Case-insensitive; applies to writes only.
+# The default blocks Windows executable/script extensions.
+write_ext_blacklist = [
+    "exe", "bat", "cmd", "com", "scr", "msi", "dll", "ps1", "psm1", "vbs",
+    "vbe", "js", "jse", "wsf", "wsh", "lnk", "reg", "sys", "cpl", "jar",
+]
+# Bounds on model-facing payloads. Asymmetric on purpose: a write is capped
+# in characters (the model produces a string), a read in bytes (an on-disk
+# file of unknown encoding). max_image_view_bytes matches the attachment
+# image cap.
+max_text_write_chars = 20000
+max_text_read_bytes = 65536
+max_image_view_bytes = 15728640
+
 [prompts]
 # Dialog prompts sent to the model. `system` opens every turn's message
 # list; `warmup` is the throwaway request sent once at startup before

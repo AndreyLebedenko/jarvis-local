@@ -76,7 +76,7 @@ class JournalEvent:
         parse_journal_timestamp(self.timestamp)
         object.__setattr__(self, "media", tuple(self.media))
         for path in self.media:
-            _validate_media_path(path)
+            validate_relative_media_path(path)
         _validate_metadata(self.metadata)
         object.__setattr__(self, "metadata", dict(self.metadata))
 
@@ -142,7 +142,11 @@ def parse_journal_timestamp(value: str) -> datetime:
     return parsed
 
 
-def _validate_media_path(value: str) -> None:
+def validate_relative_media_path(value: str) -> None:
+    """The one relative-path containment predicate for anything written into a
+    session directory: journal event media here, and loose session files in
+    jarvis.files. Rejects empty, absolute, and `..`-bearing paths; the caller
+    still resolves the final path against the session dir for defense in depth."""
     if not value:
         raise ValueError("media paths must not be empty")
     if PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute():
