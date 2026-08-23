@@ -14,6 +14,7 @@ from jarvis.core.config import (
     ClipboardSettings,
     ConfigError,
     DataBoundary,
+    FilesSettings,
     HistoryAnnotationSettings,
     HistorySemanticSettings,
     HistorySettings,
@@ -130,6 +131,48 @@ def test_logging_settings_reject_unusable_values(tmp_path, override):
     time like every other section rather than at first write."""
     config_path = tmp_path / "config.toml"
     config_path.write_text(f"[logging]\n{override}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_settings(config_path)
+
+
+def test_files_settings_parse_and_normalize_from_config(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [files]
+        write_ext_blacklist = [".EXE", "Bat", "  com  "]
+        max_text_write_chars = 100
+        max_text_read_bytes = 200
+        max_image_view_bytes = 300
+        """,
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.files == FilesSettings(
+        write_ext_blacklist=("exe", "bat", "com"),
+        max_text_write_chars=100,
+        max_text_read_bytes=200,
+        max_image_view_bytes=300,
+    )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        "write_ext_blacklist = [1]",
+        'write_ext_blacklist = "exe"',
+        'write_ext_blacklist = ["."]',
+        "max_text_write_chars = 0",
+        "max_text_read_bytes = -1",
+        "max_image_view_bytes = 0",
+    ],
+)
+def test_files_settings_reject_unusable_values(tmp_path, override):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f"[files]\n{override}\n", encoding="utf-8")
 
     with pytest.raises(ConfigError):
         load_settings(config_path)

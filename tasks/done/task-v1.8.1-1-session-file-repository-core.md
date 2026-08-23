@@ -1,6 +1,6 @@
 # Task v1.8.1-1: Session file repository core
 
-**Status:** Not started.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.1-session-file-operations.md`
 **Depends on:** nothing; first implementation card of v1.8.1.
 
