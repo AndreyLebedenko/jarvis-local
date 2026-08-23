@@ -1,6 +1,9 @@
 # Task v1.8.1-5: Documentation and release verification
 
-**Status:** Not started.
+**Status:** Completed. PROJECT.md, README.md, and README.ru.md updated with the
+final session-file architecture and user-facing behavior; story/task status
+text reconciled. Final checks green: `python -m pytest` (2130 passed, 1
+skipped), `python -m ruff check .`, `python -m ruff format --check .`.
 **Story:** `tasks/story-v1.8.1-session-file-operations.md`
 **Depends on:** tasks v1.8.1-1 through v1.8.1-4.
 

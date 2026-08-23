@@ -1,6 +1,10 @@
 # Story: session file operations (v1.8.1)
 
-**Status:** Design fixed, not started.
+**Status:** Completed. All five tasks merged (repository core, scope
+inheritance, builtin tools, persistent upload backend+UI, docs and release
+verification). Manual handoffs for the builtin tools and persistent UI upload
+were run and confirmed by the owner, including a persisted file as the first
+event of a new session.
 **Depends on:** nothing. Standalone capability, useful independent of Kling
 or any external integration.
 
