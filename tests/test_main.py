@@ -3183,6 +3183,14 @@ def _builtin_tool_payloads(app: App) -> list[dict[str, object]]:
             "description": description("capture_camera_image"),
         },
         {
+            "name": "list_session_files",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("list_session_files"),
+        },
+        {
             "name": "read_history",
             "provider": "history",
             "provider_kind": "builtin",
@@ -3197,6 +3205,14 @@ def _builtin_tool_payloads(app: App) -> list[dict[str, object]]:
             "enabled": True,
             "available": True,
             "description": description("read_history_ranges"),
+        },
+        {
+            "name": "read_session_text",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("read_session_text"),
         },
         {
             "name": "remember",
@@ -3221,6 +3237,30 @@ def _builtin_tool_payloads(app: App) -> list[dict[str, object]]:
             "enabled": True,
             "available": True,
             "description": description("set_reasoning_level"),
+        },
+        {
+            "name": "stat_session_file",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("stat_session_file"),
+        },
+        {
+            "name": "view_session_image",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("view_session_image"),
+        },
+        {
+            "name": "write_session_file",
+            "provider": "builtin",
+            "provider_kind": "builtin",
+            "enabled": True,
+            "available": True,
+            "description": description("write_session_file"),
         },
     ]
 
@@ -4527,13 +4567,38 @@ def test_build_app_always_constructs_an_inert_mcp_host_when_mcp_is_disabled():
     tools = {tool.name: tool for tool in app.mcp_host.registry.all()}
     assert set(tools) == {
         "capture_camera_image",
+        "list_session_files",
         "read_history",
         "read_history_ranges",
+        "read_session_text",
         "remember",
         "search_history",
         "set_reasoning_level",
+        "stat_session_file",
+        "view_session_image",
+        "write_session_file",
     }
     assert {tool.provider_kind for tool in tools.values()} == {"builtin"}
+
+
+async def test_build_app_wires_session_files_without_forcing_session_creation(
+    tmp_path,
+):
+    """The session-file scope provider reads the live journal session on each
+    call; with no accepted turn yet there is no current session, so the tools
+    report no-active-session and no loose session directory is created."""
+    journal_root = tmp_path / "journal"
+    settings = Settings(
+        journal=JournalSettings(enabled=True, root=str(journal_root)),
+        memory=MemorySettings(root=str(tmp_path / "memory")),
+    )
+    app = build_app(settings, backend=_FakeBackend())
+
+    result = await app.mcp_host.dispatcher.dispatch("list_session_files", {})
+
+    assert result.ok is False
+    assert "active session" in str(result.content).lower()
+    assert not journal_root.exists() or list(journal_root.iterdir()) == []
 
 
 def test_build_app_constructs_an_mcp_host_when_mcp_is_enabled():
@@ -4877,10 +4942,15 @@ async def test_wire_status_console_repaints_tool_rows_after_a_toggle():
     assert kind == "mcp"
     assert [tool["name"] for tool in payload["local_tools"]] == [
         "capture_camera_image",
+        "list_session_files",
         "read_history",
         "read_history_ranges",
+        "read_session_text",
         "remember",
         "search_history",
         "set_reasoning_level",
+        "stat_session_file",
+        "view_session_image",
+        "write_session_file",
     ]
     unwire(app, subscriptions)

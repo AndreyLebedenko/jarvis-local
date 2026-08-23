@@ -69,6 +69,11 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
+from jarvis.files import (
+    SessionFileRepository,
+    SessionFileScope,
+    resolve_session_file_scope,
+)
 from jarvis.history import (
     AutomaticRetrievalSelectionLimits,
     ConservativeUtf8TokenEstimator,
@@ -1308,18 +1313,34 @@ def build_app(
         await bus.publish(CameraCaptureFailed, CameraCaptureFailed(source))
 
     tool_registry = ToolRegistry()
+    journal_store = JournalStore(Path(settings.journal.root))
+    session_file_repository = SessionFileRepository(
+        journal_store.root,
+        config=settings.files,
+        session_is_visible=lambda sid: bool(journal_store.read_session(sid).records),
+    )
+
+    def current_session_file_scope() -> SessionFileScope:
+        # Late-bound: journal_recorder is assigned further down in build_app,
+        # and this closure only runs during a turn, long after wiring finishes.
+        # Rebuilding on every call keeps inherited scopes live (deleted
+        # ancestors drop out) per story-v1.8.1.
+        current = journal_recorder.session_id if journal_recorder is not None else None
+        return resolve_session_file_scope(journal_store, current)
+
     builtin_tool_provider = BuiltinToolProvider(
         thinking_mode=thinking_mode,
         memory_file_repository=memory_file_repository,
         camera_capture=camera_capture,
         on_camera_capture=on_camera_capture,
         on_camera_failure=on_camera_failure,
+        session_file_repository=session_file_repository,
+        session_file_scope=current_session_file_scope,
     )
     builtin_tool_provider.register_tools(tool_registry)
     tool_registry.set_tool_enabled(CAMERA_TOOL_NAME, settings.camera.enabled)
     visibility_mode = VisibilityModeState(bus)
     history = ConversationHistory()
-    journal_store = JournalStore(Path(settings.journal.root))
     transcript_overlay_repository = TranscriptOverlayRepository(
         journal_store.root,
         JournalStoreEventReferenceResolver(journal_store),

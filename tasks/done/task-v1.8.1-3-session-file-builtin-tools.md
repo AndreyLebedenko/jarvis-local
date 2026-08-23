@@ -1,6 +1,9 @@
 # Task v1.8.1-3: Session file builtin tools
 
-**Status:** Not started.
+**Status:** Completed. Manual handoff run 2026-08-23: write/list/read/stat/view
+verified working. Edge case noted in
+`tasks/bug_reports/session-file-list-surfaces-journal-media.md` (list surfaces
+journal event media - kept per story boundary, human-confirmed no arch change).
 **Story:** `tasks/story-v1.8.1-session-file-operations.md`
 **Depends on:** tasks v1.8.1-1 and v1.8.1-2.
 
