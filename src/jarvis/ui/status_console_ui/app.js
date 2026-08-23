@@ -1477,7 +1477,7 @@ function _addJournalAttachmentFiles(files) {
   }
   _journalAttachmentEntries = _journalAttachmentEntries.filter((entry) => !entry.sent);
   for (const file of Array.from(files || [])) {
-    _journalAttachmentEntries.push({ file, result: null, sent: false });
+    _journalAttachmentEntries.push({ file, result: null, sent: false, persist: false });
   }
   _renderJournalAttachments();
   _setJournalInputStatus("");
@@ -1486,6 +1486,26 @@ function _addJournalAttachmentFiles(files) {
 function removeJournalAttachment(index) {
   _journalAttachmentEntries.splice(index, 1);
   _renderJournalAttachments();
+}
+
+function toggleJournalAttachmentPersist(index) {
+  const entry = _journalAttachmentEntries[index];
+  if (!entry || entry.sent) return;
+  entry.persist = !entry.persist;
+  _renderJournalAttachments();
+}
+
+// 0-based indices into the pending-file order (the same order the FormData
+// appends "files"), for uploads the user marked to keep as session files.
+function _journalPersistIndices() {
+  const indices = [];
+  let pendingIndex = 0;
+  for (const entry of _journalAttachmentEntries) {
+    if (entry.sent) continue;
+    if (entry.persist) indices.push(pendingIndex);
+    pendingIndex += 1;
+  }
+  return indices;
 }
 
 function _clearJournalAttachments() {
@@ -1514,9 +1534,20 @@ function _applyJournalAttachmentResults(payload) {
 }
 
 function _clearCompletedJournalAttachments() {
+  // Keep a row when the file was rejected OR its persistent save failed:
+  // an accepted file whose persistence failed still has status "accepted"
+  // (its transient content was delivered), so clearing on status alone would
+  // silently hide the "Not saved" failure the user needs to see.
   _journalAttachmentEntries = _journalAttachmentEntries.filter(
-    (entry) => entry.result && entry.result.status === "rejected");
+    (entry) =>
+      entry.result &&
+      (entry.result.status === "rejected" || _entryPersistFailed(entry)));
   _renderJournalAttachments();
+}
+
+function _entryPersistFailed(entry) {
+  const persistent = entry.result && entry.result.persistent;
+  return Boolean(persistent && persistent.status === "rejected");
 }
 
 function _renderJournalAttachments() {
@@ -1559,8 +1590,22 @@ function _journalAttachmentElement(entry, index) {
     body.appendChild(detail);
   }
 
-  row.appendChild(body);
+  const persistText = _journalAttachmentPersistDetail(result);
+  if (persistText) {
+    const persistDetail = document.createElement("div");
+    persistDetail.className = "journal-attachment-detail journal-attachment-persist-detail";
+    persistDetail.textContent = persistText;
+    body.appendChild(persistDetail);
+  }
+
   if (!entry.sent) {
+    body.appendChild(_journalAttachmentPersistToggle(entry, index));
+  }
+
+  row.appendChild(body);
+  // Removable while still pending, or once sent only if the persistent save
+  // failed - so the user can dismiss that failure notice.
+  if (!entry.sent || _entryPersistFailed(entry)) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "journal-attachment-remove";
@@ -1570,6 +1615,34 @@ function _journalAttachmentElement(entry, index) {
     row.appendChild(remove);
   }
   return row;
+}
+
+function _journalAttachmentPersistToggle(entry, index) {
+  const label = document.createElement("label");
+  label.className = "journal-attachment-persist";
+  label.title = uiString("journal_attachment_persist_hint");
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = Boolean(entry.persist);
+  checkbox.addEventListener("change", () => toggleJournalAttachmentPersist(index));
+
+  const text = document.createElement("span");
+  text.textContent = uiString("journal_attachment_persist");
+
+  label.append(checkbox, text);
+  return label;
+}
+
+function _journalAttachmentPersistDetail(result) {
+  const persistent = result && result.persistent;
+  if (!persistent) return "";
+  if (persistent.status === "saved") {
+    return uiString("journal_attachment_persist_saved").replace(
+      "{name}", persistent.storage_name || "");
+  }
+  return uiString("journal_attachment_persist_rejected").replace(
+    "{reason}", persistent.reason || "");
 }
 
 function _journalAttachmentDetail(result) {
@@ -1636,6 +1709,10 @@ async function submitJournalInput() {
       body.append("text", text);
       for (const file of pendingFiles) {
         body.append("files", file, file.name);
+      }
+      const persistIndices = _journalPersistIndices();
+      if (persistIndices.length > 0) {
+        body.append("persist", JSON.stringify(persistIndices));
       }
       requestOptions = { method: "POST", body };
     } else {

@@ -1,6 +1,9 @@
 # Task v1.8.1-4: Persistent session file upload
 
-**Status:** Not started.
+**Status:** Completed. Split into 4a (backend) and 4b (UI). Manual handoff run
+2026-08-23: mark-persist upload writes a loose session file and surfaces its
+storage name to the model, including the first-event-of-a-new-session case;
+persistent-save failures stay visible in the dock.
 **Story:** `tasks/story-v1.8.1-session-file-operations.md`
 **Depends on:** tasks v1.8.1-1 through v1.8.1-3.
 

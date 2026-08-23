@@ -164,6 +164,11 @@ const UI_STRINGS = {
     journal_attachment_class_image: "Image",
     journal_attachment_class_text: "Text",
     journal_attachment_class_unknown: "File",
+    journal_attachment_persist: "Keep in session",
+    journal_attachment_persist_hint:
+      "Save this file into the session so the model can reopen it later.",
+    journal_attachment_persist_saved: "Saved as {name}",
+    journal_attachment_persist_rejected: "Not saved: {reason}",
     journal_copy_answer: "Copy answer",
     journal_copy_done: "Copied",
     journal_copy_failed: "Copy failed",
@@ -458,6 +463,11 @@ const UI_STRINGS = {
     journal_attachment_class_image: "Изображение",
     journal_attachment_class_text: "Текст",
     journal_attachment_class_unknown: "Файл",
+    journal_attachment_persist: "Оставить в сессии",
+    journal_attachment_persist_hint:
+      "Сохранить файл в сессию, чтобы модель могла открыть его позже.",
+    journal_attachment_persist_saved: "Сохранено как {name}",
+    journal_attachment_persist_rejected: "Не сохранено: {reason}",
     journal_copy_answer: "Скопировать ответ",
     journal_copy_done: "Скопировано",
     journal_copy_failed: "Не удалось скопировать",
