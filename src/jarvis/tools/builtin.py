@@ -5,6 +5,12 @@ from collections.abc import Awaitable, Callable
 
 from jarvis.core.config import BUILTIN_TOOL_PROVIDER_NAME, DataBoundary
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.files import (
+    SessionFileError,
+    SessionFileRepository,
+    SessionFileScope,
+    SessionFileStat,
+)
 from jarvis.inputs.camera import (
     CameraCapture,
     CameraDisabledError,
@@ -23,6 +29,11 @@ from jarvis.tools.results import ToolArguments, ToolCallResult
 _REASONING_TOOL_NAME = "set_reasoning_level"
 _MEMORY_TOOL_NAME = "remember"
 CAMERA_TOOL_NAME = "capture_camera_image"
+_WRITE_SESSION_FILE_TOOL_NAME = "write_session_file"
+_READ_SESSION_TEXT_TOOL_NAME = "read_session_text"
+_VIEW_SESSION_IMAGE_TOOL_NAME = "view_session_image"
+_STAT_SESSION_FILE_TOOL_NAME = "stat_session_file"
+_LIST_SESSION_FILES_TOOL_NAME = "list_session_files"
 _NEXT_SESSION_NOTE = (
     "The new content enters Jarvis's system prompt at the next session start."
 )
@@ -37,16 +48,24 @@ class BuiltinToolProvider:
         camera_capture: CameraCapture | None = None,
         on_camera_capture: Callable[[str], Awaitable[None]] | None = None,
         on_camera_failure: Callable[[str], Awaitable[None]] | None = None,
+        session_file_repository: SessionFileRepository | None = None,
+        session_file_scope: Callable[[], SessionFileScope] | None = None,
     ) -> None:
         self._thinking_mode = thinking_mode
         self._memory_file_repository = memory_file_repository
         self._camera_capture = camera_capture
         self._on_camera_capture = on_camera_capture
         self._on_camera_failure = on_camera_failure
+        self._session_file_repository = session_file_repository
+        self._session_file_scope = session_file_scope
 
     def register_tools(self, registry: ToolRegistry) -> None:
         registry.set_provider_tools(
-            BUILTIN_TOOL_PROVIDER_NAME, _builtin_tools(self._camera_capture)
+            BUILTIN_TOOL_PROVIDER_NAME,
+            _builtin_tools(
+                self._camera_capture,
+                include_session_files=self._session_file_repository is not None,
+            ),
         )
 
     async def call_tool(self, name: str, arguments: ToolArguments) -> ToolCallResult:
@@ -56,10 +75,135 @@ class BuiltinToolProvider:
             return self._remember(arguments)
         if name == CAMERA_TOOL_NAME:
             return await self._capture_camera_image(arguments)
+        if name == _WRITE_SESSION_FILE_TOOL_NAME:
+            return self._write_session_file(arguments)
+        if name == _READ_SESSION_TEXT_TOOL_NAME:
+            return self._read_session_text(arguments)
+        if name == _VIEW_SESSION_IMAGE_TOOL_NAME:
+            return self._view_session_image(arguments)
+        if name == _STAT_SESSION_FILE_TOOL_NAME:
+            return self._stat_session_file(arguments)
+        if name == _LIST_SESSION_FILES_TOOL_NAME:
+            return self._list_session_files(arguments)
         return ToolCallResult(
             content=f"Unknown builtin tool: {name}",
             is_error=True,
         )
+
+    def _write_session_file(self, arguments: ToolArguments) -> ToolCallResult:
+        rejected = _reject_unknown_arguments(arguments, {"name", "content"})
+        if rejected is not None:
+            return rejected
+        name = arguments.get("name")
+        content = arguments.get("content")
+        if not isinstance(name, str):
+            return ToolCallResult(content="name must be a string", is_error=True)
+        if not isinstance(content, str):
+            return ToolCallResult(content="content must be a string", is_error=True)
+        repository, scope = self._session_files()
+        if repository is None:
+            return _SESSION_FILES_UNAVAILABLE
+        try:
+            result = repository.write_text(scope, name, content)
+        except SessionFileError as exc:
+            return _session_file_error_result(exc)
+        except OSError as exc:
+            return _filesystem_error_result(exc)
+        return ToolCallResult(
+            content=(
+                f"Saved as {result.storage_name} ({result.bytes} bytes). The "
+                "requested name was changed; use this storage name for future "
+                "read/view/stat calls."
+            ),
+            structured_content={
+                "storage_name": result.storage_name,
+                "bytes": result.bytes,
+            },
+        )
+
+    def _read_session_text(self, arguments: ToolArguments) -> ToolCallResult:
+        parsed = self._session_file_name(arguments)
+        if isinstance(parsed, ToolCallResult):
+            return parsed
+        repository, scope, name = parsed
+        try:
+            return ToolCallResult(content=repository.read_text(scope, name))
+        except SessionFileError as exc:
+            return _session_file_error_result(exc)
+        except OSError as exc:
+            return _filesystem_error_result(exc)
+
+    def _view_session_image(self, arguments: ToolArguments) -> ToolCallResult:
+        parsed = self._session_file_name(arguments)
+        if isinstance(parsed, ToolCallResult):
+            return parsed
+        repository, scope, name = parsed
+        try:
+            view = repository.view_image_bytes(scope, name)
+        except SessionFileError as exc:
+            return _session_file_error_result(exc)
+        except OSError as exc:
+            return _filesystem_error_result(exc)
+        return ToolCallResult(
+            content=f"Loaded image {name} for this turn.",
+            images_b64=(base64.b64encode(view.data).decode("ascii"),),
+            data_boundary=DataBoundary.LOCAL,
+        )
+
+    def _stat_session_file(self, arguments: ToolArguments) -> ToolCallResult:
+        parsed = self._session_file_name(arguments)
+        if isinstance(parsed, ToolCallResult):
+            return parsed
+        repository, scope, name = parsed
+        try:
+            info = repository.stat(scope, name)
+        except SessionFileError as exc:
+            return _session_file_error_result(exc)
+        except OSError as exc:
+            return _filesystem_error_result(exc)
+        return ToolCallResult(
+            content=f"{info.storage_name}: {info.bytes} bytes, {info.scope} scope.",
+            structured_content=_stat_payload(info),
+        )
+
+    def _list_session_files(self, arguments: ToolArguments) -> ToolCallResult:
+        rejected = _reject_unknown_arguments(arguments, set())
+        if rejected is not None:
+            return rejected
+        repository, scope = self._session_files()
+        if repository is None:
+            return _SESSION_FILES_UNAVAILABLE
+        try:
+            entries = repository.list(scope)
+        except SessionFileError as exc:
+            return _session_file_error_result(exc)
+        except OSError as exc:
+            return _filesystem_error_result(exc)
+        return ToolCallResult(
+            content=f"{len(entries)} session file(s) in scope.",
+            structured_content={"files": [_stat_payload(entry) for entry in entries]},
+        )
+
+    def _session_files(
+        self,
+    ) -> tuple[SessionFileRepository, SessionFileScope] | tuple[None, None]:
+        if self._session_file_repository is None or self._session_file_scope is None:
+            return None, None
+        return self._session_file_repository, self._session_file_scope()
+
+    def _session_file_name(
+        self, arguments: ToolArguments
+    ) -> tuple[SessionFileRepository, SessionFileScope, str] | ToolCallResult:
+        rejected = _reject_unknown_arguments(arguments, {"name"})
+        if rejected is not None:
+            return rejected
+        name = arguments.get("name")
+        if not isinstance(name, str):
+            return ToolCallResult(content="name must be a string", is_error=True)
+        repository, scope = self._session_files()
+        if repository is None:
+            return _SESSION_FILES_UNAVAILABLE
+        return repository, scope, name
 
     async def _capture_camera_image(self, arguments: ToolArguments) -> ToolCallResult:
         unknown_arguments = set(arguments) - {"source"}
@@ -194,6 +338,46 @@ class BuiltinToolProvider:
         )
 
 
+_SESSION_FILES_UNAVAILABLE = ToolCallResult(
+    content="Session files are not available.", is_error=True
+)
+
+
+def _reject_unknown_arguments(
+    arguments: ToolArguments, allowed: set[str]
+) -> ToolCallResult | None:
+    unknown = set(arguments) - allowed
+    if not unknown:
+        return None
+    return ToolCallResult(
+        content=f"Unexpected argument(s): {', '.join(sorted(unknown))}",
+        is_error=True,
+    )
+
+
+def _session_file_error_result(exc: SessionFileError) -> ToolCallResult:
+    # Every SessionFileError subclass carries its own distinct, model-facing
+    # message (missing / not-text / not-image / oversize / deny-listed /
+    # invalid-name / no-active-session), so the model gets a specific reason
+    # rather than one flattened "failed".
+    return ToolCallResult(content=str(exc), is_error=True)
+
+
+def _filesystem_error_result(exc: OSError) -> ToolCallResult:
+    return ToolCallResult(content=f"Filesystem error: {exc}", is_error=True)
+
+
+def _stat_payload(info: SessionFileStat) -> JSONObject:
+    return {
+        "storage_name": info.storage_name,
+        "bytes": info.bytes,
+        "ext": info.ext,
+        "session_id": info.session_id,
+        "scope": info.scope,
+        "mtime_utc": info.mtime_utc,
+    }
+
+
 def _parse_memory_arguments(
     arguments: ToolArguments,
 ) -> tuple[MemoryFileId, str, str] | ToolCallResult:
@@ -268,8 +452,12 @@ def _camera_schema(camera_capture: CameraCapture | None) -> JSONObject:
     }
 
 
-def _builtin_tools(camera_capture: CameraCapture | None = None) -> list[RegisteredTool]:
-    return [
+def _builtin_tools(
+    camera_capture: CameraCapture | None = None,
+    *,
+    include_session_files: bool = False,
+) -> list[RegisteredTool]:
+    tools = [
         RegisteredTool(
             name=_REASONING_TOOL_NAME,
             description=(
@@ -296,6 +484,98 @@ def _builtin_tools(camera_capture: CameraCapture | None = None) -> list[Register
                 "Use for explicit remember/correct-memory requests."
             ),
             schema=_memory_schema(),
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+    ]
+    if include_session_files:
+        tools.extend(_session_file_tools())
+    return tools
+
+
+def _session_file_tools() -> list[RegisteredTool]:
+    name_schema = {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": (
+                    "Storage name returned by write_session_file or list_session_files."
+                ),
+            }
+        },
+        "required": ["name"],
+        "additionalProperties": False,
+    }
+    return [
+        RegisteredTool(
+            name=_WRITE_SESSION_FILE_TOOL_NAME,
+            description=(
+                "Save a UTF-8 text file into the current chat session. Returns a "
+                "generated storage name; the requested name is a label only. "
+                "Create-only: it never overwrites and cannot delete."
+            ),
+            schema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Requested file label, e.g. notes.md.",
+                    },
+                    "content": {"type": "string"},
+                },
+                "required": ["name", "content"],
+                "additionalProperties": False,
+            },
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+        RegisteredTool(
+            name=_READ_SESSION_TEXT_TOOL_NAME,
+            description=(
+                "Read a text file from the session file scope by its storage "
+                "name. Errors if the file is binary; use stat or view instead."
+            ),
+            schema=name_schema,
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+        RegisteredTool(
+            name=_VIEW_SESSION_IMAGE_TOOL_NAME,
+            description=(
+                "Look at a PNG or JPEG image from the session file scope by its "
+                "storage name; the image is attached for this turn."
+            ),
+            schema=name_schema,
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+        RegisteredTool(
+            name=_STAT_SESSION_FILE_TOOL_NAME,
+            description=(
+                "Get metadata (size, extension, session, scope, mtime) for a "
+                "session file by its storage name, including binary files."
+            ),
+            schema=name_schema,
+            provider=BUILTIN_TOOL_PROVIDER_NAME,
+            provider_kind="builtin",
+            data_boundary=DataBoundary.LOCAL,
+        ),
+        RegisteredTool(
+            name=_LIST_SESSION_FILES_TOOL_NAME,
+            description=(
+                "List files in the session file scope with their storage name, "
+                "size, mtime, session id, and scope."
+            ),
+            schema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
             provider=BUILTIN_TOOL_PROVIDER_NAME,
             provider_kind="builtin",
             data_boundary=DataBoundary.LOCAL,
