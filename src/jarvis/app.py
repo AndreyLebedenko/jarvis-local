@@ -20,6 +20,7 @@ from jarvis.audio.input import (
     stream_factory_for_device,
 )
 from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
+from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, reply_speech_text
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
@@ -133,7 +134,11 @@ from jarvis.journal.consolidation import (
 )
 from jarvis.journal.consolidation_executor import ConsolidationExecutor
 from jarvis.journal.corpus import HistoryCorpusRepository
-from jarvis.journal.events import TurnOutcome, parse_journal_timestamp
+from jarvis.journal.events import (
+    JournalEventRef,
+    TurnOutcome,
+    parse_journal_timestamp,
+)
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
     ForkSessionReason,
@@ -1293,6 +1298,7 @@ class App:
     camera_capture: CameraCapture | None = None
     tts_mute_state: TtsMuteState | None = None
     solo_session_state: SoloSessionState | None = None
+    replay_player: ReplayPlayer | None = None
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1381,11 +1387,22 @@ def build_app(
     # process; concurrent calls stop/replace each other, not mix).
     playback_lock = asyncio.Lock()
     tts_mute_state = TtsMuteState(bus, enabled=settings.tts.enabled)
+    # One engine, shared by live TTS and replay: a second engine would mean
+    # a second model load (VRAM). Replay reuses the same playback_lock and
+    # mute_state so it can neither overlap live speech on the device nor
+    # play while speech is globally disabled (story-v1.8.2).
+    tts_engine = build_tts_engine(settings.tts)
     tts_output = tts_output or TtsOutput(
         settings.tts,
-        engine=build_tts_engine(settings.tts),
+        engine=tts_engine,
         playback_lock=playback_lock,
         bus=bus,
+        mute_state=tts_mute_state,
+    )
+    replay_player = ReplayPlayer(
+        settings.tts,
+        tts_engine,
+        playback_lock=playback_lock,
         mute_state=tts_mute_state,
     )
     capture_input = capture_input or CaptureInput(bus, CaptureEngine())
@@ -1645,6 +1662,7 @@ def build_app(
         camera_capture=camera_capture,
         tts_mute_state=tts_mute_state,
         solo_session_state=solo_session_state,
+        replay_player=replay_player,
     )
 
 
@@ -1921,8 +1939,68 @@ async def _cancel_current_turn(app: App) -> bool:
 
 
 async def _on_interrupt_requested(app: App, event: InterruptRequested) -> None:
-    """The hotkey's handler (task-v1.7.0-2) - see _cancel_current_turn()."""
+    """The hotkey's handler (task-v1.7.0-2) - see _cancel_current_turn().
+
+    Also stops an in-progress replay (story-v1.8.2): reject-when-busy means
+    a live turn and a replay never run at once, so at most one of these two
+    actually cancels anything; cancel() is a no-op when its target is idle."""
     await _cancel_current_turn(app)
+    if app.replay_player is not None:
+        app.replay_player.cancel()
+
+
+async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | None:
+    """Re-listen to a past assistant reply (story-v1.8.2 task 1). Returns
+    None when replay is unavailable (no player/store, or the reference is
+    not an assistant reply), else the ReplayPlayer outcome. Rejected
+    attempts (a live turn is speaking, TTS is off, nothing speakable, or a
+    replay is already running) beep and publish a visible error rather than
+    queueing. The chat-log Play control (task 2) calls this."""
+    if app.replay_player is None or app.journal_store is None:
+        return None
+    if app.orchestrator.is_busy:
+        await _reject_replay(app, "replay_busy")
+        return ReplayOutcome.BUSY
+    text = reply_speech_text(app.journal_store, reference)
+    if text is None:
+        await _reject_replay(app, "replay_unavailable")
+        return None
+    outcome = await app.replay_player.replay(text)
+    if outcome is ReplayOutcome.BUSY:
+        await _reject_replay(app, "replay_busy")
+    elif outcome is ReplayOutcome.DISABLED:
+        await _reject_replay(app, "replay_tts_disabled")
+    elif outcome is ReplayOutcome.EMPTY:
+        await _reject_replay(app, "replay_unavailable")
+    return outcome
+
+
+async def _reject_replay(app: App, ui_text_key: str) -> None:
+    await app.sound_cues.play("error")
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="TTS",
+        level=EventLevel.WARN,
+        log_message=f"Replay rejected: {ui_text_key}",
+        ui_message=ui_text(ui_text_key, app.settings.ui.language),
+    )
+
+
+async def _on_tts_speech_enabled_changed(
+    app: App, event: TtsSpeechEnabledChanged
+) -> None:
+    """Stops whatever is speaking the instant the user disables TTS.
+
+    Mute-gating (on_token/on_response_complete) reads the state owner
+    directly (see tts.py); this is the other half. A global TTS-off must
+    silence a live turn AND an in-flight replay (story-v1.8.2: disabling
+    TTS disables it completely), mirroring the barge-in interrupt."""
+    if event.enabled:
+        return
+    app.tts_output.cancel()
+    if app.replay_player is not None:
+        app.replay_player.cancel()
 
 
 async def _on_mic_sleep_toggled(app: App, event: MicSleepToggled) -> None:
@@ -2042,12 +2120,7 @@ def wire(app: App) -> list[Subscription]:
         await _on_interrupt_requested(app, event)
 
     async def on_tts_speech_enabled_changed(event: TtsSpeechEnabledChanged) -> None:
-        # Mute-gating (on_token/on_response_complete) reads the state owner
-        # directly (see tts.py); this is the other half - stopping whatever
-        # is already in flight the instant the user mutes, mirroring the
-        # existing barge-in interrupt's own tts_output.cancel() call above.
-        if not event.enabled:
-            app.tts_output.cancel()
+        await _on_tts_speech_enabled_changed(app, event)
 
     subscriptions: list[Subscription] = [
         (UtteranceChunk, app.orchestrator.on_utterance),
