@@ -266,6 +266,8 @@ const ICON_PATHS = {
     '<circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
   consolidation: '<path d="M12 4l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>',
+  play: '<path d="M8 5v14l11-7z"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
 };
 
 // aria-hidden because every call site pairs the icon with a text label or
@@ -2442,6 +2444,11 @@ function _journalEventElement(event, position = null) {
     copy.addEventListener("click", () => copyJournalAnswer(event.text, copyLabel));
     meta.appendChild(copy);
   }
+  // Replay (story-v1.8.2): only a known feed position (the full render,
+  // never a live append) addresses a specific past reply for re-synthesis.
+  if (event.role === "assistant" && event.text && position !== null) {
+    meta.appendChild(_journalReplayButton(_journalSelectedSessionId, position));
+  }
   const menuButton = document.createElement("button");
   menuButton.type = "button";
   menuButton.className = "context-menu-button";
@@ -2488,6 +2495,66 @@ function _journalEventHasAudio(event) {
   );
 }
 
+function _journalReplayButton(sessionId, position) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "journal-replay";
+  const label = document.createElement("span");
+  button.appendChild(label);
+  _setJournalReplayButtonState(button, label, false);
+  button.addEventListener("click", () =>
+    _toggleJournalReplay(sessionId, position, button, label)
+  );
+  return button;
+}
+
+function _setJournalReplayButtonState(button, label, active) {
+  button.dataset.active = active ? "true" : "false";
+  const title = uiString(active ? "journal_replay_stop" : "journal_replay");
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  const existingIcon = button.querySelector(".icon");
+  if (existingIcon) existingIcon.remove();
+  button.prepend(_icon(active ? "stop" : "play"));
+  label.textContent = title;
+}
+
+// The Play POST is held open by the server for the whole replay (see the
+// transport handler): this fetch resolves only when playback ends - by
+// finishing, by Stop, by Ctrl+Alt+I, or by TTS being disabled - so the
+// button reverts to Play off the promise alone, with no lifecycle channel.
+// A busy press (another reply already playing) is rejected by the core with
+// its own beep + error; the UI keeps no busy check of its own.
+async function _toggleJournalReplay(sessionId, position, button, label) {
+  if (button.dataset.active === "true") {
+    const stopUrl = _journalUrl("/api/journal/replies/replay/stop");
+    if (stopUrl !== null) {
+      try {
+        await fetch(stopUrl, { method: "POST" });
+      } catch (error) {
+        /* the held replay fetch still resolves and resets the button */
+      }
+    }
+    return;
+  }
+  const url = _journalUrl(
+    "/api/journal/replies/" +
+      encodeURIComponent(sessionId) +
+      "/" +
+      position +
+      "/replay"
+  );
+  if (url === null) return;
+  _setJournalReplayButtonState(button, label, true);
+  try {
+    await fetch(url, { method: "POST" });
+  } catch (error) {
+    /* reset below */
+  } finally {
+    _setJournalReplayButtonState(button, label, false);
+  }
+}
+
 // Reuses each existing per-message action verbatim - .click() on the same
 // button its own visible control already wires - rather than duplicating
 // their fetch/error/refs handling here. Generate transcript and Generate
@@ -2498,12 +2565,22 @@ function _journalEventHasAudio(event) {
 function _journalMessageMenuEntries(row) {
   const copyButton = row.querySelector(".journal-copy");
   const transcriptGenerate = row.querySelector(".journal-transcript-generate");
+  const replayButton = row.querySelector(".journal-replay");
   const position = row.dataset.eventPosition;
   return [
     copyButton && {
       label: uiString("journal_copy_answer"),
       icon: _icon("copy"),
       run: () => copyButton.click(),
+    },
+    replayButton && {
+      label: uiString(
+        replayButton.dataset.active === "true"
+          ? "journal_replay_stop"
+          : "journal_replay"
+      ),
+      icon: _icon(replayButton.dataset.active === "true" ? "stop" : "play"),
+      run: () => replayButton.click(),
     },
     transcriptGenerate && {
       label: uiString("journal_transcript_generate"),

@@ -1975,6 +1975,22 @@ async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | 
     return outcome
 
 
+async def _run_reply_replay(app: App, reference: JournalEventRef) -> str:
+    """Runs a replay and holds until it ends (story-v1.8.2 task 2): the
+    transport keeps the HTTP request open for this coroutine's lifetime, so
+    the UI toggles Play<->Stop off the request alone, with no separate
+    replay-lifecycle event channel."""
+    outcome = await replay_reply(app, reference)
+    if outcome is ReplayOutcome.STARTED and app.replay_player is not None:
+        await app.replay_player.wait_for_pending()
+    return outcome.value if outcome is not None else "unavailable"
+
+
+def _stop_reply_replay(app: App) -> None:
+    if app.replay_player is not None:
+        app.replay_player.cancel()
+
+
 async def _reject_replay(app: App, ui_text_key: str) -> None:
     await app.sound_cues.play("error")
     await publish_system_event(
@@ -2426,6 +2442,10 @@ def run_with_status_console(
         journal_consolidation_planner=app.consolidation_planner,
         journal_consolidation_executor=app.consolidation_executor,
         memory_file_repository=app.memory_file_repository,
+        journal_reply_replay_handler=lambda reference: _run_reply_replay(
+            app, reference
+        ),
+        journal_reply_replay_stop_handler=lambda: _stop_reply_replay(app),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
     )
     live_console.create_windows()

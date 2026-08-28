@@ -675,6 +675,10 @@ class UiTransportServer:
         journal_consolidation_planner: ConsolidationPlanner | None = None,
         journal_consolidation_executor: ConsolidationExecutor | None = None,
         memory_file_repository: MemoryFileRepository | None = None,
+        journal_reply_replay_handler: (
+            Callable[[JournalEventRef], Awaitable[str]] | None
+        ) = None,
+        journal_reply_replay_stop_handler: Callable[[], None] | None = None,
         max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
     ) -> None:
         self._bus = bus
@@ -703,6 +707,8 @@ class UiTransportServer:
         self._journal_consolidation_planner = journal_consolidation_planner
         self._journal_consolidation_executor = journal_consolidation_executor
         self._memory_file_repository = memory_file_repository
+        self._journal_reply_replay_handler = journal_reply_replay_handler
+        self._journal_reply_replay_stop_handler = journal_reply_replay_stop_handler
         self._max_audio_attachment_seconds = (
             max_audio_attachment_clips * MAX_CLIP_SECONDS
         )
@@ -765,6 +771,14 @@ class UiTransportServer:
         app.router.add_post(
             "/api/journal/transcripts/{session_id}/{event_position}/generate",
             self._journal_transcript_generate_handler,
+        )
+        app.router.add_post(
+            "/api/journal/replies/{session_id}/{event_position}/replay",
+            self._journal_reply_replay_handler_http,
+        )
+        app.router.add_post(
+            "/api/journal/replies/replay/stop",
+            self._journal_reply_replay_stop_handler_http,
         )
         app.router.add_get(
             "/api/journal/annotations/{session_id}",
@@ -1398,6 +1412,33 @@ class UiTransportServer:
                 TranscriptOverlayChanged, TranscriptOverlayChanged(reference)
             )
         return self._transcript_generate_response(reference, result)
+
+    async def _journal_reply_replay_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        # The request is held open for the whole replay (the handler awaits
+        # completion): the HTTP request lifetime IS the replay lifetime, so
+        # the UI toggles Play<->Stop off the fetch promise alone, needing no
+        # separate replay-lifecycle event channel (story-v1.8.2 task 2).
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        handler = self._journal_reply_replay_handler
+        if handler is None:
+            raise web.HTTPServiceUnavailable(text="replay not available")
+        reference = self._parse_transcript_reference(request)
+        outcome = await handler(reference)
+        return web.json_response({"outcome": outcome})
+
+    async def _journal_reply_replay_stop_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        stop = self._journal_reply_replay_stop_handler
+        if stop is None:
+            raise web.HTTPServiceUnavailable(text="replay not available")
+        stop()
+        return web.json_response({"stopped": True})
 
     async def _journal_annotation_list_handler(
         self, request: web.Request
