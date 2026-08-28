@@ -2568,8 +2568,15 @@ async function _toggleJournalReplayPause(button, label) {
   );
   if (url === null) return;
   try {
-    await fetch(url, { method: "POST" });
-    _setJournalReplayPauseState(button, label, !paused);
+    const response = await fetch(url, { method: "POST" });
+    const body = await response.json();
+    // Flip only when the server confirms it actually (un)paused a clip.
+    // pause()/resume() return false when there was nothing to act on (the
+    // replay already ended, or a momentary gap between segments); trusting
+    // the fetch alone would leave the button showing Resume while audio
+    // keeps playing - a state that lies about what is happening.
+    const changed = paused ? body.resumed === true : body.paused === true;
+    if (changed) _setJournalReplayPauseState(button, label, !paused);
   } catch (error) {
     /* leave the button state unchanged on failure */
   }
