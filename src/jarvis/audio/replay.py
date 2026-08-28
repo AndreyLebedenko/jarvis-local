@@ -21,6 +21,7 @@ import contextlib
 import io
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
@@ -35,10 +36,19 @@ from jarvis.audio.tts import (
 )
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.config import TtsSettings
-from jarvis.journal.events import JournalEventRef
+from jarvis.journal.events import JournalEventRecord, JournalEventRef
 from jarvis.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ReplayProgress:
+    """Which reply a running sequence is now playing, or None when the
+    sequence has ended or been stopped (story-v1.8.3 task 2). The UI moves the
+    now-playing highlight to this reference, or clears it on None."""
+
+    reference: JournalEventRef | None
 
 
 class ReplayOutcome(Enum):
@@ -207,14 +217,29 @@ class ReplayPlayer:
         return self._task is not None and not self._task.done()
 
     async def replay(self, text: str) -> ReplayOutcome:
+        return await self.replay_many([text])
+
+    async def replay_many(
+        self,
+        texts: list[str],
+        on_reply_start: Callable[[int], Awaitable[None]] | None = None,
+    ) -> ReplayOutcome:
+        """Plays several replies back to back as one logical replay (a single
+        task, so is_active spans the whole run and cancel() ends all of it -
+        story-v1.8.3 task 2). Each reply is segmented on its own so speech
+        units never carry across a reply boundary. on_reply_start(index) is
+        awaited just before a reply's first unit plays, where index is that
+        reply's position in texts, so a caller can follow which reply is now
+        playing before its audio starts."""
         if self._mute_state is not None and not self._mute_state.enabled:
             return ReplayOutcome.DISABLED
         if self.is_active:
             return ReplayOutcome.BUSY
-        units = self._segment(text)
-        if not units:
+        groups = [(index, self._segment(text)) for index, text in enumerate(texts)]
+        groups = [(index, units) for index, units in groups if units]
+        if not groups:
             return ReplayOutcome.EMPTY
-        self._task = asyncio.create_task(self._run(units))
+        self._task = asyncio.create_task(self._run(groups, on_reply_start))
         return ReplayOutcome.STARTED
 
     @property
@@ -255,10 +280,17 @@ class ReplayPlayer:
         with contextlib.suppress(asyncio.CancelledError):
             await self._task
 
-    async def _run(self, units: list[tuple[str, str]]) -> None:
-        for text, language in units:
-            audio = await self._engine.synthesize(text, language)
-            await self._play(audio)
+    async def _run(
+        self,
+        groups: list[tuple[int, list[tuple[str, str]]]],
+        on_reply_start: Callable[[int], Awaitable[None]] | None,
+    ) -> None:
+        for index, units in groups:
+            if on_reply_start is not None:
+                await on_reply_start(index)
+            for text, language in units:
+                audio = await self._engine.synthesize(text, language)
+                await self._play(audio)
 
     def _segment(self, text: str) -> list[tuple[str, str]]:
         buffer = SpeechUnitBuffer(
@@ -278,3 +310,46 @@ class ReplayPlayer:
             await playback.play_to_completion()
         finally:
             self._current_playback = None
+
+
+class SequencePlayer:
+    """Plays a whole session's assistant replies from a chosen event forward
+    (story-v1.8.3 task 2). It knows the journal; the ReplayPlayer owns the
+    single-task playback loop so pause/resume/cancel and busy rejection keep
+    their v1.8.2 semantics at the grain of the whole sequence. Voice user
+    turns join the walk in task 3."""
+
+    def __init__(self, store: JournalStore, player: ReplayPlayer) -> None:
+        self._store = store
+        self._player = player
+
+    def _assistant_records(self, start: JournalEventRef) -> list[JournalEventRecord]:
+        replay = self._store.read_session(start.session_id)
+        return [
+            record
+            for record in replay.records
+            if record.reference.event_position >= start.event_position
+            and record.event.role == "assistant"
+        ]
+
+    def texts_from(self, start: JournalEventRef) -> list[str]:
+        return [record.event.text for record in self._assistant_records(start)]
+
+    async def play_from(
+        self,
+        start: JournalEventRef,
+        on_segment: Callable[[JournalEventRef], Awaitable[None]] | None = None,
+    ) -> ReplayOutcome:
+        """Plays every assistant reply from start forward. on_segment(ref) is
+        awaited as each reply begins so the UI can move the now-playing
+        highlight across rows before its audio starts (story-v1.8.3 task 2)."""
+        records = self._assistant_records(start)
+        texts = [record.event.text for record in records]
+        refs = [record.reference for record in records]
+        on_reply_start = None
+        if on_segment is not None:
+
+            async def on_reply_start(index: int) -> None:
+                await on_segment(refs[index])
+
+        return await self._player.replay_many(texts, on_reply_start=on_reply_start)

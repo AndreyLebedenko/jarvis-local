@@ -4140,13 +4140,20 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
   reply under a different voice/speed). Consequence: replay honors the current
   `TtsMuteState` and route configuration, not a snapshot.
 
-- **One playback channel, reject-when-busy (no queue, no second route).**
-  Replay reuses the single process-wide `playback_lock` shared with
+- **One playback channel, reject-when-busy (no *concurrent* queue, no second
+  route).** Replay reuses the single process-wide `playback_lock` shared with
   `TtsOutput`/`SoundCuePlayer`, so it can never physically overlap live speech
   or a sound cue on the device. A replay attempt while speech is active - a
   live turn (`Orchestrator.is_busy`) or another replay (`ReplayPlayer`'s own
   active guard) - is rejected with the `error` cue and a visible `SystemEvent`,
-  never queued. `ReplayPlayer` is a sibling of `TtsOutput`, not a reuse of its
+  never queued. "No queue" here scopes to *concurrent* replay - two independent
+  replays contending for the device. It does not forbid *self-sequenced*
+  playback: v1.8.3's play-from-here walks one session's replies and plays them
+  back to back as a single logical replay (one `ReplayPlayer` task, one held
+  request, segments that never overlap on the shared lock). That is one channel
+  with multiple segments, not a queue of competing replays, so the busy guard
+  and the turn-start cancel apply to the whole sequence, and advancing to the
+  next segment is never treated as "busy" against the sequence itself. `ReplayPlayer` is a sibling of `TtsOutput`, not a reuse of its
   token-stream entry points, because `TtsOutput.cancel()` resets per-turn
   `OrderedPlayback`/buffer state that a full-text one-shot replay must not
   touch. `Ctrl+Alt+I` (`_on_interrupt_requested`) and disabling TTS
@@ -4165,7 +4172,11 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
   whole replay, so the WebView toggles its Play<->Stop button off the fetch
   promise alone, needing no separate replay-lifecycle event channel. Stop posts
   to `POST /api/journal/replies/replay/stop`, which cancels the replay and thus
-  resolves the held request.
+  resolves the held request. (v1.8.3 keeps the held-request lifetime but adds
+  one push channel for the sequence highlight - see the v1.8.3 note below;
+  "no lifecycle event channel" was true for single-reply Play/Stop, where the
+  fetch promise carries the whole lifecycle, and is deliberately relaxed once
+  the now-playing marker must move across rows the fetch promise cannot name.)
 
 - **Forward seam to v1.9.0.** `reply_speech_text()` is the single "text to
   speak for this turn" accessor; it returns the canonical reply text today.
@@ -4178,7 +4189,42 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
   playback-position marker, resume-from-position) was explicitly deferred by
   the owner to a later slice; v1.8.2 ships Play/Stop only. Doing pause/resume
   right needs a pausable playback primitive (callback `OutputStream`), which is
-  a playback-engine change, not a UI addition.
+  a playback-engine change, not a UI addition. Built in v1.8.3 - see below.
+
+## Architecture v1.8.3 (sequential journal playback)
+
+Play on a reply plays it and every later reply in that session back to back,
+pausable, with the now-playing highlight following playback. See
+`tasks/story-v1.8.3-sequential-journal-playback.md`. Full write-up lands with
+that story's docs task; the load-bearing decisions so far:
+
+- **Pausable primitive (task 1).** `PausablePlayback` in
+  `src/jarvis/audio/replay.py` plays one clip of float32 frames through a
+  callback `OutputStream` with a preserved position marker, so pause is
+  `stream.stop()` at the current frame and resume is `stream.start()` from it.
+  PortAudio's finished-callback also fires on a pause-stop, so a real end is
+  distinguished from a pause only by the marker (`pos >= len` or an explicit
+  `stop()`). This is the deferred v1.8.2 playback-engine change.
+
+- **One task per sequence, not a queue (task 2).** `SequencePlayer` knows the
+  journal (walk assistant replies from a start ref forward); `ReplayPlayer`
+  owns a single-task playback loop (`replay_many`). Because the whole sequence
+  is one `asyncio.Task`, `is_active` spans it, `cancel()` ends all of it, and
+  pause/resume target the current segment - the v1.8.2 busy-reject and
+  turn-start-cancel semantics apply unchanged at the grain of the sequence.
+  Single-reply "play just this one" is the degenerate case: Play on the last
+  reply plays only it. This is self-sequenced playback, not concurrent
+  queueing - see the re-scoped "no queue" note in the v1.8.2 section.
+
+- **Now-playing highlight = one push channel (task 2).** The highlight must
+  move across rows as the sequence advances, which the single held-request
+  fetch promise cannot express. So the sequence emits `ReplayProgress(ref)` on
+  the bus as each reply begins and `ReplayProgress(None)` when it ends or is
+  cancelled; the transport projects these to a `replay_progress` state delta,
+  and the WebView moves the Stop/Pause highlight onto that reply's row (or
+  clears it). This deliberately relaxes v1.8.2's "no separate replay-lifecycle
+  event channel": the held request still bounds the sequence lifetime, but the
+  per-segment position is a push the fetch promise cannot carry.
 
 ## Project verification contract (v1.2.2)
 

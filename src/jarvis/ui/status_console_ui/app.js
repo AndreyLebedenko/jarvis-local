@@ -96,6 +96,7 @@ function _applyStateDelta(payload) {
     ui_language: applyUiLanguage,
     config_values: applyConfigValues,
     journal_event: applyJournalEvent,
+    replay_progress: applyReplayProgress,
   });
 }
 
@@ -2499,20 +2500,31 @@ function _journalEventHasAudio(event) {
 }
 
 function _journalReplayButton(sessionId, position) {
-  // Two controls ship together: the Play<->Stop toggle, and a Pause<->Resume
-  // button hidden until a replay is running (story-v1.8.3). Returned as a
-  // fragment so the single call site appends both into the same meta row.
+  // Play on a reply plays it and every later reply in the session back to back
+  // (story-v1.8.3 task 2), and a Pause<->Resume button shown only while a
+  // sequence runs. The now-playing highlight (the Stop state + the Pause
+  // button) is driven entirely by replay_progress deltas - see
+  // applyReplayProgress - so it follows playback across rows rather than
+  // sticking to the row that was clicked; the click only opens the held
+  // sequence request. Session id and event position are stamped on both
+  // controls so a progress delta can find the reply that is now playing.
   const fragment = document.createDocumentFragment();
+  const pause = _journalReplayPauseButton();
+  pause.dataset.sessionId = sessionId;
+  pause.dataset.eventPosition = position;
+
   const button = document.createElement("button");
   button.type = "button";
   button.className = "journal-replay";
+  button.dataset.sessionId = sessionId;
+  button.dataset.eventPosition = position;
   const label = document.createElement("span");
   button.appendChild(label);
   _setJournalReplayButtonState(button, label, false);
-  const pause = _journalReplayPauseButton();
   button.addEventListener("click", () =>
-    _toggleJournalReplay(sessionId, position, button, label, pause)
+    _toggleJournalReplay(sessionId, position, button)
   );
+
   fragment.appendChild(button);
   fragment.appendChild(pause);
   return fragment;
@@ -2582,20 +2594,23 @@ async function _toggleJournalReplayPause(button, label) {
   }
 }
 
-// The Play POST is held open by the server for the whole replay (see the
-// transport handler): this fetch resolves only when playback ends - by
-// finishing, by Stop, by Ctrl+Alt+I, or by TTS being disabled - so the
-// button reverts to Play off the promise alone, with no lifecycle channel.
-// A busy press (another reply already playing) is rejected by the core with
-// its own beep + error; the UI keeps no busy check of its own.
-async function _toggleJournalReplay(sessionId, position, button, label, pause) {
+// The Play POST is held open by the server for the whole sequence (see the
+// transport handler): it resolves only when playback ends - by finishing, by
+// Stop, by a new live turn, by Ctrl+Alt+I, or by TTS being disabled. The
+// button's visible state is NOT derived from this promise: replay_progress
+// deltas move the now-playing highlight across rows (applyReplayProgress),
+// and the server's final clear delta - plus this promise's end as a
+// belt-and-suspenders - reset it. A busy press (a sequence already running)
+// is rejected by the core with its own beep + error; the UI keeps no busy
+// check of its own.
+async function _toggleJournalReplay(sessionId, position, button) {
   if (button.dataset.active === "true") {
     const stopUrl = _journalUrl("/api/journal/replies/replay/stop");
     if (stopUrl !== null) {
       try {
         await fetch(stopUrl, { method: "POST" });
       } catch (error) {
-        /* the held replay fetch still resolves and resets the button */
+        /* the clear progress delta still resets the highlight */
       }
     }
     return;
@@ -2605,22 +2620,54 @@ async function _toggleJournalReplay(sessionId, position, button, label, pause) {
       encodeURIComponent(sessionId) +
       "/" +
       position +
-      "/replay"
+      "/replay-sequence"
   );
   if (url === null) return;
-  _setJournalReplayButtonState(button, label, true);
+  try {
+    await fetch(url, { method: "POST" });
+  } catch (error) {
+    /* the clear progress delta resets the highlight; nothing to do here */
+  } finally {
+    _clearReplayProgress();
+  }
+}
+
+// replay_progress delta: the sequence advanced to a new reply (value carries
+// its session_id + event_position) or ended (value is null). Move the
+// now-playing highlight - the Stop state and the Pause button - onto that
+// reply's row, or clear it. Stop/Pause act on the shared player, so it does
+// not matter which row shows them; the highlight only tells the user which
+// block is playing now (story-v1.8.3 task 2).
+function applyReplayProgress(value) {
+  _clearReplayProgress();
+  if (!value) return;
+  const selector =
+    '[data-session-id="' +
+    CSS.escape(value.session_id) +
+    '"][data-event-position="' +
+    CSS.escape(String(value.event_position)) +
+    '"]';
+  const button = document.querySelector(".journal-replay" + selector);
+  if (button) {
+    _setJournalReplayButtonState(button, button.querySelector("span"), true);
+  }
+  const pause = document.querySelector(".journal-replay-pause" + selector);
   if (pause) {
     _setJournalReplayPauseState(pause, pause.querySelector("span"), false);
     pause.hidden = false;
   }
-  try {
-    await fetch(url, { method: "POST" });
-  } catch (error) {
-    /* reset below */
-  } finally {
-    _setJournalReplayButtonState(button, label, false);
-    if (pause) pause.hidden = true;
-  }
+}
+
+function _clearReplayProgress() {
+  document
+    .querySelectorAll('.journal-replay[data-active="true"]')
+    .forEach((button) =>
+      _setJournalReplayButtonState(button, button.querySelector("span"), false)
+    );
+  document.querySelectorAll(".journal-replay-pause").forEach((pause) => {
+    _setJournalReplayPauseState(pause, pause.querySelector("span"), false);
+    pause.hidden = true;
+  });
 }
 
 // Reuses each existing per-message action verbatim - .click() on the same

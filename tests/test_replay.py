@@ -132,6 +132,67 @@ def test_replay_is_rejected_while_another_replay_is_active():
     assert second is ReplayOutcome.BUSY
 
 
+def test_replay_many_plays_all_texts_back_to_back_in_order():
+    engine = _FakeEngine()
+    play = _RecordingPlay()
+    player = ReplayPlayer(_tts_settings(), engine, play=play)
+
+    async def scenario() -> ReplayOutcome:
+        outcome = await player.replay_many(["First one.", "Second one."])
+        await player.wait_for_pending()
+        return outcome
+
+    outcome = asyncio.run(scenario())
+
+    assert outcome is ReplayOutcome.STARTED
+    assert engine.seen == [("First one.", "en"), ("Second one.", "en")]
+    assert play.played == [b"First one.", b"Second one."]
+
+
+def test_replay_many_is_one_active_task_spanning_the_whole_sequence():
+    async def scenario() -> tuple[ReplayOutcome, ReplayOutcome]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        started = await player.replay_many(["First one.", "Second one."])
+        await play.started.wait()
+        external = await player.replay("An external single reply.")
+        release.set()
+        await player.wait_for_pending()
+        return started, external
+
+    started, external = asyncio.run(scenario())
+    assert started is ReplayOutcome.STARTED
+    assert external is ReplayOutcome.BUSY
+
+
+def test_cancel_stops_the_whole_sequence_before_later_segments():
+    async def scenario() -> list[tuple[str, str]]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        engine = _FakeEngine()
+        player = ReplayPlayer(_tts_settings(), engine, play=play)
+        await player.replay_many(["First one.", "Second one."])
+        await play.started.wait()
+        player.cancel()
+        release.set()
+        await player.wait_for_pending()
+        return engine.seen
+
+    seen = asyncio.run(scenario())
+    assert seen == [("First one.", "en")]
+
+
+def test_replay_many_reports_empty_when_no_text_is_speakable():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+
+    outcome = asyncio.run(player.replay_many(["   ", ""]))
+
+    assert outcome is ReplayOutcome.EMPTY
+    assert engine.seen == []
+
+
 def test_replay_reports_empty_when_nothing_speakable():
     engine = _FakeEngine()
     player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
