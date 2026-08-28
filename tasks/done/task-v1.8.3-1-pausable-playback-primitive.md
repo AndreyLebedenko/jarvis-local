@@ -1,6 +1,8 @@
 # Task v1.8.3-1: Pausable playback primitive + Pause/Resume (single reply)
 
-**Status:** Not started.
+**Status:** Completed. Automated logic tests green (`python -m pytest`,
+`ruff check`, `ruff format --check`); human-run hardware verification passed
+(playback, pause/resume confirmed manually). Merged to `main`.
 **Story:** `tasks/story-v1.8.3-sequential-journal-playback.md`
 **Depends on:** nothing; first implementation card of v1.8.3.
 
