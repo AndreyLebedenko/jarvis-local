@@ -15,6 +15,7 @@ from urllib.parse import quote, unquote
 from aiohttp import web
 from aiohttp.multipart import BodyPartReader
 
+from jarvis.audio.replay import ReplayProgress
 from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
@@ -678,6 +679,9 @@ class UiTransportServer:
         journal_reply_replay_handler: (
             Callable[[JournalEventRef], Awaitable[str]] | None
         ) = None,
+        journal_reply_sequence_handler: (
+            Callable[[JournalEventRef], Awaitable[str]] | None
+        ) = None,
         journal_reply_replay_stop_handler: Callable[[], None] | None = None,
         journal_reply_replay_pause_handler: Callable[[], bool] | None = None,
         journal_reply_replay_resume_handler: Callable[[], bool] | None = None,
@@ -710,6 +714,7 @@ class UiTransportServer:
         self._journal_consolidation_executor = journal_consolidation_executor
         self._memory_file_repository = memory_file_repository
         self._journal_reply_replay_handler = journal_reply_replay_handler
+        self._journal_reply_sequence_handler = journal_reply_sequence_handler
         self._journal_reply_replay_stop_handler = journal_reply_replay_stop_handler
         self._journal_reply_replay_pause_handler = journal_reply_replay_pause_handler
         self._journal_reply_replay_resume_handler = journal_reply_replay_resume_handler
@@ -779,6 +784,10 @@ class UiTransportServer:
         app.router.add_post(
             "/api/journal/replies/{session_id}/{event_position}/replay",
             self._journal_reply_replay_handler_http,
+        )
+        app.router.add_post(
+            "/api/journal/replies/{session_id}/{event_position}/replay-sequence",
+            self._journal_reply_sequence_handler_http,
         )
         app.router.add_post(
             "/api/journal/replies/replay/stop",
@@ -908,6 +917,7 @@ class UiTransportServer:
             (MicrophoneOptionsAvailable, self._on_microphone_options_available),
             (UiConfigSaved, self._on_ui_config_saved),
             (JournalEventAppended, self._on_journal_event_appended),
+            (ReplayProgress, self._on_replay_progress),
         ]
         for event_type, handler in subscriptions:
             self._bus.subscribe(event_type, cast(Callable[..., object], handler))
@@ -1003,6 +1013,24 @@ class UiTransportServer:
                     ),
                 },
             )
+        )
+
+    async def _on_replay_progress(self, event: ReplayProgress) -> None:
+        # Transient like journal_event (not stored in the snapshot): a
+        # reconnecting client is corrected by the next segment or the clear.
+        if self._is_hidden():
+            return
+        reference = event.reference
+        value: JSONValue = (
+            None
+            if reference is None
+            else {
+                "session_id": reference.session_id,
+                "event_position": reference.event_position,
+            }
+        )
+        self._publish_delta(
+            make_message("state", "delta", {"key": "replay_progress", "value": value})
         )
 
     async def _journal_sessions_handler(self, request: web.Request) -> web.Response:
@@ -1436,6 +1464,23 @@ class UiTransportServer:
         if self._is_hidden():
             return self._journal_hidden_response()
         handler = self._journal_reply_replay_handler
+        if handler is None:
+            raise web.HTTPServiceUnavailable(text="replay not available")
+        reference = self._parse_transcript_reference(request)
+        outcome = await handler(reference)
+        return web.json_response({"outcome": outcome})
+
+    async def _journal_reply_sequence_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        # Play-from-here: the request is held open for the whole sequence, the
+        # same way single-reply replay holds for one reply (story-v1.8.3 task
+        # 2). Stop/Pause/Resume reuse the single-reply endpoints because the
+        # sequence runs on the same player.
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        handler = self._journal_reply_sequence_handler
         if handler is None:
             raise web.HTTPServiceUnavailable(text="replay not available")
         reference = self._parse_transcript_reference(request)

@@ -5,6 +5,7 @@ from pathlib import Path
 import aiohttp
 import pytest
 
+from jarvis.audio.replay import ReplayProgress
 from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
@@ -2676,6 +2677,68 @@ async def test_reply_replay_route_invokes_handler_and_returns_outcome():
                 session,
                 f"http://127.0.0.1:{info.port}"
                 "/api/journal/replies/20260826-101500-abc/2/replay"
+                "?token=valid-token",
+            )
+        assert result == {"outcome": "started"}
+    finally:
+        await server.stop()
+    assert captured == [JournalEventRef("20260826-101500-abc", 2)]
+
+
+async def test_replay_progress_broadcasts_now_playing_then_clear_deltas():
+    bus = EventBus()
+    server = UiTransportServer(
+        bus, _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()  # hello_ack
+            await websocket.receive_json()  # snapshot
+
+            await bus.publish(
+                ReplayProgress,
+                ReplayProgress(JournalEventRef("20260826-101500-abc", 3)),
+            )
+            playing = await websocket.receive_json()
+            assert playing["payload"]["key"] == "replay_progress"
+            assert playing["payload"]["value"] == {
+                "session_id": "20260826-101500-abc",
+                "event_position": 3,
+            }
+
+            await bus.publish(ReplayProgress, ReplayProgress(None))
+            cleared = await websocket.receive_json()
+            assert cleared["payload"]["key"] == "replay_progress"
+            assert cleared["payload"]["value"] is None
+    finally:
+        await server.stop()
+
+
+async def test_reply_sequence_route_invokes_handler_and_returns_outcome():
+    captured: list[JournalEventRef] = []
+
+    async def handler(reference: JournalEventRef) -> str:
+        captured.append(reference)
+        return "started"
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_reply_sequence_handler=handler,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            result = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                "/api/journal/replies/20260826-101500-abc/2/replay-sequence"
                 "?token=valid-token",
             )
         assert result == {"outcome": "started"}

@@ -1,8 +1,22 @@
 # Task v1.8.3-2: Sequence engine (assistant replies) + play-from-here
 
-**Status:** Not started.
+**Status:** Completed. Automated logic tests green (`python -m pytest` 2179
+passed/1 skipped, `ruff check`, `ruff format --check`); human-run hardware
+verification passed (play-from-here continues through the session, highlight
+follows playback, pause/resume and live-turn-cancel confirmed). Merged to
+`main`.
 **Story:** `tasks/story-v1.8.3-sequential-journal-playback.md`
 **Depends on:** task-v1.8.3-1 (the pausable primitive is the playback base).
+
+**UX revision (owner, mid-task).** No separate "play from here" control: the
+existing Play on a reply *is* "play this and continue" - it plays that reply
+and every later one in the session, single-reply being the degenerate last-row
+case. And the now-playing highlight follows playback across rows so the user
+always sees which block is playing. This adds a `ReplayProgress` push channel
+(one delta per segment, plus a clear), which relaxes v1.8.2's "no
+replay-lifecycle event channel" for the moving marker - documented in PROJECT.md
+(v1.8.3 note). The card text below predates this revision; the acceptance
+criteria and the "no queue" re-scope still hold.
 
 ## Summary
 

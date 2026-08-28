@@ -20,7 +20,13 @@ from jarvis.audio.input import (
     stream_factory_for_device,
 )
 from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
-from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, reply_speech_text
+from jarvis.audio.replay import (
+    ReplayOutcome,
+    ReplayPlayer,
+    ReplayProgress,
+    SequencePlayer,
+    reply_speech_text,
+)
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
@@ -1987,6 +1993,49 @@ async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | 
     return outcome
 
 
+async def replay_sequence(app: App, start: JournalEventRef) -> ReplayOutcome | None:
+    """Re-listen to a past assistant reply and every later assistant reply in
+    that session, back to back (story-v1.8.3 task 2 "play from here"). Runs as
+    one logical replay on the shared player, so a live turn cancels the whole
+    sequence and an external replay attempt is rejected while it runs. Returns
+    None when replay is unavailable (no player/store), else the outcome.
+    Rejected attempts beep and publish a visible error rather than queueing."""
+    if app.replay_player is None or app.journal_store is None:
+        return None
+    if app.orchestrator.is_busy:
+        await _reject_replay(app, "replay_busy")
+        return ReplayOutcome.BUSY
+    sequence = SequencePlayer(app.journal_store, app.replay_player)
+
+    async def on_segment(reference: JournalEventRef) -> None:
+        await app.bus.publish(ReplayProgress, ReplayProgress(reference))
+
+    outcome = await sequence.play_from(start, on_segment=on_segment)
+    if outcome is ReplayOutcome.BUSY:
+        await _reject_replay(app, "replay_busy")
+    elif outcome is ReplayOutcome.DISABLED:
+        await _reject_replay(app, "replay_tts_disabled")
+    elif outcome is ReplayOutcome.EMPTY:
+        await _reject_replay(app, "replay_unavailable")
+    return outcome
+
+
+async def _run_reply_sequence(app: App, start: JournalEventRef) -> str:
+    """Holds the HTTP request open for the whole sequence (story-v1.8.3 task
+    2): the request lifetime IS the sequence lifetime, so the UI toggles the
+    Play control off the fetch promise. As the sequence advances it emits
+    ReplayProgress(ref) per reply so the UI moves the now-playing highlight
+    across rows; a final ReplayProgress(None) clears it when the sequence ends
+    or is cancelled (its end, Stop, a new live turn, or TTS disabled)."""
+    outcome = await replay_sequence(app, start)
+    if outcome is ReplayOutcome.STARTED and app.replay_player is not None:
+        try:
+            await app.replay_player.wait_for_pending()
+        finally:
+            await app.bus.publish(ReplayProgress, ReplayProgress(None))
+    return outcome.value if outcome is not None else "unavailable"
+
+
 async def _run_reply_replay(app: App, reference: JournalEventRef) -> str:
     """Runs a replay and holds until it ends (story-v1.8.2 task 2): the
     transport keeps the HTTP request open for this coroutine's lifetime, so
@@ -2467,6 +2516,9 @@ def run_with_status_console(
         journal_consolidation_executor=app.consolidation_executor,
         memory_file_repository=app.memory_file_repository,
         journal_reply_replay_handler=lambda reference: _run_reply_replay(
+            app, reference
+        ),
+        journal_reply_sequence_handler=lambda reference: _run_reply_sequence(
             app, reference
         ),
         journal_reply_replay_stop_handler=lambda: _stop_reply_replay(app),
