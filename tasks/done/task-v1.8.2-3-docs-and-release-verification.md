@@ -1,6 +1,10 @@
 # Task v1.8.2-3: Docs and release verification
 
-**Status:** Proposed.
+**Status:** Completed. README.md, README.ru.md, and PROJECT.md updated with
+replay behavior and the v1.8.2 architecture decisions; human-run checklist
+recorded (owner-verified 2026-08-28). Final checks green: `python -m pytest`
+(2149 passed, 1 skipped), `python -m ruff check .`,
+`python -m ruff format --check .`.
 **Story:** `tasks/story-v1.8.2-replay-tts.md`
 **Depends on:** task-v1.8.2-1 and task-v1.8.2-2 (core and UI complete and
 verified).
@@ -74,5 +78,23 @@ prepare the human-run verification checklist.
 - `python -m pytest`
 - `python -m ruff check .`
 - `python -m ruff format --check .`
-- Human-run release checklist for the replay feature (audio, busy-reject,
-  interrupt, older-reply replay).
+- Human-run release checklist for the replay feature (below).
+
+## Human-run release checklist (replay)
+
+Run against a live app with a Journal that has at least one older assistant
+reply. Owner-verified 2026-08-28 (task-2 handoff): all steps passed.
+
+1. [x] Play on a recent assistant reply re-synthesizes and plays it; the
+       button shows Stop while playing and returns to Play when it ends.
+2. [x] Play on an older reply (not the last) plays that specific reply.
+3. [x] Stop (the button) halts an in-progress replay; the button returns to
+       Play.
+4. [x] `Ctrl+Alt+I` halts an in-progress replay.
+5. [x] Play while TTS is disabled is rejected: error cue plus the
+       "Cannot replay: speech is turned off" message; nothing plays.
+6. [x] Re-enabling TTS and pressing Play plays normally again.
+7. [ ] Play while Jarvis is mid-answer (a live turn) is rejected with the
+       error cue plus the "Cannot replay now: Jarvis is speaking" message,
+       and can be pressed again once Jarvis finishes. (Timing-dependent;
+       exercise opportunistically.)

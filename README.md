@@ -84,6 +84,15 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   authenticated local transport; the Journal search box uses the same hybrid
   retrieval surface described in
   [Unlimited conversation history](#unlimited-conversation-history) below.
+- Replay any past assistant reply: a Play control on every answer in the
+  Journal re-synthesizes that reply through TTS on demand. No audio is stored -
+  playback is a fresh synthesis under the TTS voice/speed settings active at
+  replay time, so a reply spoken earlier can be heard again under the current
+  voice. Replay uses the one playback channel: a Play press while Jarvis is
+  already speaking (a live turn or another replay) is rejected with the error
+  cue and a message rather than queued, and can simply be pressed again once
+  free. The control toggles to Stop while playing; `Ctrl+Alt+I` and disabling
+  TTS also stop an in-progress replay.
 - Unlimited conversation history: the normal request to Ollama stays a bounded
   working context regardless of how large the local journal grows. See
   [Unlimited conversation history](#unlimited-conversation-history).
@@ -224,7 +233,8 @@ Default hotkeys:
 - `Ctrl+Alt+M`: toggle microphone sleep/wake.
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
 - `Ctrl+Alt+I`: interrupt the active response, stopping speech playback and
-  backend generation, then return Jarvis to listening.
+  backend generation, then return Jarvis to listening. Also stops an
+  in-progress reply replay.
 - `Ctrl+Alt+Q`: shut down Jarvis.
 
 ## Logs and diagnostics

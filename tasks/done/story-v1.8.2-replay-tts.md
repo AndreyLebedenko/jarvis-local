@@ -1,6 +1,9 @@
 # Story v1.8.2: Replay TTS (Play button on any assistant reply)
 
-**Status:** In Review. Task cards 1-3 written (see Scope below); none started.
+**Status:** Completed. Tasks 1-3 implemented, verified, and closed
+(2026-08-28). Play/Stop reply replay via on-demand re-synthesis shipped;
+pause/resume deliberately deferred (see task 2 discussion and PROJECT.md's
+"Architecture v1.8.2 (reply replay)" deferred note).
 **Created:** 2026-08-26.
 
 ## Origin
