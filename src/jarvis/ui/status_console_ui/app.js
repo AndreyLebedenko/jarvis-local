@@ -268,6 +268,9 @@ const ICON_PATHS = {
   copy: '<rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>',
   play: '<path d="M8 5v14l11-7z"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
+  pause:
+    '<rect x="7" y="5" width="3.5" height="14" rx="1"/>' +
+    '<rect x="13.5" y="5" width="3.5" height="14" rx="1"/>',
 };
 
 // aria-hidden because every call site pairs the icon with a text label or
@@ -2496,14 +2499,35 @@ function _journalEventHasAudio(event) {
 }
 
 function _journalReplayButton(sessionId, position) {
+  // Two controls ship together: the Play<->Stop toggle, and a Pause<->Resume
+  // button hidden until a replay is running (story-v1.8.3). Returned as a
+  // fragment so the single call site appends both into the same meta row.
+  const fragment = document.createDocumentFragment();
   const button = document.createElement("button");
   button.type = "button";
   button.className = "journal-replay";
   const label = document.createElement("span");
   button.appendChild(label);
   _setJournalReplayButtonState(button, label, false);
+  const pause = _journalReplayPauseButton();
   button.addEventListener("click", () =>
-    _toggleJournalReplay(sessionId, position, button, label)
+    _toggleJournalReplay(sessionId, position, button, label, pause)
+  );
+  fragment.appendChild(button);
+  fragment.appendChild(pause);
+  return fragment;
+}
+
+function _journalReplayPauseButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "journal-replay-pause";
+  button.hidden = true;
+  const label = document.createElement("span");
+  button.appendChild(label);
+  _setJournalReplayPauseState(button, label, false);
+  button.addEventListener("click", () =>
+    _toggleJournalReplayPause(button, label)
   );
   return button;
 }
@@ -2519,13 +2543,45 @@ function _setJournalReplayButtonState(button, label, active) {
   label.textContent = title;
 }
 
+function _setJournalReplayPauseState(button, label, paused) {
+  button.dataset.paused = paused ? "true" : "false";
+  const title = uiString(
+    paused ? "journal_replay_resume" : "journal_replay_pause"
+  );
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  const existingIcon = button.querySelector(".icon");
+  if (existingIcon) existingIcon.remove();
+  button.prepend(_icon(paused ? "play" : "pause"));
+  label.textContent = title;
+}
+
+// Pause/resume are signals that do NOT resolve the held replay fetch (unlike
+// Stop): the replay stays running, suspended at its playback position, so the
+// Play<->Stop toggle above is untouched here.
+async function _toggleJournalReplayPause(button, label) {
+  const paused = button.dataset.paused === "true";
+  const url = _journalUrl(
+    paused
+      ? "/api/journal/replies/replay/resume"
+      : "/api/journal/replies/replay/pause"
+  );
+  if (url === null) return;
+  try {
+    await fetch(url, { method: "POST" });
+    _setJournalReplayPauseState(button, label, !paused);
+  } catch (error) {
+    /* leave the button state unchanged on failure */
+  }
+}
+
 // The Play POST is held open by the server for the whole replay (see the
 // transport handler): this fetch resolves only when playback ends - by
 // finishing, by Stop, by Ctrl+Alt+I, or by TTS being disabled - so the
 // button reverts to Play off the promise alone, with no lifecycle channel.
 // A busy press (another reply already playing) is rejected by the core with
 // its own beep + error; the UI keeps no busy check of its own.
-async function _toggleJournalReplay(sessionId, position, button, label) {
+async function _toggleJournalReplay(sessionId, position, button, label, pause) {
   if (button.dataset.active === "true") {
     const stopUrl = _journalUrl("/api/journal/replies/replay/stop");
     if (stopUrl !== null) {
@@ -2546,12 +2602,17 @@ async function _toggleJournalReplay(sessionId, position, button, label) {
   );
   if (url === null) return;
   _setJournalReplayButtonState(button, label, true);
+  if (pause) {
+    _setJournalReplayPauseState(pause, pause.querySelector("span"), false);
+    pause.hidden = false;
+  }
   try {
     await fetch(url, { method: "POST" });
   } catch (error) {
     /* reset below */
   } finally {
     _setJournalReplayButtonState(button, label, false);
+    if (pause) pause.hidden = true;
   }
 }
 
@@ -2566,6 +2627,7 @@ function _journalMessageMenuEntries(row) {
   const copyButton = row.querySelector(".journal-copy");
   const transcriptGenerate = row.querySelector(".journal-transcript-generate");
   const replayButton = row.querySelector(".journal-replay");
+  const pauseButton = row.querySelector(".journal-replay-pause");
   const position = row.dataset.eventPosition;
   return [
     copyButton && {
@@ -2582,6 +2644,16 @@ function _journalMessageMenuEntries(row) {
       icon: _icon(replayButton.dataset.active === "true" ? "stop" : "play"),
       run: () => replayButton.click(),
     },
+    pauseButton &&
+      !pauseButton.hidden && {
+        label: uiString(
+          pauseButton.dataset.paused === "true"
+            ? "journal_replay_resume"
+            : "journal_replay_pause"
+        ),
+        icon: _icon(pauseButton.dataset.paused === "true" ? "play" : "pause"),
+        run: () => pauseButton.click(),
+      },
     transcriptGenerate && {
       label: uiString("journal_transcript_generate"),
       run: () => transcriptGenerate.click(),

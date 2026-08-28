@@ -1,5 +1,10 @@
 import asyncio
+import io
 from collections.abc import Callable
+
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
 
 from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, reply_speech_text
 from jarvis.audio.tts_mute import TtsMuteState
@@ -155,6 +160,99 @@ def test_cancel_is_a_noop_when_idle():
     player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
 
     assert player.cancel() is False
+
+
+def test_pause_and_resume_are_noops_when_idle():
+    player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
+
+    assert player.is_paused is False
+    assert player.pause() is False
+    assert player.resume() is False
+
+
+def test_pause_resume_suspend_and_continue_the_default_playback():
+    async def scenario() -> bool:
+        created: list[_FakeStream] = []
+
+        def factory(sr, ch, cb, fin) -> _FakeStream:
+            stream = _FakeStream(sr, ch, cb, fin)
+            created.append(stream)
+            return stream
+
+        player = ReplayPlayer(
+            _tts_settings(), _WavEngine(_wav_bytes(120)), stream_factory=factory
+        )
+        await player.replay("One sentence.")
+        while not created or not player.is_active:
+            await asyncio.sleep(0)
+        stream = created[0]
+
+        stream.pump(50)
+        assert player.pause() is True
+        assert player.is_paused is True
+        stream.pump(40)  # ignored while paused
+        assert player.resume() is True
+        assert player.is_paused is False
+        stream.pump(200)  # drains to the end
+        await player.wait_for_pending()
+        return player.is_paused
+
+    assert asyncio.run(scenario()) is False
+
+
+def _wav_bytes(frames: int, sample_rate: int = 16000) -> bytes:
+    buffer = io.BytesIO()
+    samples = np.linspace(-0.1, 0.1, frames, dtype="float32")
+    sf.write(buffer, samples, sample_rate, format="WAV")
+    return buffer.getvalue()
+
+
+class _WavEngine:
+    def __init__(self, wav: bytes) -> None:
+        self._wav = wav
+        self.seen: list[tuple[str, str]] = []
+
+    async def synthesize(self, text: str, language: str = "ru") -> bytes:
+        self.seen.append((text, language))
+        return self._wav
+
+
+class _FakeStream:
+    def __init__(
+        self,
+        samplerate: int,
+        channels: int,
+        callback: Callable[..., None],
+        finished_callback: Callable[[], None],
+    ) -> None:
+        self.channels = channels
+        self._callback = callback
+        self._finished = finished_callback
+        self.running = False
+
+    def start(self) -> None:
+        self.running = True
+
+    def stop(self) -> None:
+        self.running = False
+        self._finished()
+
+    def abort(self) -> None:
+        self.running = False
+        self._finished()
+
+    def close(self) -> None:
+        pass
+
+    def pump(self, nframes: int) -> None:
+        if not self.running:
+            return
+        outdata = np.zeros((nframes, self.channels), dtype="float32")
+        try:
+            self._callback(outdata, nframes, None, None)
+        except sd.CallbackStop:
+            self.running = False
+            self._finished()
 
 
 class _BlockingPlay:

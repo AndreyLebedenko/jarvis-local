@@ -1,6 +1,9 @@
 # Task v1.8.3-1: Pausable playback primitive + Pause/Resume (single reply)
 
-**Status:** Not started.
+**Status:** Implemented on branch `task-v1.8.3-1-pausable-playback`; automated
+logic tests green (`python -m pytest`, `ruff check`, `ruff format --check`).
+Pending Codex review and the human-run hardware verification below. Not yet
+merged, not yet moved to `done/`.
 **Story:** `tasks/story-v1.8.3-sequential-journal-playback.md`
 **Depends on:** nothing; first implementation card of v1.8.3.
 

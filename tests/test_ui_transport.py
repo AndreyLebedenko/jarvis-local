@@ -2707,6 +2707,33 @@ async def test_reply_replay_stop_route_calls_stop_handler():
     assert calls == [True]
 
 
+async def test_reply_replay_pause_and_resume_routes_call_their_handlers():
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_reply_replay_pause_handler=lambda: True,
+        journal_reply_replay_resume_handler=lambda: False,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            paused = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                "/api/journal/replies/replay/pause?token=valid-token",
+            )
+            resumed = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                "/api/journal/replies/replay/resume?token=valid-token",
+            )
+        assert paused == {"paused": True}
+        assert resumed == {"resumed": False}
+    finally:
+        await server.stop()
+
+
 def _rebuilt_history_service(
     bus: EventBus, store: JournalStore, search_index: JournalSearchIndex
 ) -> JournalHistoryService:

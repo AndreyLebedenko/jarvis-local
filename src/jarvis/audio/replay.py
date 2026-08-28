@@ -22,7 +22,9 @@ import io
 import logging
 from collections.abc import Awaitable, Callable
 from enum import Enum
+from typing import Protocol
 
+import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
@@ -61,6 +63,126 @@ def reply_speech_text(store: JournalStore, reference: JournalEventRef) -> str | 
     return None
 
 
+class _OutputStream(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+    def abort(self) -> None: ...
+    def close(self) -> None: ...
+
+
+StreamFactory = Callable[
+    [int, int, Callable[..., None], Callable[[], None]], _OutputStream
+]
+
+
+def _default_stream_factory(
+    samplerate: int,
+    channels: int,
+    callback: Callable[..., None],
+    finished_callback: Callable[[], None],
+) -> _OutputStream:
+    return sd.OutputStream(
+        samplerate=samplerate,
+        channels=channels,
+        dtype="float32",
+        callback=callback,
+        finished_callback=finished_callback,
+    )
+
+
+class PausablePlayback:
+    """A single clip of float32 frames played through a callback OutputStream
+    with a preserved playback-position marker, so it can pause (suspend at the
+    current frame) and resume (continue from it). Source-agnostic: the frames
+    may be synthesized PCM (an assistant reply) or a decoded .wav (a voice user
+    turn), and pause/resume behave identically for both (story-v1.8.3 task 1).
+
+    PortAudio invokes the stream callback on its own thread; the finished
+    callback also fires when the stream is merely stopped for a pause, so a
+    pause-induced stop is distinguished from a real end by the position marker
+    (only pos >= len, or an explicit stop(), is a real finish)."""
+
+    def __init__(
+        self,
+        frames: np.ndarray,
+        samplerate: int,
+        playback_lock: asyncio.Lock,
+        stream_factory: StreamFactory | None = None,
+    ) -> None:
+        self._frames = frames
+        self._samplerate = int(samplerate)
+        self._channels = 1 if frames.ndim == 1 else int(frames.shape[1])
+        self._lock = playback_lock
+        self._stream_factory = stream_factory or _default_stream_factory
+        self._pos = 0
+        self._paused = False
+        self._stopped = False
+        self._stream: _OutputStream | None = None
+        self._finished = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    @property
+    def position(self) -> int:
+        return self._pos
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    async def play_to_completion(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        async with self._lock:
+            self._stream = self._stream_factory(
+                self._samplerate, self._channels, self._callback, self._on_finished
+            )
+            self._stream.start()
+            try:
+                await self._finished.wait()
+            finally:
+                self._stream.close()
+                self._stream = None
+
+    def pause(self) -> None:
+        if self._stream is not None and not self._paused and not self._stopped:
+            self._paused = True
+            self._stream.stop()
+
+    def resume(self) -> None:
+        if self._stream is not None and self._paused and not self._stopped:
+            self._paused = False
+            self._stream.start()
+
+    def stop(self) -> None:
+        self._stopped = True
+        if self._stream is not None:
+            self._stream.abort()
+        self._on_finished()
+
+    def _callback(self, outdata: np.ndarray, frames: int, *_: object) -> None:
+        remaining = len(self._frames) - self._pos
+        if self._stopped or remaining <= 0:
+            raise sd.CallbackStop
+        take = min(frames, remaining)
+        chunk = self._frames[self._pos : self._pos + take]
+        if self._channels == 1:
+            outdata[:take, 0] = chunk
+        else:
+            outdata[:take] = chunk
+        if take < frames:
+            outdata[take:] = 0
+        self._pos += take
+        if self._pos >= len(self._frames):
+            raise sd.CallbackStop
+
+    def _on_finished(self) -> None:
+        if not self._stopped and self._pos < len(self._frames):
+            return
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._finished.set)
+        else:
+            self._finished.set()
+
+
 class ReplayPlayer:
     def __init__(
         self,
@@ -69,13 +191,15 @@ class ReplayPlayer:
         play: Callable[[bytes], Awaitable[None]] | None = None,
         playback_lock: asyncio.Lock | None = None,
         mute_state: TtsMuteState | None = None,
+        stream_factory: StreamFactory | None = None,
     ) -> None:
         self._settings = settings
         self._engine = engine
         self._playback_lock = playback_lock or asyncio.Lock()
         self._mute_state = mute_state
-        self._uses_default_play = play is None
         self._play = play or self._default_play
+        self._stream_factory = stream_factory
+        self._current_playback: PausablePlayback | None = None
         self._task: asyncio.Task | None = None
 
     @property
@@ -93,6 +217,10 @@ class ReplayPlayer:
         self._task = asyncio.create_task(self._run(units))
         return ReplayOutcome.STARTED
 
+    @property
+    def is_paused(self) -> bool:
+        return self._current_playback is not None and self._current_playback.is_paused
+
     def cancel(self) -> bool:
         """Stops an in-progress replay. Wired to the same Ctrl+Alt+I
         interrupt path that stops a live turn (story-v1.8.2). Returns
@@ -100,9 +228,25 @@ class ReplayPlayer:
         if not self.is_active:
             return False
         assert self._task is not None
+        if self._current_playback is not None:
+            self._current_playback.stop()
         self._task.cancel()
-        if self._uses_default_play:
-            sd.stop()
+        return True
+
+    def pause(self) -> bool:
+        """Suspends the current clip at its playback position (story-v1.8.3).
+        Returns whether there was a playing clip to pause."""
+        if self._current_playback is None or self._current_playback.is_paused:
+            return False
+        self._current_playback.pause()
+        return True
+
+    def resume(self) -> bool:
+        """Continues a paused clip from its held position (story-v1.8.3).
+        Returns whether there was a paused clip to resume."""
+        if self._current_playback is None or not self._current_playback.is_paused:
+            return False
+        self._current_playback.resume()
         return True
 
     async def wait_for_pending(self) -> None:
@@ -126,6 +270,11 @@ class ReplayPlayer:
 
     async def _default_play(self, wav_bytes: bytes) -> None:
         data, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        async with self._playback_lock:
-            await asyncio.to_thread(sd.play, data, sample_rate)
-            await asyncio.to_thread(sd.wait)
+        playback = PausablePlayback(
+            data, sample_rate, self._playback_lock, stream_factory=self._stream_factory
+        )
+        self._current_playback = playback
+        try:
+            await playback.play_to_completion()
+        finally:
+            self._current_playback = None

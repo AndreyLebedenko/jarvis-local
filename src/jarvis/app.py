@@ -2003,6 +2003,18 @@ def _stop_reply_replay(app: App) -> None:
         app.replay_player.cancel()
 
 
+def _pause_reply_replay(app: App) -> bool:
+    if app.replay_player is None:
+        return False
+    return app.replay_player.pause()
+
+
+def _resume_reply_replay(app: App) -> bool:
+    if app.replay_player is None:
+        return False
+    return app.replay_player.resume()
+
+
 async def _reject_replay(app: App, ui_text_key: str) -> None:
     await app.sound_cues.play("error")
     await publish_system_event(
@@ -2458,6 +2470,8 @@ def run_with_status_console(
             app, reference
         ),
         journal_reply_replay_stop_handler=lambda: _stop_reply_replay(app),
+        journal_reply_replay_pause_handler=lambda: _pause_reply_replay(app),
+        journal_reply_replay_resume_handler=lambda: _resume_reply_replay(app),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
     )
     live_console.create_windows()

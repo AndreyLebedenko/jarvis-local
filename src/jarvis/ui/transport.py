@@ -679,6 +679,8 @@ class UiTransportServer:
             Callable[[JournalEventRef], Awaitable[str]] | None
         ) = None,
         journal_reply_replay_stop_handler: Callable[[], None] | None = None,
+        journal_reply_replay_pause_handler: Callable[[], bool] | None = None,
+        journal_reply_replay_resume_handler: Callable[[], bool] | None = None,
         max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
     ) -> None:
         self._bus = bus
@@ -709,6 +711,8 @@ class UiTransportServer:
         self._memory_file_repository = memory_file_repository
         self._journal_reply_replay_handler = journal_reply_replay_handler
         self._journal_reply_replay_stop_handler = journal_reply_replay_stop_handler
+        self._journal_reply_replay_pause_handler = journal_reply_replay_pause_handler
+        self._journal_reply_replay_resume_handler = journal_reply_replay_resume_handler
         self._max_audio_attachment_seconds = (
             max_audio_attachment_clips * MAX_CLIP_SECONDS
         )
@@ -779,6 +783,14 @@ class UiTransportServer:
         app.router.add_post(
             "/api/journal/replies/replay/stop",
             self._journal_reply_replay_stop_handler_http,
+        )
+        app.router.add_post(
+            "/api/journal/replies/replay/pause",
+            self._journal_reply_replay_pause_handler_http,
+        )
+        app.router.add_post(
+            "/api/journal/replies/replay/resume",
+            self._journal_reply_replay_resume_handler_http,
         )
         app.router.add_get(
             "/api/journal/annotations/{session_id}",
@@ -1439,6 +1451,27 @@ class UiTransportServer:
             raise web.HTTPServiceUnavailable(text="replay not available")
         stop()
         return web.json_response({"stopped": True})
+
+    async def _journal_reply_replay_pause_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        # Pause/resume are signals that do NOT resolve the held replay request:
+        # the replay is still running, just suspended at its playback position
+        # (story-v1.8.3 task 1).
+        self._require_http_token(request)
+        pause = self._journal_reply_replay_pause_handler
+        if pause is None:
+            raise web.HTTPServiceUnavailable(text="replay not available")
+        return web.json_response({"paused": pause()})
+
+    async def _journal_reply_replay_resume_handler_http(
+        self, request: web.Request
+    ) -> web.Response:
+        self._require_http_token(request)
+        resume = self._journal_reply_replay_resume_handler
+        if resume is None:
+            raise web.HTTPServiceUnavailable(text="replay not available")
+        return web.json_response({"resumed": resume()})
 
     async def _journal_annotation_list_handler(
         self, request: web.Request
