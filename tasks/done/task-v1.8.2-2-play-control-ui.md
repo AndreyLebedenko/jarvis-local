@@ -1,6 +1,6 @@
 # Task v1.8.2-2: Play control in the chat log
 
-**Status:** Proposed.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.2-replay-tts.md`
 **Depends on:** task-v1.8.2-1 (replay core, busy-guard, interrupt). This card
 adds the UI trigger only.

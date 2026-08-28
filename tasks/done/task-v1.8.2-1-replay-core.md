@@ -1,6 +1,6 @@
 # Task v1.8.2-1: Replay core (re-synthesis path, busy-guard, interrupt)
 
-**Status:** Proposed.
+**Status:** Completed.
 **Story:** `tasks/story-v1.8.2-replay-tts.md`
 **Depends on:** nothing; first implementation card of v1.8.2.
 

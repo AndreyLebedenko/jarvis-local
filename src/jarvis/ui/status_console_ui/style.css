@@ -1056,6 +1056,14 @@ html[data-view="settings"] .settings {
   padding: 2px 6px; cursor: pointer;
 }
 .journal-copy:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-replay {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--panel);
+  color: var(--text-faint); font: 600 9.5px "Segoe UI", system-ui, sans-serif;
+  padding: 2px 6px; cursor: pointer;
+}
+.journal-replay:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.journal-replay[data-active="true"] { border-color: var(--amber); color: var(--amber); }
 .journal-msg-text {
   font-size: 12.5px; color: var(--text); overflow-wrap: anywhere;
   white-space: pre-wrap; user-select: text;

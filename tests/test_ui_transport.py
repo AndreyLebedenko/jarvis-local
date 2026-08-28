@@ -2650,6 +2650,63 @@ async def _get_json(session: aiohttp.ClientSession, url: str) -> dict:
     return await response.json()
 
 
+async def _post_json(session: aiohttp.ClientSession, url: str) -> dict:
+    response = await session.post(url)
+    assert response.status == 200
+    return await response.json()
+
+
+async def test_reply_replay_route_invokes_handler_and_returns_outcome():
+    captured: list[JournalEventRef] = []
+
+    async def handler(reference: JournalEventRef) -> str:
+        captured.append(reference)
+        return "started"
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_reply_replay_handler=handler,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            result = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                "/api/journal/replies/20260826-101500-abc/2/replay"
+                "?token=valid-token",
+            )
+        assert result == {"outcome": "started"}
+    finally:
+        await server.stop()
+    assert captured == [JournalEventRef("20260826-101500-abc", 2)]
+
+
+async def test_reply_replay_stop_route_calls_stop_handler():
+    calls: list[bool] = []
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_reply_replay_stop_handler=lambda: calls.append(True),
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            result = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                "/api/journal/replies/replay/stop?token=valid-token",
+            )
+        assert result == {"stopped": True}
+    finally:
+        await server.stop()
+    assert calls == [True]
+
+
 def _rebuilt_history_service(
     bus: EventBus, store: JournalStore, search_index: JournalSearchIndex
 ) -> JournalHistoryService:

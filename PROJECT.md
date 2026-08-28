@@ -4125,6 +4125,55 @@ and was accepted by the owner; see
 `tasks/bug_reports/session-file-list-surfaces-journal-media.md` for the
 declined `list`-filtering alternative and how to revisit it later.
 
+## Architecture v1.8.2 (reply replay)
+
+A Play control on any past assistant reply in the Journal re-listens to it.
+See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
+
+- **Re-synthesis, not stored audio (do not re-litigate without new evidence).**
+  Replay calls the existing TTS engine on the stored reply text at press time
+  (`reply_speech_text()` + `ReplayPlayer` in `src/jarvis/audio/replay.py`); no
+  waveform is ever stored. Chosen over persisting audio deliberately: exact
+  acoustic reproduction is not worth the storage weight or the lock-in to the
+  TTS settings that were active when the turn first played, and re-synthesis
+  under current settings is the more useful behavior (e.g. hearing an old
+  reply under a different voice/speed). Consequence: replay honors the current
+  `TtsMuteState` and route configuration, not a snapshot.
+
+- **One playback channel, reject-when-busy (no queue, no second route).**
+  Replay reuses the single process-wide `playback_lock` shared with
+  `TtsOutput`/`SoundCuePlayer`, so it can never physically overlap live speech
+  or a sound cue on the device. A replay attempt while speech is active - a
+  live turn (`Orchestrator.is_busy`) or another replay (`ReplayPlayer`'s own
+  active guard) - is rejected with the `error` cue and a visible `SystemEvent`,
+  never queued. `ReplayPlayer` is a sibling of `TtsOutput`, not a reuse of its
+  token-stream entry points, because `TtsOutput.cancel()` resets per-turn
+  `OrderedPlayback`/buffer state that a full-text one-shot replay must not
+  touch. `Ctrl+Alt+I` (`_on_interrupt_requested`) and disabling TTS
+  (`_on_tts_speech_enabled_changed`) both cancel an in-flight replay via the
+  same `ReplayPlayer.cancel()`.
+
+- **HTTP request lifetime = replay lifetime (UI seam).** The transport route
+  `POST /api/journal/replies/{session_id}/{event_position}/replay` is held
+  open by the handler (`_run_reply_replay` awaits `wait_for_pending()`) for the
+  whole replay, so the WebView toggles its Play<->Stop button off the fetch
+  promise alone, needing no separate replay-lifecycle event channel. Stop posts
+  to `POST /api/journal/replies/replay/stop`, which cancels the replay and thus
+  resolves the held request.
+
+- **Forward seam to v1.9.0.** `reply_speech_text()` is the single "text to
+  speak for this turn" accessor; it returns the canonical reply text today.
+  When v1.9.0's Text+TTS mode adds a per-turn spoken derivative, that accessor
+  retargets to the derivative and replay gains the nicer source with no change
+  to the Play control or playback path. See
+  `tasks/story-v1.9.0-response-modes.md`.
+
+- **Deferred (not built here).** Pause/resume of a replay (a single global
+  playback-position marker, resume-from-position) was explicitly deferred by
+  the owner to a later slice; v1.8.2 ships Play/Stop only. Doing pause/resume
+  right needs a pausable playback primitive (callback `OutputStream`), which is
+  a playback-engine change, not a UI addition.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

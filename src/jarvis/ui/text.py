@@ -162,6 +162,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_tool_adapter_rejected": (
             "MCP server {server} does not match its configured tool adapter"
         ),
+        "replay_busy": "Cannot replay now: Jarvis is speaking",
+        "replay_unavailable": "Nothing to replay for that message",
+        "replay_tts_disabled": "Cannot replay: speech is turned off",
     },
     "ru": {
         "warming_model": "Прогреваю модель...",
@@ -258,6 +261,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_tool_adapter_rejected": (
             "MCP-сервер {server} не соответствует настроенному адаптеру инструментов"
         ),
+        "replay_busy": "Нельзя переслушать: Джарвис сейчас говорит",
+        "replay_unavailable": "Нечего переслушать для этого сообщения",
+        "replay_tts_disabled": "Нельзя переслушать: озвучивание выключено",
     },
 }
 
