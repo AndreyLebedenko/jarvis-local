@@ -372,8 +372,16 @@ class Orchestrator:
         solo_session_state: SoloSessionState | None = None,
         session_file_repository: SessionFileRepository | None = None,
         session_file_scope: Callable[[], SessionFileScope] | None = None,
+        on_turn_start: Callable[[], object] | None = None,
     ) -> None:
         self._backend = backend
+        # Called the instant a turn is accepted, before any speech: a live
+        # turn takes the single playback channel, so an in-flight reply
+        # replay must yield to it (story-v1.8.2 - replay never blocks a new
+        # live turn, and a new live turn's speech never interleaves with a
+        # replay on the shared playback_lock). Wired to ReplayPlayer.cancel();
+        # defaults to a no-op so _start_turn can call it unconditionally.
+        self._on_turn_start = on_turn_start or (lambda: None)
         self._history = history
         self._sound_cues = sound_cues
         self._solo_session_state = solo_session_state
@@ -813,6 +821,9 @@ class Orchestrator:
             logger.info("Ignoring new turn: previous request still in flight")
             return
         self._busy = True
+        # A live turn owns the playback channel; stop any reply replay now so
+        # its remaining sentences never interleave with this turn's speech.
+        self._on_turn_start()
         # Captured locally, not just assigned to self.xxx (task-v1.7.0-3
         # review, third round): a later turn B can start - and rebind both
         # of these attributes to its own fresh objects - while *this*
@@ -1631,6 +1642,7 @@ def build_app(
         solo_session_state=solo_session_state,
         session_file_repository=session_file_repository,
         session_file_scope=current_session_file_scope,
+        on_turn_start=replay_player.cancel,
     )
     return App(
         bus=bus,
