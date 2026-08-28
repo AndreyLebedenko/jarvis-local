@@ -298,6 +298,7 @@ def _orchestrator(
     solo_session_state=None,
     session_file_repository=None,
     session_file_scope=None,
+    on_turn_start=None,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -317,6 +318,7 @@ def _orchestrator(
         solo_session_state=solo_session_state,
         session_file_repository=session_file_repository,
         session_file_scope=session_file_scope,
+        on_turn_start=on_turn_start,
     )
     return orchestrator, backend, sound_cues
 
@@ -433,6 +435,19 @@ async def test_accepted_voice_request_reports_its_exact_media_composition():
         inputs=(ModelRequestInput.AUDIO, ModelRequestInput.SCREENSHOT),
         audio_duration_seconds=4.25,
     )
+
+
+async def test_starting_a_turn_invokes_on_turn_start_to_yield_the_playback_channel():
+    calls: list[bool] = []
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        on_turn_start=lambda: calls.append(True)
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"audio", start_seconds=0.0, end_seconds=1.0)
+    )
+
+    assert calls == [True]
 
 
 async def test_accepted_voice_request_without_screenshot_reports_audio_only():

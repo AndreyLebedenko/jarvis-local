@@ -4151,7 +4151,13 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
   `OrderedPlayback`/buffer state that a full-text one-shot replay must not
   touch. `Ctrl+Alt+I` (`_on_interrupt_requested`) and disabling TTS
   (`_on_tts_speech_enabled_changed`) both cancel an in-flight replay via the
-  same `ReplayPlayer.cancel()`.
+  same `ReplayPlayer.cancel()`. The rejection is symmetric: a Play press
+  during a live turn is refused, and a new live turn starting during a replay
+  cancels that replay so its remaining sentences never interleave with the
+  turn's speech on the shared lock. The turn-start cancel is wired through
+  `Orchestrator`'s `on_turn_start` callback (fired the instant a turn is
+  accepted, at `_start_turn`'s `self._busy = True`) -> `ReplayPlayer.cancel()`,
+  which also matches the owner's model that a new TTS stream resets replay.
 
 - **HTTP request lifetime = replay lifetime (UI seam).** The transport route
   `POST /api/journal/replies/{session_id}/{event_position}/replay` is held
