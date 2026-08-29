@@ -84,15 +84,21 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   authenticated local transport; the Journal search box uses the same hybrid
   retrieval surface described in
   [Unlimited conversation history](#unlimited-conversation-history) below.
-- Replay any past assistant reply: a Play control on every answer in the
-  Journal re-synthesizes that reply through TTS on demand. No audio is stored -
+- Replay past turns from the Journal: a Play control on every playable turn
+  plays it and every later playable turn in that session back to back. An
+  assistant reply is re-synthesized through TTS on demand (no audio is stored -
   playback is a fresh synthesis under the TTS voice/speed settings active at
   replay time, so a reply spoken earlier can be heard again under the current
-  voice. Replay uses the one playback channel: a Play press while Jarvis is
-  already speaking (a live turn or another replay) is rejected with the error
-  cue and a message rather than queued, and can simply be pressed again once
-  free. The control toggles to Stop while playing; `Ctrl+Alt+I` and disabling
-  TTS also stop an in-progress replay.
+  voice); a voice request plays its own original recording, so you hear your
+  own voice, not a re-synthesis. Typed requests and system events are skipped.
+  Playing a turn near the end plays just that turn; starting higher up plays
+  the rest of the conversation in order, with the now-playing turn highlighted
+  as playback moves through it. Pause/Resume suspends and continues the current
+  turn without losing your place. Replay uses the one playback channel: a Play
+  press while Jarvis is already speaking (a live turn or another replay) is
+  rejected with the error cue and a message rather than queued, and can simply
+  be pressed again once free. The control toggles to Stop while playing; a new
+  live turn, `Ctrl+Alt+I`, and disabling TTS each stop an in-progress replay.
 - Unlimited conversation history: the normal request to Ollama stays a bounded
   working context regardless of how large the local journal grows. See
   [Unlimited conversation history](#unlimited-conversation-history).

@@ -4195,16 +4195,22 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
 
 Play on a reply plays it and every later reply in that session back to back,
 pausable, with the now-playing highlight following playback. See
-`tasks/story-v1.8.3-sequential-journal-playback.md`. Full write-up lands with
-that story's docs task; the load-bearing decisions so far:
+`tasks/story-v1.8.3-sequential-journal-playback.md`. The load-bearing
+decisions:
 
 - **Pausable primitive (task 1).** `PausablePlayback` in
   `src/jarvis/audio/replay.py` plays one clip of float32 frames through a
   callback `OutputStream` with a preserved position marker, so pause is
   `stream.stop()` at the current frame and resume is `stream.start()` from it.
-  PortAudio's finished-callback also fires on a pause-stop, so a real end is
-  distinguished from a pause only by the marker (`pos >= len` or an explicit
-  `stop()`). This is the deferred v1.8.2 playback-engine change.
+  This is the deferred v1.8.2 playback-engine change. PortAudio's
+  finished-callback fires on *any* stop, including a pause-stop, so completion
+  is keyed on the explicit pause flag, not the position marker: only a
+  deliberate pause (`_paused`, not yet at the end) keeps the clip open to
+  resume; reaching the end, an explicit `stop()`, or an unexpected early
+  device stop mid-clip all complete it. Keying this on the marker instead was
+  a bug - an early device stop leaves `pos < len` yet is not a pause, so it
+  was mistaken for one and the clip waited forever, hanging the sequence on
+  that segment (surfaced when a sequence was started on a voice turn).
 
 - **One task per sequence, not a queue (task 2).** `SequencePlayer` knows the
   journal (walk assistant replies from a start ref forward); `ReplayPlayer`
