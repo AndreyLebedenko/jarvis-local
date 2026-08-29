@@ -628,6 +628,33 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 _DEFAULT_WARMUP_PROMPT = "Привет"
 
+# Response-mode output-contract defaults (story-v1.9.0, task 1). Unlike the
+# reasoning-level sections above (default None: off adds nothing), these two
+# have working built-in text, so [response] mode = "voice" is usable with no
+# config change - only reasoning_low/medium/high need config to say anything
+# at all. Kept as two separate directives on purpose (story design decision):
+# mode 2's contract must be self-contained (nothing shown, so nothing to
+# reference); mode 3's is the opposite (allowed to reference visible text).
+# Collapsing them into one "voice" prompt would blur that distinction.
+_DEFAULT_RESPONSE_VOICE_CONTRACT = (
+    "Этот ответ будет только озвучен вслух - пользователь не увидит текст на "
+    "экране. Пиши связной прозой без списков, таблиц, Markdown-разметки и "
+    "ссылок. Числа и единицы измерения проговаривай словами там, где это "
+    "облегчает восприятие на слух. Длинные перечисления оформляй как "
+    "связную речь, а не как список. Не ссылайся ни на что, чего нет в самом "
+    "произнесённом ответе - у пользователя нет экрана с этим текстом перед "
+    "глазами."
+)
+_DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT = (
+    "Тебе передан точный текст, уже показанный пользователю на экране. "
+    "Перескажи его вслух как связную речь: убери Markdown, списки и "
+    "таблицы, замени их естественным пересказом. Можешь ссылаться на то, "
+    "что видно на экране (например, «как в таблице выше»), потому что этот "
+    "текст на самом деле там есть и пользователь может его открыть. Не "
+    "добавляй новых фактов и не меняй смысл - это пересказ формы, а не "
+    "новый ответ."
+)
+
 
 @dataclass(frozen=True)
 class PromptSettings:
@@ -640,6 +667,23 @@ class PromptSettings:
     reasoning_low: str | None = None
     reasoning_medium: str | None = None
     reasoning_high: str | None = None
+    # response_voice: mode 2 (TTS-Only) self-contained voice contract.
+    # response_text_voice: mode 3 (Text+TTS) spoken-derivative contract - a
+    # task-1 placeholder field only (see response_mode.py and app.py's
+    # _RESPONSE_MODE_PROMPT_FIELD_BY_MODE): task 1's single pass does not
+    # select it yet, task 3's second pass does.
+    response_voice: str | None = _DEFAULT_RESPONSE_VOICE_CONTRACT
+    response_text_voice: str | None = _DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT
+
+
+@dataclass(frozen=True)
+class ResponseSettings:
+    """The persisted response-mode selection (story-v1.9.0). `mode` seeds
+    ResponseModeState at startup (jarvis.dialog.response_mode); config.py
+    keeps it a plain string, not the ResponseMode enum, to stay free of
+    project-module imports (test_config_has_no_project_import_dependencies)."""
+
+    mode: str = "text"
 
 
 # Windows executable/script extensions the model may not create as a session
@@ -719,6 +763,7 @@ class Settings:
     ui: UiSettings = field(default_factory=UiSettings)
     files: FilesSettings = field(default_factory=FilesSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
+    response: ResponseSettings = field(default_factory=ResponseSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
@@ -740,6 +785,7 @@ _SECTIONS: dict[str, type] = {
     "ui": UiSettings,
     "files": FilesSettings,
     "prompts": PromptSettings,
+    "response": ResponseSettings,
     "mcp": McpSettings,
     "history": HistorySettings,
     "journal": JournalSettings,
@@ -748,6 +794,7 @@ _SECTIONS: dict[str, type] = {
 }
 
 SUPPORTED_UI_LANGUAGES = ("en", "ru")
+SUPPORTED_RESPONSE_MODES = ("text", "voice", "text_voice")
 SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
 SUPPORTED_TTS_ENGINES = frozenset(TTS_ROUTE_TYPES)
 
@@ -993,6 +1040,18 @@ def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
     return settings
 
 
+def _build_response_section(
+    section_name: str, raw: dict[str, Any]
+) -> "ResponseSettings":
+    settings = _build_plain_section(section_name, ResponseSettings, raw)
+    if settings.mode not in SUPPORTED_RESPONSE_MODES:
+        supported = ", ".join(SUPPORTED_RESPONSE_MODES)
+        raise ConfigError(
+            f"[{section_name}].mode must be one of: {supported}; got {settings.mode!r}"
+        )
+    return settings
+
+
 def _build_prompts_section(
     section_name: str, raw: dict[str, Any], prompt_root: Path
 ) -> "PromptSettings":
@@ -1000,15 +1059,21 @@ def _build_prompts_section(
     for name in ("system", "warmup"):
         _require_non_empty_prompt(section_name, name, getattr(settings, name))
     resolved = {
-        name: _resolve_reasoning_prompt(
+        name: _resolve_prompt_field(
             section_name, name, getattr(settings, name), prompt_root
         )
-        for name in ("reasoning_low", "reasoning_medium", "reasoning_high")
+        for name in (
+            "reasoning_low",
+            "reasoning_medium",
+            "reasoning_high",
+            "response_voice",
+            "response_text_voice",
+        )
     }
     return replace(settings, **resolved)
 
 
-def _resolve_reasoning_prompt(
+def _resolve_prompt_field(
     section_name: str, field_name: str, value: str | None, prompt_root: Path
 ) -> str | None:
     if value is None:
@@ -1682,6 +1747,7 @@ def _merge_raw_section(
 _SECTION_BUILDERS: dict[type, Any] = {
     TtsSettings: _build_tts_section,
     UiSettings: _build_ui_section,
+    ResponseSettings: _build_response_section,
     FilesSettings: _build_files_section,
     McpSettings: _build_mcp_section,
     MemorySettings: _build_memory_section,

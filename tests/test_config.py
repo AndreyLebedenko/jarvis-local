@@ -1873,6 +1873,103 @@ def test_prompt_of_wrong_type_raises_config_error(tmp_path):
         load_settings(config_path)
 
 
+# --- response mode (story-v1.9.0, task 1) --------------------------------
+
+
+def test_response_mode_defaults_to_text(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.response.mode == "text"
+
+
+@pytest.mark.parametrize("mode", ["text", "voice", "text_voice"])
+def test_response_mode_parses_from_config(tmp_path, mode):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[response]\nmode = "{mode}"\n', encoding="utf-8")
+
+    settings = load_settings(config_path)
+
+    assert settings.response.mode == mode
+
+
+def test_unknown_response_mode_raises_config_error_naming_the_three_values(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[response]\nmode = "spoken"\n', encoding="utf-8")
+
+    with pytest.raises(
+        ConfigError, match=r"\[response\].mode must be one of: text, voice, text_voice"
+    ):
+        load_settings(config_path)
+
+
+def test_response_mode_of_wrong_type_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("[response]\nmode = 5\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"\[response\].mode"):
+        load_settings(config_path)
+
+
+def test_unknown_response_key_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[response]\nunknown = "x"\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"Unknown key\(s\) in \[response\].*unknown"):
+        load_settings(config_path)
+
+
+def test_response_prompt_contracts_have_built_in_defaults(tmp_path):
+    """Unlike reasoning_low/medium/high (default None: off adds nothing),
+    the response-mode contracts have working built-in text - mode "voice"
+    is usable with no config change."""
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.prompts.response_voice
+    assert settings.prompts.response_text_voice
+
+
+@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
+def test_response_prompt_contract_preserves_literal_text(tmp_path, field_name):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f'[prompts]\n{field_name} = "Custom contract text."\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert getattr(settings.prompts, field_name) == "Custom contract text."
+
+
+@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
+def test_response_prompt_contract_reference_resolves_under_jarvis_directory(
+    tmp_path, field_name
+):
+    config_path = tmp_path / "config.toml"
+    prompt_path = tmp_path / ".jarvis" / "contract.md"
+    prompt_path.parent.mkdir(parents=True)
+    prompt_path.write_text("Referenced contract text.", encoding="utf-8")
+    config_path.write_text(
+        f'[prompts]\n{field_name} = "@contract.md"\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert getattr(settings.prompts, field_name) == "Referenced contract text."
+
+
+@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
+def test_empty_literal_response_prompt_contract_raises_config_error(
+    tmp_path, field_name
+):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[prompts]\n{field_name} = ""\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
 def test_write_ui_config_then_load_settings_round_trips(tmp_path):
     ui_config_path = tmp_path / "config.ui.toml"
 

@@ -429,6 +429,19 @@ warmup = "Привет"
 # reasoning_low = "Think briefly, then answer directly."
 # reasoning_medium = "@/reasoning/medium.md"
 # reasoning_high = "@reasoning/high.md"
+#
+# Response-mode output contracts for modes 2 and 3 below (story-v1.9.0).
+# Each has a working built-in default already, so voice mode needs no
+# config change; override here to customize what "voice-friendly" means.
+# response_voice = "Speak in plain connected prose, no lists or tables."
+# response_text_voice = "Restate the shown text aloud; you may refer to it."
+
+[response]
+# Response mode: "text" (default, today's behavior), "voice" (TTS-Only,
+# self-contained one-pass spoken answer, no on-screen reference), or
+# "text_voice" (Text+TTS, two passes - see task-v1.9.0-3 once it lands).
+# See tasks/story-v1.9.0-response-modes.md for the full trade-offs.
+mode = "text"
 
 [mcp]
 # Off by default (two-tier locality contract, PROJECT.md): with enabled =

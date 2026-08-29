@@ -67,6 +67,7 @@ from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -241,6 +242,34 @@ def _compose_effective_system_prompt(
     return f"{base_prompt}\n\n{section}"
 
 
+# Mode 1 (text) selects no field: today's first pass stays byte-identical.
+# Modes 2 and 3 both select "response_voice" here - a task-1 placeholder for
+# mode 3 (story-v1.9.0 task 1's own scope decision): until task 3 adds the
+# second pass, mode 3 has only one pass and nothing else would make what it
+# speaks voice-friendly. Task 3 repoints ResponseMode.TEXT_VOICE at
+# "response_text_voice" for its new second pass and leaves mode 3's first
+# pass on the base prompt (matching mode 1), which is the real seam this
+# placeholder exists for.
+_RESPONSE_MODE_PROMPT_FIELD_BY_MODE: dict[ResponseMode, str] = {
+    ResponseMode.VOICE: "response_voice",
+    ResponseMode.TEXT_VOICE: "response_voice",
+}
+
+
+def _compose_response_mode_contract(
+    base_prompt: str,
+    response_mode: ResponseMode,
+    response_prompt_settings: PromptSettings,
+) -> str:
+    field_name = _RESPONSE_MODE_PROMPT_FIELD_BY_MODE.get(response_mode)
+    if field_name is None:
+        return base_prompt
+    section = getattr(response_prompt_settings, field_name)
+    if section is None:
+        return base_prompt
+    return f"{base_prompt}\n\n{section}"
+
+
 def _history_limits_from_settings(
     history_settings: HistorySettings,
 ) -> ContextBudgetLimits:
@@ -366,6 +395,7 @@ class Orchestrator:
         system_prompt: str = SYSTEM_PROMPT,
         audio_input: AudioInput | None = None,
         thinking_mode: ReasoningLevelState | None = None,
+        response_mode: ResponseModeState | None = None,
         bus: EventBus | None = None,
         journal_recorder: JournalRecorder | None = None,
         history_retrieval_service: HistoryRetrievalService | None = None,
@@ -406,6 +436,7 @@ class Orchestrator:
         )
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
+        self._response_mode = response_mode
         self._bus = bus
         self._journal_recorder = journal_recorder
         self._history_retrieval_service = history_retrieval_service
@@ -933,6 +964,14 @@ class Orchestrator:
             reasoning_level,
             self._reasoning_prompt_settings,
         )
+        response_mode = (
+            self._response_mode.mode if self._response_mode else ResponseMode.TEXT
+        )
+        effective_system_prompt = _compose_response_mode_contract(
+            effective_system_prompt,
+            response_mode,
+            self._reasoning_prompt_settings,
+        )
         (
             retrieved_passages,
             retrieval_telemetry,
@@ -1316,6 +1355,15 @@ class App:
     tts_mute_state: TtsMuteState | None = None
     solo_session_state: SoloSessionState | None = None
     replay_player: ReplayPlayer | None = None
+    # No default-less placement next to thinking_mode above (task-v1.9.0-1):
+    # that would force every existing App(...) test fixture (~20 call sites
+    # across test_main.py/test_replay_app.py) to start passing this field
+    # even though task 1's boundary is config + first-pass prompt
+    # composition only - Orchestrator already receives the real seeded
+    # ResponseModeState directly from build_app(). Task 2 (hotkey + UI) is
+    # the first consumer that needs app.response_mode to exist reliably;
+    # tighten this to a required field there if the wiring needs it non-None.
+    response_mode: ResponseModeState | None = None
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1430,6 +1478,9 @@ def build_app(
     memory_loader = MemoryFileLoader(memory_file_specs, logger=logger)
     memory_file_repository = MemoryFileRepository(memory_file_specs)
     thinking_mode = ReasoningLevelState(bus)
+    response_mode = ResponseModeState(
+        bus, initial_mode=ResponseMode(settings.response.mode)
+    )
 
     async def on_camera_capture(source: str) -> None:
         await bus.publish(CameraCaptureSucceeded, CameraCaptureSucceeded(source))
@@ -1633,6 +1684,7 @@ def build_app(
         sound_cues,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
+        response_mode=response_mode,
         bus=bus,
         journal_recorder=journal_recorder,
         history_retrieval_service=history_retrieval_service,
@@ -1659,6 +1711,7 @@ def build_app(
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=thinking_mode,
+        response_mode=response_mode,
         visibility_mode=visibility_mode,
         history=history,
         journal_store=journal_store,
