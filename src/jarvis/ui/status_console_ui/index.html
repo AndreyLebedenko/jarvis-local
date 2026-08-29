@@ -170,6 +170,14 @@
       <label for="uiLangSelect" data-i18n="config_ui_language_label">Interface language</label>
       <select id="uiLangSelect"></select>
     </div>
+    <div class="config-field">
+      <label for="responseModeSelect" data-i18n="config_response_mode_label">Response mode</label>
+      <select id="responseModeSelect" onchange="setResponseMode()">
+        <option value="text" data-i18n="response_mode_text_option">Text only</option>
+        <option value="voice" data-i18n="response_mode_voice_option">Voice only</option>
+        <option value="text_voice" data-i18n="response_mode_text_voice_option">Text + voice</option>
+      </select>
+    </div>
     <div class="config-section-label" data-i18n="config_tts_section_label">Speech synthesis (TTS)</div>
     <div class="config-field config-field-checkbox">
       <label for="ttsEnabled" data-i18n="config_tts_enabled_label">Speak responses</label>

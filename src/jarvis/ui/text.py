@@ -134,6 +134,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "reasoning_level_low": "Reasoning level: low",
         "reasoning_level_medium": "Reasoning level: medium",
         "reasoning_level_high": "Reasoning level: high",
+        # Response mode system events (story-v1.9.0 task 2).
+        "response_mode_text": "Response mode: text",
+        "response_mode_voice": "Response mode: voice",
+        "response_mode_text_voice": "Response mode: text+voice",
         # MCP host/interception system events (story-v1.4.0 task 3).
         "mcp_enabled": "MCP enabled",
         "mcp_enabled_degraded": "MCP enabled (not everything connected)",
@@ -229,6 +233,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "reasoning_level_low": "Уровень мышления: низкий",
         "reasoning_level_medium": "Уровень мышления: средний",
         "reasoning_level_high": "Уровень мышления: высокий",
+        "response_mode_text": "Режим ответа: текст",
+        "response_mode_voice": "Режим ответа: голос",
+        "response_mode_text_voice": "Режим ответа: текст+голос",
         "mcp_enabled": "MCP включён",
         "mcp_enabled_degraded": "MCP включён (не всё подключилось)",
         "mcp_disabled": "MCP выключен",

@@ -39,6 +39,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.core.solo_session import SoloSessionChanged
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import (
@@ -100,6 +101,7 @@ from jarvis.memory.files import (
     MemoryFileRepository,
 )
 from jarvis.tools.interception import ToolCallFinished, ToolCallStarted
+from jarvis.ui.config_selection import validate_response_mode
 from jarvis.ui.contract import (
     DataLocality,
     DataSource,
@@ -127,6 +129,7 @@ from jarvis.ui.status_console import (
     model_request_log_payload,
     model_request_payload,
     module_health_payload,
+    response_mode_payload,
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
@@ -374,6 +377,8 @@ class ControlApi(Protocol):
 
     def set_reasoning_level(self, level_value: str) -> None: ...
 
+    def set_response_mode(self, mode_value: str) -> None: ...
+
     def set_mcp_enabled(self, enabled: bool) -> None: ...
 
     def set_tts_enabled(self, enabled: bool) -> None: ...
@@ -446,6 +451,7 @@ class UiStateStore:
         data_locality: DataLocality = DataLocality.LOCAL,
         data_source: DataSource = DataSource.LOCAL_ONLY,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        response_mode: ResponseMode = ResponseMode.TEXT,
         visibility_mode: VisibilityMode = VisibilityMode.OPEN,
         tts_enabled: bool = True,
         solo_session_enabled: bool = False,
@@ -473,6 +479,7 @@ class UiStateStore:
             "model": {"label": model_label},
             "system_events": [],
             "thinking": cast(JsonObject, thinking_mode_payload(reasoning_level)),
+            "response_mode": cast(JsonObject, response_mode_payload(response_mode)),
             "visibility": cast(JsonObject, visibility_mode_payload(visibility_mode)),
             "model_options": {"options": [], "current": model_label},
             "microphone_options": {
@@ -591,6 +598,11 @@ class UiStateStore:
 
     def set_thinking_mode(self, level: ReasoningLevel) -> JsonObject | None:
         return self._replace("thinking", cast(JsonObject, thinking_mode_payload(level)))
+
+    def set_response_mode(self, mode: ResponseMode) -> JsonObject | None:
+        return self._replace(
+            "response_mode", cast(JsonObject, response_mode_payload(mode))
+        )
 
     def set_visibility_mode(self, mode: VisibilityMode) -> JsonObject | None:
         return self._replace(
@@ -898,6 +910,9 @@ class UiTransportServer:
     def set_thinking_mode(self, level: ReasoningLevel) -> None:
         self._publish_delta(self._state.set_thinking_mode(level))
 
+    def set_response_mode(self, mode: ResponseMode) -> None:
+        self._publish_delta(self._state.set_response_mode(mode))
+
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
         self._visibility_mode = mode
         self._publish_delta(self._state.set_visibility_mode(mode))
@@ -906,6 +921,7 @@ class UiTransportServer:
         subscriptions: list[tuple[type[object], Callable[..., object]]] = [
             (SystemEvent, self._on_system_event),
             (ReasoningLevelChanged, self._on_reasoning_level_changed),
+            (ResponseModeChanged, self._on_response_mode_changed),
             (VisibilityModeChanged, self._on_visibility_mode_changed),
             (TtsSpeechEnabledChanged, self._on_tts_speech_enabled_changed),
             (SoloSessionChanged, self._on_solo_session_changed),
@@ -930,6 +946,9 @@ class UiTransportServer:
 
     async def _on_reasoning_level_changed(self, event: ReasoningLevelChanged) -> None:
         self._publish_delta(self._state.set_thinking_mode(event.level))
+
+    async def _on_response_mode_changed(self, event: ResponseModeChanged) -> None:
+        self._publish_delta(self._state.set_response_mode(event.mode))
 
     async def _on_visibility_mode_changed(self, event: VisibilityModeChanged) -> None:
         self.set_visibility_mode(event.mode)
@@ -2373,6 +2392,7 @@ class UiTransportServer:
         handlers: dict[str, Callable[[JsonObject], None]] = {
             "toggle_thinking": self._toggle_thinking,
             "set_reasoning_level": self._set_reasoning_level,
+            "set_response_mode": self._set_response_mode,
             "set_mcp_enabled": self._set_mcp_enabled,
             "set_tts_enabled": self._set_tts_enabled,
             "set_solo_session_enabled": self._set_solo_session_enabled,
@@ -2403,6 +2423,15 @@ class UiTransportServer:
         except ValueError:
             raise ProtocolError(f"unknown reasoning level: {level_value!r}") from None
         self._control_api.set_reasoning_level(level_value)
+
+    def _set_response_mode(self, arguments: JsonObject) -> None:
+        mode_value = arguments.get("mode")
+        if not isinstance(mode_value, str):
+            raise ProtocolError("set_response_mode requires arguments.mode")
+        problems = validate_response_mode(mode_value)
+        if problems:
+            raise ProtocolError("; ".join(problems))
+        self._control_api.set_response_mode(mode_value)
 
     def _set_mcp_enabled(self, arguments: JsonObject) -> None:
         enabled = arguments.get("enabled")

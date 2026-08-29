@@ -26,6 +26,7 @@ from jarvis.core.config import (
 )
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
 from jarvis.inputs.camera import (
     CameraCapture,
@@ -45,6 +46,7 @@ from jarvis.ui.config_selection import (
     VAD_RESUME_COOLDOWN_RANGE,
     VAD_THRESHOLD_RANGE,
     UiConfigSelection,
+    validate_response_mode,
     validate_selection,
 )
 from jarvis.ui.contract import (
@@ -260,6 +262,10 @@ def _journal_session_title(session_id: str, store: JournalStore) -> str:
 
 def thinking_mode_payload(level: ReasoningLevel) -> dict:
     return {"level": level.value, "is_enabled": level is not ReasoningLevel.OFF}
+
+
+def response_mode_payload(mode: ResponseMode) -> dict:
+    return {"mode": mode.value}
 
 
 def visibility_mode_payload(mode: VisibilityMode) -> dict:
@@ -552,6 +558,7 @@ class StatusConsoleApi:
         camera_capture: CameraCapture | None = None,
         tts_mute_state: TtsMuteState | None = None,
         solo_session_state: SoloSessionState | None = None,
+        response_mode: ResponseModeState | None = None,
     ) -> None:
         self._loop = loop
         self._thinking_mode = thinking_mode
@@ -559,6 +566,7 @@ class StatusConsoleApi:
         self._bus = bus
         self._logger = logger
         self._visibility_mode = visibility_mode or VisibilityModeState(bus)
+        self._response_mode = response_mode or ResponseModeState(bus)
         self._shutdown_event = shutdown_event
         self._pending_shutdown = False
         self._settings = settings or Settings()
@@ -630,6 +638,24 @@ class StatusConsoleApi:
         # tasks/done/task-v1.5.1-2-stale-pywebview-guard.md.
         self._schedule(
             self._thinking_mode.set_level(ReasoningLevel(level_value), source="UI")
+        )
+
+    def set_response_mode(self, mode_value: str) -> None:
+        # Unknown values are rejected one layer up as a ProtocolError
+        # (UiTransportServer._set_response_mode); a direct caller with a bad
+        # value gets the ValueError - validate_response_mode() is the one
+        # shared check both layers run (story-v1.9.0 task 2's "defense on
+        # both sides" requirement).
+        problems = validate_response_mode(mode_value)
+        if problems:
+            raise ValueError("; ".join(problems))
+        # Persistence is not scheduled here: it happens once, in app.py's
+        # _on_response_mode_changed(), reacting to the ResponseModeChanged
+        # this set_mode() call publishes - the same reaction the hotkey's
+        # cycle_mode() call triggers. A write call here too would be exactly
+        # the "second write path" the story's own boundary rules out.
+        self._schedule(
+            self._response_mode.set_mode(ResponseMode(mode_value), source="UI")
         )
 
     def set_mcp_enabled(self, enabled: bool) -> None:
@@ -930,6 +956,11 @@ class StatusConsoleApi:
                 if self._mcp_host is not None
                 else self._settings.mcp.enabled
             ),
+            # The live response-mode toggle (story-v1.9.0 task 2) is not
+            # part of this form - it must still round-trip through this
+            # full-file rewrite, or an unrelated Apply here would silently
+            # drop whatever update_ui_config_response_mode() last wrote.
+            response_mode=self._response_mode.mode.value,
         )
         await publish_system_event(
             self._bus,

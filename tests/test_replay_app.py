@@ -91,6 +91,7 @@ def _app(
         orchestrator=types.SimpleNamespace(is_busy=is_busy),
         sound_cues=cues,
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(),
         journal_store=store,
         replay_player=player,

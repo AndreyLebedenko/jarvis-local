@@ -37,6 +37,7 @@ from jarvis.core.config import (
     load_settings,
     tts_route_field_specs,
     update_ui_config_mcp_enabled,
+    update_ui_config_response_mode,
     write_ui_config,
 )
 
@@ -2130,6 +2131,7 @@ def test_write_ui_config_omits_sections_left_as_none(tmp_path):
     assert "[ui]" not in content
     assert "[vad]" not in content
     assert "[tts" not in content
+    assert "[response]" not in content
     assert settings.ui.language == "en"
     assert settings.vad == VadSettings()
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
@@ -2147,6 +2149,25 @@ def test_write_ui_config_persists_live_mcp_enabled_state(tmp_path):
 
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
     assert settings.mcp.enabled is True
+
+
+def test_write_ui_config_persists_live_response_mode_state(tmp_path):
+    """Mirrors test_write_ui_config_persists_live_mcp_enabled_state above:
+    the batch "Settings > Apply" rewrite must be told the CURRENT response
+    mode explicitly, the same way it is told mcp_enabled, or an unrelated
+    Apply silently erases whatever update_ui_config_response_mode() last
+    wrote (review finding, task-v1.9.0-2)."""
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="d",
+        response_mode="voice",
+    )
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.response.mode == "voice"
 
 
 def test_update_ui_config_mcp_enabled_creates_only_the_mcp_override(tmp_path):
@@ -2203,6 +2224,64 @@ def test_update_ui_config_mcp_enabled_appends_to_a_legacy_ui_file(tmp_path):
     contents = ui_config_path.read_text(encoding="utf-8")
     assert contents.startswith(original)
     assert contents.endswith("\n[mcp]\nenabled = false\n")
+
+
+# --- response mode (story-v1.9.0, task 2) --------------------------------
+#
+# update_ui_config_response_mode() is the live-toggle persistence path for
+# the config drop-down (StatusConsoleApi.set_response_mode()) - same
+# text-surgery shape as update_ui_config_mcp_enabled above, sharing the
+# generic _update_ui_config_scalar_field() implementation.
+
+
+def test_update_ui_config_response_mode_creates_only_the_response_override(tmp_path):
+    config_path = tmp_path / "config.toml"
+    ui_config_path = tmp_path / "config.ui.toml"
+    config_path.write_text('[backend]\nmodel = "before-toggle"\n', encoding="utf-8")
+
+    update_ui_config_response_mode(ui_config_path, mode="voice")
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert '[response]\nmode = "voice"' in contents
+    assert "[backend]" not in contents
+
+    settings = load_settings(config_path, ui_path=ui_config_path)
+    assert settings.response.mode == "voice"
+
+
+def test_update_ui_config_response_mode_preserves_every_other_byte(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = (
+        "# Existing UI selections stay machine-owned.\n"
+        "[backend]\n"
+        'model = "selected-model"\n'
+        "\n"
+        "[response]\n"
+        'mode = "text"\n'
+        "\n"
+        "[vad]\n"
+        "threshold = 0.75\n"
+    )
+    ui_config_path.write_text(original, encoding="utf-8")
+    original_bytes = ui_config_path.read_bytes()
+
+    update_ui_config_response_mode(ui_config_path, mode="text_voice")
+
+    assert ui_config_path.read_bytes() == original_bytes.replace(
+        b'mode = "text"', b'mode = "text_voice"'
+    )
+
+
+def test_update_ui_config_response_mode_appends_to_a_legacy_ui_file(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+    original = '[backend]\nmodel = "selected-model"\n'
+    ui_config_path.write_text(original, encoding="utf-8")
+
+    update_ui_config_response_mode(ui_config_path, mode="voice")
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert contents.startswith(original)
+    assert contents.endswith('\n[response]\nmode = "voice"\n')
 
 
 def test_mcp_defaults_to_disabled_with_no_servers(tmp_path):

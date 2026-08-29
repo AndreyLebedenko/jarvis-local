@@ -13,6 +13,7 @@ nothing more.
 from dataclasses import dataclass
 
 from jarvis.core.config import (
+    SUPPORTED_RESPONSE_MODES,
     SUPPORTED_TTS_LANGUAGES,
     SUPPORTED_UI_LANGUAGES,
     ConfigError,
@@ -62,6 +63,21 @@ def validate_selection(selection: UiConfigSelection) -> list[str]:
     if selection.tts_routes is not None:
         problems.extend(_validate_tts_routes(selection.tts_routes))
     return problems
+
+
+def validate_response_mode(mode_value: str) -> list[str]:
+    """Response mode (story-v1.9.0 task 2) is a live toggle, not a
+    UiConfigSelection batch field - it applies and persists immediately,
+    the same shape as the MCP/reasoning-level toggles, with no restart-to-
+    apply save step. It still gets its validation here, shared by
+    StatusConsoleApi.set_response_mode() and UiTransportServer's
+    set_response_mode command handler (the "defense on both sides" rule
+    this module exists for), reusing SUPPORTED_RESPONSE_MODES from task 1
+    instead of a second hardcoded copy of the three values."""
+    if mode_value in SUPPORTED_RESPONSE_MODES:
+        return []
+    supported = ", ".join(SUPPORTED_RESPONSE_MODES)
+    return [f"response mode must be one of: {supported}; got {mode_value!r}"]
 
 
 def _validate_vad(vad: VadSettings) -> list[str]:

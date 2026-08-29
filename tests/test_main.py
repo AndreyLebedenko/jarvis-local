@@ -32,6 +32,7 @@ from jarvis.app import (
     _on_mic_sleep_toggled,
     _on_microphone_capture_failed,
     _on_reasoning_level_changed,
+    _on_response_mode_changed,
     announce_debug_mode,
     build_app,
     create_live_status_console,
@@ -77,6 +78,7 @@ from jarvis.core.config import (
     TtsSettings,
     UiSettings,
     VadSettings,
+    load_settings,
 )
 from jarvis.core.debug_transcript import configure_debug_transcript, recording
 from jarvis.core.lifecycle import (
@@ -95,7 +97,11 @@ from jarvis.dialog.backend import (
     ResponseComplete,
     ResponseToken,
 )
-from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
+from jarvis.dialog.response_mode import (
+    ResponseMode,
+    ResponseModeChanged,
+    ResponseModeState,
+)
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -2221,6 +2227,7 @@ async def test_interrupt_before_backend_dispatch_prevents_the_call_entirely():
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
     )
 
@@ -2566,6 +2573,7 @@ async def test_interrupt_during_model_request_started_publish_does_not_dispatch(
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
     )
 
@@ -2630,6 +2638,7 @@ async def test_stale_dispatch_cleanup_does_not_erase_a_later_turns_active_task()
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
     )
 
@@ -2994,7 +3003,10 @@ async def test_start_turn_with_no_response_mode_defaults_to_text():
 # --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------
 
 
-def _app_with_sound_cues(sound_cues) -> App:
+def _app_with_sound_cues(sound_cues, *, ui_config_path: Path | None = None) -> App:
+    kwargs = {}
+    if ui_config_path is not None:
+        kwargs["ui_config_path"] = ui_config_path
     return App(
         bus=EventBus(),
         backend=None,
@@ -3004,7 +3016,9 @@ def _app_with_sound_cues(sound_cues) -> App:
         orchestrator=None,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         settings=_settings(),
+        **kwargs,
     )
 
 
@@ -3071,6 +3085,7 @@ async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui(sourc
         orchestrator=None,
         sound_cues=_FakeSoundCues(),
         thinking_mode=None,
+        response_mode=None,
         settings=_settings(),
     )
 
@@ -3082,6 +3097,95 @@ async def test_reasoning_level_changed_publishes_a_system_event_for_the_ui(sourc
     assert received[0].source == source
     assert received[0].level is EventLevel.INFO
     assert "medium" in received[0].message.lower()
+
+
+# --- response mode cue/log wiring (story-v1.9.0 task 2) ---------------------
+
+
+@pytest.mark.parametrize(
+    "mode", [ResponseMode.TEXT, ResponseMode.VOICE, ResponseMode.TEXT_VOICE]
+)
+async def test_response_mode_changed_plays_no_sound_cue(mode, tmp_path):
+    """Unlike the graded reasoning levels, the three response modes are
+    named options with no natural beep-count mapping - _on_response_mode_
+    changed()'s own design decision, verified here as a regression guard."""
+    sound_cues = _FakeSoundCues()
+    app = _app_with_sound_cues(sound_cues, ui_config_path=tmp_path / "config.ui.toml")
+
+    await _on_response_mode_changed(
+        app, ResponseModeChanged(mode=mode, source="HOTKEY")
+    )
+
+    assert sound_cues.played == []
+
+
+@pytest.mark.parametrize(
+    "mode", [ResponseMode.TEXT, ResponseMode.VOICE, ResponseMode.TEXT_VOICE]
+)
+async def test_response_mode_changed_logs_the_exact_mode_name(mode, caplog, tmp_path):
+    app = _app_with_sound_cues(
+        _FakeSoundCues(), ui_config_path=tmp_path / "config.ui.toml"
+    )
+
+    with caplog.at_level(logging.INFO, logger=APP_LOGGER_NAME):
+        await _on_response_mode_changed(
+            app, ResponseModeChanged(mode=mode, source="HOTKEY")
+        )
+
+    assert any(mode.value in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize("source", ["HOTKEY", "UI"])
+async def test_response_mode_changed_publishes_a_system_event_for_the_ui(
+    source, tmp_path
+):
+    bus = EventBus()
+    received: list[SystemEvent] = []
+    bus.subscribe(SystemEvent, _collecting_subscriber(received))
+    app = App(
+        bus=bus,
+        backend=None,
+        audio_input=None,
+        tts_output=None,
+        capture_input=None,
+        orchestrator=None,
+        sound_cues=_FakeSoundCues(),
+        thinking_mode=None,
+        response_mode=None,
+        settings=_settings(),
+        ui_config_path=tmp_path / "config.ui.toml",
+    )
+
+    await _on_response_mode_changed(
+        app, ResponseModeChanged(mode=ResponseMode.VOICE, source=source)
+    )
+
+    assert len(received) == 1
+    assert received[0].source == source
+    assert received[0].level is EventLevel.INFO
+    assert "voice" in received[0].message.lower()
+
+
+async def test_response_mode_changed_persists_to_the_apps_ui_config_path(tmp_path):
+    """The single write site (review finding, task-v1.9.0-2): a HOTKEY-
+    sourced ResponseModeChanged must persist exactly like a UI-sourced one,
+    since cycle_mode() (the hotkey path) never touches StatusConsoleApi at
+    all - only this bus handler stands between it and config.ui.toml."""
+    ui_config_path = tmp_path / "config.ui.toml"
+    app = _app_with_sound_cues(_FakeSoundCues(), ui_config_path=ui_config_path)
+
+    await _on_response_mode_changed(
+        app, ResponseModeChanged(mode=ResponseMode.VOICE, source="HOTKEY")
+    )
+
+    contents = ui_config_path.read_text(encoding="utf-8")
+    assert '[response]\nmode = "voice"' in contents
+    assert (
+        load_settings(
+            tmp_path / "does-not-exist.toml", ui_path=ui_config_path
+        ).response.mode
+        == "voice"
+    )
 
 
 # --- microphone capture failure SystemEvent --------------------------------
@@ -3100,6 +3204,7 @@ async def _capture_failure_event(language: str, reason: str) -> SystemEvent:
         orchestrator=None,
         sound_cues=_FakeSoundCues(),
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(
             journal=JournalSettings(enabled=False), ui=UiSettings(language=language)
         ),
@@ -3259,6 +3364,9 @@ class _FakeTransport:
     def set_thinking_mode(self, level: ReasoningLevel) -> None:
         self.calls.append(("thinking", level))
 
+    def set_response_mode(self, mode: ResponseMode) -> None:
+        self.calls.append(("response_mode", mode))
+
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
         self.calls.append(("visibility", mode))
 
@@ -3317,6 +3425,7 @@ def test_wire_registers_expected_subscriptions():
     assert event_types.count(ResponseComplete) == 1
     assert event_types.count(MicSleepToggled) == 1
     assert event_types.count(ReasoningLevelChanged) == 1
+    assert event_types.count(ResponseModeChanged) == 1
     assert event_types.count(InterruptRequested) == 1
     assert event_types.count(TtsSpeechEnabledChanged) == 1
 
@@ -3523,6 +3632,7 @@ async def test_wire_status_console_seeds_the_transport_snapshot():
             },
         ),
         ("thinking", ReasoningLevel.OFF),
+        ("response_mode", ResponseMode.TEXT),
         ("visibility", VisibilityMode.OPEN),
         (
             "module",
@@ -3596,9 +3706,9 @@ async def test_wire_status_console_leaves_bus_projection_to_the_transport_server
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=False))
     await app.bus.publish(MicSleepToggled, MicSleepToggled(is_awake=True))
 
-    # Only the eight snapshot seeds: mic-toggle projection belongs to the
+    # Only the nine snapshot seeds: mic-toggle projection belongs to the
     # real transport server's own bus subscription, not to this wiring.
-    assert len(transport.calls) == 8
+    assert len(transport.calls) == 9
     assert transport.calls[-1][0] == "module"
 
     unwire(app, subscriptions)
@@ -3898,6 +4008,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     fake_app = types.SimpleNamespace(
         bus=EventBus(),
         thinking_mode=types.SimpleNamespace(level=ReasoningLevel.OFF),
+        response_mode=types.SimpleNamespace(mode=ResponseMode.TEXT),
         visibility_mode=types.SimpleNamespace(mode=VisibilityMode.OPEN),
         tts_mute_state=None,
         solo_session_state=None,
@@ -4401,6 +4512,7 @@ def _app_for_mic_toggle(
         orchestrator=None,
         sound_cues=sound_cues or _FakeSoundCues(),
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(
             journal=JournalSettings(enabled=False), ui=UiSettings(language=language)
         ),
@@ -4554,6 +4666,7 @@ async def test_on_full_response_complete_plays_listening_only_after_trailing_spe
         orchestrator=_FakeOrchestrator(),
         sound_cues=_FakeSoundCuesForOrdering(),
         thinking_mode=None,
+        response_mode=None,
         settings=_settings(),
     )
 
@@ -4595,6 +4708,7 @@ async def test_on_full_response_complete_clears_busy_and_plays_error_when_tts_fa
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         # negligible cooldown - keeps this test fast; the real default
         # (1.0 s) is exercised by design, not by this test's timing
         settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
@@ -4643,6 +4757,7 @@ def _app_for_interrupt_test(orchestrator, backend, sound_cues, tts_output) -> Ap
         orchestrator=orchestrator,
         sound_cues=sound_cues,
         thinking_mode=None,
+        response_mode=None,
         settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
     )
 

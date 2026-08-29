@@ -20,6 +20,7 @@ from jarvis.core.config import (
 )
 from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.core.solo_session import SoloSessionChanged, SoloSessionState
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -64,6 +65,7 @@ from jarvis.ui.status_console import (
     microphone_option_payload,
     model_request_payload,
     module_health_payload,
+    response_mode_payload,
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
@@ -281,6 +283,13 @@ def test_thinking_mode_payload_carries_level_and_derived_is_enabled(
         "level": level.value,
         "is_enabled": expected_is_enabled,
     }
+
+
+@pytest.mark.parametrize(
+    "mode", [ResponseMode.TEXT, ResponseMode.VOICE, ResponseMode.TEXT_VOICE]
+)
+def test_response_mode_payload_carries_the_mode_value(mode):
+    assert response_mode_payload(mode) == {"mode": mode.value}
 
 
 # --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
@@ -767,6 +776,83 @@ async def test_hotkey_cycle_after_a_direct_control_center_selection_continues_fr
     assert thinking_mode.level is ReasoningLevel.HIGH
 
 
+# --- response mode (story-v1.9.0 task 2) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mode_value,expected_mode",
+    [
+        ("text", ResponseMode.TEXT),
+        ("voice", ResponseMode.VOICE),
+        ("text_voice", ResponseMode.TEXT_VOICE),
+    ],
+)
+async def test_set_response_mode_accepts_every_product_value(mode_value, expected_mode):
+    response_mode = ResponseModeState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        response_mode=response_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    api.set_response_mode(mode_value)
+    await asyncio.sleep(0.05)
+
+    assert response_mode.mode is expected_mode
+
+
+async def test_set_response_mode_with_unknown_value_does_not_change_state():
+    """Mirrors set_reasoning_level's own contract: the real ProtocolError
+    rejection for an unknown mode happens one layer up, in
+    UiTransportServer._set_response_mode() (see test_ui_transport.py); a
+    direct call with a bad value raises ValueError and engine state must
+    not change."""
+    response_mode = ResponseModeState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        response_mode=response_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+    )
+
+    with pytest.raises(ValueError):
+        api.set_response_mode("spoken")  # not a supported product value
+    await asyncio.sleep(0.05)
+
+    assert response_mode.mode is ResponseMode.TEXT
+
+
+async def test_set_response_mode_does_not_write_the_config_file_itself(tmp_path):
+    """Unlike set_mcp_enabled (which persists directly), set_response_mode()
+    only updates engine state and publishes ResponseModeChanged - the write
+    to config.ui.toml happens exactly once, in app.py's
+    _on_response_mode_changed() bus handler (see test_main.py), regardless
+    of which channel (hotkey or UI) triggered the change (review finding,
+    task-v1.9.0-2)."""
+    response_mode = ResponseModeState(bus=EventBus())
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        response_mode=response_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+
+    api.set_response_mode("voice")
+    await asyncio.sleep(0.05)
+
+    assert response_mode.mode is ResponseMode.VOICE
+    assert not ui_config_path.exists()
+
+
 async def test_request_shutdown_sets_the_given_event_and_publishes_an_info_event():
     bus = EventBus()
     received: list[SystemEvent] = []
@@ -960,6 +1046,38 @@ def test_set_reasoning_level_sends_the_control_command_with_the_clicked_level():
 
     assert "function setReasoningLevel(levelValue)" in app_js
     assert '_sendControl("set_reasoning_level", { level: levelValue })' in app_js
+
+
+def test_response_mode_select_sends_the_control_command_with_the_selected_value():
+    """Native <select> elements change their displayed value before any JS
+    runs, so setResponseMode() must revert the DOM to the last-confirmed
+    mode immediately and send the requested value separately - the same
+    non-optimistic pattern as setSoloSessionEnabled()/setTtsEnabled()."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "function setResponseMode()" in app_js
+    body_start = app_js.index("function setResponseMode()")
+    body_end = app_js.index("\n}", body_start)
+    body = app_js[body_start:body_end]
+    assert "select.value = _responseMode" in body
+    assert '_sendControl("set_response_mode", { mode: requested })' in body
+
+
+def test_response_mode_control_is_a_select_not_a_button_group():
+    """Owner decision (2026-08-29, story-v1.9.0): unlike the reasoning-level
+    role="radiogroup" toggle, the response-mode control is a <select>
+    drop-down, matching the existing config selects (model/microphone/UI
+    language)."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert '<select id="responseModeSelect"' in html
+    select_start = html.index('id="responseModeSelect"')
+    select_end = html.index("</select>", select_start)
+    select_html = html[select_start:select_end]
+    assert 'role="radiogroup"' not in select_html
+    assert 'value="text"' in select_html
+    assert 'value="voice"' in select_html
+    assert 'value="text_voice"' in select_html
 
 
 def test_desktop_reasoning_level_selection_updates_only_from_the_payload():
@@ -1496,6 +1614,32 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
     )
     assert len(saved_events) == 1
     assert len(system_events) == 1
+
+
+async def test_save_config_selection_preserves_the_current_response_mode(tmp_path):
+    """The response-mode <select> lives outside the batch Settings form, so
+    an unrelated Apply must round-trip whatever mode is currently live -
+    same shape as mcp_enabled's own resolve-from-live-state line in
+    _save_config_selection_async() (review finding, task-v1.9.0-2)."""
+    ui_config_path = tmp_path / "config.ui.toml"
+    response_mode = ResponseModeState(bus=EventBus())
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        response_mode=response_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
+    api.set_response_mode("voice")
+    await asyncio.sleep(0.05)
+
+    api.save_config_selection("new-model", "USB Headset")
+    await asyncio.sleep(0.05)
+
+    written = ui_config_path.read_text(encoding="utf-8")
+    assert '[response]\nmode = "voice"' in written
 
 
 @pytest.mark.parametrize("empty_model", ["", "   "])

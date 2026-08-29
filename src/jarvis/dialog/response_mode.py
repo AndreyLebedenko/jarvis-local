@@ -1,4 +1,4 @@
-"""Three-valued response-mode runtime state (story-v1.9.0, task 1).
+"""Three-valued response-mode runtime state (story-v1.9.0, tasks 1-2).
 
 Owns the persistent response mode (`text`/`voice`/`text_voice`) that
 selects the turn pipeline's output contract for future turns - the same
@@ -9,24 +9,29 @@ ReasoningLevelState.
 Persistence delta from that precedent: ReasoningLevelState always starts
 at `off` and is never persisted across restart. ResponseModeState is
 seeded from `[response].mode` instead - build_app()'s composition root
-reads Settings.response.mode and passes it as `initial_mode` - and, from
-task 2 onward, the UI writes new selections back to config.ui.toml. This
-module owns only the runtime state and its config-seeded construction;
-the hotkey listener (mirroring thinking_mode.py's run_hotkey_listener)
-and the UI write-back both land in task 2.
+reads Settings.response.mode and passes it as `initial_mode` - and the UI
+(task 2) writes new selections back to config.ui.toml via
+config.py's update_ui_config_response_mode(), not this module.
 
 set_mode()/cycle_mode() publish with no `await` between the read and the
 write, same race-avoidance rule as ReasoningLevelState.set_level()/
 cycle_level(): the whole read-decide-write must happen synchronously on
-the event loop so two rapid triggers (e.g. a hotkey, once task 2 wires
-one) can never both observe the same stale mode and schedule the same
-transition twice instead of cycling twice.
+the event loop so two rapid triggers (the hotkey, or a hotkey racing a
+direct UI selection) can never both observe the same stale mode and
+schedule the same transition twice instead of cycling twice.
+
+run_hotkey_listener() mirrors thinking_mode.py's own function directly:
+config-driven binding, injectable keyboard module, no direct SoundCuePlayer
+dependency (app.py decides what to do with ResponseModeChanged).
 """
 
+import asyncio
 import enum
 from dataclasses import dataclass
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import HotkeySettings
+from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
 
 
 class ResponseMode(enum.Enum):
@@ -77,3 +82,26 @@ class ResponseModeState:
     async def cycle_mode(self, *, source: str) -> None:
         next_index = (CYCLE_ORDER.index(self._mode) + 1) % len(CYCLE_ORDER)
         await self.set_mode(CYCLE_ORDER[next_index], source=source)
+
+
+async def run_hotkey_listener(
+    state: ResponseModeState,
+    hotkeys: HotkeySettings,
+    provider: HotkeyProvider | None = None,
+) -> None:
+    """Binds hotkeys.response_mode_toggle to a real global hotkey; each
+    press calls state.cycle_mode(). Runs until cancelled. Hardware-dependent
+    in its default form, but provider is injectable so the wiring itself is
+    testable without a real keyboard hook.
+
+    Deliberately does not read state.mode here to decide what to do: that
+    decision must happen inside cycle_mode() itself, on the event loop -
+    reading state in this callback (which runs on the provider's own
+    thread) would race against the event loop's own mutation, same bug
+    class thinking_mode.py's own listener guards against."""
+    loop = asyncio.get_running_loop()
+
+    def on_cycle() -> None:
+        asyncio.run_coroutine_threadsafe(state.cycle_mode(source="HOTKEY"), loop)
+
+    await run_hotkey_provider([(hotkeys.response_mode_toggle, on_cycle)], provider)
