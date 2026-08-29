@@ -1,6 +1,12 @@
 # Task v1.8.3-4: Docs + release verification
 
-**Status:** Not started.
+**Status:** Completed. Docs updated (PROJECT.md v1.8.3 section finalized incl.
+the completion-fix; v1.8.2 "no queue" and deferred-pause pointers; README.md +
+README.ru.md replay section). `config.example.toml` needs no entries -
+play-from-here and Pause/Resume are Journal UI controls, not config settings
+or hotkeys. Consolidated hardware verification list below; tasks 1-3 were each
+hardware-verified as they landed. `python -m pytest`, `ruff check`, `ruff
+format --check` green. Merged to `main`.
 **Story:** `tasks/story-v1.8.3-sequential-journal-playback.md`
 **Depends on:** task-v1.8.3-1, -2, -3 (all implementation slices complete).
 
@@ -55,7 +61,39 @@ of v1.8.2's "no queue" rule. Update user-facing docs for the new controls
 - [ ] The human-run verification handoff is written with exact commands and
       covers every hardware/manual check from tasks 1-3.
 
-## Verification handoff (human-run)
+## Verification handoff (human-run, hardware)
 
-- Run the consolidated verification list end to end on hardware and report
-  results. Exact commands provided at handoff time.
+All checks use the status-console Journal. Start the app, open the Journal tab,
+and pick a session with a mix of voice questions, typed requests, and replies:
+
+```
+python -m jarvis --status-console
+```
+
+Consolidated from tasks 1-3:
+
+1. Single-reply Play/Stop (task 1). Press Play on the last reply in the log
+   (nothing after it). It plays only that reply and the button returns to Play
+   at the end. Press Play again, then Stop mid-playback: speech stops at once.
+2. Pause/Resume (task 1). Press Play on a long reply, then Pause mid-sentence:
+   audio suspends. Press Resume: it continues from the same point, not the
+   start. Confirm Pause/Resume never restarts the clip.
+3. Sequence order + play-from-here (task 2). Press Play on a reply in the
+   middle of the log. It plays that reply and every later reply in order, back
+   to back, to the end (or until Stop).
+4. Now-playing highlight (task 2). During a sequence, confirm the Stop/Pause
+   highlight moves onto whichever turn is playing now and clears at the end.
+5. Pause during a sequence (task 2). Pause mid-sequence: it holds the current
+   turn without skipping ahead. Resume continues; Stop ends the whole sequence.
+6. Live turn cancels the sequence (task 2). Start a sequence, then speak a new
+   request (or press the interrupt hotkey). The sequence stops, the highlight
+   clears, and it does not resume afterward.
+7. Busy reject (task 2). While a sequence plays, press Play on another turn:
+   it is rejected with the error cue and a message, not queued.
+8. Voice wav vs TTS mix + skip-typed (task 3). Start a sequence from the top
+   of a mixed session: voice questions play your own recording, replies play
+   TTS, in journal order; a typed request in the middle is skipped without a
+   gap artifact.
+9. Start on a voice turn (task 3, regression). Press Play directly on a voice
+   question. It plays your recording AND continues to the following reply and
+   the rest of the sequence - it must not stop after the voice turn.

@@ -1,8 +1,10 @@
 # Story v1.8.3: Sequential journal playback (through-play + pause)
 
-**Status:** In progress. All four task cards drafted (2026-08-28); prioritized
-ahead of v1.9.0 by owner. Implementation proceeds task by task, Codex
-reviewing.
+**Status:** Complete. All four task cards implemented, hardware-verified, and
+merged to `main` (tasks 1-4 in `tasks/done/`). Delivered: pausable playback
+primitive + Pause/Resume, the sequence engine with play-from-here and the
+now-playing highlight, voice user turns played from their stored wav, and the
+docs/release-verification pass.
 **Created:** 2026-08-28.
 **Version note:** `v1.8.3` is a placeholder pending owner confirmation of
 where this slots against v1.9.0 and the other roadmap work; the user-facing
