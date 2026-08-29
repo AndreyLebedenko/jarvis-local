@@ -23,6 +23,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -36,10 +37,29 @@ from jarvis.audio.tts import (
 )
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.config import TtsSettings
-from jarvis.journal.events import JournalEventRecord, JournalEventRef
+from jarvis.journal.events import JournalEvent, JournalEventRecord, JournalEventRef
 from jarvis.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TextReply:
+    """A playable segment synthesized from stored text (an assistant reply,
+    story-v1.8.3)."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class VoiceReply:
+    """A playable segment decoded from a stored .wav (a voice user turn plays
+    its own recording, not a re-synthesis - story-v1.8.3 task 3)."""
+
+    wav_path: Path
+
+
+PlayItem = TextReply | VoiceReply
 
 
 @dataclass(frozen=True)
@@ -185,7 +205,15 @@ class PausablePlayback:
             raise sd.CallbackStop
 
     def _on_finished(self) -> None:
-        if not self._stopped and self._pos < len(self._frames):
+        # PortAudio calls this whenever the stream stops. Only a deliberate
+        # pause (pause() sets _paused before stopping) keeps the clip open to
+        # resume from the marker; every other stop - reaching the end, an
+        # explicit stop(), or an unexpected device/callback stop mid-clip -
+        # completes it. Keying this on _paused rather than the position marker
+        # is load-bearing: an early device stop leaves pos < len yet is not a
+        # pause, and treating it as one would wait forever for a finish that
+        # never comes, hanging the whole sequence on that segment.
+        if self._paused and not self._stopped and self._pos < len(self._frames):
             return
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._finished.set)
@@ -217,26 +245,43 @@ class ReplayPlayer:
         return self._task is not None and not self._task.done()
 
     async def replay(self, text: str) -> ReplayOutcome:
-        return await self.replay_many([text])
+        return await self.replay_items([TextReply(text)])
 
     async def replay_many(
         self,
         texts: list[str],
         on_reply_start: Callable[[int], Awaitable[None]] | None = None,
     ) -> ReplayOutcome:
-        """Plays several replies back to back as one logical replay (a single
-        task, so is_active spans the whole run and cancel() ends all of it -
-        story-v1.8.3 task 2). Each reply is segmented on its own so speech
-        units never carry across a reply boundary. on_reply_start(index) is
-        awaited just before a reply's first unit plays, where index is that
-        reply's position in texts, so a caller can follow which reply is now
-        playing before its audio starts."""
+        return await self.replay_items(
+            [TextReply(text) for text in texts], on_reply_start
+        )
+
+    async def replay_items(
+        self,
+        items: list[PlayItem],
+        on_reply_start: Callable[[int], Awaitable[None]] | None = None,
+    ) -> ReplayOutcome:
+        """Plays a heterogeneous run of replies back to back as one logical
+        replay (a single task, so is_active spans the whole run and cancel()
+        ends all of it - story-v1.8.3). A TextReply is synthesized (segmented
+        on its own so speech units never carry across a boundary); a VoiceReply
+        plays its stored .wav directly. on_reply_start(index) is awaited just
+        before a reply's audio starts, where index is that reply's position in
+        items, so a caller can follow which reply is now playing. A VoiceReply
+        whose wav is unreadable is skipped (no on_reply_start) and the run
+        continues."""
         if self._mute_state is not None and not self._mute_state.enabled:
             return ReplayOutcome.DISABLED
         if self.is_active:
             return ReplayOutcome.BUSY
-        groups = [(index, self._segment(text)) for index, text in enumerate(texts)]
-        groups = [(index, units) for index, units in groups if units]
+        groups: list[tuple[int, PlayItem, list[tuple[str, str]]]] = []
+        for index, item in enumerate(items):
+            if isinstance(item, TextReply):
+                units = self._segment(item.text)
+                if units:
+                    groups.append((index, item, units))
+            else:
+                groups.append((index, item, []))
         if not groups:
             return ReplayOutcome.EMPTY
         self._task = asyncio.create_task(self._run(groups, on_reply_start))
@@ -282,15 +327,35 @@ class ReplayPlayer:
 
     async def _run(
         self,
-        groups: list[tuple[int, list[tuple[str, str]]]],
+        groups: list[tuple[int, PlayItem, list[tuple[str, str]]]],
         on_reply_start: Callable[[int], Awaitable[None]] | None,
     ) -> None:
-        for index, units in groups:
+        for index, item, units in groups:
+            if isinstance(item, VoiceReply):
+                audio = self._read_voice_wav(item.wav_path)
+                if audio is None:
+                    continue
+                if on_reply_start is not None:
+                    await on_reply_start(index)
+                await self._play(audio)
+                continue
             if on_reply_start is not None:
                 await on_reply_start(index)
             for text, language in units:
                 audio = await self._engine.synthesize(text, language)
                 await self._play(audio)
+
+    def _read_voice_wav(self, path: Path) -> bytes | None:
+        """Reads a voice turn's stored wav for direct playback, validating it
+        decodes. A missing or corrupt file is skipped (logged), not fatal, so
+        the sequence continues (story-v1.8.3 task 3)."""
+        try:
+            data = path.read_bytes()
+            sf.read(io.BytesIO(data), dtype="float32")
+        except (OSError, sf.SoundFileError) as error:
+            logger.warning("Skipping unplayable voice reply %s: %s", path, error)
+            return None
+        return data
 
     def _segment(self, text: str) -> list[tuple[str, str]]:
         buffer = SpeechUnitBuffer(
@@ -313,11 +378,12 @@ class ReplayPlayer:
 
 
 class SequencePlayer:
-    """Plays a whole session's assistant replies from a chosen event forward
-    (story-v1.8.3 task 2). It knows the journal; the ReplayPlayer owns the
-    single-task playback loop so pause/resume/cancel and busy rejection keep
-    their v1.8.2 semantics at the grain of the whole sequence. Voice user
-    turns join the walk in task 3."""
+    """Plays a session's playable turns from a chosen event forward: assistant
+    replies (re-synthesized) and voice user turns (their stored .wav played
+    directly) interleaved in journal order (story-v1.8.3 tasks 2-3). It knows
+    the journal; the ReplayPlayer owns the single-task playback loop so
+    pause/resume/cancel and busy rejection keep their v1.8.2 semantics at the
+    grain of the whole sequence."""
 
     def __init__(self, store: JournalStore, player: ReplayPlayer) -> None:
         self._store = store
@@ -335,21 +401,49 @@ class SequencePlayer:
     def texts_from(self, start: JournalEventRef) -> list[str]:
         return [record.event.text for record in self._assistant_records(start)]
 
+    def _play_item(self, event: JournalEvent) -> PlayItem | None:
+        """The playable source for one event (story-v1.8.3 task 3 accessor):
+        an assistant reply's text to synthesize, a voice user turn's stored
+        wav to play directly, or None for a typed-user or system event. The
+        v1.9.0 seam stays: the assistant branch still returns text and later
+        retargets to the mode-3 derivative."""
+        if event.role == "assistant":
+            return TextReply(event.text)
+        if event.role == "user" and event.source == "voice":
+            wav = next(
+                (name for name in event.media if name.lower().endswith(".wav")), None
+            )
+            if wav is None:
+                return None
+            try:
+                return VoiceReply(self._store.media_path(event.session_id, wav))
+            except ValueError:
+                return None
+        return None
+
     async def play_from(
         self,
         start: JournalEventRef,
         on_segment: Callable[[JournalEventRef], Awaitable[None]] | None = None,
     ) -> ReplayOutcome:
-        """Plays every assistant reply from start forward. on_segment(ref) is
-        awaited as each reply begins so the UI can move the now-playing
-        highlight across rows before its audio starts (story-v1.8.3 task 2)."""
-        records = self._assistant_records(start)
-        texts = [record.event.text for record in records]
-        refs = [record.reference for record in records]
+        """Plays every playable turn from start forward. on_segment(ref) is
+        awaited as each turn begins so the UI can move the now-playing
+        highlight across rows before its audio starts (story-v1.8.3)."""
+        replay = self._store.read_session(start.session_id)
+        items: list[PlayItem] = []
+        refs: list[JournalEventRef] = []
+        for record in replay.records:
+            if record.reference.event_position < start.event_position:
+                continue
+            item = self._play_item(record.event)
+            if item is None:
+                continue
+            items.append(item)
+            refs.append(record.reference)
         on_reply_start = None
         if on_segment is not None:
 
             async def on_reply_start(index: int) -> None:
                 await on_segment(refs[index])
 
-        return await self._player.replay_many(texts, on_reply_start=on_reply_start)
+        return await self._player.replay_items(items, on_reply_start=on_reply_start)

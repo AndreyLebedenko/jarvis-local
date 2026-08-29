@@ -6,7 +6,13 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, reply_speech_text
+from jarvis.audio.replay import (
+    ReplayOutcome,
+    ReplayPlayer,
+    TextReply,
+    VoiceReply,
+    reply_speech_text,
+)
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
@@ -259,6 +265,65 @@ def test_pause_resume_suspend_and_continue_the_default_playback():
         return player.is_paused
 
     assert asyncio.run(scenario()) is False
+
+
+def test_playback_completes_when_the_device_stops_before_the_end():
+    # A real OutputStream can fire its finished callback before the clip drains
+    # (a device underrun or an unexpected stop mid-clip). That must complete
+    # the segment, not hang the sequence waiting for a finish that never comes.
+    # Reproduces the field bug where a sequence started on a voice turn played
+    # the wav but never advanced to the next reply.
+    async def scenario() -> bool:
+        created: list[_FakeStream] = []
+
+        def factory(sr, ch, cb, fin) -> _FakeStream:
+            stream = _FakeStream(sr, ch, cb, fin)
+            created.append(stream)
+            return stream
+
+        player = ReplayPlayer(
+            _tts_settings(), _WavEngine(_wav_bytes(200)), stream_factory=factory
+        )
+        await player.replay("One sentence.")
+        while not created or not player.is_active:
+            await asyncio.sleep(0)
+        created[0].pump(50)  # partial playback: pos < len, never paused
+        created[0].stop()  # the device stops the stream early
+        await asyncio.wait_for(player.wait_for_pending(), timeout=2)
+        return player.is_active
+
+    assert asyncio.run(scenario()) is False
+
+
+def test_replay_items_advances_from_a_voice_wav_to_the_next_reply(tmp_path):
+    # Reproduces the field bug: starting a sequence on a voice turn played the
+    # wav but never advanced. Drives the real PausablePlayback path (not the
+    # RecordingPlay shortcut) for [VoiceReply, TextReply] and asserts both
+    # segments open a stream.
+    wav = _wav_bytes(120)
+    wav_file = tmp_path / "voice.wav"
+    wav_file.write_bytes(wav)
+    created: list[_FakeStream] = []
+
+    def factory(sr, ch, cb, fin) -> _FakeStream:
+        stream = _FakeStream(sr, ch, cb, fin)
+        created.append(stream)
+        return stream
+
+    player = ReplayPlayer(_tts_settings(), _WavEngine(wav), stream_factory=factory)
+
+    async def scenario() -> int:
+        await player.replay_items([VoiceReply(wav_file), TextReply("Second one.")])
+        while not created:
+            await asyncio.sleep(0)
+        created[0].pump(1000)  # drain the voice wav to completion
+        while len(created) < 2:
+            await asyncio.sleep(0)
+        created[1].pump(1000)  # drain the assistant reply
+        await player.wait_for_pending()
+        return len(created)
+
+    assert asyncio.run(scenario()) == 2
 
 
 def _wav_bytes(frames: int, sample_rate: int = 16000) -> bytes:

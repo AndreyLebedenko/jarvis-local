@@ -1,5 +1,9 @@
 import asyncio
+import io
 import types
+
+import numpy as np
+import soundfile as sf
 
 from jarvis.app import (
     App,
@@ -239,6 +243,46 @@ def test_replay_sequence_plays_every_assistant_reply_and_resolves(tmp_path):
     assert active_after is False
     assert engine.seen == [("first answer", "en"), ("second answer", "en")]
     assert play.played == [b"first answer", b"second answer"]
+
+
+def _wav_bytes(frames: int = 64, sample_rate: int = 16000) -> bytes:
+    buffer = io.BytesIO()
+    samples = np.linspace(-0.1, 0.1, frames, dtype="float32")
+    sf.write(buffer, samples, sample_rate, format="WAV")
+    return buffer.getvalue()
+
+
+def _voice_event(media_name: str) -> JournalEvent:
+    return JournalEvent(
+        session_id=_SESSION,
+        timestamp="2026-08-26T10:15:00+00:00",
+        source="voice",
+        role="user",
+        text="",
+        media=(media_name,),
+        transcript=None,
+    )
+
+
+def test_replay_sequence_plays_voice_wav_and_assistant_tts_in_order(tmp_path):
+    # Acceptance: a mixed log plays voice user turns from their stored wav and
+    # assistant replies via TTS, in journal order (story-v1.8.3 task 3).
+    async def scenario():
+        store = JournalStore(tmp_path)
+        wav = _wav_bytes()
+        store.append(_voice_event("q.wav"))
+        store.write_media(_SESSION, "q.wav", wav)
+        store.append(_assistant_event("an answer"))
+        engine = _FakeEngine()
+        play = _RecordingPlay()
+        app = _app(store=store, engine=engine, play=play, cues=_RecordingCues())
+        result = await _run_reply_sequence(app, JournalEventRef(_SESSION, 0))
+        return result, engine.seen, play.played, wav
+
+    result, seen, played, wav = asyncio.run(scenario())
+    assert result == "started"
+    assert seen == [("an answer", "en")]
+    assert played == [wav, b"an answer"]
 
 
 def test_replay_sequence_publishes_progress_per_reply_then_clears(tmp_path):

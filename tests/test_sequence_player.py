@@ -1,11 +1,40 @@
 import asyncio
+import io
 
-from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, SequencePlayer
+import numpy as np
+import soundfile as sf
+
+from jarvis.audio.replay import (
+    ReplayOutcome,
+    ReplayPlayer,
+    SequencePlayer,
+    TextReply,
+    VoiceReply,
+)
 from jarvis.core.config import TtsSettings
 from jarvis.journal.events import JournalEvent, JournalEventRef
 from jarvis.journal.store import JournalStore
 
 _SESSION = "20260826-101500-abc"
+
+
+def _wav_bytes(frames: int = 64, sample_rate: int = 16000) -> bytes:
+    buffer = io.BytesIO()
+    samples = np.linspace(-0.1, 0.1, frames, dtype="float32")
+    sf.write(buffer, samples, sample_rate, format="WAV")
+    return buffer.getvalue()
+
+
+def _voice_event(media_name: str) -> JournalEvent:
+    return JournalEvent(
+        session_id=_SESSION,
+        timestamp="2026-08-26T10:15:00+00:00",
+        source="voice",
+        role="user",
+        text="",
+        media=(media_name,),
+        transcript=None,
+    )
 
 
 class _FakeEngine:
@@ -173,3 +202,88 @@ def test_play_from_reports_empty_when_nothing_speakable(tmp_path):
     outcome = asyncio.run(sequence.play_from(JournalEventRef(_SESSION, 0)))
 
     assert outcome is ReplayOutcome.EMPTY
+
+
+def test_play_item_maps_each_source_kind(tmp_path):
+    store = JournalStore(tmp_path)
+    sequence = _sequence(store)
+
+    assert sequence._play_item(_event("assistant", "hi")) == TextReply("hi")
+    assert sequence._play_item(_voice_event("q.wav")) == VoiceReply(
+        store.media_path(_SESSION, "q.wav")
+    )
+    assert sequence._play_item(_event("user", "typed")) is None
+    assert sequence._play_item(_event("system", "note")) is None
+
+
+def _voice_store(tmp_path) -> tuple[JournalStore, bytes]:
+    store = JournalStore(tmp_path)
+    wav = _wav_bytes()
+    store.append(_voice_event("q1.wav"))
+    store.write_media(_SESSION, "q1.wav", wav)
+    store.append(_event("assistant", "first answer"))
+    store.append(_event("user", "typed aside"))
+    store.append(_voice_event("q2.wav"))
+    store.write_media(_SESSION, "q2.wav", wav)
+    store.append(_event("assistant", "second answer"))
+    return store, wav
+
+
+def test_play_from_interleaves_voice_wav_and_assistant_synthesis(tmp_path):
+    store, wav = _voice_store(tmp_path)
+    engine = _FakeEngine()
+    play = _RecordingPlay()
+    player = ReplayPlayer(TtsSettings(), engine, play=play)
+    sequence = SequencePlayer(store, player)
+
+    async def scenario() -> None:
+        await sequence.play_from(JournalEventRef(_SESSION, 0))
+        await player.wait_for_pending()
+
+    asyncio.run(scenario())
+
+    assert engine.seen == [("first answer", "en"), ("second answer", "en")]
+    assert play.played == [wav, b"first answer", wav, b"second answer"]
+
+
+def test_play_from_progress_covers_voice_and_assistant_in_order(tmp_path):
+    store, _ = _voice_store(tmp_path)
+    player = ReplayPlayer(TtsSettings(), _FakeEngine(), play=_RecordingPlay())
+    sequence = SequencePlayer(store, player)
+    positions: list[int] = []
+
+    async def on_segment(reference: JournalEventRef) -> None:
+        positions.append(reference.event_position)
+
+    async def scenario() -> None:
+        await sequence.play_from(JournalEventRef(_SESSION, 0), on_segment=on_segment)
+        await player.wait_for_pending()
+
+    asyncio.run(scenario())
+
+    assert positions == [0, 1, 3, 4]
+
+
+def test_play_from_skips_a_voice_turn_whose_wav_is_missing(tmp_path):
+    store = JournalStore(tmp_path)
+    store.append(_voice_event("gone.wav"))  # no write_media: the file is absent
+    store.append(_event("assistant", "after the gap"))
+    engine = _FakeEngine()
+    play = _RecordingPlay()
+    player = ReplayPlayer(TtsSettings(), engine, play=play)
+    sequence = SequencePlayer(store, player)
+    positions: list[int] = []
+
+    async def on_segment(reference: JournalEventRef) -> None:
+        positions.append(reference.event_position)
+
+    async def scenario() -> None:
+        await sequence.play_from(JournalEventRef(_SESSION, 0), on_segment=on_segment)
+        await player.wait_for_pending()
+
+    asyncio.run(scenario())
+
+    assert engine.seen == [("after the gap", "en")]
+    assert play.played == [b"after the gap"]
+    # The missing voice turn is skipped outright: no audio, no highlight.
+    assert positions == [1]
