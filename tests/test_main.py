@@ -95,6 +95,7 @@ from jarvis.dialog.backend import (
     ResponseComplete,
     ResponseToken,
 )
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -288,6 +289,7 @@ def _orchestrator(
     chat_impl=None,
     audio_input=None,
     thinking_mode=None,
+    response_mode=None,
     reasoning_prompt_settings=None,
     bus=None,
     clock=None,
@@ -308,6 +310,7 @@ def _orchestrator(
         sound_cues,
         audio_input=audio_input,
         thinking_mode=thinking_mode,
+        response_mode=response_mode,
         reasoning_prompt_settings=reasoning_prompt_settings,
         bus=bus,
         journal_recorder=journal_recorder,
@@ -2883,6 +2886,109 @@ async def test_start_turn_with_no_thinking_mode_defaults_to_off():
     )
 
     assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
+
+
+# --- response mode (story-v1.9.0, task 1) -----------------------------------
+#
+# Orchestrator samples ResponseModeState.mode at turn start - same seam and
+# same "next accepted turn only" rule as ReasoningLevelState above. Mode 1
+# (text) appends nothing, so the first pass stays byte-identical to today.
+# Modes 2 (voice) and 3 (text_voice) both select the same self-contained
+# voice contract on the first pass in this task: text_voice has no second
+# pass yet, so it reuses mode 2's contract as a placeholder (task 1's own
+# scope decision - see app.py's _RESPONSE_MODE_PROMPT_FIELD_BY_MODE).
+
+
+async def test_text_mode_turn_does_not_append_any_response_mode_contract():
+    response_mode = ResponseModeState(bus=EventBus())
+    orchestrator, backend, _sound_cues = _orchestrator(response_mode=response_mode)
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base prompt"}
+
+
+@pytest.mark.parametrize("mode", [ResponseMode.VOICE, ResponseMode.TEXT_VOICE])
+async def test_voice_and_text_voice_modes_append_the_voice_contract(mode):
+    response_mode = ResponseModeState(bus=EventBus(), initial_mode=mode)
+    prompts = PromptSettings(response_voice="speak plainly")
+    orchestrator, backend, _sound_cues = _orchestrator(
+        response_mode=response_mode, reasoning_prompt_settings=prompts
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": "base prompt\n\nspeak plainly",
+    }
+
+
+async def test_response_text_voice_contract_field_is_not_yet_selected_by_any_mode():
+    """response_text_voice exists as a PromptSettings field (task-3 hook)
+    but task 1's pipeline never selects it, even in text_voice mode."""
+    response_mode = ResponseModeState(
+        bus=EventBus(), initial_mode=ResponseMode.TEXT_VOICE
+    )
+    prompts = PromptSettings(
+        response_voice="voice contract", response_text_voice="derivative contract"
+    )
+    orchestrator, backend, _sound_cues = _orchestrator(
+        response_mode=response_mode, reasoning_prompt_settings=prompts
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    content = backend.calls[-1][0][0]["content"]
+    assert "voice contract" in content
+    assert "derivative contract" not in content
+
+
+async def test_reasoning_section_and_response_mode_contract_compose_together():
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    await thinking_mode.set_level(ReasoningLevel.LOW, source="TEST")
+    response_mode = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.VOICE)
+    prompts = PromptSettings(
+        reasoning_low="reason briefly", response_voice="speak plainly"
+    )
+    orchestrator, backend, _sound_cues = _orchestrator(
+        thinking_mode=thinking_mode,
+        response_mode=response_mode,
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {
+        "role": "system",
+        "content": "base prompt\n\nreason briefly\n\nspeak plainly",
+    }
+
+
+async def test_start_turn_with_no_response_mode_defaults_to_text():
+    """Orchestrator can be constructed without a response_mode (e.g. older
+    tests/callers) - must not crash, and must behave as text mode (append
+    nothing)."""
+    orchestrator, backend, _sound_cues = _orchestrator()
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base prompt"}
 
 
 # --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------
