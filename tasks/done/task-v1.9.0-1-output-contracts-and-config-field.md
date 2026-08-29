@@ -1,6 +1,9 @@
 # Task v1.9.0-1: Output contracts + response-mode config field
 
-**Status:** Proposed. Not started.
+**Status:** Completed. Automated logic tests green (`python -m pytest`,
+`ruff check`, `ruff format --check`); no hardware handoff for this slice
+(config parsing + first-pass prompt composition are pure logic). Codex
+stop-time review: no blocking defects. Merged to `main`.
 **Story:** `tasks/story-v1.9.0-response-modes.md` (scope item 1).
 **Depends on:** nothing. First slice of the story.
 
