@@ -1,6 +1,11 @@
 # Task v1.9.0-2: Cycling hotkey + UI drop-down for response mode
 
-**Status:** Proposed. Not started.
+**Status:** Completed. Automated logic tests green (`python -m pytest`,
+`ruff check`, `ruff format --check`); human-run hotkey/persistence handoff
+prepared for the owner (hardware-dependent, per Testing protocol). Codex
+stop-time review: 3 findings (hotkey persistence gap, optimistic `<select>`
+update, batch Apply erasing the live mode), all fixed and re-verified.
+Merged to `main`.
 **Story:** `tasks/story-v1.9.0-response-modes.md` (scope item 2).
 **Depends on:** task-v1.9.0-1 (the `ResponseModeState`, `ResponseModeChanged`
 event, and the `[response] mode` config field).
@@ -93,11 +98,11 @@ effect for subsequent turns; the mode persists across restarts.
 
 ## Acceptance criteria
 
-- [ ] The single hotkey cycles the three modes; the config drop-down shows and
+- [x] The single hotkey cycles the three modes; the config drop-down shows and
       sets the same state; both persist to the same field and apply to
       subsequent turns.
-- [ ] The UI control is a `<select>` drop-down (not a button group) matching
+- [x] The UI control is a `<select>` drop-down (not a button group) matching
       the existing config selects, with i18n labels for all three modes.
-- [ ] A UI selection survives a restart (persisted to `config.ui.toml`).
-- [ ] Pure tests and `ruff` gates green; the human-run hotkey/persistence
+- [x] A UI selection survives a restart (persisted to `config.ui.toml`).
+- [x] Pure tests and `ruff` gates green; the human-run hotkey/persistence
       handoff is prepared with exact steps.
