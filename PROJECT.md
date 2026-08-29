@@ -4226,6 +4226,21 @@ that story's docs task; the load-bearing decisions so far:
   event channel": the held request still bounds the sequence lifetime, but the
   per-segment position is a push the fetch promise cannot carry.
 
+- **Voice user turns play their stored wav directly (task 3).** A voice user
+  turn (`role == "user"`, `source == "voice"`) has no reply text - its event
+  `text` is empty and the recording lives as a `.wav` media file - so the
+  sequence plays that original wav through the same pausable primitive
+  (`VoiceReply` decoded to float32), not a re-synthesis: the user hears their
+  own voice. This does NOT contradict v1.8.2's "re-synthesis, not stored
+  audio" rule - that rule governs *assistant* replies, which have no stored
+  audio; a human turn does. `SequencePlayer._play_item` is the "playable
+  source for this event" accessor: assistant -> `TextReply` (synthesize; the
+  v1.9.0 seam), voice user -> `VoiceReply` (its wav), typed-user/system ->
+  None (skip). A voice turn whose wav is missing or corrupt is skipped with a
+  warning (no highlight) and the sequence continues. Play-from-here is offered
+  on voice user rows too, so a sequence can start at a human turn and the
+  now-playing highlight has an anchor there.
+
 ## Project verification contract (v1.2.2)
 
 Runtime locality and CI verification are separate guarantees:

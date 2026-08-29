@@ -368,6 +368,28 @@ def test_list_sessions_sorts_mixed_timezone_offsets_chronologically(
     ]
 
 
+def test_media_path_resolves_a_name_inside_its_session_directory(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+
+    resolved = store.media_path("20260716-153000-ab12", "clip.wav")
+
+    assert resolved == (tmp_path / "20260716-153000-ab12" / "clip.wav").resolve()
+
+
+def test_media_path_rejects_a_name_escaping_the_session_directory(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    # A `..`-bearing name stays under the store root but leaves the session
+    # directory - guarding the root alone would let this through.
+    escaping = "../20260716-160000-cd34/secret.wav"
+
+    with pytest.raises(ValueError):
+        store.media_path("20260716-153000-ab12", escaping)
+
+
 def test_store_usage_reports_log_plus_media_bytes_per_session(tmp_path: Path) -> None:
     store = _CountingJournalStore(tmp_path)
     first = _event(

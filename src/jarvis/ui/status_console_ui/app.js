@@ -2448,9 +2448,12 @@ function _journalEventElement(event, position = null) {
     copy.addEventListener("click", () => copyJournalAnswer(event.text, copyLabel));
     meta.appendChild(copy);
   }
-  // Replay (story-v1.8.2): only a known feed position (the full render,
-  // never a live append) addresses a specific past reply for re-synthesis.
-  if (event.role === "assistant" && event.text && position !== null) {
+  // Play-from-here (story-v1.8.3): starts a sequence at this turn - an
+  // assistant reply (re-synthesized) or a voice user turn (its own recording).
+  // Only a known feed position (the full render, never a live append)
+  // addresses a specific past turn, and the button doubles as the anchor the
+  // now-playing highlight lands on as the sequence advances onto this row.
+  if (position !== null && _journalEventIsPlayable(event)) {
     meta.appendChild(_journalReplayButton(_journalSelectedSessionId, position));
   }
   const menuButton = document.createElement("button");
@@ -2496,6 +2499,18 @@ function _journalEventElement(event, position = null) {
 function _journalEventHasAudio(event) {
   return (event.media || []).some((item) =>
     item.path.toLowerCase().endsWith(".wav")
+  );
+}
+
+// A turn a play-from-here sequence can play (story-v1.8.3): an assistant reply
+// with text (re-synthesized) or a voice user turn with a stored .wav (played
+// directly). Typed-user and system turns are not playable.
+function _journalEventIsPlayable(event) {
+  if (event.role === "assistant") return Boolean(event.text);
+  return (
+    event.role === "user" &&
+    event.source === "voice" &&
+    _journalEventHasAudio(event)
   );
 }
 

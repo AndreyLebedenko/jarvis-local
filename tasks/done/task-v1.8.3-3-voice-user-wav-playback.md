@@ -1,6 +1,14 @@
 # Task v1.8.3-3: Include voice user turns (direct wav playback)
 
-**Status:** Not started.
+**Status:** Completed. Direction confirmed by owner: direct-wav, not
+re-synthesis. Automated logic tests green (`python -m pytest` 2188 passed/1
+skipped, `ruff check`, `ruff format --check`); human-run hardware verification
+passed, including a sequence started directly on a voice user turn (the field
+bug where playback did not continue past a voice-first segment is fixed - see
+`PausablePlayback._on_finished`). Play-from-here is offered on voice user rows
+too (the card's optional "Play control on a human turn" - trivial with the
+shared button factory, and it anchors the now-playing highlight). Merged to
+`main`.
 **Story:** `tasks/story-v1.8.3-sequential-journal-playback.md`
 **Depends on:** task-v1.8.3-1 (pausable primitive), task-v1.8.3-2 (sequence
 engine).

@@ -70,6 +70,18 @@ class JournalStore:
         media_path.parent.mkdir(parents=True, exist_ok=True)
         media_path.write_bytes(contents)
 
+    def media_path(self, session_id: str, name: str) -> Path:
+        """Resolve a media file within its session directory, rejecting any
+        name that escapes that directory (a `..`-bearing name stays under the
+        store root but leaves the session, so guarding the root alone is not
+        enough - see validate_relative_media_path's defense-in-depth note).
+        Does not check existence - callers that must tolerate a missing file
+        handle that themselves."""
+        session_dir = (self._root.resolve() / session_id).resolve()
+        candidate = (session_dir / name).resolve()
+        candidate.relative_to(session_dir)
+        return candidate
+
     def read_session(self, session_id: str) -> JournalReplay:
         events_file = self._root / session_id / _EVENTS_FILE_NAME
         if not events_file.exists():
