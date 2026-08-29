@@ -34,11 +34,13 @@ from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BUILTIN_TOOL_PROVIDER_NAME,
+    DEFAULT_UI_CONFIG_PATH,
     HISTORY_TOOL_PROVIDER_NAME,
     HistorySettings,
     PromptSettings,
     Settings,
     load_settings,
+    update_ui_config_response_mode,
 )
 from jarvis.core.debug_transcript import (
     configure_debug_transcript,
@@ -67,7 +69,14 @@ from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
-from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
+from jarvis.dialog.response_mode import (
+    ResponseMode,
+    ResponseModeChanged,
+    ResponseModeState,
+)
+from jarvis.dialog.response_mode import (
+    run_hotkey_listener as run_response_mode_hotkey_listener,
+)
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
@@ -1325,6 +1334,7 @@ class App:
     orchestrator: Orchestrator
     sound_cues: SoundCuePlayer
     thinking_mode: ReasoningLevelState
+    response_mode: ResponseModeState
     settings: Settings
     visibility_mode: VisibilityModeState | None = None
     history: ConversationHistory | None = None
@@ -1355,15 +1365,14 @@ class App:
     tts_mute_state: TtsMuteState | None = None
     solo_session_state: SoloSessionState | None = None
     replay_player: ReplayPlayer | None = None
-    # No default-less placement next to thinking_mode above (task-v1.9.0-1):
-    # that would force every existing App(...) test fixture (~20 call sites
-    # across test_main.py/test_replay_app.py) to start passing this field
-    # even though task 1's boundary is config + first-pass prompt
-    # composition only - Orchestrator already receives the real seeded
-    # ResponseModeState directly from build_app(). Task 2 (hotkey + UI) is
-    # the first consumer that needs app.response_mode to exist reliably;
-    # tighten this to a required field there if the wiring needs it non-None.
-    response_mode: ResponseModeState | None = None
+    # Single source of truth for where the machine-owned UI config layer
+    # lives - StatusConsoleApi's own ui_config_path defaults to this same
+    # constant, but create_live_status_console() now passes this field
+    # through explicitly so it and _on_response_mode_changed() (app.py)
+    # can never disagree about the target file. Overridable per-test so
+    # persistence tests never touch the real config.ui.toml (story-v1.9.0
+    # task 2 review finding).
+    ui_config_path: Path = DEFAULT_UI_CONFIG_PATH
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1828,6 +1837,7 @@ def create_live_status_console(
         raise RuntimeError("live Status Console requires an App created by build_app()")
     api = StatusConsoleApi(
         thinking_mode=app.thinking_mode,
+        response_mode=app.response_mode,
         history=app.orchestrator,
         bus=app.bus,
         logger=logger,
@@ -1838,6 +1848,7 @@ def create_live_status_console(
         camera_capture=app.camera_capture,
         tts_mute_state=app.tts_mute_state,
         solo_session_state=app.solo_session_state,
+        ui_config_path=app.ui_config_path,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
@@ -1864,6 +1875,7 @@ def wire_status_console(
             mcp_state_payload(app.mcp_host.status, app.mcp_host.registry.all())
         )
     live_console.transport.set_thinking_mode(app.thinking_mode.level)
+    live_console.transport.set_response_mode(app.response_mode.mode)
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
     live_console.transport.set_module_health(
         _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
@@ -2235,6 +2247,42 @@ async def _on_reasoning_level_changed(app: App, event: ReasoningLevelChanged) ->
         await app.sound_cues.play(cue)
 
 
+_RESPONSE_MODE_UI_TEXT_KEY: dict[ResponseMode, str] = {
+    ResponseMode.TEXT: "response_mode_text",
+    ResponseMode.VOICE: "response_mode_voice",
+    ResponseMode.TEXT_VOICE: "response_mode_text_voice",
+}
+
+
+async def _on_response_mode_changed(app: App, event: ResponseModeChanged) -> None:
+    """Publishes UI/log feedback for a response-mode change and persists it -
+    the single reaction to ResponseModeChanged regardless of which channel
+    published it (HOTKEY today, UI, and task 4's VOICE). Persisting here
+    rather than inside StatusConsoleApi.set_response_mode() (review finding,
+    task-v1.9.0-2) is what makes "the hotkey and the drop-down both write the
+    one persisted field" literally true: cycle_mode() called directly by the
+    hotkey listener never went through StatusConsoleApi at all, so a
+    persistence call living only there silently dropped every hotkey change
+    on restart. One write site reacting to the one event covers every
+    trigger, present and future, with no per-trigger duplicate.
+
+    No sound cue: unlike the graded reasoning levels, the three response
+    modes are named options with no natural beep-count mapping. The
+    drop-down push itself is UiTransportServer's own independent
+    ResponseModeChanged subscription (transport.py), same split as
+    reasoning level."""
+    mode = event.mode
+    update_ui_config_response_mode(app.ui_config_path, mode=mode.value)
+    await publish_system_event(
+        app.bus,
+        logger,
+        source=event.source,
+        level=EventLevel.INFO,
+        log_message=f"Response mode: {mode.value}",
+        ui_message=ui_text(_RESPONSE_MODE_UI_TEXT_KEY[mode], app.settings.ui.language),
+    )
+
+
 def wire(app: App) -> list[Subscription]:
     """Subscribes every module to the bus events it consumes. Returns the
     (event_type, handler) pairs so shutdown can unsubscribe them - see
@@ -2258,6 +2306,9 @@ def wire(app: App) -> list[Subscription]:
     async def on_reasoning_level_changed(event: ReasoningLevelChanged) -> None:
         await _on_reasoning_level_changed(app, event)
 
+    async def on_response_mode_changed(event: ResponseModeChanged) -> None:
+        await _on_response_mode_changed(app, event)
+
     async def on_interrupt_requested(event: InterruptRequested) -> None:
         await _on_interrupt_requested(app, event)
 
@@ -2278,6 +2329,7 @@ def wire(app: App) -> list[Subscription]:
         (MicSleepToggled, on_mic_sleep_toggled),
         (MicrophoneCaptureFailed, on_microphone_capture_failed),
         (ReasoningLevelChanged, on_reasoning_level_changed),
+        (ResponseModeChanged, on_response_mode_changed),
         (InterruptRequested, on_interrupt_requested),
         (TtsSpeechEnabledChanged, on_tts_speech_enabled_changed),
     ]
@@ -2482,6 +2534,9 @@ async def run(
                 run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
             ),
             asyncio.create_task(
+                run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys)
+            ),
+            asyncio.create_task(
                 run_interrupt_hotkey_listener(app.bus, settings.hotkeys)
             ),
         ]
@@ -2534,6 +2589,7 @@ def run_with_status_console(
             # from RuntimeStateTracker via RuntimeStateChanged.
             runtime_state=RuntimeState.WARMING,
             reasoning_level=app.thinking_mode.level,
+            response_mode=app.response_mode.mode,
             visibility_mode=app.visibility_mode.mode,
             tts_enabled=(
                 app.tts_mute_state.enabled

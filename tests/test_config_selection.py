@@ -6,7 +6,11 @@ from jarvis.core.config import (
     TtsLanguageSettings,
     VadSettings,
 )
-from jarvis.ui.config_selection import UiConfigSelection, validate_selection
+from jarvis.ui.config_selection import (
+    UiConfigSelection,
+    validate_response_mode,
+    validate_selection,
+)
 
 
 def _routes(en_model: str = "C:/voices/en.onnx") -> dict[str, TtsLanguageSettings]:
@@ -122,3 +126,19 @@ def test_invalid_engine_specific_parameter_is_rejected():
     assert len(problems) == 2
     assert any("sample_rate" in problem for problem in problems)
     assert any("speaker_id" in problem for problem in problems)
+
+
+# --- response mode (story-v1.9.0, task 2) --------------------------------
+
+
+def test_every_supported_response_mode_is_accepted():
+    for mode in ("text", "voice", "text_voice"):
+        assert validate_response_mode(mode) == []
+
+
+def test_unknown_response_mode_is_rejected_naming_the_three_values():
+    problems = validate_response_mode("spoken")
+
+    assert len(problems) == 1
+    assert "text, voice, text_voice" in problems[0]
+    assert "spoken" in problems[0]

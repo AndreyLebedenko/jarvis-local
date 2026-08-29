@@ -6,17 +6,19 @@
 // arrives through the local protocol-v1 WebSocket snapshot/delta stream.
 //
 // setReasoningLevel()/requestModuleReset()/requestContextReset()/
-// setVisibilityMode() send protocol-v1 control messages. They deliberately do
-// not optimistically update the DOM themselves: the reasoning-level toggle/
-// chips/visibility toggle only ever change via applyThinkingMode()/
-// appendSystemEvent()/applyVisibilityMode(), driven by the real engine event
+// setVisibilityMode()/setResponseMode() send protocol-v1 control messages.
+// They deliberately do not optimistically update the DOM themselves: the
+// reasoning-level toggle/chips/visibility toggle/response-mode select only
+// ever change via applyThinkingMode()/appendSystemEvent()/
+// applyVisibilityMode()/applyResponseMode(), driven by the real engine event
 // coming back through the WebSocket (story-v1.3.1: a ReasoningLevelChanged
-// projection), so the UI can never show a state the engine has not actually
-// confirmed.
+// projection; story-v1.9.0: a ResponseModeChanged projection), so the UI can
+// never show a state the engine has not actually confirmed.
 //
 // RUNTIME_STATES/MODULE_IDS/HEALTH_STATUSES/EVENT_LEVELS/VISIBILITY_MODES/
-// REASONING_LEVELS live in contract.js (loaded before this file) - shared
-// with touchstrip.js, see that file's header comment (task-ui-06).
+// REASONING_LEVELS/RESPONSE_MODES live in contract.js (loaded before this
+// file) - shared with touchstrip.js, see that file's header comment
+// (task-ui-06).
 
 // task-ui-05 (human decision): Hidden only changes what this UI shows - it
 // never touches audio_in.py/tts.py/Orchestrator. The one concrete UI-level
@@ -68,6 +70,7 @@ function _applyStateSnapshot(state) {
   _clearSystemEvents();
   (state.system_events || []).forEach(appendSystemEvent);
   applyThinkingMode(state.thinking);
+  applyResponseMode(state.response_mode);
   applyVisibilityMode(state.visibility);
   applyModelOptions(state.model_options, false);
   applyMicrophoneOptions(state.microphone_options, false);
@@ -89,6 +92,7 @@ function _applyStateDelta(payload) {
     model: applyModelLabel,
     system_event: appendSystemEvent,
     thinking: applyThinkingMode,
+    response_mode: applyResponseMode,
     visibility: applyVisibilityMode,
     model_options: applyModelOptions,
     microphone_options: applyMicrophoneOptions,
@@ -550,6 +554,27 @@ function applyThinkingMode(payload) {
 
 function setReasoningLevel(levelValue) {
   _sendControl("set_reasoning_level", { level: levelValue });
+}
+
+// Same non-optimistic rule as applyTtsState()/applySoloSessionState() above:
+// a native <select> already shows the clicked option before any JS runs, so
+// setResponseMode() must revert it immediately and let it move for real only
+// once applyResponseMode() is driven by the confirmed delta.
+let _responseMode = "text";
+
+function applyResponseMode(payload) {
+  if (!RESPONSE_MODES.includes(payload.mode)) {
+    throw new Error("Unknown response mode: " + payload.mode);
+  }
+  _responseMode = payload.mode;
+  document.getElementById("responseModeSelect").value = _responseMode;
+}
+
+function setResponseMode() {
+  const select = document.getElementById("responseModeSelect");
+  const requested = select.value;
+  select.value = _responseMode;
+  _sendControl("set_response_mode", { mode: requested });
 }
 
 function requestModuleReset(moduleId) {

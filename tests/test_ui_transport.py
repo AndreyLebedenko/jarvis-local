@@ -28,6 +28,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.core.solo_session import SoloSessionChanged
+from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import AttachmentPlan, AttachmentUpload
@@ -108,6 +109,9 @@ class _FakeControlApi:
 
     def set_reasoning_level(self, level_value: str) -> None:
         self.calls.append(("set_reasoning_level", level_value))
+
+    def set_response_mode(self, mode_value: str) -> None:
+        self.calls.append(("set_response_mode", mode_value))
 
     def set_mcp_enabled(self, enabled: bool) -> None:
         self.calls.append(("set_mcp_enabled", str(enabled)))
@@ -576,6 +580,7 @@ def test_server_dispatches_all_existing_status_console_control_paths():
 
     server._dispatch_control("toggle_thinking", {})
     server._dispatch_control("set_reasoning_level", {"level": "medium"})
+    server._dispatch_control("set_response_mode", {"mode": "voice"})
     server._dispatch_control("reset_context", {})
     server._dispatch_control("reset_module", {"module_id": "vision"})
     server._dispatch_control("set_visibility_mode", {"mode": "hidden"})
@@ -589,6 +594,7 @@ def test_server_dispatches_all_existing_status_console_control_paths():
     assert control_api.calls == [
         ("toggle_thinking", None),
         ("set_reasoning_level", "medium"),
+        ("set_response_mode", "voice"),
         ("reset_context", None),
         ("reset_module", "vision"),
         ("set_visibility_mode", "hidden"),
@@ -619,6 +625,27 @@ def test_set_reasoning_level_rejects_an_unknown_level_value():
 
     with pytest.raises(ProtocolError, match="unknown reasoning level"):
         server._dispatch_control("set_reasoning_level", {"level": "max"})
+
+    assert control_api.calls == []
+
+
+@pytest.mark.parametrize("bad_arguments", [{}, {"mode": 3}, {"mode": None}])
+def test_set_response_mode_rejects_missing_or_non_string_mode(bad_arguments):
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="set_response_mode"):
+        server._dispatch_control("set_response_mode", bad_arguments)
+
+    assert control_api.calls == []
+
+
+def test_set_response_mode_rejects_an_unknown_mode_value():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="response mode must be one of"):
+        server._dispatch_control("set_response_mode", {"mode": "spoken"})
 
     assert control_api.calls == []
 
@@ -675,6 +702,29 @@ async def test_reasoning_level_changed_projects_level_and_derived_is_enabled():
         "level": "medium",
         "is_enabled": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_response_mode_changed_projects_the_mode_value():
+    """story-v1.9.0 task 2: a hotkey cycle and a direct UI selection both go
+    through ResponseModeState.set_mode()/cycle_mode(), so both reach the
+    transport through this one subscription - same shape as reasoning
+    level's own projection above."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+
+    await bus.publish(
+        ResponseModeChanged,
+        ResponseModeChanged(mode=ResponseMode.VOICE, source="HOTKEY"),
+    )
+    assert server.state.snapshot()["response_mode"] == {"mode": "voice"}
+
+    await bus.publish(
+        ResponseModeChanged,
+        ResponseModeChanged(mode=ResponseMode.TEXT_VOICE, source="UI"),
+    )
+    assert server.state.snapshot()["response_mode"] == {"mode": "text_voice"}
 
 
 @pytest.mark.asyncio

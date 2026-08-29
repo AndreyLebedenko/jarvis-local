@@ -15,3 +15,5 @@ const MCP_STATUSES = ["off", "connecting", "on", "degraded", "disconnecting"];
 // Not to be confused with RUNTIME_STATES' "thinking" (the orb's live
 // activity state) - this is the persistent request-time setting.
 const REASONING_LEVELS = ["off", "low", "medium", "high"];
+// story-v1.9.0: persistent response mode, text -> voice -> text_voice -> text.
+const RESPONSE_MODES = ["text", "voice", "text_voice"];
