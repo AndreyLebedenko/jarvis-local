@@ -64,6 +64,22 @@ user opts in.
   config page and by voice.
 - **One hotkey cycles the three states** (1 -> 2 -> 3 -> 1). Confirmed
   acceptable by owner; no separate per-mode bindings.
+- **UI control is a drop-down, not a button group** (owner, 2026-08-29). The
+  reasoning-level toggle is a `role="radiogroup"` of four buttons; the
+  response-mode selector deliberately does *not* copy that. It is a `<select>`
+  like the existing config selects (model / microphone / UI language), for
+  three reasons: three named modes with trade-offs read better as labeled
+  options than as terse buttons, the config page already speaks `<select>`
+  for persisted single-choice settings, and a dropdown keeps the config panel
+  compact. Detailed in task 2.
+- **Response mode is persisted in config; reasoning level is not.** The
+  closest precedent (`ReasoningLevelState`) resets to `off` at every launch -
+  it has no config seed and the UI does not write it back. Response mode is
+  different by owner intent: the chosen mode must survive a restart. So this
+  story adds what the reasoning precedent lacks - a config field read at
+  startup to seed the runtime state (task 1) and a UI write-back to
+  `config.ui.toml` (task 2). The runtime-state shape still mirrors
+  `ReasoningLevelState`; only the persistence is new.
 - **Voice toggle needs intent recognition** and is therefore its own slice.
   Jarvis must reliably tell "switch to voice mode" (a command) from request
   content. The hotkey + UI give a working switch earlier; the voice path
@@ -132,9 +148,10 @@ Out of scope:
    config and honored on the first pass (modes 1 and 2 fully working;
    mode 3 falls back to mode-2-like or mode-1 behavior until task 3).
 2. **Hotkey + UI toggle.** The single cycling hotkey (1->2->3->1) following
-   the `thinking_toggle` precedent, and the UI config-page control. Both
-   write the same persisted field; the running pipeline picks up the change
-   for future turns.
+   the `thinking_toggle` precedent, and the UI config-page control - a
+   `<select>` drop-down, not a button group (owner decision above). Both write
+   the same persisted field; the running pipeline picks up the change for
+   future turns.
 3. **Mode 3 second pass + streaming-TTS suppression.** The second backend
    pass (reasoning off) over the exact shown text, the spoken-derivative
    contract, and muting the first-pass sentence-buffered TTS in mode 3.
