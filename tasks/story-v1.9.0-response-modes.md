@@ -161,10 +161,22 @@ Out of scope:
    corpus. (The Play control on that block belongs to
    `story-v1.8.2-replay-tts.md`, which retargets to this derivative once it
    exists.)
+3b. **Status-tab live toggle; Settings drop-down becomes restart-to-apply.**
+   Inserted 2026-08-30 after playtesting tasks 2-3: the Settings drop-down
+   was found to be both misleading (it alone applies live with no restart,
+   unlike every other field in that panel) and hard to discover (every other
+   session-scoped toggle lives on the Status tab). Splits the single
+   live+persisted field task 2 shipped into a live Status-tab button group
+   (hotkey + buttons, session-only, mirrors the reasoning-level toggle) and a
+   genuinely restart-to-apply Settings drop-down (the persisted default for
+   the next launch, folded into the ordinary `UiConfigSelection` batch form).
+   No new persisted field, no change to task 4's voice path. See
+   `tasks/task-v1.9.0-3b-status-panel-response-mode-toggle.md`.
 4. **Voice toggle with intent recognition.** The "UX-Aware-Prompt" and its
    result handlers that let a spoken "switch to <mode>" change the mode
    without being mistaken for request content. Reuses tasks 1-2's config
-   field.
+   field, and after 3b, drives the same live path task 3b's buttons/hotkey
+   use - not the persisted default.
 5. **Docs + release verification.** `config.example.toml` entry with a clear
    explanation of the three modes and their trade-offs, PROJECT.md update if
    an architectural decision is recorded, user docs, and the human-run
