@@ -678,6 +678,13 @@ class PromptSettings:
     # select it yet, task 3's second pass does.
     response_voice: str | None = _DEFAULT_RESPONSE_VOICE_CONTRACT
     response_text_voice: str | None = _DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT
+    # Voice-intent marker contract (story-v1.9.0, task 4). None (the
+    # default) means the feature is off: no probe pass runs, voice turns
+    # behave exactly as before task 4. Setting it in [prompts] opts in -
+    # the probe adds a short non-dialog pass over each voice turn's audio
+    # (a latency cost paid on every utterance), so it is deliberately not
+    # a built-in default like the two contracts above.
+    voice_intent_directive: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1072,6 +1079,7 @@ def _build_prompts_section(
             "reasoning_high",
             "response_voice",
             "response_text_voice",
+            "voice_intent_directive",
         )
     }
     return replace(settings, **resolved)

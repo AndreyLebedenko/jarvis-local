@@ -302,6 +302,8 @@ const UI_STRINGS = {
     journal_fork_truncated: "Seed dropped {count} older turns to fit the budget.",
     journal_outcome_interrupted: "Interrupted by the user before finishing.",
     journal_outcome_failed: "No response - a backend error occurred.",
+    journal_outcome_mode_switched:
+        "Mode-switch command - obeyed, no answer was needed.",
     journal_spoken_derivative_label: "spoken aloud",
     journal_spoken_derivative_interrupted: "Cut short by an interrupt.",
     transport_no_connection: "No connection to engine",
@@ -617,6 +619,8 @@ const UI_STRINGS = {
     journal_fork_truncated: "Seed отбросил старые реплики, чтобы войти в бюджет: {count}.",
     journal_outcome_interrupted: "Прервано пользователем, не закончено.",
     journal_outcome_failed: "Ответ не получен - ошибка бэкенда.",
+    journal_outcome_mode_switched:
+        "Команда переключения режима - выполнена, ответ не требовался.",
     journal_spoken_derivative_label: "озвучено",
     journal_spoken_derivative_interrupted: "Прервано хоткеем, не закончено.",
     transport_no_connection: "Нет связи с engine",
