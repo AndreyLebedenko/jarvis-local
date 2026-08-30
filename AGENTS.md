@@ -36,6 +36,13 @@
    the human's explicit request.
 2. When an architectural decision changes, update `PROJECT.md` in the same
    commit as the change.
+3. Documentation references to project files should use stable filename
+   identity when the filename is unique in the repository. Directory paths in
+   prose are hints, not authority, unless the path is part of an executable
+   command, storage contract, generated artifact location, import/module
+   boundary, or intentionally path-scoped file. If a prose reference points to
+   a file that is not at the written path, search by filename with `rg --files`
+   before treating the reference as stale or broken.
 
 ## Core engineering principles
 

@@ -57,6 +57,10 @@ discussing the broader v2.0 direction.
    what latency it adds and why the experience is worth it.
 5. **No raw-journal rewrites.** New indexes and overlays remain rebuildable
    derived data beside the append-only journal.
+6. **Filename identity beats prose path drift.** Planning docs may refer to a
+   unique project file by filename even when the file later moves between
+   workflow directories. Strict paths are required only where the path is part
+   of an executable or storage contract.
 
 ## v1.9.0 - Response modes
 

@@ -4071,6 +4071,26 @@ second pass creates a spoken commentary/log over that canvas.
   owning assistant event and hydrate/display the canonical `event.text`; it
   must not feed derivative text into model memory as standalone knowledge.
 
+## Documentation navigation doctrine (2026-08-30)
+
+Project documentation should treat a referenced file's stable filename as its
+identity when that filename is unique in the repository. Directory paths in
+prose are navigation hints, not architectural authority. If a document says
+`tasks/foo.md` but `foo.md` has since moved to `tasks/done/`, an agent should
+find the unique file with `rg --files` and continue; it should not spend work
+rewriting old prose solely to preserve strict path spelling.
+
+Strict paths still matter when the path itself is part of the contract:
+executable commands, config keys or config-file locations, generated artifacts,
+runtime storage layout, import/module boundaries, task workflow directories
+such as `tasks/bug_reports/`, and any handoff step that a human must run from
+its own text. In those cases, keep the concrete path current and literal.
+
+Rationale: task cards and story cards routinely move from `tasks/` to
+`tasks/done/`. Treating every prose path as binding creates noisy maintenance
+and brittle archival documents, while the project already avoids duplicate
+filenames for these navigational references.
+
 ## Architecture v1.8.1 (session file operations)
 
 A session-scoped file capability the model can use for any purpose: save a
