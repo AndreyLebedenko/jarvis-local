@@ -818,6 +818,52 @@ def test_journal_fork_provenance_detail_uses_text_content():
     assert "innerHTML" not in body
 
 
+def test_journal_spoken_derivative_detail_is_collapsed_by_default():
+    """story-v1.9.0 task 3: mode 3's spoken derivative renders as a
+    collapsed, expandable block under the reply - a native <details>
+    element gives that with no click-handler bookkeeping of its own, and
+    is collapsed by default (no `open` attribute set)."""
+    body = APP_JS.split("function _journalSpokenDerivativeDetail(")[1].split("\n}")[0]
+    assert 'event.role !== "assistant"' in body
+    assert "event.metadata.spoken_derivative" in body
+    assert 'document.createElement("details")' in body
+    assert ".open = true" not in body
+    assert 'uiString("journal_spoken_derivative_label")' in body
+    # summary/text nodes use textContent, not detail itself
+    assert "detail.textContent" not in body
+    assert "text.textContent = event.metadata.spoken_derivative" in body
+    assert "innerHTML" not in body
+
+
+def test_journal_event_element_appends_the_spoken_derivative_detail():
+    body = APP_JS.split("function _journalEventElement(")[1].split("\nfunction ")[0]
+    assert "_journalSpokenDerivativeDetail(event)" in body
+
+
+def test_journal_spoken_derivative_detail_treats_empty_text_as_present():
+    """A legitimately recorded empty spoken_derivative ("" - e.g. the model
+    produced no derivative text) must still render the block: JournalRecorder
+    writes the key whenever spoken_derivative is not None, including "", so
+    the guard here must check presence, not truthiness - a falsy check on
+    "" would hide it exactly like a missing key would."""
+    body = APP_JS.split("function _journalSpokenDerivativeDetail(")[1].split("\n}")[0]
+    assert "event.metadata.spoken_derivative === undefined" in body
+    assert "!event.metadata.spoken_derivative" not in body
+
+
+def test_journal_spoken_derivative_detail_notes_an_interrupted_pass():
+    """A derivative pass cut short by the interrupt hotkey is journaled
+    with spoken_derivative_interrupted=True alongside the (possibly
+    partial) spoken_derivative text - rendered as an extra note inside the
+    same collapsed block, not a separate top-level outcome banner (the
+    canonical reply itself is complete)."""
+    body = APP_JS.split("function _journalSpokenDerivativeDetail(")[1].split("\n}")[0]
+    assert "event.metadata.spoken_derivative_interrupted" in body
+    assert 'uiString("journal_spoken_derivative_interrupted")' in body
+    assert "note.textContent" in body
+    assert "innerHTML" not in body
+
+
 def test_journal_view_has_no_context_menu():
     """Copy is explicit button plus normal text selection; no custom
     context menu is introduced."""

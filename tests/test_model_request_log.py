@@ -5,7 +5,11 @@ one event. These tests pin what the line may say - and, more importantly,
 what it may never say.
 """
 
-from jarvis.core.lifecycle import ModelRequestInput, ModelRequestStarted
+from jarvis.core.lifecycle import (
+    ModelRequestInput,
+    ModelRequestPassKind,
+    ModelRequestStarted,
+)
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
 
 
@@ -13,13 +17,32 @@ def _event(
     inputs,
     audio_duration_seconds=None,
     prompt_budget=None,
+    pass_kind=ModelRequestPassKind.PRIMARY,
 ):
     return ModelRequestStarted(
         timestamp=1700000000.0,
         inputs=inputs,
         audio_duration_seconds=audio_duration_seconds,
         prompt_budget=prompt_budget,
+        pass_kind=pass_kind,
     )
+
+
+def test_a_primary_pass_carries_no_pass_tag():
+    message = model_request_log_message(_event((ModelRequestInput.TEXT_INPUT,)))
+
+    assert "pass=" not in message
+
+
+def test_mode_3s_derivative_pass_is_tagged_so_it_reads_as_a_sub_pass():
+    """story-v1.9.0 task 3: a real inference call for the derivative,
+    honestly logged like any other request - but tagged so it is not
+    mistaken for a second turn."""
+    message = model_request_log_message(
+        _event((), pass_kind=ModelRequestPassKind.DERIVATIVE)
+    )
+
+    assert "pass=derivative" in message
 
 
 def test_voice_with_screenshot_names_both_modalities_and_the_duration():

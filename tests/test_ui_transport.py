@@ -20,6 +20,7 @@ from jarvis.core.lifecycle import (
     AttachmentSubmissionReason,
     AttachmentSubmissionResult,
     ModelRequestInput,
+    ModelRequestPassKind,
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
@@ -451,6 +452,71 @@ async def test_server_projects_attachment_audio_duration_like_mic_audio():
             "timestamp": 5.0,
             "items": [{"kind": "attachment_audio", "duration_seconds": 3.5}],
         }
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+@pytest.mark.asyncio
+async def test_server_projects_the_derivative_pass_kind_tag_in_the_event_log():
+    """story-v1.9.0 task 3: mode 3's derivative sub-pass must reach the
+    events-panel log tagged, not read as an ordinary (untagged) request."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=5.0,
+                inputs=(),
+                audio_duration_seconds=None,
+                pass_kind=ModelRequestPassKind.DERIVATIVE,
+            ),
+        )
+        [event] = server.state.snapshot()["system_events"]
+        assert event["pass_kind"] == "derivative"
+    finally:
+        for event_type, handler in server._subscriptions:
+            bus.unsubscribe(event_type, handler)
+
+
+async def test_a_derivative_pass_does_not_touch_the_last_model_request_chip_strip():
+    """The chip strip answers "what is true now" for the visible turn
+    (see test_model_request_also_lands_in_the_user_facing_event_log's own
+    docstring) - a derivative sub-pass is an internal continuation of the
+    same turn, not a new user-facing request, so it must not blank out
+    pass 1's modality summary there. Nor must it reset the data-source
+    badge to local-only, which would silently undo record_tool_boundary's
+    own escalation if pass 1 had used an external tool."""
+    bus = EventBus()
+    server = UiTransportServer(bus, _FakeControlApi())
+    server._subscribe_to_bus()
+    try:
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=1.0,
+                inputs=(ModelRequestInput.TEXT_INPUT,),
+                audio_duration_seconds=None,
+            ),
+        )
+        server._publish_delta(server.state.record_tool_boundary(DataBoundary.INTERNET))
+
+        await bus.publish(
+            ModelRequestStarted,
+            ModelRequestStarted(
+                timestamp=2.0,
+                inputs=(),
+                audio_duration_seconds=None,
+                pass_kind=ModelRequestPassKind.DERIVATIVE,
+            ),
+        )
+
+        snapshot = server.state.snapshot()
+        assert snapshot["last_model_request"]["timestamp"] == 1.0
+        assert snapshot["last_model_request"]["items"] == [{"kind": "text_input"}]
+        assert snapshot["data_source"]["source"] == "internet"
     finally:
         for event_type, handler in server._subscriptions:
             bus.unsubscribe(event_type, handler)

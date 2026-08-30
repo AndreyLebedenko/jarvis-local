@@ -18,6 +18,7 @@ from jarvis.audio.language_segments import (
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
+from jarvis.core.lifecycle import ModelRequestStarted
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
 
 logger = logging.getLogger(__name__)
@@ -368,15 +369,31 @@ class TtsOutput:
         self._next_index = 0
         self._pending_tasks: set[asyncio.Task] = set()
         self._reported_load_failures: set[tuple[str, str, str]] = set()
+        # Latched from the most recent ModelRequestStarted (story-v1.9.0
+        # task 3), not read fresh per call: "dispatch precedes streaming" -
+        # ModelRequestStarted is always awaited to completion before the
+        # chat task that streams its tokens is even created - means this
+        # value is always current by the time on_token()/on_response_
+        # complete() next run for that dispatch. Defaults to True so every
+        # caller that never publishes ModelRequestStarted (most tests)
+        # keeps today's always-speak behavior.
+        self._speak_streaming = True
+
+    async def on_request_started(self, event: ModelRequestStarted) -> None:
+        self._speak_streaming = event.speak_streaming
 
     async def on_token(self, event: ResponseToken) -> None:
         if self._mute_state is not None and not self._mute_state.enabled:
+            return
+        if not self._speak_streaming:
             return
         for text, language in self._units.feed(event.text):
             self._schedule(text, language)
 
     async def on_response_complete(self, event: ResponseComplete) -> None:
         if self._mute_state is not None and not self._mute_state.enabled:
+            return
+        if not self._speak_streaming:
             return
         for text, language in self._units.flush():
             self._schedule(text, language)

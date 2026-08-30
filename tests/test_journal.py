@@ -548,6 +548,48 @@ async def test_record_assistant_without_outcome_keeps_metadata_empty(
     assert event.metadata == {}
 
 
+async def test_record_assistant_with_spoken_derivative_stores_it_additively(
+    tmp_path: Path,
+) -> None:
+    """story-v1.9.0 task 3: mode 3's derivative is a rendering of this same
+    turn, not a second assistant turn - one JournalEvent, canonical text in
+    event.text as always, the derivative in metadata."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_text_user("what happened")
+    await recorder.record_assistant(
+        "canonical rich text", spoken_derivative="spoken derivative form"
+    )
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [_user_event, assistant_event] = replay.events
+    assert assistant_event.text == "canonical rich text"
+    assert assistant_event.metadata == {"spoken_derivative": "spoken derivative form"}
+
+
+async def test_record_assistant_without_spoken_derivative_keeps_metadata_empty(
+    tmp_path: Path,
+) -> None:
+    """Regression guard: modes 1/2 never pass spoken_derivative, and their
+    recorded event must stay byte-for-byte the same as before this field
+    existed."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_assistant("final answer")
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert event.metadata == {}
+
+
 async def test_recorder_writes_voice_event_with_screenshot_media(
     tmp_path: Path,
 ) -> None:

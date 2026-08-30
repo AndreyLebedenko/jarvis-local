@@ -86,7 +86,12 @@ class JournalRecorder:
         )
 
     async def record_assistant(
-        self, text: str, *, outcome: TurnOutcome | None = None
+        self,
+        text: str,
+        *,
+        outcome: TurnOutcome | None = None,
+        spoken_derivative: str | None = None,
+        spoken_derivative_interrupted: bool = False,
     ) -> None:
         if not self._enabled:
             return
@@ -95,6 +100,21 @@ class JournalRecorder:
         metadata: dict[str, JSONValue] = (
             {"outcome": outcome.value} if outcome is not None else {}
         )
+        # Additive, same event: a spoken derivative is a rendering of this
+        # turn, not a second assistant turn - metadata, not a new
+        # JournalEvent, keeps the append-only invariant and keeps it out of
+        # the retrieval corpus, which indexes event.text only (see
+        # HistoryCorpusRepository._effective_text) - same reason "outcome"
+        # above is metadata and not text.
+        if spoken_derivative is not None:
+            metadata["spoken_derivative"] = spoken_derivative
+        # Deliberately not folded into `outcome`: outcome describes `text`
+        # (the turn's own answer), which is complete here regardless - only
+        # the derivative rendering was cut short. Reusing outcome for that
+        # would make every consumer that does not know about this narrower
+        # case misreport a complete answer as unfinished.
+        if spoken_derivative_interrupted:
+            metadata["spoken_derivative_interrupted"] = True
         self._schedule(
             self._append_event(
                 session_id=session_id,

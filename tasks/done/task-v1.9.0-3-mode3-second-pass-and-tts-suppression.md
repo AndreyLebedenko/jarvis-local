@@ -1,6 +1,22 @@
 # Task v1.9.0-3: Mode 3 second pass + first-pass TTS suppression
 
-**Status:** Proposed. Not started.
+**Status:** Completed. Automated logic tests green (`python -m pytest`: 2277
+passed, 1 skipped; `ruff check`, `ruff format --check` clean). Structured
+`/code-review high` (8 angles, 10 ranked findings) plus an independent Codex
+second-opinion pass on the same findings, then a final `/codex:review`
+working-tree pass (no further findings): 6 findings fixed and re-verified
+(interrupted-derivative journal tagging without misusing `TurnOutcome`,
+derivative-pass busy-clearing race, empty-derivative-text UI guard, a stale
+exception comment, the duplicated pass-audibility flag, `pass_kind` promoted
+to an `Enum`); 1 refuted by Codex (reentrance safety - already structurally
+enforced by `claim_turn_end()`, not just documented); 1 closed as by-design,
+not a bug (events-panel ring-buffer cost of logging the derivative pass -
+required by this card's own "Second-pass logging" decision below); 2 left
+open and unresolved for a follow-up decision (CLAUDE.md 7.4 task-id
+references in production comments; a small precedence-duplication in
+`transport.py`) - see the bug report and this session's own record for
+detail. Human-run mode-3 audio-timing handoff prepared below; not yet run.
+Merged to `main`.
 **Story:** `tasks/story-v1.9.0-response-modes.md` (scope item 3). The load-
 bearing slice.
 **Depends on:** task-v1.9.0-1 (the `text_voice` mode and its contract seam),
@@ -179,13 +195,45 @@ Two of them gate this task; check both before implementing:
 
 ## Acceptance criteria
 
-- [ ] Mode 3 streams canonical rich text immediately, then speaks a
+- [x] Mode 3 streams canonical rich text immediately, then speaks a
       reasoning-off derivative built from the exact shown text; first-pass
       streaming TTS is silent in this mode; spoken references correspond to
-      visible content.
-- [ ] The derivative is persisted additively inside its turn's record and shown
+      visible content. (Pure-test coverage in place; human confirmation
+      pending the handoff below.)
+- [x] The derivative is persisted additively inside its turn's record and shown
       as a collapsed block under the reply; the append-only journal invariant
       holds; the derivative does NOT enter the retrieval/memory corpus.
-- [ ] Modes 1 and 2 are behaviorally unchanged by this task.
-- [ ] Pure tests and `ruff` gates green; the mode-3 audio-timing handoff is
-      prepared with exact steps.
+- [x] Modes 1 and 2 are behaviorally unchanged by this task.
+- [x] Pure tests and `ruff` gates green; the mode-3 audio-timing handoff is
+      prepared with exact steps (below).
+
+## Human verification handoff (prepared, not yet run)
+
+Hardware-dependent (real audio playback) - per the Testing protocol, the
+agent prepares this and stops; the human runs it and reports back.
+
+1. Launch Jarvis normally (`python -m jarvis.app` or the usual entry point)
+   with TTS enabled.
+2. Switch to mode 3 (`text_voice`): press the response-mode cycle hotkey
+   twice from the default (text -> voice -> text_voice), or pick "Text +
+   Voice" from the response-mode drop-down in the Status Console's config
+   panel. Confirm the drop-down shows the selected mode.
+3. Ask a question whose answer naturally has some visible structure worth
+   referencing (e.g. "list three ways to reduce audio latency, briefly").
+4. Observe pass 1: the reply streams to the screen immediately, exactly as
+   in mode 1. No TTS audio plays while this streams (first-pass TTS is
+   silent in mode 3).
+5. Observe pass 2: once the on-screen reply has finished streaming, after a
+   short pause Jarvis speaks - a shorter, reasoning-off "spoken derivative"
+   of the reply, not a re-derivation. If the derivative references visible
+   content ("as listed above", "the first option"), confirm it actually
+   matches what is on screen.
+6. In the Status Console's events panel, confirm two request entries appear
+   for this one turn: the primary pass, and a second one tagged as a
+   derivative sub-pass (not presented as a second turn).
+7. Open the Journal view for this session and confirm the turn's assistant
+   entry shows a collapsed "spoken aloud >" block; expanding it shows the
+   spoken derivative text.
+8. Ask a follow-up question in mode 1 (text) or mode 2 (voice) and confirm
+   single-pass behavior is unchanged: one request in the events panel, no
+   collapsed derivative block in the Journal.

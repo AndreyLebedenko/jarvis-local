@@ -1074,6 +1074,22 @@ html[data-view="settings"] .settings {
   font: 10.5px "Consolas", "Cascadia Mono", monospace;
   color: var(--amber); overflow-wrap: anywhere;
 }
+.journal-spoken-derivative {
+  margin-top: 4px; font-size: 11px; color: var(--text-faint);
+}
+.journal-spoken-derivative summary {
+  cursor: pointer; user-select: none; list-style: none;
+}
+.journal-spoken-derivative summary::-webkit-details-marker { display: none; }
+.journal-spoken-derivative summary::before {
+  content: "\203A"; display: inline-block; margin-right: 4px;
+  transition: transform 0.1s ease;
+}
+.journal-spoken-derivative[open] summary::before { transform: rotate(90deg); }
+.journal-spoken-derivative-text {
+  margin-top: 4px; padding-left: 12px; color: var(--text);
+  overflow-wrap: anywhere; white-space: pre-wrap; user-select: text;
+}
 .journal-image-tile {
   border: 1px solid var(--border); border-radius: 7px; background: var(--panel);
   overflow: hidden; max-width: min(100%, 420px);

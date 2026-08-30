@@ -14,6 +14,12 @@ hardware/manual checks). Then close the story.
 
 ## Context you need
 
+- `tests/test_main.py` is 5700+ lines covering the whole `Orchestrator`/`App`
+  history from task-08 onward, in one file. Existing `# --- ...` section
+  markers already outline natural per-topic boundaries (turns: clipboard/
+  journal/attachment; interrupt/cancel; response mode; wiring; debug mode;
+  shutdown; playback lock; etc.) - see the "Pre-doc test suite cleanup" step
+  below for splitting it along those lines.
 - `config.example.toml`: the `[response] mode` entry gets its full explanatory
   comment here - the three modes, what each speaks/shows, the mode-2
   self-contained trade-off, and mode-3's two-pass timing. Task 1 added only the
@@ -43,6 +49,25 @@ hardware/manual checks). Then close the story.
   here.
 - PROJECT.md gets a note only if a real architectural decision needs recording;
   no note-for-note's-sake.
+- The test-suite split below is test-file reorganization, not a behavior
+  change - no test's assertions or fixture semantics may change as part of
+  it, only which file each test lives in and how shared fixtures are shared.
+
+## Pre-doc test suite cleanup
+
+Runs first, before any documentation edit in this task.
+
+- Split `tests/test_main.py` (5700+ lines) into multiple files by topic,
+  following its own existing `# --- ...` section boundaries (e.g. turns,
+  interrupt/cancel, response mode, wiring, debug mode, shutdown, playback
+  lock). Extract shared fixtures/fakes (`_orchestrator`, `_FakeBackend`,
+  `_FakeJournalRecorder`, etc.) into a shared module or conftest rather than
+  duplicating them per file.
+- Every test keeps its current name, body, and assertions unchanged - this
+  is a file-layout move, not a rewrite.
+- `python -m pytest`, `ruff check`, `ruff format --check` green (same total
+  test count as before the split) before moving on to the docs requirements
+  below.
 
 ## Requirements
 
@@ -67,6 +92,8 @@ hardware/manual checks). Then close the story.
 
 ## Acceptance criteria
 
+- [ ] `tests/test_main.py` is split by topic (pre-doc cleanup step), same
+      tests unchanged, before any doc edit in this task.
 - [ ] `config.example.toml`, README (en + ru), and the docs toggle list
       describe all three modes and how to switch; hotkey honesty preserved.
 - [ ] PROJECT.md carries a v1.9.0 architectural note iff a decision needed
