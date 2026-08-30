@@ -56,22 +56,20 @@ def build_probe_messages(directive: str) -> list[dict[str, str]]:
 
 
 def parse_mode_switch_marker(text: str) -> ResponseMode | None:
-    """Returns the ResponseMode the text's one exact marker names, or None.
+    """Returns the ResponseMode the whole reply's one exact marker names, or
+    None.
 
-    One match of SWITCH_RESPONSE_MODE=<known mode> on its own line is the
-    single accepted shape. Multiple conflicting markers, an unknown mode
-    value, or any other content all return None - fail safe to "request".
-    """
-    matches = [
-        match
-        for match in (
-            _SWITCH_MARKER_RE.match(line.strip()) for line in text.splitlines()
-        )
-        if match is not None
-    ]
-    if len(matches) != 1:
+    The accepted shape is the entire reply being a single marker line:
+    strip the text, and it must be exactly SWITCH_RESPONSE_MODE=<known
+    mode>. Anything else - prose around the marker, multiple lines, an
+    unknown mode value, empty text - returns None and fails safe to "it
+    was a request". The probe directive demands one marker word; a reply
+    that wraps the marker in chatter is treated exactly as unreliable,
+    which is the point of the exact-shape contract."""
+    match = _SWITCH_MARKER_RE.match(text.strip())
+    if match is None:
         return None
-    return _MODE_VALUE_BY_NAME.get(matches[0].group(1))
+    return _MODE_VALUE_BY_NAME.get(match.group(1))
 
 
 def intent_directive_from_settings(

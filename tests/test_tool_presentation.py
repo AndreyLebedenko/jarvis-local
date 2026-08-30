@@ -874,3 +874,45 @@ async def test_a_failed_capture_does_not_discard_the_frame_that_arrived():
     follow_up = backend.raw_calls[1]["messages"]
     media = [message for message in follow_up if "images" in message]
     assert [message["images"] for message in media] == [["d2lkZQ=="]]
+
+
+# --- non-dialog streaming passthrough (story-v1.9.0, task 4) -----------------
+
+
+@pytest.mark.asyncio
+async def test_iter_chat_delegates_straight_to_the_transport():
+    """The voice intent probe (task 4) runs raw iter_chat through the
+    ToolAwareDialog wrapper; the delegation must land on the transport
+    with its arguments intact - never on the chat() path, whose
+    ResponseToken publications would feed probe chatter to TTS."""
+    marker_chunk = {"message": {"content": "SWITCH_RESPONSE_MODE=voice"}}
+    backend = FakeBackend(
+        [
+            [
+                marker_chunk,
+                {"message": {"content": ""}, "done": True},
+            ]
+        ]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(),
+        FakeDispatcher([]),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in dialog.iter_chat(
+            [{"role": "user", "content": "probe"}],
+            images_b64=["img"],
+            reasoning_level=ReasoningLevel.OFF,
+        )
+    ]
+
+    assert chunks == [marker_chunk, {"message": {"content": ""}, "done": True}]
+    assert backend.raw_calls[0]["messages"] == [{"role": "user", "content": "probe"}]
+    assert backend.raw_calls[0]["images_b64"] == ["img"]
+    assert backend.legacy_calls == []

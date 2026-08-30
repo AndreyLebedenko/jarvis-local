@@ -212,6 +212,20 @@ class ToolAwareDialog:
         self._presentation = presentation
         self._max_tool_calls = max_tool_calls_per_turn
 
+    def iter_chat(
+        self,
+        messages: Sequence[Message],
+        images_b64: Sequence[str] | None = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        tools: Sequence[ToolPayload] | None = None,
+    ) -> AsyncIterator[dict[str, object]]:
+        """Raw streaming passthrough for non-dialog passes (task 4's voice
+        intent probe, story-v1.9.0): the tool loop's own bookkeeping -
+        presentation prompts, tool-call interception, ResponseToken
+        publication - is exactly what a non-dialog classification pass
+        must bypass, so this delegates straight to the transport."""
+        return self._backend.iter_chat(messages, images_b64, reasoning_level, tools)
+
     async def chat(
         self,
         messages: Sequence[Message],

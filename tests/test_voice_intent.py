@@ -28,9 +28,13 @@ def test_marker_with_surrounding_whitespace_still_parses():
     )
 
 
-def test_marker_with_other_lines_present_still_switches():
+def test_marker_wrapped_in_prose_is_not_trusted():
+    """The exact-shape contract (story-v1.9.0 task 4 review): a reply that
+    merely contains the marker among other words is chatter, not the one
+    accepted marker - failing safe to "request" keeps chatty probes from
+    ever swallowing real speech."""
     text = "Here is my decision:\nSWITCH_RESPONSE_MODE=text_voice\nthanks"
-    assert parse_mode_switch_marker(text) is ResponseMode.TEXT_VOICE
+    assert parse_mode_switch_marker(text) is None
 
 
 def test_marker_with_trailing_punctuation_is_a_switch():
@@ -76,6 +80,10 @@ def test_two_identical_markers_are_still_ambiguous():
         )
         is None
     )
+
+
+def test_marker_beside_other_text_on_one_line_is_a_request():
+    assert parse_mode_switch_marker("Good. SWITCH_RESPONSE_MODE=voice Done.") is None
 
 
 def test_marker_without_the_exact_prefix_is_a_request():

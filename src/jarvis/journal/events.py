@@ -53,6 +53,14 @@ class TurnOutcome(Enum):
 
     INTERRUPTED = "interrupted"
     FAILED = "failed"
+    # A recognized mode-switch voice command (story-v1.9.0, task 4): the
+    # turn was obeyed, not interrupted and not failed - there was simply
+    # no answer to produce. A distinct member rather than reusing
+    # INTERRUPTED keeps every journal consumer that already knows the two
+    # task-v1.7.0-3 values from misreporting an obeyed command as cut
+    # short; the journal UI renders it through the same
+    # journal_outcome_* i18n mechanism.
+    MODE_SWITCHED = "mode_switched"
 
 
 @dataclass(frozen=True)

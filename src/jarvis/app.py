@@ -1119,6 +1119,12 @@ class Orchestrator:
             images_b64=media_b64,
             interrupt_requested=interrupt_requested,
         )
+        if interrupt_requested.is_set():
+            # An interrupt landed during the probe: the turn already ended
+            # via _cancel_current_turn() (which recorded it as aborted and
+            # cleared busy) - a late marker must not mutate the mode or
+            # publish a second, command-style completion.
+            return True
         if recognized_mode is None or self._response_mode is None:
             return False
         await self._response_mode.set_mode(recognized_mode, source="VOICE")
@@ -1132,7 +1138,9 @@ class Orchestrator:
         self._history.add("user", self._current_turn_history_text)
         self._history.add("system", _MODE_SWITCH_HISTORY_NOTE)
         if self._journal_recorder is not None and self._journal_turn_started:
-            await self._journal_recorder.record_assistant("")
+            await self._journal_recorder.record_assistant(
+                "", outcome=TurnOutcome.MODE_SWITCHED
+            )
         self._journal_turn_started = False
         self._active_chat_task = None
         await self._sound_cues.play("listening")
@@ -1506,6 +1514,7 @@ class Orchestrator:
         notes = {
             TurnOutcome.INTERRUPTED: _INTERRUPTED_HISTORY_NOTE,
             TurnOutcome.FAILED: _FAILED_HISTORY_NOTE,
+            TurnOutcome.MODE_SWITCHED: _MODE_SWITCH_HISTORY_NOTE,
         }
         self._history.add("system", notes[outcome])
         if self._journal_recorder is not None and self._journal_turn_started:
