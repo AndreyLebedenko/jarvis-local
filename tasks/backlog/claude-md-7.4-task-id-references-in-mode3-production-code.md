@@ -22,18 +22,32 @@ behavior.
 
 ## Context
 
-Current occurrences (verified against `main` after task-v1.9.0-3 merged,
-commit `308edaf`):
+Current occurrences added specifically by task-v1.9.0-3 (verified against
+`main` at commit `f012962` via `grep -niE "1\.9\.0"` over every file that
+task-v1.9.0-3's own diff touched, then manually checked line by line to
+exclude pre-existing references from earlier tasks - see "Explicitly out of
+scope" below):
 
-- `src/jarvis/app.py:467, 1000, 1241, 1259, 1283, 2059` (6 occurrences)
+- `src/jarvis/app.py:257, 467, 1000, 1241, 1259, 1283, 2059` (7 occurrences)
 - `src/jarvis/core/lifecycle.py:124` (1 occurrence, in `ModelRequestStarted`'s
   docstring)
 - `src/jarvis/ui/status_console_ui/app.js:202, 521, 3534` (3 occurrences)
 - `src/jarvis/ui/transport.py:992` (1 occurrence)
 - `src/jarvis/audio/tts.py:372` (1 occurrence)
 
-12 total. (`src/jarvis/journal/recorder.py`'s own instance was already
-removed while fixing a different, related finding in the same task.)
+13 total. (`src/jarvis/journal/recorder.py`'s own instance was already
+removed while fixing a different, related finding in the same task; a
+fourteenth, freshly introduced during that same task's own follow-up work,
+was caught and fixed immediately - see the Source line above.)
+
+**Explicitly out of scope** (pre-existing `story-v1.9.0`/`task-v1.9.0-2`
+references from task-v1.9.0-2's own work, predating task 3, not touched by
+it): `src/jarvis/app.py:1488, 2395`, `src/jarvis/ui/status_console_ui/
+app.js:15`, `src/jarvis/ui/status_console.py:653, 965`. These are the same
+class of CLAUDE.md 7.4 violation but a separate, older instance of it -
+worth their own backlog item if someone wants to chase the whole codebase's
+7.4 debt, but not folded into this one to keep its scope matching its own
+Source (task-v1.9.0-3's diff specifically).
 
 ## Current Boundary
 
@@ -59,9 +73,9 @@ removed while fixing a different, related finding in the same task.)
 
 ## Acceptance Criteria
 
-- [ ] No `story-v1.9.0`, `task-v1.9.0`, or other task/story-id substring
-      remains in any file under `src/jarvis/**` (tests are exempt - CLAUDE.md
-      7.4 explicitly allows the reference there).
+- [ ] None of the 13 occurrences listed above under "Current occurrences"
+      remain. (The "Explicitly out of scope" occurrences are a different,
+      older backlog concern - leave them untouched here.)
 - [ ] Every reworded comment still reads as self-explanatory without the
       removed reference.
 - [ ] `python -m pytest`, `ruff check`, `ruff format --check` green;
