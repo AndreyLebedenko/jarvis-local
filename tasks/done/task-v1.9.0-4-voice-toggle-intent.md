@@ -1,12 +1,22 @@
 # Task v1.9.0-4: Voice-triggered mode switch with intent recognition
 
-**Status:** Implemented. Automated gates green (`python -m pytest` 2320
+**Status:** Completed. Automated gates green (`python -m pytest` 2320
 passed / 1 skipped, `ruff check`, `ruff format --check`). Codex review:
 3 P1 + 1 P2 findings in the first pass (probe never reachable in
 production - ToolAwareDialog lacked iter_chat; marker accepted inside
 prose; no interrupt re-check before set_mode; suppressed command journaled
 with no outcome marker), all fixed - re-review: all four RESOLVED, no new
-P1/P2. Human-run handoff (below) pending: live voice check with the owner.
+P1/P2. Human-run handoff verified by the owner 2026-08-30 (voice command
+switches the mode live; content is not mistaken for a command) - with a
+recorded first-run finding: the feature was initially silent because
+`[prompts].voice_intent_directive` was not present in the owner's
+config.toml (off by default, as designed), and a typed Journal-dock
+"switch to voice mode" is TEXT_INPUT, outside the card's voice-only
+boundary - the dialog model's "I have switched..." reply there is
+compliance hallucination, not a real switch (mode buttons and the
+Response-mode event did not move). Both resolved/clarified in discussion;
+the directive was added to the owner's local config.toml (gitignored, not
+committed) and the live re-run was green.
 **Story:** `tasks/story-v1.9.0-response-modes.md` (scope item 4).
 **Depends on:** task-v1.9.0-1 (config field + state), task-v1.9.0-2 (the
 `set_mode` path both channels write). This task adds a third channel - voice.
@@ -86,13 +96,18 @@ inside this card.
 
 ## Acceptance criteria
 
-- [ ] A spoken mode-switch command changes the mode and is reliably
+- [x] A spoken mode-switch command changes the mode and is reliably
       distinguished from request content; no spurious answer is emitted for the
-      command.
-- [ ] The switch marker never leaks into the shown text or the spoken output.
-- [ ] The voice channel writes the same persisted field as the hotkey/UI.
-- [ ] Pure tests and `ruff` gates green; the live voice-intent handoff is
-      prepared, or the stop condition is invoked with a written rationale.
+      command. (Owner-verified live, 2026-08-30.)
+- [x] The switch marker never leaks into the shown text or the spoken output.
+      (Owner-verified live; also covered by the probe's no-ResponseToken
+      construction and pure parser tests.)
+- [x] The voice channel writes the same persisted field as the hotkey/UI.
+      (Same live ResponseModeState via set_mode(source="VOICE"); session-only
+      since task 3b, config.ui.toml untouched - owner-verified byte-identical.)
+- [x] Pure tests and `ruff` gates green (2320 passed / 1 skipped, ruff check +
+      format clean); the live voice-intent handoff was prepared and verified
+      by the owner - stop condition not invoked.
 
 ## Design decisions (confirmed by owner, 2026-08-30)
 
