@@ -72,6 +72,20 @@
 3. Media payload rule (verified experimentally, see PROJECT.md): audio and
    images both go to Ollama through the `images` field of `/api/chat`.
    A test asserting a dedicated `audio` field is a wrong test.
+4. A human-run handoff is self-sufficient: it must be executable from its
+   own text against the repository, by someone who has not read the
+   implementation. Every hotkey, config key, command, and implicit default
+   it relies on is named literally with a source reference (the default may
+   drift; the citation lets the runner verify the current value). Steps must
+   not assume a starting state for persistent settings - state the
+   state-independent way to reach the target. If a handoff depends on
+   documentation that is still an open task's debt, the handoff must say so
+   explicitly instead of crossing the debt silently; if it cannot be made
+   self-sufficient, preparing it stops and the gap is reported (section 0),
+   not handed over unexecutable. Origin: this exact gap let a prepared
+   v1.9.0 handoff reference an undocumented hotkey default and pass every
+   existing gate; see
+   `tasks/bug_reports/2026-08-30-handoff-silently-depends-on-undocumented-hotkey.md`.
 
 ## Tooling notes
 

@@ -75,6 +75,21 @@ Runs first, before any documentation edit in this task.
   their trade-offs.
 - README (en + ru) updated: mode switching via drop-down, hotkey (real
   binding), and voice command if it shipped.
+- `config.example.toml` `[hotkeys]` gains the `response_mode_toggle` entry
+  with its real default binding. Known gap being closed here, surfaced by
+  the owner on 2026-08-30: the binding (default `ctrl+alt+o`) shipped in
+  task 2 but is listed neither in `config.example.toml` nor in either
+  README's hotkey table; the prepared task-3 handoff silently depended on
+  it (see
+  `tasks/bug_reports/2026-08-30-handoff-silently-depends-on-undocumented-hotkey.md`
+  and the handoff self-sufficiency rule, Testing protocol item 4 in
+  `AGENTS.md`).
+- Handoff self-sufficiency audit as part of assembling the verification
+  handoff: every human-run handoff prepared by this story (tasks 2, 3, 4
+  handoffs and the assembled release handoff) is checked against Testing
+  protocol item 4 - each hotkey, config key, and implicit default named
+  literally with a source reference, no step assuming a starting state of
+  a persistent setting.
 - PROJECT.md v1.9.0 note if warranted; docs toggle list updated.
 - A single assembled human-run verification handoff with exact commands
   covering: default-unchanged behavior; mode 2 self-contained one-pass output;
@@ -95,7 +110,13 @@ Runs first, before any documentation edit in this task.
 - [ ] `tests/test_main.py` is split by topic (pre-doc cleanup step), same
       tests unchanged, before any doc edit in this task.
 - [ ] `config.example.toml`, README (en + ru), and the docs toggle list
-      describe all three modes and how to switch; hotkey honesty preserved.
+      describe all three modes and how to switch; hotkey honesty preserved,
+      including the previously undocumented `response_mode_toggle` binding
+      in the README hotkey tables and `config.example.toml` `[hotkeys]`.
+- [ ] Every handoff prepared by this story passes the handoff
+      self-sufficiency audit (Testing protocol item 4): literal hotkeys and
+      config keys with source references, no assumed starting state for
+      persistent settings.
 - [ ] PROJECT.md carries a v1.9.0 architectural note iff a decision needed
       recording.
 - [ ] The assembled human-run verification handoff exists with exact commands
