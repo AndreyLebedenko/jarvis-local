@@ -2,9 +2,9 @@
 
 **Status:** Proposed. No task cards opened yet.
 **Created:** 2026-08-26.
-**Version note:** `v1.9.0` is a placeholder pending owner confirmation of
-where this slots against other roadmap work; the user-facing goal and task
-split below stand regardless of the number.
+**Roadmap:** `tasks/roadmap-v1.9-v2.0.md`.
+**Version note:** `v1.9.0` is now the accepted slot for response modes in the
+v1.9 -> v2.0 roadmap.
 
 ## Origin
 
@@ -39,7 +39,9 @@ user opts in.
   spoken derivative that *may* reference the visible content ("as in the
   table above"), because that content genuinely exists on screen and the
   user can open the window to see it. The screen streams immediately; only
-  audio waits for the first pass to complete.
+  audio waits for the first pass to complete. This is intentionally higher-
+  latency than a single-pass voice answer: the user gets a visible answer
+  object first, then Jarvis speaks a guided rendering of that object.
 
 ## Design decisions (proposed here, confirmed by card approval)
 
@@ -102,6 +104,22 @@ user opts in.
     retrieval unit by construction.
   - In the UI it appears as a **collapsed block under the reply** ("spoken
     aloud >"), always present, expandable on click.
+- **Mode 3 is a text canvas plus spoken commentary, not just duplicate
+  output.** The first pass creates the canonical text canvas - the block of
+  content the user and future retrieval can rely on. The second pass is a
+  voice log/commentary over that canvas: it may compress, prioritize, and
+  verbally navigate the visible blocks, and may therefore be what the human
+  remembers hearing. That does not make it an independent memory source. If
+  the two layers diverge, the canvas is authoritative and the derivative is a
+  rendering problem. Future search work may add a locator-only index for
+  heard phrases, but it must return the owning assistant event and hydrate the
+  canonical canvas, not feed the derivative into retrieval as standalone
+  knowledge.
+- **Mode 3 is a deliberate quality-for-latency trade.** It is a key feature,
+  not an optimization path: Jarvis spends a second local backend pass so the
+  user gets both a rich inspectable answer and a spoken guide to it. Users who
+  need the lowest latency should choose Mode 1 or Mode 2; users who want the
+  richer canvas+voice experience opt into the extra delay knowingly.
 - **Replay (a Play button on the derivative) is out of scope here.** Replay
   is a separate, more primitive capability shipping first in
   `story-v1.8.2-replay-tts.md` (re-synthesis of persisted spoken text on

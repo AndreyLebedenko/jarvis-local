@@ -34,6 +34,16 @@ persisted *additively inside the same turn's journal record* (not a second
 turn, not a new event) and rendered as a collapsed "spoken aloud >" block
 under the reply. The derivative is kept out of the retrieval/memory corpus.
 
+Post-implementation interpretation, owner-approved 2026-08-30: mode 3 is a
+text canvas plus spoken commentary/log, not duplicate output. The first pass is
+the authoritative canvas for retrieval, memory, annotation source material, and
+future reasoning. The second pass is a lossy spoken guide to that canvas. This
+is a deliberate quality-for-latency feature: it spends an extra local backend
+pass so the user can inspect the rich answer and hear Jarvis talk through it.
+If a later indexer helps a user find a turn by words they remember hearing, it
+must be locator-only and hydrate the canonical canvas, not treat the spoken
+derivative as standalone memory.
+
 ## Design: playback directive on the expected-response metadata (owner)
 
 Do NOT branch `TtsOutput` on the response mode. Instead extend the

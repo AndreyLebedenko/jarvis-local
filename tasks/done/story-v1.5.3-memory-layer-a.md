@@ -1,7 +1,7 @@
 # Story v1.5.3: Memory layer A - session fork and curated memory files
 
 **Status:** Completed.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.5.3 section; fork design
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.5.3 section; fork design
 records the owner's decisions from the 2026-07-18 planning dialog).
 **Created:** 2026-07-19. Owner decision (2026-07-19): implemented on
 branches from current main, after v1.5.2 and before v1.6.0-7 resumes.

@@ -1,7 +1,7 @@
 # Story v1.6.1: Builtin tool provider and delegated control
 
 **Status:** Completed.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.1 section; delegation
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.6.1 section; delegation
 semantics for `set_reasoning_level` decided 2026-07-18).
 **Created:** 2026-07-20.
 

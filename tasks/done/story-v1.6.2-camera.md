@@ -2,7 +2,7 @@
 
 **Status:** Completed. Both scopes delivered and verified on hardware by
 the owner: USB on 2026-07-20, LAN on 2026-07-24.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.2 section; native
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.6.2 section; native
 sensor module decision 2026-07-18).
 **Created:** 2026-07-20.
 

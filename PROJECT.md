@@ -3801,7 +3801,7 @@ Two decisions, one per half of that report.
 
 Added 2026-07-26 by `tasks/done/task-v1.7.0-1-aec-spike.md` (spike) and
 `tasks/story-v1.7.0-barge-in.md` (story, revised the same day after the
-spike's result). Roadmap: `tasks/roadmap-v1.5.1-v1.7.md`, v1.7.0 section.
+spike's result). Roadmap: `tasks/done/roadmap-v1.5.1-v1.8.0.md`, v1.7.0 section.
 
 **Spike verified facts**, human-run on the owner's machine
 (`manual/manual_check_aec_spike.py`, `tasks/aec-spike-handoff.md`):
@@ -4041,6 +4041,35 @@ by the owner during tasks 29 and 30 with no drift from their originally
 recorded figures; nothing above is a *known-failing* check waiting on the
 next release - it is the standing re-verification list for whenever the
 embedding model, Ollama version, or host changes.
+
+## Architecture v1.9.0 (response modes: text canvas and spoken commentary)
+
+Mode 3 (`text_voice`) is not "the same answer in two media." It is a two-layer
+turn contract: the first pass creates the canonical text canvas, and the
+second pass creates a spoken commentary/log over that canvas.
+
+- **The text canvas is authoritative.** The first-pass assistant `event.text`
+  is the content of the turn for provenance, retrieval, memory, annotation
+  source material, and future reasoning. It is the thing Jarvis claimed.
+- **The spoken derivative is a rendering of that canvas.** The second pass
+  runs with reasoning off over the exact shown text and may compress,
+  prioritize, or verbally navigate visible blocks ("as in the table above").
+  It is persisted additively in the same assistant event metadata as
+  `spoken_derivative`, not as a new turn and not as raw event text.
+- **Derivative text is intentionally excluded from retrieval/memory.** It is
+  not indexed by the history corpus, FTS, semantic passages, automatic
+  retrieval, or memory surfaces. If the derivative and canvas diverge, the
+  canvas is authoritative and the derivative is a rendering defect.
+- **This is a deliberate quality-for-latency trade.** Mode 3 spends an extra
+  local backend pass after the screen answer completes. That makes it
+  alternative to lowest-latency voice output, not an optimization of it. Mode 1
+  and Mode 2 remain the low-latency/single-pass choices; Mode 3 is the richer
+  "show the object, then talk me through it" experience.
+- **Future search note.** A user may remember the spoken phrase rather than the
+  canonical canvas wording. A future v1.9.1 indexer change may add a
+  locator-only search surface for `spoken_derivative`, but it must return the
+  owning assistant event and hydrate/display the canonical `event.text`; it
+  must not feed derivative text into model memory as standalone knowledge.
 
 ## Architecture v1.8.1 (session file operations)
 
@@ -4676,29 +4705,27 @@ latency-for-quality trade.
   `journal_active_session_id` lambda pattern already used in
   `run_with_status_console()`).
 
-## Roadmap after v1.0
+## Current roadmap
 
-1. emotion2vec+ intonation side channel (bus subscriber, CPU).
-2. XTTS-v2 and Kokoro are parked. The v1.2.5 spike found their installation
-   and startup complexity made further investigation unacceptably expensive
-   for the current project boundary. This is an operability and research-cost
-   decision, not a negative model-quality result. Reconsider only if their
-   integration cost changes materially. Production is confirmed for the
-   tested Silero/Russian plus Piper/English configuration, but the routing
-   architecture imposes no language-to-engine mapping: either engine may be
-   configured for either supported language with a compatible model.
-3. Re-tuning the model without losing audio (mix audio samples into the
-   dataset or low-rank conservative LoRA) — research task.
-4. Optional GUI (dialog history window).
-5. Backend evaluation: LiteRT-LM prefix caching for lower prefill latency.
-6. Region highlighter for screen capture: lets the user mark a region so
-   OCR questions are targeted rather than bulk extraction (see Open
-   questions - OCR confabulation).
-7. Real echo cancellation for audio_in.py, replacing v1.0's busy-cooldown
-   mitigation *and* v1.1/task-10's mic-pause-during-speech mitigation for
-   Jarvis hearing its own TTS output (see Verified facts) - both are
-   still timing-window mitigations, not a device-level fix for reverb
-   that outlasts the cooldown.
+The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old
+post-v1.0 list and the completed v1.5.1-through-v1.8.0 planning arc as the
+place for forward planning.
+
+Current direction:
+
+1. v1.9.0 response modes: Text-only, Voice-only, and Text + voice.
+2. v1.9.1 provenance-aware indexing/search: derived text surfaces must say
+   what they are and what they are based on; spoken derivatives may become
+   locator-only search material without becoming model memory.
+3. v1.9.x prompt experiments for the Text + voice first-pass canvas contract.
+4. v2.0 "canvas-guided voice": explore single-pass or interleaved visible
+   canvas plus spoken guide protocols, if a spike proves tag stability,
+   latency benefit, factual preservation, and recovery behavior.
+
+Floating candidates from the old list remain possible future work, but are no
+longer the active roadmap spine: emotion2vec+ prosody, backend/prefix-cache
+latency research, region-highlighted capture, real echo cancellation, and model
+retuning research.
 
 ## Day-0 artifacts
 

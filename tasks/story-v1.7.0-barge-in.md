@@ -6,7 +6,7 @@ release verification) completed and closed.
 Task 4 (experimental voice barge-in) deferred to backlog 2026-07-29
 (owner decision, not a technical blocker) - see
 `tasks/backlog/experimental-voice-barge-in.md`.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.7.0 section). Resequenced
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.7.0 section). Resequenced
 from the unversioned v1.7.x "Conversational fluidity" list to v1.7.0
 (owner decision, 2026-07-26), ahead of memory consolidation/retrieval,
 which shifted to v1.7.1/v1.7.2 accordingly. Wake-word addressing, the

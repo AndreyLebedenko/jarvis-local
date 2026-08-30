@@ -23,7 +23,7 @@ transport only; the UI flow is task-v1.5.2-7.
 - `src/jarvis/ui/transport.py`: journal endpoint auth and Hidden
   gating; `_resolve_journal_media_path()` shows the traversal-guard
   pattern session ids must also pass through.
-- Cross-cutting rules 6 and 8 (`tasks/roadmap-v1.5.1-v1.7.md`): manual,
+- Cross-cutting rules 6 and 8 (`tasks/done/roadmap-v1.5.1-v1.8.0.md`): manual,
   user-confirmed, whole-session deletion only; no automatic deletion;
   this is an interim disk valve, not retention policy.
 

@@ -1,7 +1,7 @@
 # Story v1.5.1: Stabilization after the journal release
 
 **Status:** Completed.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md`
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md`
 **Release:** v1.5.1 (bugfix/hygiene release; no features)
 
 ## User-facing goal

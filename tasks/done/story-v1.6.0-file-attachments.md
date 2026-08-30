@@ -1,7 +1,7 @@
 # Story v1.6.0: File attachments
 
 **Status:** Completed.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (entry-point decision,
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (entry-point decision,
 2026-07-18: attachments are added from the Journal view's input dock -
 attach control and drag-and-drop - building on the v1.5.2 text input;
 no new hotkey. Turn-source contract, limits, and media rules below are

@@ -12,7 +12,7 @@ level. The first real diagnosis performed with this story's own logs -
 - had to be reconstructed from journal wav files instead. A device name
 is payload-adjacent under the content rule above, and a level figure is a
 new log call site; neither may be added without that decision.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.4 section, added
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.6.4 section, added
 2026-07-21 by owner decision from the v1.6.3 review dialog).
 **Created:** 2026-07-21.
 

@@ -99,6 +99,16 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   rejected with the error cue and a message rather than queued, and can simply
   be pressed again once free. The control toggles to Stop while playing; a new
   live turn, `Ctrl+Alt+I`, and disabling TTS each stop an in-progress replay.
+- The Text + voice response mode is not merely "the same answer, also spoken";
+  it is the key "text canvas + spoken guide" mode. Jarvis first streams the
+  canonical rich answer to the screen, then runs a separate second pass with
+  reasoning off to speak a derivative commentary over the already-visible
+  text. This is deliberately alternative to minimum latency: audio waits for
+  the first pass to finish and for one more local model request, in exchange
+  for both inspectable text and a spoken guide to it. Retrieval/memory indexes
+  only the canonical text; the spoken derivative is stored under the same
+  Journal turn as "spoken aloud", but is not treated as an independent source
+  of facts.
 - Unlimited conversation history: the normal request to Ollama stays a bounded
   working context regardless of how large the local journal grows. See
   [Unlimited conversation history](#unlimited-conversation-history).
@@ -452,6 +462,14 @@ regardless of how large the local journal grows.
   presented to the model as delimited source data - never as a new
   instruction or a promoted fact - and always traces back to its source
   session and event position.
+- **The Text + voice spoken derivative is not memory.** In Text + voice mode,
+  the heard text is spoken commentary over the canonical on-screen answer,
+  stored in `metadata.spoken_derivative` on the same event. It is currently not
+  indexed by lexical/semantic retrieval, automatic retrieval, or memory: the
+  authoritative source remains `event.text`. A later v1.9.1 change may add a
+  separate locator-only search for heard phrases, but such search must find the
+  owning assistant event and show the canonical canvas, not promote the spoken
+  derivative into a standalone fact.
 - **Rebuildable, and deletion is final.** The corpus, lexical, and semantic
   indexes are disposable projections derived from the append-only raw
   journal; they rebuild from scratch on demand. Deleting a Journal session

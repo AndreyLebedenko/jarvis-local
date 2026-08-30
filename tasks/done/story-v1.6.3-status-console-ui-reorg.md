@@ -7,7 +7,7 @@ found one defect this story had introduced - the relocated configuration
 form was clipped at the top on a short window, because `align-self:
 center` changed meaning when the panel moved from a column flex to a row
 flex - fixed in the same change, with a regression test.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.6.3 section, added
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.6.3 section, added
 2026-07-20 by owner decision from the UI review dialog).
 **Created:** 2026-07-20.
 

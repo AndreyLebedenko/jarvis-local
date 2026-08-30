@@ -8,7 +8,7 @@ architecture summary in `PROJECT.md` and final doc reconciliation. See
 `PROJECT.md`'s "Architecture v1.8.0-v1.8.2 (unlimited conversation history)"
 section for the stable summary, and its "v1.8.2 final documentation and
 release verification" entry for this closing card's own record.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.8.0 section).
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.8.0 section).
 **Created:** 2026-07-29.
 **Revised:** 2026-08-01 after owner review of the exact-first retrieval plan.
 **Reworked:** 2026-08-01. Second pass over the hybrid-retrieval revision: a

@@ -32,9 +32,11 @@ hardware/manual checks). Then close the story.
   recorded - the two-contract split, the mode-3 second pass being reasoning-off
   and form-only, the derivative's additive-in-turn persistence and its
   exclusion from the retrieval/memory corpus, and the mode-3 first-pass TTS
-  suppression being a localized mode-keyed gate (not the global mute). Update
-  in the same spirit as prior story notes; do not restate what the code already
-  makes obvious.
+  suppression being a localized mode-keyed gate (not the global mute). Also
+  record the owner-approved interpretation from 2026-08-30: mode 3 is a
+  canonical text canvas plus a spoken commentary/log over that canvas, and this
+  is a deliberate quality-for-latency trade. Update in the same spirit as prior
+  story notes; do not restate what the code already makes obvious.
 - `docs/`: any user/architecture doc that enumerates runtime toggles
   (thinking mode, mic-sleep, visibility) should gain the response-mode entry so
   the set stays complete.
@@ -74,7 +76,9 @@ Runs first, before any documentation edit in this task.
 - `config.example.toml` `[response] mode` documented with the three modes and
   their trade-offs.
 - README (en + ru) updated: mode switching via drop-down, hotkey (real
-  binding), and voice command if it shipped.
+  binding), and voice command if it shipped. The README must describe Mode 3
+  as the canvas+voice feature and call out that it is intentionally alternative
+  to lowest-latency output.
 - `config.example.toml` `[hotkeys]` gains the `response_mode_toggle` entry
   with its real default binding. Known gap being closed here, surfaced by
   the owner on 2026-08-30: the binding (default `ctrl+alt+o`) shipped in

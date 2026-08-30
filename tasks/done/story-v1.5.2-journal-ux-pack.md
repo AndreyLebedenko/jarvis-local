@@ -1,7 +1,7 @@
 # Story v1.5.2: Journal UX pack
 
 **Status:** Completed.
-**Roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` (v1.5.2 section).
+**Roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` (v1.5.2 section).
 **Created:** 2026-07-19, to unblock `task-v1.6.0-7-journal-upload-api.md`,
 which depends on the v1.5.2 text input endpoint. Owner decision
 (2026-07-19): v1.5.2 and v1.5.3 are implemented on branches from current

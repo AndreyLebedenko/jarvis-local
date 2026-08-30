@@ -13,7 +13,7 @@ open reports that need no code in this release, so neither carries a stale
 
 - `tasks/bug_reports/2026-07-17-journal-retention-policy.md`
 - `tasks/bug_reports/2026-07-17-distorted-voice-in-journal-recording.md`
-- `tasks/roadmap-v1.5.1-v1.7.md`: the v1.7.0 consolidation section
+- `tasks/done/roadmap-v1.5.1-v1.8.0.md`: the v1.7.0 consolidation section
   (near/far journal design) and cross-cutting rule 8 (no audio
   auto-deletion before its transcript exists).
 

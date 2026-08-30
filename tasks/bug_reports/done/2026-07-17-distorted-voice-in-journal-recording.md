@@ -65,7 +65,7 @@ the microphone. Also record the microphone device type and connection in use
 (USB, Bluetooth, built-in, or other). If `task-v1.5.1-4`'s device matrix
 results are available, cross-reference the relevant device-class findings.
 
-Roadmap pointer: `tasks/roadmap-v1.5.1-v1.7.md`, v1.5.1 stabilization scope.
+Roadmap pointer: `tasks/done/roadmap-v1.5.1-v1.8.0.md`, v1.5.1 stabilization scope.
 That roadmap keeps this report as a monitored anomaly and explicitly excludes
 blind capture-path or VAD changes from v1.5.1.
 

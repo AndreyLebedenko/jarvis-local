@@ -14,7 +14,7 @@ rules, and the dependency decision for compressed audio formats.
 
 - `tasks/done/story-v1.6.0-file-attachments.md`: user-facing goal,
   boundaries, and stop conditions.
-- `tasks/roadmap-v1.5.1-v1.7.md`: v1.6.0 entry point is the Journal input
+- `tasks/done/roadmap-v1.5.1-v1.8.0.md`: v1.6.0 entry point is the Journal input
   dock; no new hotkey.
 - `PROJECT.md`: verified Ollama media facts. Audio and images both go
   through the `/api/chat` `images` field.

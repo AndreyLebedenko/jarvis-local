@@ -8,7 +8,7 @@ major architectural output (the roadmap's one-major-decision-per-release
 rule is not triggered): this is an interaction-quality pass plus one small
 user-facing control (a TTS on/off toggle).
 **Created:** 2026-08-09 (owner request: "improve UI/UX").
-**Not in roadmap:** `tasks/roadmap-v1.5.1-v1.7.md` ends the planned arc at
+**Not in roadmap:** `tasks/done/roadmap-v1.5.1-v1.8.0.md` ends the planned arc at
 v1.8.0; this story is post-feature refinement, opened directly from an
 owner request, not a roadmap item.
 

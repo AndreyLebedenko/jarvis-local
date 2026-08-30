@@ -35,7 +35,7 @@ destroying user audio or screenshots. The limitation is called out in
 
 The policy question is resolved at the design level by the roadmap's v1.7.0
 near/far journal consolidation pipeline
-(`tasks/roadmap-v1.5.1-v1.7.md`, section "v1.7.0 - Memory layer B, part 1:
+(`tasks/done/roadmap-v1.5.1-v1.8.0.md`, section "v1.7.0 - Memory layer B, part 1:
 consolidation (near/far journal)"). The near log keeps recent sessions with
 full media. The far log keeps transcripts, compressed images, and
 model-written annotations. Consolidation is explicit: it runs on command or
@@ -45,7 +45,7 @@ This report stays open until that pipeline ships. What closes here is the
 open question "which policy", not the implementation. Until v1.7.0 exists,
 the only interim relief is v1.5.2's disk-usage visibility and manual
 deletion. Automatic deletion remains forbidden, especially for audio before
-its transcript exists (`tasks/roadmap-v1.5.1-v1.7.md`, cross-cutting rule 8).
+its transcript exists (`tasks/done/roadmap-v1.5.1-v1.8.0.md`, cross-cutting rule 8).
 
 ## Future considerations and boundaries
 

@@ -1,5 +1,9 @@
 # Roadmap: v1.5.1 stabilization through unlimited conversation history (v1.8.0)
 
+**Archived:** superseded as the active roadmap by
+`tasks/roadmap-v1.9-v2.0.md` on 2026-08-30. This file remains only as
+historical provenance for completed v1.5.1-v1.8.0 work.
+
 **Status:** Accepted roadmap (planning dialogs, 2026-07-18 and 2026-07-29).
 **Branch:** roadmap-v1.5.1-v1.7.
 **Predecessor:** `tasks/done/roadmap-v1.2-v1.4.md` (extends through v1.6.0;

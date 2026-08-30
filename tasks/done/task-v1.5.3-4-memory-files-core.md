@@ -20,7 +20,7 @@ config only; no transport, no UI.
 - `src/jarvis/app.py`: where the system prompt is composed and where a
   session starts (context reset, fork, process start) - injection must
   happen at every session start, from one code path, not three copies.
-- Cross-cutting rule 7 (`tasks/roadmap-v1.5.1-v1.7.md`): size caps and
+- Cross-cutting rule 7 (`tasks/done/roadmap-v1.5.1-v1.8.0.md`): size caps and
   auditability are the contract.
 
 ## Boundary
