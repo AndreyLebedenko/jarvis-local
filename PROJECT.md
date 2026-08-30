@@ -4064,7 +4064,23 @@ second pass creates a spoken commentary/log over that canvas.
   local backend pass after the screen answer completes. That makes it
   alternative to lowest-latency voice output, not an optimization of it. Mode 1
   and Mode 2 remain the low-latency/single-pass choices; Mode 3 is the richer
-  "show the object, then talk me through it" experience.
+  "show the object, then talk me through it" experience. (Owner-approved
+  interpretation, 2026-08-30.)
+- **First-pass TTS suppression is a localized mode-keyed gate, not the global
+  mute.** The mechanism is a per-turn playback directive
+  (`speak_streaming`, threaded through `ModelRequestStarted` from the same
+  seam that snapshots `reasoning_level`); `TtsOutput` honors the latched
+  directive and learns nothing about modes, and the sentence-buffering
+  contract shared with modes 1 and 2 is untouched. Mode 3 is therefore two
+  ordinary dispatches - a silent first pass, then a derivative dispatch that
+  speaks through the unchanged path - not a mode branch inside `TtsOutput`.
+- **Persisted mode, live toggles.** The mode is a three-valued persistent
+  setting (`[response].mode`, default `text`) seeded at startup and written
+  back only by the Settings tab's Apply (`config.ui.toml`). The hotkey
+  (`Ctrl+Alt+O`), the Status-tab buttons, and the voice-intent command all
+  change the same live `ResponseModeState` session-only, never persisting -
+  the reasoning-level toggle's shape with the one addition reasoning lacks:
+  startup persistence through the Settings write-back.
 - **Future search note.** A user may remember the spoken phrase rather than the
   canonical canvas wording. A future v1.9.1 indexer change may add a
   locator-only search surface for `spoken_derivative`, but it must return the

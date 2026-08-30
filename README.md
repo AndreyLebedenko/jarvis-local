@@ -17,7 +17,9 @@ data rather than by widget type:
 
 - **Status** - live engine state and controls that act immediately: runtime
   and module health, timestamp-first metadata for the latest request to the
-  model, graded reasoning (Off/Low/Medium/High), the external tools (MCP)
+  model, graded reasoning (Off/Low/Medium/High), the response mode
+  (Text-Only / TTS-Only / Text+TTS; see
+  [Response modes](#response-modes) below), the external tools (MCP)
   toggle with its tool list, system events, and a guarded Shutdown. The
   events panel also records each turn's request to the model in the
   interface language - see [Logs and diagnostics](#logs-and-diagnostics).
@@ -26,7 +28,8 @@ data rather than by widget type:
   manual journal disk management, session fork, editable curated memory
   files, and the explicit "New context" action.
 - **Settings** - cold configuration, restart-to-apply: model, microphone,
-  UI language, TTS routes, and VAD.
+  response mode (the persisted default for the next launch), UI language,
+  TTS routes, and VAD.
 
 The header stays the same on every tab: the `LOCAL` and `LOCAL SOURCES`
 honesty indicators and the Open/Hidden visibility mode never disappear behind
@@ -99,16 +102,25 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
   rejected with the error cue and a message rather than queued, and can simply
   be pressed again once free. The control toggles to Stop while playing; a new
   live turn, `Ctrl+Alt+I`, and disabling TTS each stop an in-progress replay.
-- The Text + voice response mode is not merely "the same answer, also spoken";
-  it is the key "text canvas + spoken guide" mode. Jarvis first streams the
-  canonical rich answer to the screen, then runs a separate second pass with
-  reasoning off to speak a derivative commentary over the already-visible
-  text. This is deliberately alternative to minimum latency: audio waits for
-  the first pass to finish and for one more local model request, in exchange
-  for both inspectable text and a spoken guide to it. Retrieval/memory indexes
-  only the canonical text; the spoken derivative is stored under the same
-  Journal turn as "spoken aloud", but is not treated as an independent source
-  of facts.
+- Three switchable response modes (see [Response modes](#response-modes)
+  for the full trade-offs):
+  - **Text-Only** (default, current behavior): one pass, the answer streams
+    to the screen and existing sentence-buffered TTS speaks it as it goes.
+  - **TTS-Only**: one pass producing a self-contained spoken answer - no
+    bullets, tables, or inline URLs; nothing is shown, so the spoken form
+    references nothing external. Choose it when the content needs no
+    "cannot-be-spoken" remainder.
+  - **Text + voice** is not merely "the same answer, also spoken"; it is the
+    key "text canvas + spoken guide" mode. Jarvis first streams the
+    canonical rich answer to the screen, then runs a separate second pass
+    with reasoning off to speak a derivative commentary over the
+    already-visible text. This is deliberately alternative to minimum
+    latency (see the mode description below): audio waits for the first
+    pass to finish and for one more local model request, in exchange for
+    both inspectable text and a spoken guide to it. Retrieval/memory indexes
+    only the canonical text; the spoken derivative is stored under the same
+    Journal turn as "spoken aloud", but is not treated as an independent
+    source of facts.
 - Unlimited conversation history: the normal request to Ollama stays a bounded
   working context regardless of how large the local journal grows. See
   [Unlimited conversation history](#unlimited-conversation-history).
@@ -248,6 +260,9 @@ Default hotkeys:
 - `Ctrl+Alt+V`: submit clipboard text as a turn.
 - `Ctrl+Alt+M`: toggle microphone sleep/wake.
 - `Ctrl+Alt+T`: cycle reasoning through Off, Low, Medium, High, and back to Off.
+- `Ctrl+Alt+O`: cycle the response mode through Text-Only, TTS-Only,
+  Text + voice, and back to Text-Only (live, session-only - see
+  [Response modes](#response-modes)).
 - `Ctrl+Alt+I`: interrupt the active response, stopping speech playback and
   backend generation, then return Jarvis to listening. Also stops an
   in-progress reply replay.
@@ -430,6 +445,57 @@ remains possible. Print the exact human verification steps with:
 python -m manual.manual_check_mcp_providers --profile local
 python -m manual.manual_check_mcp_providers --profile lan
 ```
+
+## Response modes
+
+A reply full of bullets, tables, and links is hard to *listen to*, while some
+content cannot be spoken cleanly and must not be dropped. Jarvis therefore has
+three switchable response modes rather than a single "voice-friendly" rewrite.
+The mode is a persistent setting (`[response].mode` in `config.toml`, default
+`text` - so default behavior is unchanged until you opt in).
+
+- **Text-Only** (`text`) - the default and today's behavior: one pass, the
+  canonical rich answer streams to the screen and sentence-buffered TTS speaks
+  it as it streams. Lowest latency.
+- **TTS-Only** (`voice`) - one pass with a *self-contained voice contract*:
+  plain connected prose, no bullets, tables, or inline URLs, numbers and units
+  spoken where it helps. Nothing is shown on screen, so the spoken answer
+  references nothing external by construction. The trade: content whose
+  "cannot-be-spoken" remainder matters (a table, a code block, a long URL, an
+  exact derivation) will lose that remainder.
+- **Text + voice** (`text_voice`) - the key "text canvas + spoken guide" mode,
+  and a deliberate quality-for-latency trade rather than an optimization path.
+  The first pass creates the canonical text canvas: the full rich answer
+  streamed to the screen exactly as in Text-Only. The second pass - with
+  reasoning off, over that exact shown text - speaks a derivative commentary
+  over the visible content, so it may say "as in the table above" because that
+  table genuinely is on screen. The screen begins streaming immediately; only
+  the audio waits for pass one to finish plus one more local model request.
+  Users who need the lowest latency per answer choose Text-Only or TTS-Only;
+  Text + voice is the opt-in for a richer answer object plus a spoken guide to
+  it. In the Journal, the derivative appears as a collapsed "spoken aloud"
+  block under the same turn, and only the canonical text feeds history,
+  retrieval, and memory.
+
+Switching between modes:
+
+- **Hotkey** `Ctrl+Alt+O` (`hotkeys.response_mode_toggle`, default
+  `src/jarvis/core/config.py:140`; overridable via `[hotkeys]
+  response_mode_toggle` in `config.toml`) cycles Text-Only -> TTS-Only ->
+  Text + voice -> Text-Only. It is a live, session-only switch: the
+  Settings-tab drop-down, not the hotkey, is what persists.
+- **Status tab**: the Response mode button group mirrors the hotkey (live,
+  session-only). Watch the buttons - not the Settings drop-down - to see the
+  current mode after a hotkey press.
+- **Settings tab**: the Response mode drop-down is the ordinary
+  restart-to-apply form; picking a mode and pressing Apply writes it to
+  `config.ui.toml`, seeds the next launch, and does not touch the live
+  session.
+- **Voice command** (optional, off by default): with
+  `[prompts].voice_intent_directive` configured, a spoken "switch to voice
+  mode" (or voice/text mode) changes the live mode and is not treated as
+  request content. Without the directive, voice commands are never
+  recognized and voice turns behave exactly as before.
 
 ## Unlimited conversation history
 

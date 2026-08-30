@@ -54,8 +54,8 @@ else voice or clipboard turn
   UiTransport -> Ui : render current state
 
   Orch -> History : read prior text turns
-  Orch -> Orch : add system prompt, time context,\nand current-turn media
-  Orch -> Bus : ModelRequestStarted
+  Orch -> Orch : add system prompt + response-mode contract,\ntime context, and current-turn media
+  Orch -> Bus : ModelRequestStarted\n(+ speak_streaming playback directive)
   Orch -> Dialog : chat(messages, media, reasoning level)
   Dialog -> Registry : list enabled tools
 
@@ -98,7 +98,15 @@ else voice or clipboard turn
   Bus -> Tts : flush trailing speech unit
   Bus -> Orch : persist completed turn
   Orch -> History : append user and assistant text
-  Orch -> Journal : record assistant text asynchronously
+  Orch -> Journal : record assistant text (+ spoken derivative,\nmode 3) asynchronously
+  alt mode text_voice derivative pass
+    Orch -> Bus : ModelRequestStarted(pass=derivative, speak_streaming=True)
+    Orch -> Dialog : derivative pass: reasoning off, exact shown text
+    Dialog -> Bus : ResponseToken (spoken derivative)
+    Bus -> Tts : buffer and speak the derivative
+    Dialog -> Bus : ResponseComplete(metrics)
+    Bus -> Orch : attach derivative to the same turn record
+  end
   Tts -> Tts : wait for all queued playback
   Orch -> Mic : resume after configured cooldown
   Orch -> Bus : TurnCompleted
@@ -117,6 +125,10 @@ end note
 note over Orch,Tts
   Response completion ordering is deliberate: flush TTS, record history,
   wait for playback, resume the microphone, then publish TurnCompleted.
+  In mode 3 (text_voice) only the derivative pass is spoken: the first
+  pass dispatches with speak_streaming=False (a single latched TTS gate,
+  not the global mute), so its rich text streams to the screen without
+  audio while the derivative speaks through the unchanged path.
 end note
 
 @enduml

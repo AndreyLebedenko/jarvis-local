@@ -139,6 +139,11 @@ thinking_toggle = "ctrl+alt+t"
 # acoustic detection required. See PROJECT.md's v1.7.0 architecture
 # section.
 interrupt = "ctrl+alt+i"
+# v1.9.0: cycles the response mode through text -> voice -> text_voice ->
+# text. A live, session-only change (the Settings drop-down persists the
+# default instead; see below). See PROJECT.md's Architecture v1.9.0
+# section.
+response_mode_toggle = "ctrl+alt+o"
 
 [vad]
 threshold = 0.5
@@ -437,10 +442,43 @@ warmup = "Привет"
 # response_text_voice = "Restate the shown text aloud; you may refer to it."
 
 [response]
-# Response mode: "text" (default, today's behavior), "voice" (TTS-Only,
-# self-contained one-pass spoken answer, no on-screen reference), or
-# "text_voice" (Text+TTS, two passes - see task-v1.9.0-3 once it lands).
-# See tasks/story-v1.9.0-response-modes.md for the full trade-offs.
+# Jarvis's response mode: how a turn's answer is produced, shown, and
+# spoken. Three modes; "text" is the default, so nothing changes until you
+# opt in.
+#
+# mode = "text" -- Text-Only (today's behavior). One pass; the canonical
+# rich answer streams to the screen and the existing sentence-buffered TTS
+# speaks it as it streams. Lowest latency.
+#
+# mode = "voice" -- TTS-Only. One pass, but the model is asked for a
+# self-contained spoken answer: plain connected prose, no bullets, tables,
+# or inline URLs, numbers spoken the way they are heard. Because nothing
+# is shown on screen, the spoken answer references nothing external by
+# construction. Choose this when the request's content has no
+# "cannot-be-spoken" remainder (no table/code block/long URL you would
+# need to see); requests that do have one will lose it in this mode.
+#
+# mode = "text_voice" -- Text+TTS. Two passes, deliberately a
+# quality-for-latency trade rather than an optimization: the first pass
+# streams the canonical rich answer to the screen exactly as in "text",
+# then a second pass (with reasoning off) takes that exact shown text and
+# speaks a derivative of it - a voice guide over the on-screen content,
+# allowed to say "as in the table above" because that content is actually
+# visible. The screen is not delayed; only the audio waits for the first
+# pass to complete. The canonical text is what history, retrieval, and
+# memory index; the spoken derivative is stored under the same Journal
+# turn as "spoken aloud" but never fed back as standalone knowledge.
+# Users who need the lowest latency per answer should choose "text" or
+# "voice"; "text_voice" is the richer show-then-talk-me-through option.
+#
+# Switching at runtime: the live mode for the running session is changed by
+# the Ctrl+Alt+O cycle hotkey, the Status-tab buttons, or a spoken command
+# ("switch to voice mode", when [prompts].voice_intent_directive is
+# configured); neither the hotkey nor the buttons persist anything. The
+# value set here (config.toml) seeds the next launch and can be overridden
+# per-key by config.ui.toml, which the Settings tab's drop-down + Apply
+# writes. See tasks/story-v1.9.0-response-modes.md and PROJECT.md's
+# Architecture v1.9.0 section for the full trade-offs.
 mode = "text"
 
 [mcp]
