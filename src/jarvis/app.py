@@ -1223,12 +1223,12 @@ class Orchestrator:
             # claim may record it as aborted or clear busy (claim_turn_end()'s
             # own contract - see finish_turn()). A lost claim here means
             # either a hotkey interrupt already recorded this turn as
-            # interrupted (task-v1.7.0-3, the single-pass case), or this
-            # dispatch is a sub-pass of a turn _on_full_response_complete()
-            # still owns and is mid-teardown (mode 3's derivative pass) - in
-            # both cases the actual owner clears busy itself, via its own
-            # finish_turn() call, and this dispatch must not race ahead of
-            # it by clearing busy a second, earlier time.
+            # interrupted (the single-pass case), or this dispatch is a
+            # sub-pass of a turn _on_full_response_complete() still owns and
+            # is mid-teardown (a derivative sub-pass) - in both cases the
+            # actual owner clears busy itself, via its own finish_turn()
+            # call, and this dispatch must not race ahead of it by clearing
+            # busy a second, earlier time.
             if self.claim_turn_end():
                 await self.record_aborted_turn(outcome=TurnOutcome.FAILED)
                 self._busy = False
