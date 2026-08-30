@@ -52,6 +52,7 @@ from jarvis.core.lifecycle import (
     AttachmentSubmissionResult,
     BackendRequestFailed,
     ModelRequestInput,
+    ModelRequestPassKind,
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
@@ -251,17 +252,16 @@ def _compose_effective_system_prompt(
     return f"{base_prompt}\n\n{section}"
 
 
-# Mode 1 (text) selects no field: today's first pass stays byte-identical.
-# Modes 2 and 3 both select "response_voice" here - a task-1 placeholder for
-# mode 3 (story-v1.9.0 task 1's own scope decision): until task 3 adds the
-# second pass, mode 3 has only one pass and nothing else would make what it
-# speaks voice-friendly. Task 3 repoints ResponseMode.TEXT_VOICE at
-# "response_text_voice" for its new second pass and leaves mode 3's first
-# pass on the base prompt (matching mode 1), which is the real seam this
-# placeholder exists for.
+# Mode 1 (text) and mode 3's first pass both select no field: mode 3's rich
+# first pass is the canonical text, composed exactly like mode 1's - task
+# 3 (story-v1.9.0) moved TEXT_VOICE out of this table for that reason, now
+# that its second pass exists and is what "response_text_voice" is for
+# (see run_derivative_pass() below, which reads that field directly rather
+# than through this table - the derivative pass has no reasoning section
+# and no history to compose against, so _compose_effective_system_prompt()
+# does not apply to it).
 _RESPONSE_MODE_PROMPT_FIELD_BY_MODE: dict[ResponseMode, str] = {
     ResponseMode.VOICE: "response_voice",
-    ResponseMode.TEXT_VOICE: "response_voice",
 }
 
 
@@ -464,6 +464,24 @@ class Orchestrator:
         self._busy = False
         self._current_turn_history_text: str = VOICE_PLACEHOLDER_TEXT
         self._journal_turn_started = False
+        # Mode-3 second pass (story-v1.9.0 task 3). _current_pass_speaks
+        # gates on_response_token()'s "speaking" cue/mic-auto-pause below;
+        # _dispatch_backend_request() is its one assignment point (both
+        # callers below funnel their own speak_streaming value through it),
+        # the same value TtsOutput separately latches for its own gate from
+        # the ModelRequestStarted that call publishes. False for mode 3's
+        # muted first pass so neither fires before any audio is actually
+        # about to play, then True again for the derivative pass.
+        # _pending_derivative_pass and
+        # _pending_canonical_text carry on_response_complete()'s decision
+        # (mode 3: defer the journal write, do not finish the turn yet) to
+        # _on_full_response_complete(), which owns running the second
+        # dispatch and only then finishing the turn - see
+        # needs_derivative_pass()/run_derivative_pass().
+        self._current_pass_speaks = True
+        self._pending_derivative_pass = False
+        self._pending_canonical_text: str | None = None
+        self._current_turn_response_mode: ResponseMode = ResponseMode.TEXT
         # Set once record_voice_user()/record_text_user() actually returns
         # (task-v1.7.0-3 review) - see record_aborted_turn(). Replaced with
         # a fresh Event every turn in _start_turn(), same reason
@@ -899,6 +917,8 @@ class Orchestrator:
         self._current_turn_history_text = history_text
         self._response_tokens = []
         self._spoke_this_turn = False
+        self._pending_derivative_pass = False
+        self._pending_canonical_text = None
         if self._journal_recorder is not None:
             # _journal_turn_started is set *before* each await, not after
             # (task-v1.7.0-3 review): record_aborted_turn() reads this flag
@@ -976,6 +996,15 @@ class Orchestrator:
         response_mode = (
             self._response_mode.mode if self._response_mode else ResponseMode.TEXT
         )
+        self._current_turn_response_mode = response_mode
+        # Mode 3's first pass is muted (story-v1.9.0 task 3): its rich text
+        # streams to the screen as normal, but the derivative pass - not
+        # this one - is what gets spoken. Passed into
+        # _dispatch_backend_request() below, which gates both TtsOutput (via
+        # ModelRequestStarted) and on_response_token()'s own speaking-cue/
+        # mic-auto-pause (self._current_pass_speaks), so neither fires before
+        # any audio is actually about to play.
+        speak_streaming = response_mode is not ResponseMode.TEXT_VOICE
         effective_system_prompt = _compose_response_mode_contract(
             effective_system_prompt,
             response_mode,
@@ -1009,6 +1038,7 @@ class Orchestrator:
             audio_duration_seconds,
             interrupt_requested,
             prompt_budget,
+            speak_streaming=speak_streaming,
         )
 
     async def _prepare_automatic_retrieval(
@@ -1101,6 +1131,9 @@ class Orchestrator:
         audio_duration_seconds: float | None,
         interrupt_requested: asyncio.Event,
         prompt_budget: dict[str, int | bool | str] | None = None,
+        *,
+        speak_streaming: bool = True,
+        pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY,
     ) -> None:
         """Runs the backend call as a cancellable task and handles its
         three outcomes: normal completion (nothing further to do here -
@@ -1124,6 +1157,13 @@ class Orchestrator:
         this call keeps checking *this* turn's own signal even then."""
         if interrupt_requested.is_set():
             return
+        # Single source of truth for on_response_token()'s cue/auto-pause
+        # gate (reuse finding: this used to be set separately by both
+        # callers of this method, which could drift out of sync with what
+        # is actually dispatched). Set unconditionally, not only when
+        # self._bus is set below, so it stays correct for direct/bus-less
+        # callers too.
+        self._current_pass_speaks = speak_streaming
         # Ownership guard (task-v1.7.0-3 review, fifth round): this dispatch
         # may only ever clear the task *it* created. A stale invocation from
         # an interrupted turn A can resume (from the ModelRequestStarted
@@ -1139,6 +1179,8 @@ class Orchestrator:
                     inputs=inputs,
                     audio_duration_seconds=audio_duration_seconds,
                     prompt_budget=prompt_budget,
+                    speak_streaming=speak_streaming,
+                    pass_kind=pass_kind,
                 )
                 # Not publish_system_event(): the events panel already has
                 # this turn as a typed, localized entry (task-v1.6.4-2), so
@@ -1177,22 +1219,32 @@ class Orchestrator:
             if self._bus is not None:
                 await self._bus.publish(BackendRequestFailed, BackendRequestFailed())
             await self._sound_cues.play("error")
-            # Gated on claim_turn_end() purely to avoid double-recording if a
-            # hotkey interrupt races this same failure (task-v1.7.0-3): a lost
-            # claim means _cancel_current_turn() already recorded this turn as
-            # interrupted. Everything else below (busy-clearing) is
-            # unconditional, exactly as before - only the new recording call
-            # is guarded.
+            # Gated on claim_turn_end(): only the winner of a turn's one
+            # claim may record it as aborted or clear busy (claim_turn_end()'s
+            # own contract - see finish_turn()). A lost claim here means
+            # either a hotkey interrupt already recorded this turn as
+            # interrupted (task-v1.7.0-3, the single-pass case), or this
+            # dispatch is a sub-pass of a turn _on_full_response_complete()
+            # still owns and is mid-teardown (mode 3's derivative pass) - in
+            # both cases the actual owner clears busy itself, via its own
+            # finish_turn() call, and this dispatch must not race ahead of
+            # it by clearing busy a second, earlier time.
             if self.claim_turn_end():
                 await self.record_aborted_turn(outcome=TurnOutcome.FAILED)
-            self._busy = False
+                self._busy = False
         finally:
             if self._active_chat_task is own_chat_task:
                 self._active_chat_task = None
 
     async def on_response_token(self, event: ResponseToken) -> None:
         self._response_tokens.append(event.text)
-        if not self._spoke_this_turn:
+        # Gated on the current pass's own directive (story-v1.9.0 task 3),
+        # not just "first token of the turn": mode 3's muted first pass
+        # must not play the speaking cue or auto-pause the mic before any
+        # audio is actually about to happen - that only becomes true once
+        # the derivative pass starts. Modes 1/2 always have
+        # _current_pass_speaks True, so this is byte-identical to before.
+        if not self._spoke_this_turn and self._current_pass_speaks:
             self._spoke_this_turn = True
             await self._sound_cues.play("speaking")
             if self._audio_input is not None:
@@ -1202,13 +1254,76 @@ class Orchestrator:
         """Records this turn's history. Does not clear the busy flag -
         see finish_turn(), which must run only once all of this turn's
         speech has actually finished playing (see wire()'s
-        on_full_response_complete)."""
+        on_full_response_complete).
+
+        Mode 3 (story-v1.9.0 task 3): the journal write is deferred rather
+        than made here. The derivative must land in the *same* journal
+        record as the canonical text (the story's additive, append-only
+        requirement - one event, not a second turn), but the derivative
+        does not exist yet at this point; it is produced by a second
+        dispatch that has not run. Setting _pending_derivative_pass tells
+        _on_full_response_complete() (app.py) to run that dispatch - via
+        run_derivative_pass() - before finishing the turn; that method is
+        what actually calls record_assistant(), once, with both fields."""
         full_text = "".join(self._response_tokens)
         self._history.add("user", self._current_turn_history_text)
         self._history.add("assistant", full_text)
+        if self._current_turn_response_mode is ResponseMode.TEXT_VOICE:
+            self._pending_derivative_pass = True
+            self._pending_canonical_text = full_text
+            return
         if self._journal_recorder is not None and self._journal_turn_started:
             await self._journal_recorder.record_assistant(full_text)
             self._journal_turn_started = False
+
+    def needs_derivative_pass(self) -> bool:
+        return self._pending_derivative_pass
+
+    async def run_derivative_pass(self) -> None:
+        """Mode 3's second dispatch (story-v1.9.0 task 3): reasoning off,
+        the spoken-derivative contract as the sole system prompt, the
+        exact first-pass text as the sole user message - a pure form
+        transformation over already-produced content, not a re-read of
+        the request. Reuses this turn's own interrupt_requested/
+        _active_chat_task (via _dispatch_backend_request), so the
+        interrupt hotkey cancels it exactly like any other in-flight
+        dispatch; _dispatch_backend_request() swallows that cancellation
+        quietly (it does not know this call is only a sub-pass), so this
+        method checks interrupt_requested itself afterwards and tags the
+        journal write accordingly - the canonical text is complete either
+        way, only the derivative rendering may be partial.
+
+        Called only from _on_full_response_complete() (app.py), itself
+        gated on claim_turn_end() - an interrupted turn never reaches
+        here, so an aborted mode-3 turn naturally skips this pass."""
+        canonical_text = self._pending_canonical_text
+        assert canonical_text is not None
+        self._response_tokens = []
+        derivative_contract = self._reasoning_prompt_settings.response_text_voice or ""
+        messages: list[dict[str, object]] = [
+            {"role": "system", "content": derivative_contract},
+            {"role": "user", "content": canonical_text},
+        ]
+        await self._dispatch_backend_request(
+            messages,
+            None,
+            ReasoningLevel.OFF,
+            (),
+            None,
+            self._interrupt_requested,
+            speak_streaming=True,
+            pass_kind=ModelRequestPassKind.DERIVATIVE,
+        )
+        derivative_text = "".join(self._response_tokens)
+        if self._journal_recorder is not None and self._journal_turn_started:
+            await self._journal_recorder.record_assistant(
+                canonical_text,
+                spoken_derivative=derivative_text,
+                spoken_derivative_interrupted=self._interrupt_requested.is_set(),
+            )
+            self._journal_turn_started = False
+        self._pending_derivative_pass = False
+        self._pending_canonical_text = None
 
     async def record_aborted_turn(self, *, outcome: TurnOutcome) -> None:
         """Records a turn that ends without its answer being recorded
@@ -1940,6 +2055,20 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
     try:
         await app.tts_output.on_response_complete(event)  # flushes trailing sentence
         await app.orchestrator.on_response_complete(event)  # records history
+        if app.orchestrator.needs_derivative_pass():
+            # Mode 3 (story-v1.9.0 task 3): the turn is not over - the
+            # claim above still holds it through this second dispatch, so
+            # a new user turn stays rejected as busy and no other caller
+            # races finish_turn()/TurnCompleted for this turn. The
+            # derivative's own ResponseComplete (published inside this
+            # call, from OllamaBackend.chat()) re-enters this very
+            # function recursively, but claim_turn_end() is already spent
+            # for this turn, so that reentrant call is a no-op by
+            # construction - this call is the only one that ever finishes
+            # a mode-3 turn.
+            await app.orchestrator.run_derivative_pass()
+            # flushes the derivative pass's own trailing sentence
+            await app.tts_output.on_response_complete(event)
         await app.tts_output.wait_for_pending()  # waits for ALL of this turn's speech
     except asyncio.CancelledError:
         # An interrupt's tts_output.cancel() (task-v1.7.0-2) cancelled the
@@ -1954,9 +2083,13 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
         # calling record_aborted_turn() here. The real TtsOutput.on_response_
         # complete() only performs synchronous, in-memory buffer operations
         # and cannot raise; every real synthesis/playback failure surfaces
-        # later, through wait_for_pending() - by which point orchestrator.
-        # on_response_complete() above has already recorded this turn
-        # normally, so calling record_aborted_turn() here would double it.
+        # later, through wait_for_pending() - by which point this turn's
+        # answer has already been journaled: directly by orchestrator.
+        # on_response_complete() for a single-pass turn, or - for a turn
+        # that ran a derivative pass above - by run_derivative_pass() itself
+        # before returning (its own dispatch swallows its exceptions
+        # internally rather than raising them here). So calling
+        # record_aborted_turn() here would double-record either way.
         # There is no reachable sub-case left to record.
         logger.exception("Response completion failed")
         await app.sound_cues.play("error")
@@ -2323,6 +2456,7 @@ def wire(app: App) -> list[Subscription]:
         (UtteranceChunk, on_utterance_captured),
         (ScreenshotCaptured, app.orchestrator.on_screenshot),
         (ClipboardSubmitted, app.orchestrator.on_clipboard),
+        (ModelRequestStarted, app.tts_output.on_request_started),
         (ResponseToken, app.tts_output.on_token),
         (ResponseToken, app.orchestrator.on_response_token),
         (ResponseComplete, on_full_response_complete),

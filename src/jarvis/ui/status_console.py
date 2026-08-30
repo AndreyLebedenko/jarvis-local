@@ -24,6 +24,7 @@ from jarvis.core.config import (
     update_ui_config_mcp_enabled,
     write_ui_config,
 )
+from jarvis.core.lifecycle import ModelRequestPassKind
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
@@ -163,6 +164,8 @@ def model_request_payload(summary: ModelRequestSummary) -> dict:
     payload = {"timestamp": summary.timestamp, "items": items}
     if summary.prompt_budget is not None:
         payload["prompt_budget"] = dict(summary.prompt_budget)
+    if summary.pass_kind is not ModelRequestPassKind.PRIMARY:
+        payload["pass_kind"] = summary.pass_kind.value
     return payload
 
 
@@ -182,12 +185,15 @@ def model_request_log_payload(summary: ModelRequestSummary) -> dict:
     clipboard text, a file name, or media bytes.
     """
     request = model_request_payload(summary)
-    return {
+    payload = {
         "entry": "model_request",
         "timestamp": request["timestamp"],
         "level": EventLevel.INFO.value,
         "items": request["items"],
     }
+    if "pass_kind" in request:
+        payload["pass_kind"] = request["pass_kind"]
+    return payload
 
 
 def system_event_payload(event: SystemEvent) -> dict:

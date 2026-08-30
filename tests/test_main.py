@@ -57,7 +57,7 @@ from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.audio.sound_cues import SoundCuePlayer
-from jarvis.audio.tts import BilingualTtsEngine
+from jarvis.audio.tts import BilingualTtsEngine, TtsOutput
 from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
@@ -73,6 +73,7 @@ from jarvis.core.config import (
     MicrophoneSettings,
     PiperTtsSettings,
     PromptSettings,
+    ResponseSettings,
     Settings,
     SileroTtsSettings,
     TtsSettings,
@@ -383,6 +384,8 @@ class _FakeJournalRecorder:
         self.user_text_sources: list[str] = []
         self.assistant_texts: list[str] = []
         self.assistant_outcomes: list[TurnOutcome | None] = []
+        self.assistant_spoken_derivatives: list[str | None] = []
+        self.assistant_spoken_derivative_interrupted: list[bool] = []
         self.forks: list[tuple[str, str]] = []
         # Records every write call in the exact order the real recorder
         # would see it - separate from the per-kind lists above, which lose
@@ -406,11 +409,25 @@ class _FakeJournalRecorder:
         self.call_order.append(f"text_user:{text}")
 
     async def record_assistant(
-        self, text: str, *, outcome: TurnOutcome | None = None
+        self,
+        text: str,
+        *,
+        outcome: TurnOutcome | None = None,
+        spoken_derivative: str | None = None,
+        spoken_derivative_interrupted: bool = False,
     ) -> None:
         self.assistant_texts.append(text)
         self.assistant_outcomes.append(outcome)
-        self.call_order.append(f"assistant:{text!r}:{outcome}")
+        self.assistant_spoken_derivatives.append(spoken_derivative)
+        self.assistant_spoken_derivative_interrupted.append(
+            spoken_derivative_interrupted
+        )
+        derivative_suffix = (
+            f":{spoken_derivative!r}" if spoken_derivative is not None else ""
+        )
+        if spoken_derivative_interrupted:
+            derivative_suffix += ":interrupted"
+        self.call_order.append(f"assistant:{text!r}:{outcome}{derivative_suffix}")
 
     async def wait_for_pending(self) -> None:
         pass
@@ -2902,10 +2919,12 @@ async def test_start_turn_with_no_thinking_mode_defaults_to_off():
 # Orchestrator samples ResponseModeState.mode at turn start - same seam and
 # same "next accepted turn only" rule as ReasoningLevelState above. Mode 1
 # (text) appends nothing, so the first pass stays byte-identical to today.
-# Modes 2 (voice) and 3 (text_voice) both select the same self-contained
-# voice contract on the first pass in this task: text_voice has no second
-# pass yet, so it reuses mode 2's contract as a placeholder (task 1's own
-# scope decision - see app.py's _RESPONSE_MODE_PROMPT_FIELD_BY_MODE).
+# Mode 2 (voice) selects the self-contained voice contract on its single
+# pass. Mode 3 (text_voice)'s first pass is the canonical rich text, so it
+# selects no field here at all, matching mode 1 - its own contract
+# (response_text_voice) belongs to the second pass instead (story-v1.9.0
+# task 3, see run_derivative_pass()'s own tests below, and app.py's
+# _RESPONSE_MODE_PROMPT_FIELD_BY_MODE).
 
 
 async def test_text_mode_turn_does_not_append_any_response_mode_contract():
@@ -2920,9 +2939,8 @@ async def test_text_mode_turn_does_not_append_any_response_mode_contract():
     assert backend.calls[-1][0][0] == {"role": "system", "content": "base prompt"}
 
 
-@pytest.mark.parametrize("mode", [ResponseMode.VOICE, ResponseMode.TEXT_VOICE])
-async def test_voice_and_text_voice_modes_append_the_voice_contract(mode):
-    response_mode = ResponseModeState(bus=EventBus(), initial_mode=mode)
+async def test_voice_mode_appends_the_voice_contract():
+    response_mode = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.VOICE)
     prompts = PromptSettings(response_voice="speak plainly")
     orchestrator, backend, _sound_cues = _orchestrator(
         response_mode=response_mode, reasoning_prompt_settings=prompts
@@ -2939,9 +2957,12 @@ async def test_voice_and_text_voice_modes_append_the_voice_contract(mode):
     }
 
 
-async def test_response_text_voice_contract_field_is_not_yet_selected_by_any_mode():
-    """response_text_voice exists as a PromptSettings field (task-3 hook)
-    but task 1's pipeline never selects it, even in text_voice mode."""
+async def test_text_voice_modes_first_pass_uses_the_base_prompt_only():
+    """Mode 3's first pass is the canonical rich text (story-v1.9.0 task 3):
+    it composes exactly like mode 1, never the voice contract - the
+    response_text_voice field is reserved for the second pass, dispatched
+    separately from _compose_response_mode_contract() entirely (see the
+    mode-3 second-pass tests below)."""
     response_mode = ResponseModeState(
         bus=EventBus(), initial_mode=ResponseMode.TEXT_VOICE
     )
@@ -2957,9 +2978,7 @@ async def test_response_text_voice_contract_field_is_not_yet_selected_by_any_mod
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    content = backend.calls[-1][0][0]["content"]
-    assert "voice contract" in content
-    assert "derivative contract" not in content
+    assert backend.calls[-1][0][0] == {"role": "system", "content": "base prompt"}
 
 
 async def test_reasoning_section_and_response_mode_contract_compose_together():
@@ -2998,6 +3017,276 @@ async def test_start_turn_with_no_response_mode_defaults_to_text():
     )
 
     assert backend.calls[-1][0][0] == {"role": "system", "content": "base prompt"}
+
+
+# --- mode 3 second pass (story-v1.9.0 task 3) -------------------------------
+
+
+def _text_voice_orchestrator(*, chat_impl, journal_recorder=None, response_mode=None):
+    prompts = PromptSettings(response_text_voice="derivative contract")
+    mode_state = response_mode or ResponseModeState(
+        bus=EventBus(), initial_mode=ResponseMode.TEXT_VOICE
+    )
+    orchestrator, backend, sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        response_mode=mode_state,
+        reasoning_prompt_settings=prompts,
+        journal_recorder=journal_recorder,
+    )
+    orchestrator._system_prompt = "base prompt"
+    return orchestrator, backend, sound_cues
+
+
+async def test_first_pass_defers_the_journal_write_and_flags_a_pending_derivative():
+    """Orchestrator.on_response_complete() (mode 3): the derivative does not
+    exist yet at this point, so the journal write must wait - see
+    run_derivative_pass()'s own tests below for the actual write."""
+
+    async def chat_impl() -> None:
+        await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, _backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    # not set until on_response_complete
+    assert orchestrator.needs_derivative_pass() is False
+    await orchestrator.on_response_complete(_complete_event())
+
+    assert orchestrator.needs_derivative_pass() is True
+    assert journal_recorder.assistant_texts == []  # deferred, not skipped
+
+
+async def test_modes_1_and_2_never_defer_the_journal_write():
+    async def chat_impl() -> None:
+        await orchestrator.on_response_token(ResponseToken(text="reply"))
+
+    journal_recorder = _FakeJournalRecorder()
+    voice_mode = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.VOICE)
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        response_mode=voice_mode,
+        journal_recorder=journal_recorder,
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+
+    assert orchestrator.needs_derivative_pass() is False
+    assert journal_recorder.assistant_texts == ["reply"]
+
+
+async def test_derivative_pass_dispatches_reasoning_off_over_the_exact_shown_text():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+        else:
+            await orchestrator.on_response_token(ResponseToken(text="derivative reply"))
+
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(chat_impl=chat_impl)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert len(backend.calls) == 2
+    messages, images = backend.calls[1]
+    assert messages == [
+        {"role": "system", "content": "derivative contract"},
+        {"role": "user", "content": "canonical reply"},
+    ]
+    assert images is None
+    assert backend.reasoning_level_calls[1] is ReasoningLevel.OFF
+    assert orchestrator.needs_derivative_pass() is False
+
+
+async def test_derivative_pass_records_both_texts_in_the_same_journal_event():
+    """Additive, one event, not a second turn (story-v1.9.0 task 3's own
+    append-only requirement)."""
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+        else:
+            await orchestrator.on_response_token(ResponseToken(text="derivative reply"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert journal_recorder.assistant_texts == ["canonical reply"]
+    assert journal_recorder.assistant_spoken_derivatives == ["derivative reply"]
+
+
+async def test_derivative_pass_speaks_even_though_the_first_pass_was_muted():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+        else:
+            await orchestrator.on_response_token(ResponseToken(text="derivative"))
+
+    orchestrator, backend, sound_cues = _text_voice_orchestrator(chat_impl=chat_impl)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    # Mode 3's muted first pass: no speaking cue, matching TtsOutput's own
+    # mute of this pass - neither should announce audio that never plays.
+    assert sound_cues.played == ["thinking"]
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert "speaking" in sound_cues.played
+
+
+async def test_derivative_pass_with_no_response_text_voice_uses_an_empty_prompt():
+    """response_text_voice is None means "not configured" (same optional-
+    field shape as response_voice) - the dispatch must not crash, and must
+    still send the exact shown text as the user message."""
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+
+    mode_state = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.TEXT_VOICE)
+    orchestrator, backend, _sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        response_mode=mode_state,
+        reasoning_prompt_settings=PromptSettings(response_text_voice=None),
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    messages, _images = backend.calls[1]
+    assert messages == [
+        {"role": "system", "content": ""},
+        {"role": "user", "content": "canonical reply"},
+    ]
+
+
+async def test_interrupted_derivative_pass_flags_only_the_derivative_as_cut_short():
+    """Bug report tasks/bug_reports/2026-08-30-mode3-derivative-pass-
+    backend-failure-races-turn-teardown.md: _dispatch_backend_request()
+    swallows the derivative dispatch's CancelledError and returns quietly
+    (its own "this turn is over" contract, written for a single-pass turn
+    where cancellation cleanup is someone else's job), so run_derivative_
+    pass() must check interrupt_requested itself afterwards.
+
+    The journaled outcome must NOT reuse TurnOutcome.INTERRUPTED here: that
+    field describes `text` (the turn's own answer), which is complete -
+    only the derivative rendering was cut short. A dedicated flag next to
+    spoken_derivative keeps that distinction instead of making every
+    consumer that does not know to check a second field misreport a
+    complete answer as unfinished."""
+    still_busy = asyncio.Event()
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+            return
+        await orchestrator.on_response_token(ResponseToken(text="half deriv"))
+        await still_busy.wait()
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+
+    derivative_task = asyncio.create_task(orchestrator.run_derivative_pass())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # let the derivative pass's own chat() start
+
+    orchestrator.cancel_active_turn()
+    await derivative_task
+
+    assert journal_recorder.assistant_texts == ["canonical reply"]
+    assert journal_recorder.assistant_spoken_derivatives == ["half deriv"]
+    assert journal_recorder.assistant_spoken_derivative_interrupted == [True]
+    # The canonical reply is complete - only the derivative was cut short.
+    assert journal_recorder.assistant_outcomes == [None]
+
+
+async def test_uninterrupted_derivative_pass_does_not_set_the_interrupted_flag():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+        else:
+            await orchestrator.on_response_token(ResponseToken(text="derivative reply"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert journal_recorder.assistant_spoken_derivative_interrupted == [False]
+    assert journal_recorder.assistant_outcomes == [None]
+
+
+async def test_derivative_pass_backend_failure_does_not_clear_busy_early():
+    """Bug report tasks/bug_reports/2026-08-30-mode3-derivative-pass-
+    backend-failure-races-turn-teardown.md: _dispatch_backend_request()'s
+    except-Exception branch used to clear self._busy unconditionally, even
+    when claim_turn_end() had already been lost - which it always is here,
+    since _on_full_response_complete() (app.py) claims the turn once, before
+    ever calling run_derivative_pass(). Only the winner of that claim may
+    clear busy (claim_turn_end()'s own contract - see finish_turn()); a real
+    (non-cancellation) exception on the derivative dispatch must leave it
+    alone and let the outer call's own finally/finish_turn() do it once
+    teardown actually finishes."""
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+            return
+        raise RuntimeError("derivative backend call failed")
+
+    orchestrator, backend, sound_cues = _text_voice_orchestrator(chat_impl=chat_impl)
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    # Mirrors _on_full_response_complete()'s own claim, taken before it ever
+    # calls run_derivative_pass() - the turn's one claim is already spent by
+    # the time the derivative dispatch below fails.
+    assert orchestrator.claim_turn_end() is True
+
+    await orchestrator.run_derivative_pass()
+
+    assert orchestrator.is_busy is True
+    assert sound_cues.played[-1] == "error"
 
 
 # --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------
@@ -3310,6 +3599,9 @@ class _FakeAudioInput:
 class _FakeTtsOutput:
     def __init__(self) -> None:
         self.cancel_calls = 0
+
+    async def on_request_started(self, event) -> None:
+        pass
 
     async def on_token(self, event) -> None:
         pass
@@ -4614,6 +4906,49 @@ async def test_the_cue_after_a_capture_failure_never_claims_a_wake():
 # --- ResponseComplete ordering (review finding) -----------------------------
 
 
+class _OrderingTts:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+        self._task: asyncio.Task | None = None
+
+    async def on_response_complete(self, event) -> None:
+        self._events.append("trailing_sentence_scheduled")
+        self._task = asyncio.create_task(self._delayed_finish())
+
+    async def _delayed_finish(self) -> None:
+        await asyncio.sleep(0)  # yield once, like real synthesis would
+        self._events.append("trailing_speech_finished")
+
+    async def wait_for_pending(self) -> None:
+        if self._task is not None:
+            await self._task
+
+
+class _OrderingOrchestrator:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    def claim_turn_end(self) -> bool:
+        return True
+
+    async def on_response_complete(self, event) -> None:
+        self._events.append("history_recorded")
+
+    def needs_derivative_pass(self) -> bool:
+        return False
+
+    async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
+        self._events.append("busy_cleared")
+
+
+class _OrderingSoundCues:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    async def play(self, cue: str) -> None:
+        self._events.append(f"cue:{cue}")
+
+
 async def test_on_full_response_complete_plays_listening_only_after_trailing_speech():
     """Regression test for a real bug: an earlier version subscribed
     tts_output, orchestrator, and a "replay listening cue" closure
@@ -4627,44 +4962,14 @@ async def test_on_full_response_complete_plays_listening_only_after_trailing_spe
     """
     events: list[str] = []
 
-    class _FakeTts:
-        def __init__(self) -> None:
-            self._task: asyncio.Task | None = None
-
-        async def on_response_complete(self, event) -> None:
-            events.append("trailing_sentence_scheduled")
-            self._task = asyncio.create_task(self._delayed_finish())
-
-        async def _delayed_finish(self) -> None:
-            await asyncio.sleep(0)  # yield once, like real synthesis would
-            events.append("trailing_speech_finished")
-
-        async def wait_for_pending(self) -> None:
-            if self._task is not None:
-                await self._task
-
-    class _FakeOrchestrator:
-        def claim_turn_end(self) -> bool:
-            return True
-
-        async def on_response_complete(self, event) -> None:
-            events.append("history_recorded")
-
-        async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
-            events.append("busy_cleared")
-
-    class _FakeSoundCuesForOrdering:
-        async def play(self, cue: str) -> None:
-            events.append(f"cue:{cue}")
-
     app = App(
         bus=EventBus(),
         backend=None,
         audio_input=None,
-        tts_output=_FakeTts(),
+        tts_output=_OrderingTts(events),
         capture_input=None,
-        orchestrator=_FakeOrchestrator(),
-        sound_cues=_FakeSoundCuesForOrdering(),
+        orchestrator=_OrderingOrchestrator(events),
+        sound_cues=_OrderingSoundCues(events),
         thinking_mode=None,
         response_mode=None,
         settings=_settings(),
@@ -4676,6 +4981,70 @@ async def test_on_full_response_complete_plays_listening_only_after_trailing_spe
         "trailing_sentence_scheduled",
         "history_recorded",
         "trailing_speech_finished",
+        "busy_cleared",
+        "cue:listening",
+    ]
+
+
+async def test_on_full_response_complete_runs_the_derivative_pass_before_finishing():
+    """Mode 3 (story-v1.9.0 task 3): when the orchestrator flags a pending
+    derivative pass, _on_full_response_complete() must run it - and flush
+    its own trailing sentence - before wait_for_pending()/finish_turn()/
+    TurnCompleted, not after. The claim is still held from the top of this
+    same call, so nothing else can race finishing this turn in the gap."""
+    events: list[str] = []
+
+    class _FakeTtsForDerivative:
+        async def on_response_complete(self, event) -> None:
+            events.append("tts_flush")
+
+        async def wait_for_pending(self) -> None:
+            events.append("tts_wait_for_pending")
+
+    class _FakeOrchestratorForDerivative:
+        def claim_turn_end(self) -> bool:
+            return True
+
+        async def on_response_complete(self, event) -> None:
+            events.append("history_recorded")
+
+        def needs_derivative_pass(self) -> bool:
+            # Only True the first time - run_derivative_pass() itself
+            # clears the flag once it has run, mirroring the real
+            # Orchestrator's own contract.
+            return not events.count("derivative_pass_run")
+
+        async def run_derivative_pass(self) -> None:
+            events.append("derivative_pass_run")
+
+        async def finish_turn(self, cooldown_seconds: float = 0.0) -> None:
+            events.append("busy_cleared")
+
+    class _FakeSoundCuesForDerivative:
+        async def play(self, cue: str) -> None:
+            events.append(f"cue:{cue}")
+
+    app = App(
+        bus=EventBus(),
+        backend=None,
+        audio_input=None,
+        tts_output=_FakeTtsForDerivative(),
+        capture_input=None,
+        orchestrator=_FakeOrchestratorForDerivative(),
+        sound_cues=_FakeSoundCuesForDerivative(),
+        thinking_mode=None,
+        response_mode=None,
+        settings=_settings(),
+    )
+
+    await _on_full_response_complete(app, _complete_event())
+
+    assert events == [
+        "tts_flush",  # pass 1's own (muted) trailing sentence
+        "history_recorded",
+        "derivative_pass_run",
+        "tts_flush",  # pass 2's trailing sentence
+        "tts_wait_for_pending",
         "busy_cleared",
         "cue:listening",
     ]
@@ -5150,6 +5519,9 @@ class _RecordingTtsOutput:
     def __init__(self) -> None:
         self.received_texts: list[str] = []
 
+    async def on_request_started(self, event) -> None:
+        pass
+
     async def on_token(self, event: ResponseToken) -> None:
         self.received_texts.append(event.text)
 
@@ -5232,6 +5604,94 @@ async def test_thinking_chunks_never_reach_journal_through_real_bus_wiring(tmp_p
     ]
     assert all("reasoning" not in event.text for event in replay.events)
     assert tts_output.received_texts == ["Hello"]
+
+
+def _client_with_sequential_ndjson_bodies(
+    bodies: list[list[dict]],
+) -> httpx.AsyncClient:
+    """Like _client_with_ndjson_body, but a different canned response per
+    call - mode 3's second pass (story-v1.9.0 task 3) is a real second
+    POST to the same backend, not a re-read of the first."""
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        lines = bodies[min(call_count, len(bodies) - 1)]
+        call_count += 1
+        body = "\n".join(json.dumps(line) for line in lines).encode() + b"\n"
+        return httpx.Response(200, content=body)
+
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://localhost:11434"
+    )
+
+
+async def test_mode_3_derivative_reaches_tts_while_first_pass_stays_silent(tmp_path):
+    """The full mode-3 flow (story-v1.9.0 task 3) through the real bus/wire()
+    wiring AND the real TtsOutput (not a fake that skips its own gating
+    logic): the canonical first pass streams to history/journal but never
+    reaches synthesis, and the derivative second pass - a real second POST
+    to the backend - is what actually gets spoken."""
+
+    class _FakeTtsEngine:
+        async def synthesize(self, text: str, language: str = "ru") -> bytes:
+            return text.encode()
+
+    played: list[str] = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    canonical_lines = [
+        {"message": {"content": "Canonical text."}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    derivative_lines = [
+        {"message": {"content": "Derivative speech."}, "done": False},
+        {"message": {"content": ""}, "done": True, "eval_count": 1},
+    ]
+    bus = EventBus()
+    backend = OllamaBackend(
+        bus=bus,
+        settings=BackendSettings(),
+        client=_client_with_sequential_ndjson_bodies(
+            [canonical_lines, derivative_lines]
+        ),
+    )
+    tts_output = TtsOutput(
+        TtsSettings(), engine=_FakeTtsEngine(), play=fake_play, bus=bus
+    )
+    settings = Settings(
+        journal=JournalSettings(root=str(tmp_path)),
+        response=ResponseSettings(mode="text_voice"),
+        prompts=PromptSettings(response_text_voice="derivative contract"),
+    )
+
+    app = build_app(
+        settings,
+        bus=bus,
+        backend=backend,
+        audio_input=_FakeAudioInput(),
+        tts_output=tts_output,
+        capture_input=_FakeCaptureInput(),
+    )
+    wire(app)
+
+    await app.bus.publish(
+        UtteranceChunk,
+        UtteranceChunk(wav_bytes=b"voice clip", start_seconds=0, end_seconds=1),
+    )
+    assert app.journal_recorder is not None
+    await app.journal_recorder.wait_for_pending()
+
+    assert played == ["Derivative speech."]
+
+    session_id = app.journal_recorder.session_id
+    assert session_id is not None
+    replay = JournalStore(tmp_path).read_session(session_id)
+    [assistant_event] = [e for e in replay.events if e.role == "assistant"]
+    assert assistant_event.text == "Canonical text."
+    assert assistant_event.metadata["spoken_derivative"] == "Derivative speech."
 
 
 def test_push_runtime_state_is_not_suppressed_by_a_direct_transport_update():

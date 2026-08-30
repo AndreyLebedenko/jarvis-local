@@ -21,7 +21,7 @@ reasoning text, only operational statements about what a module is doing.
 import enum
 from dataclasses import dataclass
 
-from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.core.lifecycle import ModelRequestInput, ModelRequestPassKind
 from jarvis.journal.events import JSONValue
 
 
@@ -82,6 +82,7 @@ class ModelRequestSummary:
     timestamp: float
     items: tuple[ModelRequestItem, ...]
     prompt_budget: dict[str, int | bool | str] | None = None
+    pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY
 
 
 class EventLevel(enum.Enum):

@@ -17,7 +17,7 @@ The story's content rule binds this module: no transcript, no clipboard
 text, no attachment file names, no media bytes or sizes.
 """
 
-from jarvis.core.lifecycle import ModelRequestStarted
+from jarvis.core.lifecycle import ModelRequestPassKind, ModelRequestStarted
 
 LOG_SOURCE = "LLM"
 
@@ -26,6 +26,8 @@ def model_request_log_message(event: ModelRequestStarted) -> str:
     """Render one system-log line describing a turn's request modalities."""
     kinds = ",".join(input_kind.value for input_kind in event.inputs) or "none"
     parts = [f"Model request: inputs={kinds}", f"count={len(event.inputs)}"]
+    if event.pass_kind is not ModelRequestPassKind.PRIMARY:
+        parts.append(f"pass={event.pass_kind.value}")
     if event.audio_duration_seconds is not None:
         parts.append(f"audio_duration={event.audio_duration_seconds:.1f}s")
     if event.prompt_budget is not None:

@@ -30,6 +30,11 @@ class ModelRequestInput(Enum):
     ATTACHMENT_TEXT = "attachment_text"
 
 
+class ModelRequestPassKind(Enum):
+    PRIMARY = "primary"
+    DERIVATIVE = "derivative"
+
+
 class TextSubmissionReason(Enum):
     ACCEPTED = "accepted"
     BUSY = "busy"
@@ -114,12 +119,30 @@ class TurnAccepted:
 
 @dataclass(frozen=True)
 class ModelRequestStarted:
-    """Metadata-only statement that an accepted backend call is beginning."""
+    """Metadata-only statement that an accepted backend call is beginning.
+
+    speak_streaming (story-v1.9.0 task 3): the playback directive for the
+    response this dispatch expects. TtsOutput latches it from the most
+    recent ModelRequestStarted and applies it to the ResponseTokens that
+    follow - "dispatch precedes streaming" (this event is always awaited
+    to completion before the chat task that streams tokens is created) is
+    the invariant that latch relies on. Default True means "speak the
+    streaming pass", today's behavior for every mode and every caller that
+    predates this field.
+
+    pass_kind: PRIMARY for an ordinary single- or first-pass dispatch,
+    DERIVATIVE for mode 3's reasoning-off second pass over the exact
+    first-pass text. Purely descriptive (logging/events-panel tagging via
+    model_request_log_message()) - TtsOutput and the dispatch pipeline
+    never branch on it, only on speak_streaming.
+    """
 
     timestamp: float
     inputs: tuple[ModelRequestInput, ...]
     audio_duration_seconds: float | None
     prompt_budget: dict[str, int | bool | str] | None = None
+    speak_streaming: bool = True
+    pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY
 
 
 @dataclass(frozen=True)

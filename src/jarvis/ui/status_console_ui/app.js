@@ -199,12 +199,24 @@ function _requestItemText(item) {
   return uiString("last_request_" + item.kind) + detail;
 }
 
+// story-v1.9.0 task 3: mode 3's derivative sub-pass publishes its own
+// ModelRequestStarted (reasoning off, over the shown text) so it is
+// honestly logged as a real inference call - this tag is what keeps it
+// from reading as a second turn in the chip strip / events panel.
+function _passKindSuffix(payload) {
+  return payload.pass_kind === "derivative"
+    ? " (" + uiString("model_request_pass_derivative") + ")"
+    : "";
+}
+
 function applyLastModelRequest(payload) {
   const list = document.getElementById("lastRequestList");
   list.replaceChildren();
+  const suffix = _passKindSuffix(payload);
   for (const item of payload.items || []) {
     const row = document.createElement("li");
-    row.textContent = formatLogTime(payload.timestamp) + " - " + _requestItemText(item);
+    row.textContent =
+      formatLogTime(payload.timestamp) + " - " + _requestItemText(item) + suffix;
     list.appendChild(row);
   }
 }
@@ -506,7 +518,14 @@ function appendSystemEvent(payload) {
 }
 
 function _appendModelRequestEntry(payload) {
-  const text = (payload.items || []).map(_requestItemText).join(", ");
+  // The derivative sub-pass (story-v1.9.0 task 3) carries no modality
+  // items of its own - it is a form transform over already-shown text,
+  // not a new user input - so its row falls back to the pass tag alone
+  // rather than rendering blank.
+  const itemsText = (payload.items || []).map(_requestItemText).join(", ");
+  const text = itemsText
+    ? itemsText + _passKindSuffix(payload)
+    : uiString("model_request_pass_derivative");
   _appendLogRow(payload, uiString("log_source_model_request"), text, "model_request");
 }
 
@@ -2518,6 +2537,8 @@ function _journalEventElement(event, position = null) {
   if (provenanceDetail !== null) message.appendChild(provenanceDetail);
   const outcomeDetail = _journalOutcomeDetail(event);
   if (outcomeDetail !== null) message.appendChild(outcomeDetail);
+  const spokenDerivativeDetail = _journalSpokenDerivativeDetail(event);
+  if (spokenDerivativeDetail !== null) message.appendChild(spokenDerivativeDetail);
   return message;
 }
 
@@ -3507,6 +3528,38 @@ function _journalOutcomeDetail(event) {
   const detail = document.createElement("div");
   detail.className = "journal-provenance-detail";
   detail.textContent = uiString(key);
+  return detail;
+}
+
+// story-v1.9.0 task 3: mode 3's second pass attaches its spoken derivative
+// to the SAME assistant JournalEvent as the canonical reply (metadata,
+// additive, no second turn - see JournalRecorder.record_assistant()), so
+// it renders here the same way, always collapsed by default per the
+// story's own "collapsed block under the reply" requirement - <details>
+// gives that for free with no click-handler bookkeeping of our own.
+function _journalSpokenDerivativeDetail(event) {
+  if (
+    event.role !== "assistant" ||
+    !event.metadata ||
+    event.metadata.spoken_derivative === undefined
+  ) {
+    return null;
+  }
+  const detail = document.createElement("details");
+  detail.className = "journal-spoken-derivative";
+  const summary = document.createElement("summary");
+  summary.textContent = uiString("journal_spoken_derivative_label");
+  detail.appendChild(summary);
+  const text = document.createElement("div");
+  text.className = "journal-spoken-derivative-text";
+  text.textContent = event.metadata.spoken_derivative;
+  detail.appendChild(text);
+  if (event.metadata.spoken_derivative_interrupted) {
+    const note = document.createElement("div");
+    note.className = "journal-provenance-detail";
+    note.textContent = uiString("journal_spoken_derivative_interrupted");
+    detail.appendChild(note);
+  }
   return detail;
 }
 

@@ -31,6 +31,7 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import (
     AttachmentSubmissionResult,
     ModelRequestInput,
+    ModelRequestPassKind,
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
@@ -972,7 +973,6 @@ class UiTransportServer:
         self._publish_delta(self._state.set_module_health(health))
 
     async def _on_model_request_started(self, event: ModelRequestStarted) -> None:
-        self._publish_delta(self._state.set_data_source(DataSource.LOCAL_ONLY))
         summary = ModelRequestSummary(
             timestamp=event.timestamp,
             items=tuple(
@@ -987,8 +987,22 @@ class UiTransportServer:
                 for input_kind in event.inputs
             ),
             prompt_budget=event.prompt_budget,
+            pass_kind=event.pass_kind,
         )
-        self._publish_delta(self._state.set_last_model_request(summary))
+        # A non-primary pass (story-v1.9.0 task 3's derivative sub-pass) is
+        # an internal continuation of the same turn, not a new user-facing
+        # request: it carries no modality items of its own, so treating it
+        # like a primary request here would blank out the chip strip's
+        # "this turn included: ..." summary and reset the data-source
+        # badge back to local-only even if pass 1 had already escalated it
+        # via a tool call (record_tool_boundary's own precedence tracking
+        # would otherwise be silently overwritten by this plain replace).
+        # The events-panel log entry still gets every pass, tagged, so the
+        # derivative dispatch is never hidden from the audit trail - only
+        # these two turn-level summaries stay pinned to the primary pass.
+        if event.pass_kind is ModelRequestPassKind.PRIMARY:
+            self._publish_delta(self._state.set_data_source(DataSource.LOCAL_ONLY))
+            self._publish_delta(self._state.set_last_model_request(summary))
         self._publish_delta(self._state.add_model_request_event(summary))
 
     async def _on_tool_call_started(self, event: ToolCallStarted) -> None:

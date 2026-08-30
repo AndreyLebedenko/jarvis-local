@@ -42,6 +42,7 @@ from jarvis.audio.tts_silero import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, TtsSettings
+from jarvis.core.lifecycle import ModelRequestStarted
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 
 
@@ -929,6 +930,80 @@ async def test_on_response_complete_schedules_no_synthesis_while_muted():
     await tts.wait_for_pending()
 
     assert played == []
+
+
+async def _request_started(*, speak_streaming: bool) -> ModelRequestStarted:
+    return ModelRequestStarted(
+        timestamp=0.0,
+        inputs=(),
+        audio_duration_seconds=None,
+        speak_streaming=speak_streaming,
+    )
+
+
+async def test_on_token_schedules_no_synthesis_when_directive_says_do_not_speak():
+    """Mode 3's muted first pass (story-v1.9.0 task 3): latched from the
+    most recent ModelRequestStarted, the same single-entry-gate shape as
+    mute_state above but per-turn rather than global."""
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
+
+    await tts.on_request_started(await _request_started(speak_streaming=False))
+    await tts.on_token(ResponseToken(text="Первое предложение. "))
+    await tts.wait_for_pending()
+
+    assert played == []
+
+
+async def test_on_response_complete_schedules_none_when_directive_says_do_not_speak():
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
+
+    await tts.on_request_started(await _request_started(speak_streaming=False))
+    await tts.on_token(ResponseToken(text="Без точки в конце"))
+    await tts.on_response_complete(
+        ResponseComplete(
+            metrics=LatencyMetrics(
+                load_seconds=0.0,
+                prompt_eval_seconds=0.0,
+                eval_seconds=0.0,
+                eval_count=0,
+            )
+        )
+    )
+    await tts.wait_for_pending()
+
+    assert played == []
+
+
+async def test_a_later_directive_speaks_again_after_a_muted_pass():
+    """Mode 3's derivative pass (story-v1.9.0 task 3): its own
+    ModelRequestStarted carries speak_streaming=True, so the very next
+    on_token() speaks - the muted first pass leaves no residue in the
+    sentence buffer for the flush to pick up later (on_token's own gate
+    sits before SpeechUnitBuffer.feed(), not just before scheduling)."""
+    played = []
+
+    async def fake_play(audio: bytes) -> None:
+        played.append(audio.decode())
+
+    tts = TtsOutput(TtsSettings(), engine=_FakeEngine(), play=fake_play)
+
+    await tts.on_request_started(await _request_started(speak_streaming=False))
+    await tts.on_token(ResponseToken(text="Muted first pass. "))
+    await tts.on_request_started(await _request_started(speak_streaming=True))
+    await tts.on_token(ResponseToken(text="Второе предложение. "))
+    await tts.wait_for_pending()
+
+    assert played == ["Второе предложение."]
 
 
 async def test_on_token_speaks_again_once_unmuted():

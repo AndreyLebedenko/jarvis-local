@@ -18,7 +18,7 @@ from jarvis.core.config import (
     VadSettings,
     load_settings,
 )
-from jarvis.core.lifecycle import ModelRequestInput
+from jarvis.core.lifecycle import ModelRequestInput, ModelRequestPassKind
 from jarvis.core.solo_session import SoloSessionChanged, SoloSessionState
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import (
@@ -63,6 +63,7 @@ from jarvis.ui.status_console import (
     data_source_payload,
     mcp_state_payload,
     microphone_option_payload,
+    model_request_log_payload,
     model_request_payload,
     module_health_payload,
     response_mode_payload,
@@ -244,6 +245,38 @@ def test_model_request_payload_shape_contains_only_metadata():
             "blank_context_cleared": False,
         },
     }
+
+
+def test_model_request_payload_omits_pass_kind_for_a_primary_pass():
+    payload = model_request_payload(
+        ModelRequestSummary(
+            timestamp=1.0, items=(), pass_kind=ModelRequestPassKind.PRIMARY
+        )
+    )
+
+    assert "pass_kind" not in payload
+
+
+def test_model_request_payload_tags_the_derivative_sub_pass():
+    """story-v1.9.0 task 3: mode 3's derivative pass must be tagged so the
+    panel does not read it as a second turn."""
+    payload = model_request_payload(
+        ModelRequestSummary(
+            timestamp=1.0, items=(), pass_kind=ModelRequestPassKind.DERIVATIVE
+        )
+    )
+
+    assert payload["pass_kind"] == "derivative"
+
+
+def test_model_request_log_payload_carries_the_pass_kind_tag_through():
+    payload = model_request_log_payload(
+        ModelRequestSummary(
+            timestamp=1.0, items=(), pass_kind=ModelRequestPassKind.DERIVATIVE
+        )
+    )
+
+    assert payload["pass_kind"] == "derivative"
 
 
 def test_system_event_payload_shape():
@@ -1150,6 +1183,27 @@ def test_app_js_renders_a_modality_through_one_shared_formatter():
     entry_body = js[entry_start : js.index("\n}\n", entry_start)]
     assert "_requestItemText" in strip_body
     assert "_requestItemText" in entry_body
+
+
+def test_derivative_pass_is_tagged_in_the_chip_strip_and_the_events_panel():
+    """story-v1.9.0 task 3: mode 3's derivative sub-pass carries no
+    modality items of its own, so both renderers must read pass_kind
+    rather than silently rendering a blank row."""
+    js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    suffix_start = js.index("function _passKindSuffix")
+    suffix_body = js[suffix_start : js.index("\n}\n", suffix_start)]
+    assert 'payload.pass_kind === "derivative"' in suffix_body
+    assert 'uiString("model_request_pass_derivative")' in suffix_body
+
+    strip_start = js.index("function applyLastModelRequest")
+    strip_body = js[strip_start : js.index("\n}\n", strip_start)]
+    assert "_passKindSuffix(payload)" in strip_body
+
+    entry_start = js.index("function _appendModelRequestEntry")
+    entry_body = js[entry_start : js.index("\n}\n", entry_start)]
+    assert "_passKindSuffix(payload)" in entry_body
+    assert 'uiString("model_request_pass_derivative")' in entry_body
 
 
 def test_request_log_entry_strings_exist_in_both_languages():
