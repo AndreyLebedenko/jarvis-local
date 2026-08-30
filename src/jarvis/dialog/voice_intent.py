@@ -26,9 +26,7 @@ import re
 from jarvis.core.config import PromptSettings
 from jarvis.dialog.response_mode import ResponseMode
 
-PROBE_USER_INSTRUCTION = (
-    "Answer with one marker word only, no other text."
-)
+PROBE_USER_INSTRUCTION = "Answer with one marker word only, no other text."
 
 # The exact marker contract: SWITCH_RESPONSE_MODE=<mode value>. One line,
 # nothing else on it. Anything not matching this exactly is request content.

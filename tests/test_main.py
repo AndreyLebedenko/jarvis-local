@@ -3291,28 +3291,90 @@ async def test_derivative_pass_backend_failure_does_not_clear_busy_early():
 # --- voice intent probe (story-v1.9.0, task 4) ------------------------------
 #
 # A voice turn with [prompts].voice_intent_directive configured runs a
-# non-dialog probe pass over the same audio before the normal dispatch.
+# non-dialog probe pass over the same audio - through the backend's
+# streaming iterator directly (iter_chat), never the ResponseToken-
+# publishing chat(), so probe chatter cannot reach TTS or the runtime orb.
 # Only the exact SWITCH_RESPONSE_MODE=<mode> marker (parsed by
 # jarvis.dialog.voice_intent) routes into set_mode(source="VOICE") and
-# suppresses the turn; everything else - the default, empty, verbose,
-# ambiguous - fails safe to a normal request, byte-identical to today.
+# suppresses the turn; everything else - the default (no directive),
+# empty, verbose, a probe failure - fails safe to a normal request,
+# byte-identical to today.
 
 
-def _voice_intent_orchestrator(directive: str, *, chat_impl=None, bus=None):
+class _FakeVoiceIntentBackend:
+    """iter_chat-only backend: records probe calls, replays the
+    preconfigured probe reply text. chat() raises, proving the probe
+    never travels the ResponseToken-publishing path."""
+
+    def __init__(self, probe_reply: str | None = None, probe_error=None) -> None:
+        self.iter_calls: list[tuple[list[dict], list[str] | None, ReasoningLevel]] = []
+        self._probe_reply = probe_reply
+        self._probe_error = probe_error
+
+    async def iter_chat(
+        self,
+        messages,
+        images_b64=None,
+        reasoning_level=ReasoningLevel.OFF,
+        tools=None,
+    ):
+        self.iter_calls.append((list(messages), images_b64, reasoning_level))
+        if self._probe_error is not None:
+            raise self._probe_error
+        if self._probe_reply:
+            yield {"message": {"content": self._probe_reply}, "done": True}
+        else:
+            yield {"message": {"content": ""}, "done": True}
+
+    async def chat(self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF):
+        self.chat_recorded = list(messages)
+
+
+class _ForwardingBackend:
+    """Dispatches iter_chat to the voice-intent fake and records ordinary
+    chat() calls - the seam that distinguishes "probe only" from "the
+    request also ran" in the tests below."""
+
+    def __init__(self, iter_backend) -> None:
+        self._iter_backend = iter_backend
+        self.chat_calls: list[list[dict]] = []
+
+    async def iter_chat(self, *args, **kwargs):
+        async for chunk in self._iter_backend.iter_chat(*args, **kwargs):
+            yield chunk
+
+    async def chat(self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF):
+        self.chat_calls.append(list(messages))
+
+
+def _voice_intent_orchestrator(
+    directive: str | None, *, journal_recorder=None, bus=None
+):
     prompts = PromptSettings(voice_intent_directive=directive)
-    response_mode = ResponseModeState(bus=EventBus())
-    return _orchestrator(
-        chat_impl=chat_impl,
-        response_mode=response_mode,
+    state = ResponseModeState(bus=EventBus())
+    voice_backend = _FakeVoiceIntentBackend()
+    forwarding = _ForwardingBackend(voice_backend)
+    sound_cues = _FakeSoundCues()
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        sound_cues,
+        response_mode=state,
         reasoning_prompt_settings=prompts,
         bus=bus,
+        journal_recorder=journal_recorder,
     )
+    orchestrator._system_prompt = "base prompt"
+    return orchestrator, voice_backend, forwarding, sound_cues, state
 
 
 async def test_voice_turn_with_no_directive_is_byte_identical_to_today():
-    """The feature is off by default (PromptSettings default None): no
-    probe pass, only the one ordinary dispatch - the card's default-
+    """The feature is off by default (PromptSettings.voice_intent_directive
+    is None): no probe pass, one ordinary dispatch - the card's default-
     unchanged boundary."""
+    prompts = PromptSettings()
+    assert prompts.voice_intent_directive is None
+
     orchestrator, backend, _sound_cues = _orchestrator()
     orchestrator._system_prompt = "base prompt"
 
@@ -3324,158 +3386,167 @@ async def test_voice_turn_with_no_directive_is_byte_identical_to_today():
     assert backend.calls[0][0][0] == {"role": "system", "content": "base prompt"}
 
 
-async def test_voice_turn_with_directive_runs_a_probe_before_the_real_dispatch():
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator("intent rules")
+async def test_voice_turn_with_directive_runs_a_probe_pass_over_the_audio():
+    backend = _FakeVoiceIntentBackend(probe_reply="not a marker")
+    forwarding = _ForwardingBackend(backend)
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=ResponseModeState(bus=EventBus()),
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt"
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert len(backend.calls) == 2
-    probe_messages, probe_images = backend.calls[0]
+    # The probe ran through iter_chat and the ordinary dispatch followed.
+    assert len(backend.iter_calls) == 1
+    probe_messages, probe_images, probe_reasoning = backend.iter_calls[0]
     assert probe_messages[0] == {"role": "system", "content": "intent rules"}
     # The turn's own audio rides the verified images field on the probe too.
     assert probe_images == [base64.b64encode(b"a").decode()]
-    assert backend.calls[1][0][0] == {"role": "system", "content": ""}
-
-
-async def test_probe_passes_reasoning_off():
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator("intent rules")
-
-    await orchestrator.on_utterance(
-        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
-    )
-
-    assert backend.reasoning_level_calls == [
-        ReasoningLevel.OFF,
-        ReasoningLevel.OFF,
-    ]
-
-
-async def test_probe_publishes_no_response_tokens_to_tts_wiring():
-    """A probe is a transcription-style pass: whatever it streams must
-    never become a ResponseToken, or switch chatter would be spoken."""
-    from jarvis.dialog.backend import ResponseToken as _ResponseToken
-
-    bus = EventBus()
-    spoken: list[str] = []
-    bus.subscribe(
-        _ResponseToken,
-        lambda event: _collect(spoken, event.text),
-    )
-    probe_streamed_switch_marker = "SWITCH_RESPONSE_MODE=voice"
-
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            await orchestrator._probe_tokens.append(probe_streamed_switch_marker)
-
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator(
-        "intent rules", chat_impl=chat_impl, bus=bus
-    )
-    orchestrator._response_tokens = []
-    orchestrator._probe_tokens = []
-
-    await orchestrator._run_voice_intent_probe(
-        ["system-message"], images_b64=None
-    )
-
-    assert orchestrator._probe_tokens == ["SWITCH_RESPONSE_MODE=voice"]
-    assert spoken == []  # never published as a ResponseToken
-
-
-def _collect(items: list, value) -> None:
-    items.append(value)
+    assert probe_reasoning is ReasoningLevel.OFF
+    assert len(forwarding.chat_calls) == 1
 
 
 async def test_recognized_marker_switches_mode_with_voice_source_and_skips_the_turn():
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            orchestrator._probe_tokens.append("SWITCH_RESPONSE_MODE=VOICE")
-        # A second (real) dispatch must never happen for a command.
-
-    orchestrator, backend, sound_cues = _voice_intent_orchestrator(
-        "intent rules", chat_impl=chat_impl
-    )
+    bus = EventBus()
     changed: list[ResponseModeChanged] = []
-    bus = orchestrator._bus
-    if bus is not None:
-        bus.subscribe(ResponseModeChanged, lambda e: _collect_mode(changed, e))
 
-    await orchestrator.on_utterance(
-        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
-    )
+    async def on_event(event: ResponseModeChanged) -> None:
+        changed.append(event)
 
-    assert orchestrator._response_mode is not None
-    assert orchestrator._response_mode.mode is ResponseMode.VOICE
-    assert len(backend.calls) == 1  # the probe only - no ordinary dispatch
-    # The suppressed turn must not leave a phantom turn state behind:
-    # busy is cleared so the next utterance is accepted immediately.
-    assert orchestrator.is_busy is False
-
-
-def _collect_mode(items: list, event) -> None:
-    items.append(event)
-
-
-async def test_suppressed_command_turn_still_records_the_command_in_the_journal():
-    """A switch command is not swallowed into silence: the user event is
-    journaled, and only the assistant dispatch is skipped - a later turn
-    must not be able to mistake what happened."""
+    bus.subscribe(ResponseModeChanged, on_event)
+    backend = _FakeVoiceIntentBackend(probe_reply="SWITCH_RESPONSE_MODE=voice")
+    forwarding = _ForwardingBackend(backend)
     journal_recorder = _FakeJournalRecorder()
-
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            orchestrator._probe_tokens.append("SWITCH_RESPONSE_MODE=voice")
-
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator(
-        "intent rules", chat_impl=chat_impl, journal_recorder=journal_recorder
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    state = ResponseModeState(bus=bus)
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=state,
+        reasoning_prompt_settings=prompts,
+        bus=bus,
+        journal_recorder=journal_recorder,
     )
+    orchestrator._system_prompt = "base prompt"
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
+    assert state.mode is ResponseMode.VOICE
+    assert changed == [ResponseModeChanged(mode=ResponseMode.VOICE, source="VOICE")]
+    # The probe only - no ordinary dispatch for a recognized command.
+    assert forwarding.chat_calls == []
+    # The suppressed turn's teardown: busy cleared, command journaled.
+    assert orchestrator.is_busy is False
     assert journal_recorder.voice_wavs == [b"a"]
-    assert journal_recorder.assistant_texts == []
+    assert journal_recorder.assistant_texts == [""]
+
+
+async def test_suppressed_command_history_keeps_the_mode_switch_note():
+    backend = _FakeVoiceIntentBackend(probe_reply="SWITCH_RESPONSE_MODE=text_voice")
+    forwarding = _ForwardingBackend(backend)
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=ResponseModeState(bus=EventBus()),
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert orchestrator._history.as_messages() == [
+        {"role": "user", "content": VOICE_PLACEHOLDER_TEXT},
+        {"role": "system", "content": main_module._MODE_SWITCH_HISTORY_NOTE},
+    ]
 
 
 async def test_probe_failure_fails_safe_to_a_normal_request():
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            raise RuntimeError("probe backend exploded")
-
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator(
-        "intent rules", chat_impl=chat_impl
+    backend = _FakeVoiceIntentBackend(probe_error=RuntimeError("probe backend down"))
+    forwarding = _ForwardingBackend(backend)
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    state = ResponseModeState(bus=EventBus())
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=state,
+        reasoning_prompt_settings=prompts,
     )
+    orchestrator._system_prompt = "base prompt"
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert len(backend.calls) == 2  # probe failed; the real dispatch ran
+    # The ordinary dispatch ran after the failed probe; mode unchanged.
+    assert len(forwarding.chat_calls) == 1
+    assert state.mode is ResponseMode.TEXT
 
 
 async def test_non_marker_probe_reply_passes_through_as_a_normal_request():
-    """Content mentioning modes ("read me the switch statement out loud") -
-    and any other non-marker probe answer - must flow through unchanged."""
-
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            orchestrator._probe_tokens.append(
-                "Отвечу подробно: это обычный запрос про modes."
-            )
-
-    orchestrator, backend, _sound_cues = _voice_intent_orchestrator(
-        "intent rules", chat_impl=chat_impl
+    """Content mentioning modes ("read me the switch statement out loud")
+    - and any other non-marker probe answer - flows through unchanged."""
+    backend = _FakeVoiceIntentBackend(
+        probe_reply="Отвечу подробно: это обычный запрос про modes."
     )
+    forwarding = _ForwardingBackend(backend)
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    state = ResponseModeState(bus=EventBus())
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=state,
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt"
 
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
 
-    assert orchestrator._response_mode is not None
-    assert orchestrator._response_mode.mode is ResponseMode.TEXT
-    assert len(backend.calls) == 2
+    assert state.mode is ResponseMode.TEXT
+    assert len(forwarding.chat_calls) == 1
+
+
+async def test_near_miss_marker_reply_passes_through_as_a_normal_request():
+    """A chatty wrapper around the marker text is not the one accepted
+    shape - fail safe to request."""
+    backend = _FakeVoiceIntentBackend(
+        probe_reply="Готово: SWITCH_RESPONSE_MODE=voice - переключил!"
+    )
+    forwarding = _ForwardingBackend(backend)
+    prompts = PromptSettings(voice_intent_directive="intent rules")
+    state = ResponseModeState(bus=EventBus())
+    orchestrator = Orchestrator(
+        forwarding,
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=state,
+        reasoning_prompt_settings=prompts,
+    )
+    orchestrator._system_prompt = "base prompt"
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert state.mode is ResponseMode.TEXT
+    assert len(forwarding.chat_calls) == 1
 
 
 # --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------

@@ -87,6 +87,11 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
+from jarvis.dialog.voice_intent import (
+    build_probe_messages,
+    intent_directive_from_settings,
+    parse_mode_switch_marker,
+)
 from jarvis.files import (
     SessionFileError,
     SessionFileRepository,
@@ -377,6 +382,13 @@ _INTERRUPTED_HISTORY_NOTE = (
     "Пользователь прервал этот ответ до того, как он был закончен."
 )
 _FAILED_HISTORY_NOTE = "Ответ не был получен из-за технической ошибки бэкенда."
+# Voice mode-switch command (story-v1.9.0, task 4): the probe recognized a
+# command, so no assistant answer exists for this turn - the note tells the
+# model (in a later turn's history) why this user turn has no reply.
+_MODE_SWITCH_HISTORY_NOTE = (
+    "Это была команда переключения режима ответа; "
+    "режим переключён, ответ не требовался."
+)
 
 
 def _compose_session_file_cue(storage_names: Sequence[str]) -> str:
@@ -863,6 +875,52 @@ class Orchestrator:
             upload.filename, storage_name=result.storage_name, bytes=result.bytes
         )
 
+    async def _record_turn_user_event(
+        self,
+        source: TurnSource,
+        *,
+        voice_wav_bytes: bytes | None,
+        screenshot_png_bytes: bytes | None,
+        history_text: str,
+        journal_source: str | None,
+    ) -> None:
+        """Records the accepted turn's user side in the journal, per
+        source. _journal_turn_started is set *before* each await, not
+        after (task-v1.7.0-3 review): record_aborted_turn() reads this
+        flag to decide whether to write a journal entry for a turn that
+        never completes normally. Setting it only after the await returned
+        left a window - reachable by an interrupt landing during the await
+        itself - where the write had already been decided on (and, in a
+        slower JournalRecorder implementation, already scheduled) but the
+        flag still read False, so a concurrent record_aborted_turn()
+        silently skipped the journal side entirely. Setting it here also
+        removes a second, subtler bug: the old post-await assignment ran
+        even after an interrupt had already ended this turn (and already
+        reset the flag to False for it) - resurrecting a stale True left
+        over from an ended turn until the next _start_turn() call reset
+        it."""
+        if self._journal_recorder is None:
+            return
+        if source is TurnSource.VOICE and voice_wav_bytes is not None:
+            self._journal_turn_started = True
+            await self._journal_recorder.record_voice_user(
+                voice_wav_bytes, screenshot_png_bytes=screenshot_png_bytes
+            )
+        elif source in {TurnSource.TEXT, TurnSource.TEXT_INPUT}:
+            self._journal_turn_started = True
+            await self._journal_recorder.record_text_user(
+                history_text, source=journal_source or "text"
+            )
+        elif source is TurnSource.ATTACHMENT:
+            # No media reference is recorded, matching record_text_user()'s
+            # existing text-only contract (only record_voice_user() ever
+            # writes a journal media file) - the journal-recording policy
+            # does not extend to attachment media.
+            self._journal_turn_started = True
+            await self._journal_recorder.record_text_user(
+                history_text, source="attachment"
+            )
+
     async def _start_turn(
         self,
         history_text: str,
@@ -918,40 +976,13 @@ class Orchestrator:
         self._spoke_this_turn = False
         self._pending_derivative_pass = False
         self._pending_canonical_text = None
-        if self._journal_recorder is not None:
-            # _journal_turn_started is set *before* each await, not after
-            # (task-v1.7.0-3 review): record_aborted_turn() reads this flag
-            # to decide whether to write a journal entry for a turn that
-            # never completes normally. Setting it only after the await
-            # returned left a window - reachable by an interrupt landing
-            # during the await itself - where the write had already been
-            # decided on (and, in a slower JournalRecorder implementation,
-            # already scheduled) but the flag still read False, so a
-            # concurrent record_aborted_turn() silently skipped the journal
-            # side entirely. Setting it here also removes a second, subtler
-            # bug: the old post-await assignment ran even after an
-            # interrupt had already ended this turn (and already reset the
-            # flag to False for it) - resurrecting a stale True left over
-            # from an ended turn until the next _start_turn() call reset it.
-            if source is TurnSource.VOICE and voice_wav_bytes is not None:
-                self._journal_turn_started = True
-                await self._journal_recorder.record_voice_user(
-                    voice_wav_bytes, screenshot_png_bytes=screenshot_png_bytes
-                )
-            elif source in {TurnSource.TEXT, TurnSource.TEXT_INPUT}:
-                self._journal_turn_started = True
-                await self._journal_recorder.record_text_user(
-                    history_text, source=journal_source or "text"
-                )
-            elif source is TurnSource.ATTACHMENT:
-                # No media reference is recorded, matching record_text_user()'s
-                # existing text-only contract (only record_voice_user() ever
-                # writes a journal media file) - the journal-recording policy
-                # does not extend to attachment media.
-                self._journal_turn_started = True
-                await self._journal_recorder.record_text_user(
-                    history_text, source="attachment"
-                )
+        await self._record_turn_user_event(
+            source,
+            voice_wav_bytes=voice_wav_bytes,
+            screenshot_png_bytes=screenshot_png_bytes,
+            history_text=history_text,
+            journal_source=journal_source,
+        )
         # Marks that whichever journal-recording decision above was made
         # (including "none") has been carried out - record_aborted_turn()
         # waits on this before writing the assistant/outcome side, so it
@@ -983,6 +1014,18 @@ class Orchestrator:
         if interrupt_requested.is_set():
             return
         await self._sound_cues.play("thinking")
+
+        # Voice intent probe (story-v1.9.0, task 4): with the opt-in
+        # [prompts].voice_intent_directive configured, a voice utterance is
+        # first classified as mode-switch command vs. ordinary request by a
+        # short non-dialog pass over the same audio, *before* any ordinary
+        # dispatch. A recognized marker changes the mode - through the same
+        # live set_mode() path the hotkey/UI use, source="VOICE" - and the
+        # utterance never becomes a request (no spurious spoken answer);
+        # anything else fails safe to the normal turn below, byte-identical
+        # to the pre-task-4 behavior.
+        if await self._run_voice_intent_gate(source, media_b64, interrupt_requested):
+            return
 
         reasoning_level = (
             self._thinking_mode.level if self._thinking_mode else ReasoningLevel.OFF
@@ -1051,6 +1094,92 @@ class Orchestrator:
             self._resolve_automatic_retrieval,
             history_text,
         )
+
+    async def _run_voice_intent_gate(
+        self,
+        source: TurnSource,
+        media_b64: list[str] | None,
+        interrupt_requested: asyncio.Event,
+    ) -> bool:
+        """The task-4 voice-intent gate: returns True when this voice
+        utterance was a recognized mode-switch command and the turn has
+        been fully handled (mode changed, journal written, busy cleared).
+        False means the caller continues with the ordinary request -
+        including every non-voice turn, every dispatch without the opt-in
+        [prompts].voice_intent_directive, and every unrecognized probe
+        reply (fail safe to "it was a request").
+        """
+        if source is not TurnSource.VOICE:
+            return False
+        directive = intent_directive_from_settings(self._reasoning_prompt_settings)
+        if directive is None:
+            return False
+        recognized_mode = await self._run_voice_intent_probe(
+            directive,
+            images_b64=media_b64,
+            interrupt_requested=interrupt_requested,
+        )
+        if recognized_mode is None or self._response_mode is None:
+            return False
+        await self._response_mode.set_mode(recognized_mode, source="VOICE")
+        # The command's own teardown: an empty assistant turn with the
+        # mode-switch note in ConversationHistory (a later turn's context
+        # must show the command was obeyed, not answered), the assistant
+        # journal entry for the append-only invariant, and busy cleared so
+        # the next utterance is accepted immediately. No ResponseToken ever
+        # existed, so there is nothing for TTS to cancel; history keeps the
+        # exchange coherent without recording a mode-marker in the text.
+        self._history.add("user", self._current_turn_history_text)
+        self._history.add("system", _MODE_SWITCH_HISTORY_NOTE)
+        if self._journal_recorder is not None and self._journal_turn_started:
+            await self._journal_recorder.record_assistant("")
+        self._journal_turn_started = False
+        self._active_chat_task = None
+        await self._sound_cues.play("listening")
+        self._busy = False
+        if self._bus is not None:
+            await self._bus.publish(TurnCompleted, TurnCompleted())
+        return True
+
+    async def _run_voice_intent_probe(
+        self,
+        directive: str,
+        *,
+        images_b64: list[str] | None,
+        interrupt_requested: asyncio.Event,
+    ) -> ResponseMode | None:
+        """The task-4 voice-intent pass: a transcription-style, non-dialog
+        classification of this turn's audio. Runs the backend's streaming
+        iterator directly - never backend.chat(), whose ResponseToken
+        publications would feed probe chatter to TTS and the runtime orb -
+        collects the reply text locally, and parses the one exact marker.
+
+        Failure handling: an exception (or an interrupt) fails safe to
+        None - the caller then runs the ordinary request unchanged. The
+        probe must never turn a transient backend error into a swallowed
+        utterance."""
+        probe_messages = build_probe_messages(directive)
+        parts: list[str] = []
+        try:
+            if interrupt_requested.is_set():
+                return None
+            async for chunk in self._backend.iter_chat(
+                probe_messages,
+                images_b64=images_b64,
+                reasoning_level=ReasoningLevel.OFF,
+                tools=None,
+            ):
+                message = chunk.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content:
+                        parts.append(content)
+                if chunk.get("done"):
+                    break
+        except Exception:
+            logger.exception("Voice intent probe failed; treating input as a request")
+            return None
+        return parse_mode_switch_marker("".join(parts))
 
     def _resolve_automatic_retrieval(
         self,
