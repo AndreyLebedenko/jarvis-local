@@ -96,6 +96,21 @@ effect for subsequent turns; the mode persists across restarts.
   (3) both paths take effect on the next turn. Prepare the exact steps and
   commands; do not run these yourself.
 
+**Correction 2026-08-30 (owner finding, before this card's handoff was ever
+run; see
+`tasks/bug_reports/2026-08-30-handoff-silently-depends-on-undocumented-hotkey.md`):**
+the handoff requirement above - and the acceptance criterion promising
+"exact steps" - were met only nominally: the prepared material never named
+the actual binding. Any handoff step that says "press the ... hotkey" must
+name the literal binding (here: **Ctrl+Alt+O**, the default of
+`hotkeys.response_mode_toggle`, `src/jarvis/core/config.py:140`) and must not
+assume a starting state for persistent settings (the mode persists across
+restarts, so "press twice from the default" is not an exact step). The
+hotkey-honesty documentation itself (README hotkey table,
+`config.example.toml` `[hotkeys]` entry) remains task-v1.9.0-5's scope and
+is still outstanding; the task's checklist now includes a handoff
+self-sufficiency audit so future cards cannot cross this debt silently.
+
 ## Acceptance criteria
 
 - [x] The single hotkey cycles the three modes; the config drop-down shows and

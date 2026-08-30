@@ -212,12 +212,27 @@ Two of them gate this task; check both before implementing:
 Hardware-dependent (real audio playback) - per the Testing protocol, the
 agent prepares this and stops; the human runs it and reports back.
 
+Corrected 2026-08-30 before the first run (owner rejected the prepared
+version for silently depending on an undocumented hotkey binding; see
+`tasks/bug_reports/2026-08-30-handoff-silently-depends-on-undocumented-hotkey.md`):
+every hotkey is now named literally, and the mode-switch step no longer
+assumes the startup default mode (the mode is persistent).
+
 1. Launch Jarvis normally (`python -m jarvis.app` or the usual entry point)
    with TTS enabled.
-2. Switch to mode 3 (`text_voice`): press the response-mode cycle hotkey
-   twice from the default (text -> voice -> text_voice), or pick "Text +
-   Voice" from the response-mode drop-down in the Status Console's config
-   panel. Confirm the drop-down shows the selected mode.
+2. Switch to mode 3 (`text_voice`), by either channel (both write the same
+   state; the config-page drop-down reflects whichever you use):
+   - Hotkey: press **Ctrl+Alt+O** (the response-mode cycle hotkey,
+     `hotkeys.response_mode_toggle`, default in
+     `src/jarvis/core/config.py:140`, `[hotkeys] response_mode_toggle`) -
+     repeatedly, checking the "Response mode" / "Режим ответа" drop-down in
+     the Status Console's config panel after each press, until it shows
+     "Text + voice" / "Текст и голос". The hotkey cycles
+     text -> voice -> text_voice -> text; the number of presses depends on
+     the currently active mode, which persists across restarts.
+   - UI only: pick "Text + voice" / "Текст и голос" directly in that
+     drop-down (`responseModeSelect`).
+   Confirm the drop-down shows the selected mode.
 3. Ask a question whose answer naturally has some visible structure worth
    referencing (e.g. "list three ways to reduce audio latency, briefly").
 4. Observe pass 1: the reply streams to the screen immediately, exactly as
