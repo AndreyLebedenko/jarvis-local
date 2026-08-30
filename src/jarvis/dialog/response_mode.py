@@ -4,14 +4,15 @@ Owns the persistent response mode (`text`/`voice`/`text_voice`) that
 selects the turn pipeline's output contract for future turns - the same
 "a hotkey/UI change alters a persistent state for the *next* accepted
 request, not the currently in-flight one" shape as thinking_mode.py's
-ReasoningLevelState.
-
-Persistence delta from that precedent: ReasoningLevelState always starts
-at `off` and is never persisted across restart. ResponseModeState is
-seeded from `[response].mode` instead - build_app()'s composition root
-reads Settings.response.mode and passes it as `initial_mode` - and the UI
-(task 2) writes new selections back to config.ui.toml via
-config.py's update_ui_config_response_mode(), not this module.
+ReasoningLevelState. "Persistent" above means persistent for the running
+session: since task 3b this module persists nothing, full stop, exactly
+like ReasoningLevelState. The seed still comes from build_app()'s
+composition root, which reads Settings.response.mode (the Settings form's
+restart-to-apply default, written only by write_ui_config from a
+Settings-tab Apply) and passes it as `initial_mode`; anything changed
+through set_mode()/cycle_mode() - the Ctrl+Alt+O hotkey, the Status-tab
+live toggle (ResponseModeChanged's "UI" source since task 3b), or task 4's
+voice path - lives only until shutdown.
 
 set_mode()/cycle_mode() publish with no `await` between the read and the
 write, same race-avoidance rule as ReasoningLevelState.set_level()/
@@ -55,8 +56,10 @@ class ResponseModeChanged:
     # is exactly the kind of stale-tag bug a live human check already caught
     # once for that event (every caller hardcoding "HOTKEY"). Construction's
     # config-seeded initial value is never published as a change, so "CONFIG"
-    # is not a real source; task 2 introduces "HOTKEY" and "UI", task 4
-    # introduces "VOICE".
+    # is not a real source; task 2 introduced "HOTKEY" and "UI", and since
+    # task 3b "UI" means the Status-tab live toggle (the Settings drop-down
+    # became a restart-to-apply batch field and no longer set_mode()s at
+    # all); task 4 introduces "VOICE".
     source: str
 
 

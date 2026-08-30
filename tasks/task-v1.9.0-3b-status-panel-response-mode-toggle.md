@@ -1,6 +1,11 @@
 # Task v1.9.0-3b: Status-tab live mode toggle, Settings dropdown becomes restart-to-apply default
 
-**Status:** Proposed. Not started.
+**Status:** Completed. Automated gates green (`python -m pytest` 2294
+passed / 1 skipped, `ruff check`, `ruff format --check`). Codex review
+(deep mode): 1 blocking finding (P2 omitted-response-mode-coerced-to-text,
+see below), fixed and re-reviewed - second pass: LGTM, no actionable
+correctness issues. Human-run handoff verified by the owner 2026-08-30
+(all four steps behave as specified).
 **Story:** `tasks/story-v1.9.0-response-modes.md` (new scope item, inserted between
 tasks 3 and 4 - see story update in this same change).
 **Depends on:** task-v1.9.0-2 (hotkey + `ResponseModeState` + the
@@ -209,18 +214,29 @@ this is the same technique one level up, not a new pattern.
 
 ## Acceptance criteria
 
-- [ ] Status tab shows a live mode toggle next to the reasoning-level card,
+- [x] Status tab shows a live mode toggle next to the reasoning-level card,
       in the same visual language (button group, confirmed-push-only
       selection).
-- [ ] Settings tab's response-mode control behaves exactly like
+- [x] Settings tab's response-mode control behaves exactly like
       `model`/`microphone`/`ui_language`: pending until Apply,
       restart-to-apply, no live effect.
-- [ ] `Ctrl+Alt+O` drives the live toggle only; the persisted default changes
+- [x] `Ctrl+Alt+O` drives the live toggle only; the persisted default changes
       only via a Settings-tab Apply.
-- [ ] No new persisted field; `ResponseMode`/`ResponseModeChanged`/task 4's
+- [x] No new persisted field; `ResponseMode`/`ResponseModeChanged`/task 4's
       planned voice path are unaffected.
-- [ ] Pure tests and `ruff` gates green; the human-run handoff above is
+- [x] Pure tests and `ruff` gates green; the human-run handoff above is
       prepared with exact steps.
+- [x] Codex review run (deep mode, 2026-08-30): 1 blocking finding
+      (P2 - save_config_selection coerced an omitted response_mode to a
+      persisted "text" override, so an unrelated Apply could silently reset
+      a previously saved voice/text_voice default). Fixed: the omission
+      stays None through to write_ui_config, which omits the [response]
+      section - the same optional-field contract as ui_language/vad.
+      Regression tests added at the three layers (UiConfigSelection default,
+      save_config_selection write path, transport pass-through); full suite
+      re-run green.
+- [x] Human verifies the handoff above (owner, 2026-08-30: all four steps
+      behave as specified).
 
 ## Stop Conditions
 
@@ -233,3 +249,116 @@ this is the same technique one level up, not a new pattern.
   `ResponseModeState`-like object (rather than reusing the existing one for
   the live side and `write_ui_config` for the persisted side, as scoped
   above), stop - that would be materially larger than this card's scope.
+
+## Implementation summary (2026-08-30)
+
+- `src/jarvis/ui/config_selection.py`: `UiConfigSelection` gained
+  `response_mode: str = "text"`; `validate_selection()` routes it through
+  the existing `validate_response_mode()` (no second hardcoded copy).
+  `validate_response_mode()`'s docstring rewritten for the split semantics.
+- `src/jarvis/app.py` `_on_response_mode_changed`: no longer persists on
+  any source; `update_ui_config_response_mode` import removed.
+- `src/jarvis/core/config.py`: `update_ui_config_response_mode()` deleted;
+  `write_ui_config()`'s `response_mode` parameter and `[response] mode`
+  write reused unchanged, docstring reworded to "the Settings form's
+  restart-to-apply default"; `_update_ui_config_scalar_field()`'s docstring
+  no longer lists `[response].mode`.
+- `src/jarvis/ui/status_console.py`: `config_values_payload()` gained
+  `response_mode` (from `Settings.response.mode`) +
+  `response_mode_options`; `save_config_selection()` gained a
+  `response_mode` parameter and passes the form's choice to
+  `write_ui_config` (an absent value keeps the built-in "text" default);
+  `set_response_mode()` itself is unchanged in behavior - it stays the
+  live-toggle write path, comments updated.
+- `src/jarvis/ui/transport.py`: `save_config_selection` protocol + `_save_
+  config_selection` dispatch carry `response_mode` through a new
+  `_parse_response_mode()` shape check (None passes through, mirroring
+  `_parse_ui_language`).
+- `src/jarvis/dialog/response_mode.py`: module docstring rewritten -
+  the task 2 "UI writes back to config.ui.toml" paragraph replaced with
+  "this module persists nothing, full stop (task 3b)"; `source="UI"` now
+  means the Status-tab toggle.
+- Front-end: `index.html` - a new Status-tab `.mode-card` (sibling of
+  `.think-card` in a shared `.mode-card-row`) with a
+  `role="radiogroup"` of three short-label buttons (`mode_text` /
+  `mode_voice` / `mode_text_voice`, en+ru) wired to
+  `setResponseMode('<mode>')`; the Settings `responseModeSelect`
+  switched to `onchange="onConfigInputChanged()"`, is populated from
+  `applyConfigValues()` (same mechanism as `uiLangSelect`), and is
+  included in `applyConfigSelection()`'s payload. `applyResponseMode()`
+  drives only the new button group's `sel` class (never the drop-down,
+  never optimistic). `style.css` places both cards in a wrapping
+  `.mode-card-row` (`flex: 1` + `min-width` per card, the same technique
+  `.think-body` uses one level down); the button group reuses
+  `.reasoning-level-toggle`'s look. `demo.html`/`demo.js` mirror both
+  changes. New i18n keys `mode_title`/`mode_text`/`mode_voice`/
+  `mode_text_voice` (en+ru).
+- No new persisted field; `ResponseMode`/`ResponseModeChanged`/
+  `CYCLE_ORDER` untouched; task 4's planned voice path unaffected.
+
+## Verification (performed)
+
+- `python -m pytest` - 2294 passed, 1 skipped.
+- `ruff check` - clean. `ruff format --check` - clean.
+
+## Human-run handoff (prepared; do not run in CI, hardware/visual checks)
+
+Hardware/UI-dependent, per the Testing protocol: the agent prepares these
+exact steps and stops; the human runs them and reports the outcomes.
+State-independent: no step assumes a starting response mode - each says
+how to reach the target state from wherever the persistent setting
+currently is. Launch command for every step: `python main.py
+--status-console` (or your usual entry point). References: hotkey binding
+`hotkeys.response_mode_toggle`, default **Ctrl+Alt+O**, `src/jarvis/core/
+config.py:140` (`[hotkeys] response_mode_toggle` in config.toml may
+override it). Note the README/config.example.toml hotkey documentation
+itself remains task-v1.9.0-5's outstanding debt (recorded in
+`tasks/bug_reports/2026-08-30-handoff-silently-depends-on-undocumented-hotkey.md`).
+
+1. **Live Status-tab toggle.** In the Status Console's Status tab, find
+   the new "Response mode" / "Режим ответа" card next to the "Thinking
+   mode" card. Click each of its three buttons in turn
+   (Text/Voice/Text+voice). Confirm after each click the button highlights
+   immediately, WITHOUT any "restart to apply" banner appearing (compare:
+   the Settings tab shows that banner only after its own Apply).
+
+2. **Hotkey drives the buttons, not the drop-down.** Select a mode on the
+   Status-tab buttons. Press **Ctrl+Alt+O** (`hotkeys.response_mode_toggle`,
+   default `src/jarvis/core/config.py:140`; verifies the live buttons move
+   - to the next mode in the cycle text -> voice -> text_voice -> text,
+   starting from whatever the buttons currently show). Confirm the button
+   group highlights the new mode. Then open the Settings tab: the
+   "Response mode" / "Режим ответа" drop-down there has NOT changed (it
+   still shows the last value Applied or loaded from `config.ui.toml`/
+   `config.toml`).
+
+3. **Settings Apply is restart-to-apply with no live effect.** From an
+   arbitrary starting state, open the Settings tab and note the drop-down's
+   current selection. Either (a) it already differs from the live button
+   selection (common case after step 1-2), or (b) it does not - in that
+   case click Apply once with the current selection just to establish a
+   known `config.ui.toml`, restart Jarvis, then re-do this step so the
+   drop-down now differs from a live mode you can see on the Status tab.
+   Now pick a DIFFERENT mode in the drop-down and click "Apply" /
+   "Применить". Confirm the amber "restart to apply" banner appears
+   ("Changes saved - restart Jarvis to apply." / "Изменения сохранены -
+   перезапустите Jarvis, чтобы применить." and a "Settings saved - restart
+   Jarvis to apply" event in the events panel). Critically: switch back to
+   the Status tab and confirm the live buttons did NOT move - the running
+   session's mode is unchanged by the Settings save.
+
+4. **Config persistence: only Apply persists; live toggles do not.** After
+   step 3, note what `[response] mode` currently says in `config.ui.toml`
+   in the repository root (or that there is no `[response]` section at
+   all - that is a valid starting state too). Then cycle the live mode
+   with the Status buttons and/or Ctrl+Alt+O to any mode different from
+   the Applied value, and confirm `config.ui.toml` is byte-identical
+   before and after those live changes (regression check for the Codex
+   review finding: a live toggle used to be able to rewrite this file).
+   Fully close Jarvis and launch `python main.py --status-console` again.
+   Confirm the session starts in the mode the Settings drop-down last had
+   Applied (verify on the Status-tab button group's selection), NOT
+   whatever the live buttons were left on just before shutdown, and not
+   whatever Ctrl+Alt+O cycled to. Then (optional, restores the default):
+   set the drop-down back to "Text only" / "Только текст" and Apply - the
+   next restart starts in text mode.

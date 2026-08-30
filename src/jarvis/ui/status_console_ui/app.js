@@ -8,8 +8,8 @@
 // setReasoningLevel()/requestModuleReset()/requestContextReset()/
 // setVisibilityMode()/setResponseMode() send protocol-v1 control messages.
 // They deliberately do not optimistically update the DOM themselves: the
-// reasoning-level toggle/chips/visibility toggle/response-mode select only
-// ever change via applyThinkingMode()/appendSystemEvent()/
+// reasoning-level toggle/chips/visibility toggle/response-mode button group
+// only ever change via applyThinkingMode()/appendSystemEvent()/
 // applyVisibilityMode()/applyResponseMode(), driven by the real engine event
 // coming back through the WebSocket (story-v1.3.1: a ReasoningLevelChanged
 // projection; story-v1.9.0: a ResponseModeChanged projection), so the UI can
@@ -575,25 +575,27 @@ function setReasoningLevel(levelValue) {
   _sendControl("set_reasoning_level", { level: levelValue });
 }
 
-// Same non-optimistic rule as applyTtsState()/applySoloSessionState() above:
-// a native <select> already shows the clicked option before any JS runs, so
-// setResponseMode() must revert it immediately and let it move for real only
-// once applyResponseMode() is driven by the confirmed delta.
-let _responseMode = "text";
+// Task 3b: the live mode toggle is the Status-tab button group, same
+// non-optimistic rule as applyThinkingMode(): selection comes only from
+// the confirmed ResponseModeChanged projection, never from the click
+// itself. The Settings drop-down is a separate restart-to-apply batch
+// field - applyResponseMode() must never touch it.
 
 function applyResponseMode(payload) {
   if (!RESPONSE_MODES.includes(payload.mode)) {
     throw new Error("Unknown response mode: " + payload.mode);
   }
-  _responseMode = payload.mode;
-  document.getElementById("responseModeSelect").value = _responseMode;
+  document
+    .querySelectorAll("#responseModeToggle button")
+    .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
+  syncRadioGroup(document.getElementById("responseModeToggle"));
 }
 
-function setResponseMode() {
-  const select = document.getElementById("responseModeSelect");
-  const requested = select.value;
-  select.value = _responseMode;
-  _sendControl("set_response_mode", { mode: requested });
+function setResponseMode(modeValue) {
+  if (!RESPONSE_MODES.includes(modeValue)) {
+    throw new Error("Unknown response mode: " + modeValue);
+  }
+  _sendControl("set_response_mode", { mode: modeValue });
 }
 
 function requestModuleReset(moduleId) {
@@ -867,6 +869,15 @@ function applyConfigValues(payload) {
     if (lang === payload.ui_language) el.selected = true;
     langSelect.appendChild(el);
   }
+  const modeSelect = document.getElementById("responseModeSelect");
+  modeSelect.innerHTML = "";
+  for (const mode of payload.response_mode_options) {
+    const el = document.createElement("option");
+    el.value = mode;
+    el.textContent = uiString("response_mode_" + mode + "_option");
+    if (mode === payload.response_mode) el.selected = true;
+    modeSelect.appendChild(el);
+  }
   document.getElementById("vadThreshold").value = payload.vad.threshold;
   document.getElementById("vadMaxChunk").value = payload.vad.max_chunk_seconds;
   document.getElementById("vadEndPause").value = payload.vad.request_end_pause_seconds;
@@ -1058,6 +1069,7 @@ function applyConfigSelection() {
     microphone: microphone.device,
     microphone_host_api: microphone.host_api,
     ui_language: document.getElementById("uiLangSelect").value,
+    response_mode: document.getElementById("responseModeSelect").value,
     vad: {
       threshold: Number(document.getElementById("vadThreshold").value),
       max_chunk_seconds: Math.round(Number(document.getElementById("vadMaxChunk").value)),
@@ -3813,6 +3825,8 @@ initRadioGroup(document.getElementById("visibilityToggle"));
 syncRadioGroup(document.getElementById("visibilityToggle"));
 initRadioGroup(document.getElementById("reasoningLevelToggle"));
 syncRadioGroup(document.getElementById("reasoningLevelToggle"));
+initRadioGroup(document.getElementById("responseModeToggle"));
+syncRadioGroup(document.getElementById("responseModeToggle"));
 initGlobalKeymap();
 _attachStaticIcons();
 registerEscapable({

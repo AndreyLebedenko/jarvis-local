@@ -35,6 +35,14 @@ class UiConfigSelection:
     # "" means "resolve the device by name alone"; see MicrophoneSettings.
     microphone_host_api: str = ""
     ui_language: str | None = None
+    # Restart-to-apply persisted response-mode default (task 3b): the mode a
+    # NEW launch starts in. The running session's live mode is a separate
+    # thing (ResponseModeState via the set_response_mode control message);
+    # this field has no effect until the next restart. None means "not part
+    # of this save": write_ui_config omits the [response] section and the
+    # config.toml/built-in default survives - an omitted field must never
+    # rewrite the persisted default behind the user's back.
+    response_mode: str | None = None
     vad: VadSettings | None = None
     # All-or-nothing: a customized route table must cover every supported
     # language (build_tts_engine's coverage rule); None keeps the
@@ -58,6 +66,14 @@ def validate_selection(selection: UiConfigSelection) -> list[str]:
         problems.append(
             f"ui_language must be one of: {supported}; got {selection.ui_language!r}"
         )
+    # The Settings form's response-mode choice and the live control message
+    # share one SUPPORTED_RESPONSE_MODES check here - a second hardcoded
+    # copy of the three values would be exactly the drift the shared
+    # validator exists to prevent (task 3b). None means "not part of this
+    # save" (write_ui_config omits the section), so only a present value
+    # is checked.
+    if selection.response_mode is not None:
+        problems.extend(validate_response_mode(selection.response_mode))
     if selection.vad is not None:
         problems.extend(_validate_vad(selection.vad))
     if selection.tts_routes is not None:
@@ -66,14 +82,15 @@ def validate_selection(selection: UiConfigSelection) -> list[str]:
 
 
 def validate_response_mode(mode_value: str) -> list[str]:
-    """Response mode (story-v1.9.0 task 2) is a live toggle, not a
-    UiConfigSelection batch field - it applies and persists immediately,
-    the same shape as the MCP/reasoning-level toggles, with no restart-to-
-    apply save step. It still gets its validation here, shared by
-    StatusConsoleApi.set_response_mode() and UiTransportServer's
-    set_response_mode command handler (the "defense on both sides" rule
-    this module exists for), reusing SUPPORTED_RESPONSE_MODES from task 1
-    instead of a second hardcoded copy of the three values."""
+    """Validates a response-mode value against SUPPORTED_RESPONSE_MODES
+    (story-v1.9.0 task 1's three product values), shared by both meanings
+    response_mode has since task 3b split it: the Status-tab live toggle's
+    control message (StatusConsoleApi.set_response_mode() and
+    UiTransportServer's set_response_mode command handler) and the Settings
+    form's restart-to-apply batch field (UiConfigSelection.response_mode
+    via validate_selection above) - the "defense on both sides" rule this
+    module exists for, reusing task 1's tuple instead of a second hardcoded
+    copy."""
     if mode_value in SUPPORTED_RESPONSE_MODES:
         return []
     supported = ", ".join(SUPPORTED_RESPONSE_MODES)

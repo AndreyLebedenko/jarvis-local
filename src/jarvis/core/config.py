@@ -1839,13 +1839,13 @@ def write_ui_config(
     route dict or None for the Silero-only default. json.dumps() produces
     quoted, escaped TOML basic strings without a TOML-writing dependency
     (Python's stdlib tomllib is read-only). The live MCP toggle instead uses
-    update_ui_config_mcp_enabled() to preserve all unrelated overrides -
-    response_mode below is the same kind of live toggle, but this batch
-    writer still needs it: since it rewrites the whole file, a caller must
-    pass the *current* authoritative response mode (as StatusConsoleApi's
-    Settings-menu save does) or a config-menu Apply for an unrelated field
-    would silently drop whatever update_ui_config_response_mode() last wrote
-    (story-v1.9.0 task 2 review finding).
+    update_ui_config_mcp_enabled() to preserve all unrelated overrides.
+    response_mode is the Settings form's restart-to-apply default for which
+    response mode a NEW launch starts in (story-v1.9.0 task 3b): since this
+    writer rewrites the whole file, the caller passes the form's choice
+    (None omits the [response] section, keeping config.toml's or the
+    built-in default). The live in-session toggle never reaches this
+    writer - it stays session-only by design.
 
     tts_enabled is independent of tts_routes (task-ui-ux-3): it is the
     Settings form's restart-to-apply TTS default, plumbed through like every
@@ -1904,25 +1904,16 @@ def update_ui_config_mcp_enabled(path: str | Path, *, enabled: bool) -> None:
     )
 
 
-def update_ui_config_response_mode(path: str | Path, *, mode: str) -> None:
-    """Updates only ``[response].mode`` in the machine-owned UI layer - the
-    live response-mode toggle's persistence path (story-v1.9.0, task 2),
-    same live-toggle shape as update_ui_config_mcp_enabled above."""
-    _update_ui_config_scalar_field(
-        path, section="response", field_name="mode", value=json.dumps(mode)
-    )
-
-
 def _update_ui_config_scalar_field(
     path: str | Path, *, section: str, field_name: str, value: str
 ) -> None:
     """Updates only ``[section].field_name`` in the machine-owned UI layer,
-    preserving every other byte. Shared by every live runtime toggle that
-    persists to config.ui.toml (currently [mcp].enabled and
-    [response].mode) - each such section holds exactly one scalar field, so
-    one text-surgery routine covers all of them without re-parsing and
-    re-serializing the whole file (which would also lose comments and
-    formatting the human never asked to have rewritten)."""
+    preserving every other byte. The one remaining live runtime toggle that
+    persists to config.ui.toml is [mcp].enabled - each such section holds
+    exactly one scalar field, so one text-surgery routine covers all of
+    them without re-parsing and re-serializing the whole file (which would
+    also lose comments and formatting the human never asked to have
+    rewritten)."""
     path = Path(path)
     if not path.exists():
         path.write_text(

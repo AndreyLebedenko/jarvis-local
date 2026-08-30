@@ -236,6 +236,17 @@ def _parse_ui_language(raw: JSONValue) -> str | None:
     return raw
 
 
+def _parse_response_mode(raw: JSONValue) -> str | None:
+    """Shape/type checks only; value semantics belong to
+    validate_response_mode() behind the control API - the same shared check
+    the live toggle's own command handler runs."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ProtocolError("response_mode must be a string")
+    return raw
+
+
 def _parse_vad(raw: JSONValue) -> VadSettings | None:
     if raw is None:
         return None
@@ -407,6 +418,7 @@ class ControlApi(Protocol):
         *,
         microphone_host_api: str = "",
         ui_language: str | None = None,
+        response_mode: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
         tts_enabled: bool | None = None,
@@ -2532,6 +2544,7 @@ class UiTransportServer:
             microphone,
             microphone_host_api=microphone_host_api,
             ui_language=_parse_ui_language(arguments.get("ui_language")),
+            response_mode=_parse_response_mode(arguments.get("response_mode")),
             vad=_parse_vad(arguments.get("vad")),
             tts_routes=_parse_tts_routes(arguments.get("tts_routes")),
             tts_enabled=_parse_tts_enabled(arguments.get("tts_enabled")),
