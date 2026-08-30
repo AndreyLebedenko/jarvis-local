@@ -79,7 +79,6 @@ from jarvis.core.config import (
     TtsSettings,
     UiSettings,
     VadSettings,
-    load_settings,
 )
 from jarvis.core.debug_transcript import configure_debug_transcript, recording
 from jarvis.core.lifecycle import (
@@ -3424,7 +3423,7 @@ async def test_response_mode_changed_logs_the_exact_mode_name(mode, caplog, tmp_
     assert any(mode.value in record.message for record in caplog.records)
 
 
-@pytest.mark.parametrize("source", ["HOTKEY", "UI"])
+@pytest.mark.parametrize("source", ["HOTKEY", "UI", "VOICE"])
 async def test_response_mode_changed_publishes_a_system_event_for_the_ui(
     source, tmp_path
 ):
@@ -3455,26 +3454,22 @@ async def test_response_mode_changed_publishes_a_system_event_for_the_ui(
     assert "voice" in received[0].message.lower()
 
 
-async def test_response_mode_changed_persists_to_the_apps_ui_config_path(tmp_path):
-    """The single write site (review finding, task-v1.9.0-2): a HOTKEY-
-    sourced ResponseModeChanged must persist exactly like a UI-sourced one,
-    since cycle_mode() (the hotkey path) never touches StatusConsoleApi at
-    all - only this bus handler stands between it and config.ui.toml."""
+async def test_response_mode_changed_never_persists_for_any_source(tmp_path):
+    """Task 3b: the live toggle (Status-tab buttons, Ctrl+Alt+O, and task
+    4's voice path) session-overrides only - no source of
+    ResponseModeChanged writes config.ui.toml anymore. The persisted
+    default changes exclusively through a Settings-tab Apply (write_ui_config
+    via save_config_selection), so a hotkey cycle must survive a restart
+    untouched."""
     ui_config_path = tmp_path / "config.ui.toml"
     app = _app_with_sound_cues(_FakeSoundCues(), ui_config_path=ui_config_path)
 
-    await _on_response_mode_changed(
-        app, ResponseModeChanged(mode=ResponseMode.VOICE, source="HOTKEY")
-    )
+    for source in ("HOTKEY", "UI", "VOICE"):
+        await _on_response_mode_changed(
+            app, ResponseModeChanged(mode=ResponseMode.VOICE, source=source)
+        )
 
-    contents = ui_config_path.read_text(encoding="utf-8")
-    assert '[response]\nmode = "voice"' in contents
-    assert (
-        load_settings(
-            tmp_path / "does-not-exist.toml", ui_path=ui_config_path
-        ).response.mode
-        == "voice"
-    )
+    assert not ui_config_path.exists()
 
 
 # --- microphone capture failure SystemEvent --------------------------------

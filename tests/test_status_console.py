@@ -59,6 +59,7 @@ from jarvis.ui.status_console import (
     StatusConsoleWindow,
     UiConfigSaved,
     _journal_session_title,
+    config_values_payload,
     data_locality_payload,
     data_source_payload,
     mcp_state_payload,
@@ -323,6 +324,35 @@ def test_thinking_mode_payload_carries_level_and_derived_is_enabled(
 )
 def test_response_mode_payload_carries_the_mode_value(mode):
     assert response_mode_payload(mode) == {"mode": mode.value}
+
+
+# --- config_values_payload (task 3b) ---------------------------------------
+
+
+def test_config_values_payload_carries_the_persisted_response_mode():
+    settings = _settings_with_response_mode("text_voice")
+
+    payload = config_values_payload(settings)
+
+    assert payload["response_mode"] == "text_voice"
+    assert payload["response_mode_options"] == ["text", "voice", "text_voice"]
+
+
+def test_config_values_payload_response_mode_is_the_persisted_default():
+    """The stop-condition ambiguity in reverse: config_values_payload()
+    takes a Settings snapshot and must report the *persisted default* the
+    next launch starts in - the live value lives only in the separate
+    response_mode state projection, never in this payload key."""
+    settings = _settings_with_response_mode("voice")
+
+    payload = config_values_payload(settings)
+
+    assert payload["response_mode"] == "voice"
+    assert payload["response_mode"] == settings.response.mode
+
+
+def _settings_with_response_mode(mode: str) -> Settings:
+    return replace(Settings(), response=replace(Settings().response, mode=mode))
 
 
 # --- StatusConsoleApi (task-ui-04: JS -> Python bridge) ---------------------
@@ -1081,36 +1111,95 @@ def test_set_reasoning_level_sends_the_control_command_with_the_clicked_level():
     assert '_sendControl("set_reasoning_level", { level: levelValue })' in app_js
 
 
-def test_response_mode_select_sends_the_control_command_with_the_selected_value():
-    """Native <select> elements change their displayed value before any JS
-    runs, so setResponseMode() must revert the DOM to the last-confirmed
-    mode immediately and send the requested value separately - the same
-    non-optimistic pattern as setSoloSessionEnabled()/setTtsEnabled()."""
+def test_response_mode_toggle_buttons_send_the_control_command_with_the_clicked_mode():
+    """task 3b: the Status-tab live toggle mirrors the reasoning-level
+    radiogroup's interaction shape - a button's onclick sends the requested
+    mode via the same set_response_mode control message the drop-down used
+    to call, and never updates the DOM itself (confirmed-push-only)."""
     app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
 
-    assert "function setResponseMode()" in app_js
-    body_start = app_js.index("function setResponseMode()")
-    body_end = app_js.index("\n}", body_start)
-    body = app_js[body_start:body_end]
-    assert "select.value = _responseMode" in body
-    assert '_sendControl("set_response_mode", { mode: requested })' in body
+    assert "function setResponseMode(modeValue)" in app_js
+    set_start = app_js.index("function setResponseMode(modeValue)")
+    set_end = app_js.index("\n}\n", set_start)
+    body = app_js[set_start:set_end]
+    assert '_sendControl("set_response_mode", { mode: modeValue })' in body
+    # Non-optimistic rule: the click handler itself must not touch "sel".
+    assert "classList" not in body
 
 
-def test_response_mode_control_is_a_select_not_a_button_group():
-    """Owner decision (2026-08-29, story-v1.9.0): unlike the reasoning-level
-    role="radiogroup" toggle, the response-mode control is a <select>
-    drop-down, matching the existing config selects (model/microphone/UI
-    language)."""
+def test_status_tab_has_a_live_response_mode_button_group_like_the_reasoning_toggle():
+    """task 3b: the live response-mode toggle is a role="radiogroup" of
+    three buttons next to the reasoning-level card, mirroring
+    #reasoningLevelToggle structurally; no optimistic preselection in
+    markup - applyResponseMode() is the only thing that ever adds "sel"."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="responseModeToggle"' in html
+    toggle_start = html.index('id="responseModeToggle"')
+    toggle_end = html.index("</div>", toggle_start)
+    toggle_html = html[toggle_start:toggle_end]
+    assert 'role="radiogroup"' in html[toggle_start - 200 : toggle_end]
+    assert "sel" not in toggle_html
+    for mode in ("text", "voice", "text_voice"):
+        assert f'data-mode="{mode}"' in toggle_html
+        assert f"setResponseMode('{mode}')" in toggle_html
+
+
+def test_response_mode_control_is_a_select_in_the_settings_form():
+    """task 3b: the Settings drop-down stays a <select> - it is now an
+    ordinary restart-to-apply batch field like model/microphone/ui_language,
+    wired into the same config-form onchange/applyConfigSelection() flow
+    instead of the live setResponseMode() path."""
     html = INDEX_HTML.read_text(encoding="utf-8")
 
     assert '<select id="responseModeSelect"' in html
     select_start = html.index('id="responseModeSelect"')
     select_end = html.index("</select>", select_start)
     select_html = html[select_start:select_end]
-    assert 'role="radiogroup"' not in select_html
+    assert 'onchange="onConfigInputChanged()"' in select_html
     assert 'value="text"' in select_html
     assert 'value="voice"' in select_html
     assert 'value="text_voice"' in select_html
+
+
+def test_apply_config_selection_sends_the_form_response_mode():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = app_js.index("function applyConfigSelection()")
+    body = app_js[start : app_js.index("\n}", start)]
+
+    assert 'response_mode: document.getElementById("responseModeSelect").value' in body
+
+
+def test_apply_config_values_populates_the_response_mode_select_from_the_payload():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = app_js.index("function applyConfigValues(payload)")
+    body = app_js[start : app_js.index("\n}\n", start)]
+
+    assert "payload.response_mode_options" in body
+    assert "payload.response_mode" in body
+
+
+def test_apply_response_mode_drives_the_status_tab_buttons_not_the_select():
+    """The confirmed ResponseModeChanged push may only ever highlight the
+    live Status-tab button group - touching the Settings drop-down from the
+    live path is exactly the coupling task 3b splits (settings selection is
+    seeded by applyConfigValues() from config_values, not by the live push)."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = app_js.index("function applyResponseMode(payload)")
+    body = app_js[start : app_js.index("\n}\n", start)]
+
+    assert "responseModeSelect" not in body
+    assert 'querySelectorAll("#responseModeToggle button")' in body
+    assert 'syncRadioGroup(document.getElementById("responseModeToggle"))' in body
+
+
+def test_status_tab_response_mode_toggle_is_in_the_radio_group_foundation():
+    """interaction.js's roving tabindex/arrow-key behavior must cover the
+    new group at first paint, same as the reasoning-level toggle."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert 'initRadioGroup(document.getElementById("responseModeToggle"));' in app_js
+    assert 'syncRadioGroup(document.getElementById("responseModeToggle"));' in app_js
 
 
 def test_desktop_reasoning_level_selection_updates_only_from_the_payload():
@@ -1204,6 +1293,16 @@ def test_derivative_pass_is_tagged_in_the_chip_strip_and_the_events_panel():
     entry_body = js[entry_start : js.index("\n}\n", entry_start)]
     assert "_passKindSuffix(payload)" in entry_body
     assert 'uiString("model_request_pass_derivative")' in entry_body
+
+
+def test_status_tab_mode_toggle_strings_exist_in_both_languages():
+    """task 3b: the Status-tab button group gets its own short labels -
+    the drop-down's response_mode_*_option strings stay on the Settings
+    form, too long for a button."""
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    for key in ("mode_text:", "mode_voice:", "mode_text_voice:"):
+        assert strings.count(key) == 2, key
 
 
 def test_request_log_entry_strings_exist_in_both_languages():
@@ -1315,6 +1414,16 @@ def test_demo_harness_covers_every_request_modality_the_ui_can_localize():
 
     for kind in catalog_kinds:
         assert f'kind: "{kind}"' in demo_js, f"demo.js has no sample for {kind}"
+
+
+def test_demo_config_values_mirror_the_real_payload_contract():
+    """demo.js's _demoConfigValues() must carry the same response_mode /
+    response_mode_options keys config_values_payload() does, or the demo
+    page's Settings tab silently diverges from the real one (task 3b)."""
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+
+    assert 'response_mode: "text"' in demo_js
+    assert 'response_mode_options: ["text", "voice", "text_voice"]' in demo_js
 
 
 def test_index_html_status_view_does_not_render_duplicate_context_reset():
@@ -1671,12 +1780,12 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
 
 
 async def test_save_config_selection_preserves_the_current_response_mode(tmp_path):
-    """The response-mode <select> lives outside the batch Settings form, so
-    an unrelated Apply must round-trip whatever mode is currently live -
-    same shape as mcp_enabled's own resolve-from-live-state line in
-    _save_config_selection_async() (review finding, task-v1.9.0-2)."""
+    """Split of task 3b: the Settings form now carries its own restart-to-
+    apply choice, so an unrelated Apply must persist the form's choice (not
+    the live state's) - the live mode is owned by the Status-tab buttons and
+    never rewritten by a Settings save."""
     ui_config_path = tmp_path / "config.ui.toml"
-    response_mode = ResponseModeState(bus=EventBus())
+    response_mode = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.VOICE)
     api = StatusConsoleApi(
         loop=asyncio.get_running_loop(),
         thinking_mode=ReasoningLevelState(bus=EventBus()),
@@ -1686,14 +1795,72 @@ async def test_save_config_selection_preserves_the_current_response_mode(tmp_pat
         logger=logger,
         ui_config_path=ui_config_path,
     )
-    api.set_response_mode("voice")
+
+    api.save_config_selection("new-model", "USB Headset", response_mode="text_voice")
     await asyncio.sleep(0.05)
+
+    written = ui_config_path.read_text(encoding="utf-8")
+    assert '[response]\nmode = "text_voice"' in written
+
+
+async def test_save_config_selection_without_response_mode_omits_the_section(tmp_path):
+    """A caller that does not name a response mode (older front-end, a
+    transport not updated in step with this field) must not have the
+    omission coerced into a text override: write_ui_config then omits the
+    [response] section, the same optional-field contract as ui_language/
+    vad. Coercing the omission to a text override would silently reset a
+    user's saved voice default on any unrelated Apply (Codex review
+    finding, task 3b); the full-snapshot rewrite dropping an unnamed field
+    is write_ui_config's established whole-file contract for every
+    optional here."""
+    ui_config_path = tmp_path / "config.ui.toml"
+    response_mode = ResponseModeState(bus=EventBus(), initial_mode=ResponseMode.VOICE)
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=EventBus()),
+        response_mode=response_mode,
+        history=_FakeHistory(),
+        bus=EventBus(),
+        logger=logger,
+        ui_config_path=ui_config_path,
+    )
 
     api.save_config_selection("new-model", "USB Headset")
     await asyncio.sleep(0.05)
 
     written = ui_config_path.read_text(encoding="utf-8")
-    assert '[response]\nmode = "voice"' in written
+    assert "[response]" not in written
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.response.mode == "text"
+
+
+async def test_save_config_selection_rejects_an_unknown_response_mode(tmp_path):
+    """The Settings form's response-mode choice validates through the same
+    validate_response_mode() check the live control message runs (defense
+    on both sides) - a bad value must abort the whole batch save, the same
+    as an out-of-range VAD field does, not silently fall back to default."""
+    bus = EventBus()
+    system_events: list[SystemEvent] = []
+    saved_events: list[UiConfigSaved] = []
+
+    async def on_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    async def on_saved(event: UiConfigSaved) -> None:
+        saved_events.append(event)
+
+    bus.subscribe(SystemEvent, on_system_event)
+    bus.subscribe(UiConfigSaved, on_saved)
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection("new-model", "USB Headset", response_mode="spoken")
+    await asyncio.sleep(0.05)
+
+    assert not ui_config_path.exists()
+    assert saved_events == []
+    assert len(system_events) == 1
+    assert system_events[0].level is EventLevel.WARN
 
 
 @pytest.mark.parametrize("empty_model", ["", "   "])

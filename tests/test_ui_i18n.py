@@ -11,7 +11,11 @@ from dataclasses import fields
 import pytest
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import TTS_ROUTE_TYPES, MemorySettings
+from jarvis.core.config import (
+    SUPPORTED_RESPONSE_MODES,
+    TTS_ROUTE_TYPES,
+    MemorySettings,
+)
 from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.inputs.attachments import AttachmentClass
@@ -94,6 +98,7 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
             "journal_attachment_status_",
             "journal_consolidation_reason_",
             "mcp_",
+            "response_mode_",
             "think_status_",
         }
     )
@@ -113,6 +118,21 @@ def test_every_model_request_input_has_a_last_request_label():
     expected = {f"last_request_{member.value}" for member in ModelRequestInput}
 
     assert expected <= keys
+
+
+def test_every_supported_response_mode_has_a_settings_option_label():
+    """app.js's applyConfigValues() builds the Settings drop-down's option
+    label dynamically (uiString("response_mode_" + mode + "_option")) from
+    config_values_payload()'s response_mode_options, so "response_mode_" is
+    excluded from the static lookup set like the prefixes above. Pinned
+    from the Python side: every SUPPORTED_RESPONSE_MODES value (task 3b)
+    must have a matching catalog entry in both languages, or switching the
+    UI language with the Settings tab open throws inside uiString()."""
+    keys = _strings_js_keys()
+    expected = {f"response_mode_{mode}_option" for mode in SUPPORTED_RESPONSE_MODES}
+
+    for language, language_keys in keys.items():
+        assert expected <= language_keys, language
 
 
 def test_every_attachment_class_has_a_journal_upload_label():

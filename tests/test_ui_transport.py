@@ -151,6 +151,7 @@ class _FakeControlApi:
         *,
         microphone_host_api: str = "",
         ui_language=None,
+        response_mode=None,
         vad=None,
         tts_routes=None,
         tts_enabled=None,
@@ -159,6 +160,7 @@ class _FakeControlApi:
         self.config_kwargs = {
             "microphone_host_api": microphone_host_api,
             "ui_language": ui_language,
+            "response_mode": response_mode,
             "vad": vad,
             "tts_routes": tts_routes,
             "tts_enabled": tts_enabled,
@@ -1161,6 +1163,51 @@ def test_save_config_selection_parses_iteration_2_arguments():
     assert control_api.config_kwargs["tts_enabled"] is False
 
 
+def test_save_config_selection_parses_the_response_mode_argument():
+    """Task 3b: response_mode joins the batch Settings form as an ordinary
+    restart-to-apply field; the transport passes the form's chosen value
+    through as a string - value semantics belong to
+    validate_selection() behind the control API, exactly like ui_language."""
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control(
+        "save_config_selection",
+        {"model": "demo", "microphone": "mic-1", "response_mode": "voice"},
+    )
+
+    assert control_api.config_kwargs["response_mode"] == "voice"
+
+
+def test_save_config_selection_rejects_a_non_string_response_mode():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="response_mode"):
+        server._dispatch_control(
+            "save_config_selection",
+            {"model": "demo", "microphone": "mic-1", "response_mode": 3},
+        )
+
+    assert control_api.calls == []
+
+
+def test_save_config_selection_without_response_mode_passes_none():
+    """An older front-end that omits the field entirely must reach
+    write_ui_config as None, which omits the [response] section - a
+    previously persisted mode (or config.toml's default) survives an
+    unrelated Apply instead of being reset to text (Codex review finding,
+    task 3b)."""
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control(
+        "save_config_selection", {"model": "demo", "microphone": "mic-1"}
+    )
+
+    assert control_api.config_kwargs["response_mode"] is None
+
+
 def test_save_config_selection_rejects_non_boolean_tts_enabled():
     control_api = _FakeControlApi()
     server = UiTransportServer(EventBus(), control_api)
@@ -1217,6 +1264,7 @@ def test_save_config_selection_without_new_fields_passes_none():
         "vad": None,
         "tts_routes": None,
         "tts_enabled": None,
+        "response_mode": None,
     }
 
 
@@ -1265,6 +1313,8 @@ def test_snapshot_contains_config_values_section():
 
     values = snapshot["config_values"]
     assert values["ui_language"] == "en"
+    assert values["response_mode"] == "text"
+    assert values["response_mode_options"] == ["text", "voice", "text_voice"]
     assert values["vad"]["threshold"] == 0.5
     assert values["tts"]["enabled"] is True
     assert values["tts"]["routes"]["ru"] == {

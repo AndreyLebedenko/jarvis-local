@@ -142,3 +142,45 @@ def test_unknown_response_mode_is_rejected_naming_the_three_values():
     assert len(problems) == 1
     assert "text, voice, text_voice" in problems[0]
     assert "spoken" in problems[0]
+
+
+# --- response_mode as a UiConfigSelection batch field (task 3b) -----------
+
+
+def test_minimal_selection_omits_the_response_mode():
+    selection = UiConfigSelection(model="m", microphone_device="")
+
+    assert selection.response_mode is None
+    assert validate_selection(selection) == []
+
+
+def test_every_supported_response_mode_is_accepted_as_a_selection_field():
+    for mode in ("text", "voice", "text_voice"):
+        selection = UiConfigSelection(
+            model="m", microphone_device="", response_mode=mode
+        )
+
+        assert validate_selection(selection) == []
+
+
+def test_unknown_selection_response_mode_is_rejected_the_same_way():
+    selection = UiConfigSelection(
+        model="m", microphone_device="", response_mode="spoken"
+    )
+
+    problems = validate_selection(selection)
+
+    assert problems == validate_response_mode("spoken")
+
+
+def test_full_selection_with_a_response_mode_is_valid():
+    selection = UiConfigSelection(
+        model="m",
+        microphone_device="USB",
+        ui_language="ru",
+        response_mode="text_voice",
+        vad=VadSettings(),
+        tts_routes=_routes(),
+    )
+
+    assert validate_selection(selection) == []

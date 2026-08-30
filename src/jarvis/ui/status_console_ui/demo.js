@@ -333,6 +333,8 @@ function _demoConfigValues(bilingual) {
   return {
     ui_language: "en",
     ui_language_options: ["en", "ru"],
+    response_mode: "text",
+    response_mode_options: ["text", "voice", "text_voice"],
     vad: {
       threshold: 0.5,
       max_chunk_seconds: 30,

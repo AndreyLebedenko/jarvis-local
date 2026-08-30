@@ -110,16 +110,26 @@
     </div>
   </div>
 
-  <div class="think-card">
-    <div class="think-body">
-      <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">level: off</span></div>
-      <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
+  <div class="mode-card-row">
+    <div class="think-card">
+      <div class="think-body">
+        <div class="think-title">Thinking mode <span class="think-tag" id="thinkTag">level: off</span></div>
+        <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
+      </div>
+      <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
+        <button data-level="off" role="radio" aria-checked="false" onclick="setReasoningLevel('off')">Off</button>
+        <button data-level="low" role="radio" aria-checked="false" onclick="setReasoningLevel('low')">Low</button>
+        <button data-level="medium" role="radio" aria-checked="false" onclick="setReasoningLevel('medium')">Medium</button>
+        <button data-level="high" role="radio" aria-checked="false" onclick="setReasoningLevel('high')">High</button>
+      </div>
     </div>
-    <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
-      <button data-level="off" role="radio" aria-checked="false" onclick="setReasoningLevel('off')">Off</button>
-      <button data-level="low" role="radio" aria-checked="false" onclick="setReasoningLevel('low')">Low</button>
-      <button data-level="medium" role="radio" aria-checked="false" onclick="setReasoningLevel('medium')">Medium</button>
-      <button data-level="high" role="radio" aria-checked="false" onclick="setReasoningLevel('high')">High</button>
+    <div class="mode-card">
+      <div class="mode-title">Response mode</div>
+      <div class="response-mode-toggle" id="responseModeToggle" role="radiogroup" aria-label="Response mode">
+        <button data-mode="text" role="radio" aria-checked="false" onclick="setResponseMode('text')">Text</button>
+        <button data-mode="voice" role="radio" aria-checked="false" onclick="setResponseMode('voice')">Voice</button>
+        <button data-mode="text_voice" role="radio" aria-checked="false" onclick="setResponseMode('text_voice')">Text+voice</button>
+      </div>
     </div>
   </div>
 
@@ -150,6 +160,10 @@
     <div class="config-field">
       <label for="uiLangSelect">Interface language</label>
       <select id="uiLangSelect"></select>
+    </div>
+    <div class="config-field">
+      <label for="responseModeSelect">Response mode</label>
+      <select id="responseModeSelect" onchange="onConfigInputChanged()"></select>
     </div>
     <div class="config-section-label">Speech synthesis (TTS)</div>
     <div class="config-field config-field-checkbox">

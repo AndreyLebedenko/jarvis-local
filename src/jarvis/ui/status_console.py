@@ -13,6 +13,7 @@ from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_UI_CONFIG_PATH,
+    SUPPORTED_RESPONSE_MODES,
     SUPPORTED_TTS_ENGINES,
     SUPPORTED_TTS_LANGUAGES,
     SUPPORTED_UI_LANGUAGES,
@@ -341,6 +342,12 @@ def config_values_payload(settings: Settings) -> dict:
     return {
         "ui_language": settings.ui.language,
         "ui_language_options": list(SUPPORTED_UI_LANGUAGES),
+        # The Settings form's restart-to-apply default (task 3b), sourced
+        # from the Settings snapshot - the live session mode travels through
+        # the separate response_mode state projection instead, so the two
+        # meanings never collide in one payload key.
+        "response_mode": settings.response.mode,
+        "response_mode_options": list(SUPPORTED_RESPONSE_MODES),
         "vad": {
             "threshold": settings.vad.threshold,
             "max_chunk_seconds": settings.vad.max_chunk_seconds,
@@ -651,15 +658,16 @@ class StatusConsoleApi:
         # (UiTransportServer._set_response_mode); a direct caller with a bad
         # value gets the ValueError - validate_response_mode() is the one
         # shared check both layers run (story-v1.9.0 task 2's "defense on
-        # both sides" requirement).
+        # both sides" requirement). Since task 3b this is the Status-tab
+        # live toggle's write path (formerly the Settings drop-down's).
         problems = validate_response_mode(mode_value)
         if problems:
             raise ValueError("; ".join(problems))
-        # Persistence is not scheduled here: it happens once, in app.py's
-        # _on_response_mode_changed(), reacting to the ResponseModeChanged
-        # this set_mode() call publishes - the same reaction the hotkey's
-        # cycle_mode() call triggers. A write call here too would be exactly
-        # the "second write path" the story's own boundary rules out.
+        # Persistence is not scheduled here and never will be: the live
+        # toggle changes only the running session (task 3b); the persisted
+        # default is written exclusively by a Settings-tab Apply through
+        # _save_config_selection_async() - keeping exactly one write path
+        # per meaning of response_mode, as the story's boundary requires.
         self._schedule(
             self._response_mode.set_mode(ResponseMode(mode_value), source="UI")
         )
@@ -911,6 +919,7 @@ class StatusConsoleApi:
         *,
         microphone_host_api: str = "",
         ui_language: str | None = None,
+        response_mode: str | None = None,
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
         tts_enabled: bool | None = None,
@@ -920,6 +929,12 @@ class StatusConsoleApi:
             microphone_device=microphone_device,
             microphone_host_api=microphone_host_api,
             ui_language=ui_language,
+            # None (the field absent from this save) stays None through to
+            # write_ui_config, which then omits the [response] section -
+            # preserving config.toml's or a previously Applied default, the
+            # same optional-field layering as ui_language/vad above. Only a
+            # form that explicitly names a mode may rewrite it.
+            response_mode=response_mode,
             vad=vad,
             tts_routes=tts_routes,
             tts_enabled=tts_enabled,
@@ -962,11 +977,11 @@ class StatusConsoleApi:
                 if self._mcp_host is not None
                 else self._settings.mcp.enabled
             ),
-            # The live response-mode toggle (story-v1.9.0 task 2) is not
-            # part of this form - it must still round-trip through this
-            # full-file rewrite, or an unrelated Apply here would silently
-            # drop whatever update_ui_config_response_mode() last wrote.
-            response_mode=self._response_mode.mode.value,
+            # The Settings form's own restart-to-apply choice for the mode a
+            # new launch starts in (task 3b) - NOT the live session value,
+            # which only the Status-tab buttons and the hotkey change and
+            # which no Apply may rewrite behind the user's back.
+            response_mode=selection.response_mode,
         )
         await publish_system_event(
             self._bus,

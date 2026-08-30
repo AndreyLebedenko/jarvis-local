@@ -358,12 +358,27 @@ body {
    button calls setReasoningLevel() (app.js), which only requests that level
    via the local control channel - the selected button changes only when
    applyThinkingMode() is called back from the real ReasoningLevelChanged
-   projection, never optimistically on click. */
+   projection, never optimistically on click.
+   task 3b: the live response-mode toggle shares the row as a sibling card
+   in the same visual language (radiogroup of buttons, sel class driven only
+   by the confirmed push). Both cards flex and wrap to stacked on a narrow
+   viewport instead of being squeezed - the same min-width technique
+   .think-body already uses one level down. */
+.mode-card-row {
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 16px;
+  width: min(760px, 100%);
+}
 .think-card {
   display: flex; align-items: center; flex-wrap: wrap; gap: 16px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
-  padding: 14px 18px; width: 100%; max-width: 420px;
+  padding: 14px 18px; flex: 1; min-width: 300px;
 }
+.mode-card {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 18px; flex: 1; min-width: 240px;
+}
+.mode-title { font-size: 13.5px; font-weight: 600; }
 /* min-width keeps the title/status text readable instead of being
    squeezed arbitrarily narrow - forces the segmented control below it
    (flex-wrap on .think-card) once the card is too narrow for both. */
@@ -371,22 +386,29 @@ body {
 .think-title { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .think-tag { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9px; color: var(--text-faint); }
 .think-status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-.reasoning-level-toggle {
-  display: flex; align-items: center; gap: 2px; flex-shrink: 0;
-  border: 1px solid var(--border); border-radius: 20px; padding: 3px;
-  background: var(--panel);
-}
-.reasoning-level-toggle button {
-  border: none; background: none; color: var(--text-dim);
-  font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 600;
-  padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.2px;
-}
 /* task-ui-ux-5: folded from --violet into the same cyan "selected" look
    the View and Open/Hidden segmented toggles next to it already use - all
    three are "one selected option in a row" controls, so the color no
    longer needs to explain itself as a one-off. --violet stays reserved
    for Hidden mode. */
 .reasoning-level-toggle button.sel { background: var(--cyan); color: var(--bg); }
+/* task 3b: the response-mode group reuses the reasoning-level toggle's
+   button look verbatim (same control shape, one selected option in a row)
+   rather than inventing a new visual language. */
+.reasoning-level-toggle,
+.response-mode-toggle {
+  display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 20px; padding: 3px;
+  background: var(--panel);
+}
+.reasoning-level-toggle button,
+.response-mode-toggle button {
+  border: none; background: none; color: var(--text-dim);
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 10.5px; font-weight: 600;
+  padding: 6px 10px; border-radius: 16px; cursor: pointer; letter-spacing: 0.2px;
+}
+.reasoning-level-toggle button.sel,
+.response-mode-toggle button.sel { background: var(--cyan); color: var(--bg); }
 
 .mcp-card {
   width: min(760px, 100%); padding: 14px 18px;

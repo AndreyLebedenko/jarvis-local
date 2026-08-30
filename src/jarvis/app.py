@@ -40,7 +40,6 @@ from jarvis.core.config import (
     PromptSettings,
     Settings,
     load_settings,
-    update_ui_config_response_mode,
 )
 from jarvis.core.debug_transcript import (
     configure_debug_transcript,
@@ -2388,24 +2387,19 @@ _RESPONSE_MODE_UI_TEXT_KEY: dict[ResponseMode, str] = {
 
 
 async def _on_response_mode_changed(app: App, event: ResponseModeChanged) -> None:
-    """Publishes UI/log feedback for a response-mode change and persists it -
-    the single reaction to ResponseModeChanged regardless of which channel
-    published it (HOTKEY today, UI, and task 4's VOICE). Persisting here
-    rather than inside StatusConsoleApi.set_response_mode() (review finding,
-    task-v1.9.0-2) is what makes "the hotkey and the drop-down both write the
-    one persisted field" literally true: cycle_mode() called directly by the
-    hotkey listener never went through StatusConsoleApi at all, so a
-    persistence call living only there silently dropped every hotkey change
-    on restart. One write site reacting to the one event covers every
-    trigger, present and future, with no per-trigger duplicate.
-
-    No sound cue: unlike the graded reasoning levels, the three response
-    modes are named options with no natural beep-count mapping. The
-    drop-down push itself is UiTransportServer's own independent
+    """Publishes UI/log feedback for a response-mode change - the single
+    reaction to ResponseModeChanged regardless of which channel published
+    it (HOTKEY, the Status-tab buttons' UI, and task 4's VOICE). Task 3b
+    removed persistence from here: every channel now changes only the live
+    session value; the persisted default for the next launch is written
+    exclusively by a Settings-tab Apply (write_ui_config via
+    _save_config_selection_async), so this handler must never touch
+    config.ui.toml. No sound cue: unlike the graded reasoning levels, the
+    three response modes are named options with no natural beep-count
+    mapping. The live push itself is UiTransportServer's own independent
     ResponseModeChanged subscription (transport.py), same split as
     reasoning level."""
     mode = event.mode
-    update_ui_config_response_mode(app.ui_config_path, mode=mode.value)
     await publish_system_event(
         app.bus,
         logger,

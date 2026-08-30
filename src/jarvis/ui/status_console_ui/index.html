@@ -105,16 +105,26 @@
     <div class="chip-row" id="modulesPanel"></div>
   </section>
 
-  <div class="think-card">
-    <div class="think-body">
-      <div class="think-title"><span data-i18n="think_title">Thinking mode</span> <span class="think-tag" id="thinkTag">level: off</span></div>
-      <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
+  <div class="mode-card-row">
+    <div class="think-card">
+      <div class="think-body">
+        <div class="think-title"><span data-i18n="think_title">Thinking mode</span> <span class="think-tag" id="thinkTag">level: off</span></div>
+        <div class="think-status" id="thinkStatus">Faster, without reasoning</div>
+      </div>
+      <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
+        <button data-level="off" role="radio" aria-checked="false" data-i18n="reasoning_off" onclick="setReasoningLevel('off')">Off</button>
+        <button data-level="low" role="radio" aria-checked="false" data-i18n="reasoning_low" onclick="setReasoningLevel('low')">Low</button>
+        <button data-level="medium" role="radio" aria-checked="false" data-i18n="reasoning_medium" onclick="setReasoningLevel('medium')">Medium</button>
+        <button data-level="high" role="radio" aria-checked="false" data-i18n="reasoning_high" onclick="setReasoningLevel('high')">High</button>
+      </div>
     </div>
-    <div class="reasoning-level-toggle" id="reasoningLevelToggle" role="radiogroup" aria-label="Thinking mode">
-      <button data-level="off" role="radio" aria-checked="false" data-i18n="reasoning_off" onclick="setReasoningLevel('off')">Off</button>
-      <button data-level="low" role="radio" aria-checked="false" data-i18n="reasoning_low" onclick="setReasoningLevel('low')">Low</button>
-      <button data-level="medium" role="radio" aria-checked="false" data-i18n="reasoning_medium" onclick="setReasoningLevel('medium')">Medium</button>
-      <button data-level="high" role="radio" aria-checked="false" data-i18n="reasoning_high" onclick="setReasoningLevel('high')">High</button>
+    <div class="mode-card">
+      <div class="mode-title" data-i18n="mode_title">Response mode</div>
+      <div class="response-mode-toggle" id="responseModeToggle" role="radiogroup" aria-label="Response mode">
+        <button data-mode="text" role="radio" aria-checked="false" data-i18n="mode_text" onclick="setResponseMode('text')">Text</button>
+        <button data-mode="voice" role="radio" aria-checked="false" data-i18n="mode_voice" onclick="setResponseMode('voice')">Voice</button>
+        <button data-mode="text_voice" role="radio" aria-checked="false" data-i18n="mode_text_voice" onclick="setResponseMode('text_voice')">Text+voice</button>
+      </div>
     </div>
   </div>
 
@@ -172,7 +182,7 @@
     </div>
     <div class="config-field">
       <label for="responseModeSelect" data-i18n="config_response_mode_label">Response mode</label>
-      <select id="responseModeSelect" onchange="setResponseMode()">
+      <select id="responseModeSelect" onchange="onConfigInputChanged()">
         <option value="text" data-i18n="response_mode_text_option">Text only</option>
         <option value="voice" data-i18n="response_mode_voice_option">Voice only</option>
         <option value="text_voice" data-i18n="response_mode_text_voice_option">Text + voice</option>
