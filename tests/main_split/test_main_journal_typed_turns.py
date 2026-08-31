@@ -1,5 +1,14 @@
 import asyncio
 
+from _support_from_test_main import (
+    _assert_model_request_started,
+    _complete_event,
+    _FakeHistoryRetrievalService,
+    _FakeJournalRecorder,
+    _orchestrator,
+    _RequestRecorder,
+)
+
 from jarvis.audio.input import (
     UtteranceChunk,
 )
@@ -17,14 +26,6 @@ from jarvis.journal import (
     HistoryRetrievalSourceMode,
     HistoryRetrievalStatus,
     JournalEventRef,
-)
-from tests.main_split._support_from_test_main import (
-    _assert_model_request_started,
-    _complete_event,
-    _FakeHistoryRetrievalService,
-    _FakeJournalRecorder,
-    _orchestrator,
-    _RequestRecorder,
 )
 
 # --- Orchestrator: Journal typed input turns (story-v1.5.2 task 1) ---------

@@ -1,14 +1,15 @@
 import asyncio
 
+from _support_from_test_main import (
+    _FakeAudioInputForEcho,
+    _orchestrator,
+)
+
 from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.dialog.backend import (
     ResponseToken,
-)
-from tests.main_split._support_from_test_main import (
-    _FakeAudioInputForEcho,
-    _orchestrator,
 )
 
 # --- mic auto-pause during speech (task-10, layered on the cooldown above) --

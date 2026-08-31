@@ -5,6 +5,13 @@ import time
 import types
 
 import numpy as np
+from _support_from_test_main import (
+    _fake_app,
+    _FakeBackend,
+    _FakeCaptureInput,
+    _FakeTtsOutput,
+    _settings,
+)
 
 from jarvis.app import (
     build_app,
@@ -23,13 +30,6 @@ from jarvis.core.bus import EventBus
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _fake_app,
-    _FakeBackend,
-    _FakeCaptureInput,
-    _FakeTtsOutput,
-    _settings,
 )
 
 # --- shutdown --------------------------------------------------------------

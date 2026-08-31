@@ -1,3 +1,9 @@
+from _support_from_test_main import (
+    _collecting_subscriber,
+    _fake_app,
+    _FakeSoundCues,
+)
+
 from jarvis.app import (
     App,
     _on_microphone_capture_failed,
@@ -16,11 +22,6 @@ from jarvis.core.config import (
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _collecting_subscriber,
-    _fake_app,
-    _FakeSoundCues,
 )
 
 # --- microphone capture failure SystemEvent --------------------------------

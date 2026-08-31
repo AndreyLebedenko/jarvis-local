@@ -1,5 +1,13 @@
 import asyncio
 
+from _support_from_test_main import (
+    _app_for_interrupt_test,
+    _complete_event,
+    _FakeJournalRecorder,
+    _orchestrator,
+    _RecordingTtsOutputForInterrupt,
+)
+
 import jarvis.app as main_module
 from jarvis.app import (
     App,
@@ -22,13 +30,6 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.journal import (
     TurnOutcome,
-)
-from tests.main_split._support_from_test_main import (
-    _app_for_interrupt_test,
-    _complete_event,
-    _FakeJournalRecorder,
-    _orchestrator,
-    _RecordingTtsOutputForInterrupt,
 )
 
 # --- record_aborted_turn (task-v1.7.0-3 turn/journal handling) --------------

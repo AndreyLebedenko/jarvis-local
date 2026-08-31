@@ -5,6 +5,11 @@ import time
 import types
 
 import pytest
+from _support_from_test_main import (
+    _fake_app,
+    _FakeStatusSurface,
+    _FakeTransport,
+)
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -30,11 +35,6 @@ from jarvis.ui.contract import (
     VisibilityMode,
 )
 from jarvis.ui.transport import UiTransportInfo
-from tests.main_split._support_from_test_main import (
-    _fake_app,
-    _FakeStatusSurface,
-    _FakeTransport,
-)
 
 
 def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):

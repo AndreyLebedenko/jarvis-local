@@ -1,5 +1,10 @@
 import logging
 
+from _support_from_test_main import (
+    _collecting_subscriber,
+    _FakeBackend,
+)
+
 from jarvis.app import (
     APP_LOGGER_NAME,
     warm_up,
@@ -8,10 +13,6 @@ from jarvis.core.bus import EventBus
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _collecting_subscriber,
-    _FakeBackend,
 )
 
 # --- warm-up SystemEvent (task-ui-03) ---------------------------------------

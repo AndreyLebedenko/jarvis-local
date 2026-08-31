@@ -1,5 +1,7 @@
 import base64
 
+from _support_from_test_main import _complete_event, _orchestrator
+
 from jarvis.app import (
     VOICE_PLACEHOLDER_TEXT,
 )
@@ -10,7 +12,6 @@ from jarvis.dialog.backend import (
     ResponseToken,
 )
 from jarvis.dialog.time_context import format_time_context
-from tests.main_split._support_from_test_main import _complete_event, _orchestrator
 
 # --- current-turn time context (v1.3.2) -------------------------------------
 #

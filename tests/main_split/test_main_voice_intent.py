@@ -1,6 +1,12 @@
 import asyncio
 import base64
 
+from _support_from_test_main import (
+    _FakeJournalRecorder,
+    _FakeSoundCues,
+    _orchestrator,
+)
+
 import jarvis.app as main_module
 from jarvis.app import (
     VOICE_PLACEHOLDER_TEXT,
@@ -24,11 +30,6 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.journal import (
     TurnOutcome,
-)
-from tests.main_split._support_from_test_main import (
-    _FakeJournalRecorder,
-    _FakeSoundCues,
-    _orchestrator,
 )
 
 # --- voice intent probe (story-v1.9.0, task 4) ------------------------------

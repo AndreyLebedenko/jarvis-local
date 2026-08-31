@@ -1,5 +1,7 @@
 import asyncio
 
+from _support_from_test_main import _complete_event, _orchestrator
+
 from jarvis.audio.input import (
     UtteranceChunk,
 )
@@ -8,7 +10,6 @@ from jarvis.dialog.backend import (
 )
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
-from tests.main_split._support_from_test_main import _complete_event, _orchestrator
 
 # --- Orchestrator: clipboard turns (task-08) ------------------------------
 #

@@ -1,5 +1,11 @@
 import asyncio
 
+from _support_from_test_main import (
+    _complete_event,
+    _orchestrator,
+    _settings,
+)
+
 from jarvis.app import (
     VOICE_PLACEHOLDER_TEXT,
     App,
@@ -12,11 +18,6 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     Settings,
     VadSettings,
-)
-from tests.main_split._support_from_test_main import (
-    _complete_event,
-    _orchestrator,
-    _settings,
 )
 
 # --- ResponseComplete ordering (review finding) -----------------------------

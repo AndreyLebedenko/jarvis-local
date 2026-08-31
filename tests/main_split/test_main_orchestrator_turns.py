@@ -2,6 +2,13 @@ import asyncio
 import base64
 import logging
 
+from _support_from_test_main import (
+    _assert_model_request_started,
+    _complete_event,
+    _orchestrator,
+    _RequestRecorder,
+)
+
 import jarvis.app as main_module
 from jarvis.app import (
     APP_LOGGER_NAME,
@@ -21,12 +28,6 @@ from jarvis.core.lifecycle import (
 from jarvis.history.context_budget import ContextBudgetLimits
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
-from tests.main_split._support_from_test_main import (
-    _assert_model_request_started,
-    _complete_event,
-    _orchestrator,
-    _RequestRecorder,
-)
 
 # --- Orchestrator --------------------------------------------------------
 

@@ -1,5 +1,13 @@
 import asyncio
 
+from _support_from_test_main import (
+    _app_for_interrupt_test,
+    _complete_event,
+    _FakeJournalRecorder,
+    _orchestrator,
+    _RecordingTtsOutputForInterrupt,
+)
+
 from jarvis.app import (
     App,
     _cancel_current_turn,
@@ -15,13 +23,6 @@ from jarvis.core.config import (
 )
 from jarvis.core.lifecycle import (
     TurnAccepted,
-)
-from tests.main_split._support_from_test_main import (
-    _app_for_interrupt_test,
-    _complete_event,
-    _FakeJournalRecorder,
-    _orchestrator,
-    _RecordingTtsOutputForInterrupt,
 )
 
 # --- cancel_active_turn() (task-v1.7.0-2 interrupt) -------------------------

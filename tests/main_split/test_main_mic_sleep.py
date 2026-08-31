@@ -1,5 +1,11 @@
 import logging
 
+from _support_from_test_main import (
+    _collecting_subscriber,
+    _FakeAudioInput,
+    _FakeSoundCues,
+)
+
 from jarvis.app import (
     APP_LOGGER_NAME,
     App,
@@ -17,11 +23,6 @@ from jarvis.core.config import (
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _collecting_subscriber,
-    _FakeAudioInput,
-    _FakeSoundCues,
 )
 
 # --- mic sleep/wake sound cue (task-10) -------------------------------------

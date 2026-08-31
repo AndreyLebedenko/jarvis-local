@@ -1,3 +1,5 @@
+from _support_from_test_main import _orchestrator
+
 from jarvis.audio.input import (
     UtteranceChunk,
 )
@@ -13,7 +15,6 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelState,
 )
-from tests.main_split._support_from_test_main import _orchestrator
 
 # --- response mode (story-v1.9.0, task 1) -----------------------------------
 #

@@ -5,6 +5,15 @@ from datetime import datetime
 
 import numpy as np
 import soundfile as sf
+from _support_from_test_main import (
+    _assert_model_request_started,
+    _complete_event,
+    _FakeBackend,
+    _FakeJournalRecorder,
+    _FakeSoundCues,
+    _orchestrator,
+    _RequestRecorder,
+)
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -54,15 +63,6 @@ from jarvis.journal.fork import ForkSessionReason
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _assert_model_request_started,
-    _complete_event,
-    _FakeBackend,
-    _FakeJournalRecorder,
-    _FakeSoundCues,
-    _orchestrator,
-    _RequestRecorder,
 )
 
 # --- Orchestrator: attachment turns (task-v1.6.0-6) ------------------------

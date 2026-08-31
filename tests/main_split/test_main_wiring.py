@@ -1,6 +1,15 @@
 import asyncio
 
 import pytest
+from _support_from_test_main import (
+    _fake_app,
+    _FakeAudioInputForEcho,
+    _FakeBackend,
+    _FakeCaptureInput,
+    _FakeStatusSurface,
+    _FakeTransport,
+    _FakeTtsOutput,
+)
 
 from jarvis.app import (
     App,
@@ -51,15 +60,6 @@ from jarvis.ui.contract import (
     ModuleId,
     RuntimeState,
     VisibilityMode,
-)
-from tests.main_split._support_from_test_main import (
-    _fake_app,
-    _FakeAudioInputForEcho,
-    _FakeBackend,
-    _FakeCaptureInput,
-    _FakeStatusSurface,
-    _FakeTransport,
-    _FakeTtsOutput,
 )
 
 # --- wiring --------------------------------------------------------------

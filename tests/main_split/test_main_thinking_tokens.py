@@ -1,6 +1,11 @@
 import json
 
 import httpx
+from _support_from_test_main import (
+    _FakeAudioInput,
+    _FakeCaptureInput,
+    _settings,
+)
 
 from jarvis.app import (
     build_app,
@@ -29,11 +34,6 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.journal import (
     JournalStore,
-)
-from tests.main_split._support_from_test_main import (
-    _FakeAudioInput,
-    _FakeCaptureInput,
-    _settings,
 )
 
 # --- thinking-token isolation through the real bus (task-13) ---------------

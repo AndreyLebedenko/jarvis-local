@@ -1,5 +1,11 @@
 import asyncio
 
+from _support_from_test_main import (
+    _app_for_interrupt_test,
+    _orchestrator,
+    _RecordingTtsOutputForInterrupt,
+)
+
 from jarvis.app import (
     _on_interrupt_requested,
 )
@@ -7,11 +13,6 @@ from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.inputs.interrupt import InterruptRequested
-from tests.main_split._support_from_test_main import (
-    _app_for_interrupt_test,
-    _orchestrator,
-    _RecordingTtsOutputForInterrupt,
-)
 
 # --- _on_interrupt_requested (task-v1.7.0-2 interrupt hotkey) ---------------
 

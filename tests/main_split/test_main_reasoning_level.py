@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from _support_from_test_main import _complete_event, _orchestrator
 
 from jarvis.app import (
     SYSTEM_PROMPT,
@@ -16,7 +17,6 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelState,
 )
-from tests.main_split._support_from_test_main import _complete_event, _orchestrator
 
 # --- graded reasoning level (story-v1.3.1 task 2) ---------------------------
 #

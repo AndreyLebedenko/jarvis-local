@@ -1,5 +1,11 @@
 import asyncio
 
+from _support_from_test_main import (
+    _complete_event,
+    _FakeJournalRecorder,
+    _orchestrator,
+)
+
 from jarvis.audio.input import (
     UtteranceChunk,
 )
@@ -16,11 +22,6 @@ from jarvis.dialog.response_mode import (
 )
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
-)
-from tests.main_split._support_from_test_main import (
-    _complete_event,
-    _FakeJournalRecorder,
-    _orchestrator,
 )
 
 # --- mode 3 second pass (story-v1.9.0 task 3) -------------------------------

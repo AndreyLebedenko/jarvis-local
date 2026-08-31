@@ -2,6 +2,11 @@ import logging
 from pathlib import Path
 
 import pytest
+from _support_from_test_main import (
+    _collecting_subscriber,
+    _FakeSoundCues,
+    _settings,
+)
 
 from jarvis.app import (
     APP_LOGGER_NAME,
@@ -21,11 +26,6 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _collecting_subscriber,
-    _FakeSoundCues,
-    _settings,
 )
 
 # --- graded reasoning-level cue/log wiring (story-v1.3.1 task 3) ------------

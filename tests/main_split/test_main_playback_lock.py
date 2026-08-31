@@ -1,6 +1,14 @@
 import asyncio
 import time
 
+from _support_from_test_main import (
+    _FakeAudioInput,
+    _FakeBackend,
+    _FakeCaptureInput,
+    _FakeStreamingBackend,
+    _settings,
+)
+
 from jarvis.app import (
     build_app,
     warm_up,
@@ -28,13 +36,6 @@ from jarvis.dialog.thinking_mode import (
 from jarvis.dialog.tool_presentation import PromptToolPresentation, ToolAwareDialog
 from jarvis.tools.host import (
     McpModuleStatus,
-)
-from tests.main_split._support_from_test_main import (
-    _FakeAudioInput,
-    _FakeBackend,
-    _FakeCaptureInput,
-    _FakeStreamingBackend,
-    _settings,
 )
 
 # --- shared playback lock (prevents device-contention crackling) -----------

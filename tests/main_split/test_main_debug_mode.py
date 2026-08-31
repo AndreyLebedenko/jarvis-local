@@ -4,6 +4,11 @@ import types
 from pathlib import Path
 
 import pytest
+from _support_from_test_main import (
+    _collecting_subscriber,
+    _fake_app,
+    _settings,
+)
 
 from jarvis.app import (
     APP_LOGGER_NAME,
@@ -21,11 +26,6 @@ from jarvis.core.debug_transcript import configure_debug_transcript, recording
 from jarvis.ui.contract import (
     EventLevel,
     SystemEvent,
-)
-from tests.main_split._support_from_test_main import (
-    _collecting_subscriber,
-    _fake_app,
-    _settings,
 )
 
 
