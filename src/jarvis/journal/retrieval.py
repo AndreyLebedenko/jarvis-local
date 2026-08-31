@@ -151,9 +151,10 @@ class HistoryRetrievalCandidate:
     consumer never mistakes derived annotation text for a raw turn.
     ``provenance`` is the task-1 descriptor computed at construction by the
     retrieval service from the candidate's event or annotation identity - the
-    authoritative "what kind of text is this" record. It is optional only for
-    backward compatibility with candidates constructed outside the retrieval
-    service (older tests, fixtures); the retrieval builders always set it.
+    single authoritative "what kind of text is this" record. It is optional
+    only for backward compatibility with candidates constructed outside the
+    retrieval service (older tests, fixtures); the retrieval builders always
+    set it. Raw-vs-transcript lives solely in ``provenance.source_kind``.
     """
 
     reference: JournalEventRef | None
@@ -170,7 +171,6 @@ class HistoryRetrievalCandidate:
     lexical_score: float | None = None
     lexical_rank: int | None = None
     truncated: bool = False
-    text_is_transcript: bool = False
 
 
 @dataclass(frozen=True)
@@ -627,7 +627,6 @@ def _event_candidate(
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,
         truncated=False,
-        text_is_transcript=event.text_is_transcript,
     )
 
 
@@ -658,7 +657,6 @@ def _annotation_candidate(
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,
         truncated=False,
-        text_is_transcript=False,
     )
 
 

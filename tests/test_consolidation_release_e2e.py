@@ -64,6 +64,7 @@ from jarvis.journal import (
     TranscriptSource,
 )
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.provenance import ProvenanceSourceKind
 from jarvis.journal.transcript import TranscriptOverlayTextResolver
 
 _DIMENSION = 8
@@ -320,7 +321,10 @@ def test_consolidation_removes_audio_but_retrieval_stays_unaffected(
     after_matches = [c for c in after.candidates if c.reference == reference]
     assert after_matches, after
     assert after_matches[0].text == before_matches[0].text == CANDIDATE_A_TRANSCRIPT
-    assert after_matches[0].text_is_transcript is True
+    # The transcript framing rides on the provenance descriptor (story-v1.9.1):
+    # the retrieved text is derived from the voice transcript, not canonical.
+    assert after_matches[0].provenance.source_kind is ProvenanceSourceKind.TRANSCRIPT
+    assert after_matches[0].provenance.is_canonical is False
 
     run_read = journal.archive.read_run(reference.session_id)
     assert run_read.found

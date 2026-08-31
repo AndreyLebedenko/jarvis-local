@@ -61,6 +61,7 @@ from jarvis.journal import (
     TranscriptSource,
 )
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.provenance import ProvenanceSourceKind
 from jarvis.journal.transcript import (
     TranscriptOverlayChanged,
     TranscriptOverlayTextResolver,
@@ -365,7 +366,9 @@ def test_voice_transcript_reachable_through_explicit_unfiltered_retrieval(
     ]
     assert matches, retrieval
     [candidate] = matches
-    assert candidate.text_is_transcript is True
+    # The transcript framing rides on the provenance descriptor (story-v1.9.1).
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.TRANSCRIPT
+    assert candidate.provenance.is_canonical is False
     assert VOICE_TRANSCRIPT_TEXT in candidate.text
 
 

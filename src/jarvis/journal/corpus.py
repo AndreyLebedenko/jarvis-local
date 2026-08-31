@@ -678,6 +678,13 @@ class HistoryCorpusRepository:
                 effective_text,
             ),
         )
+        # Insert parity across both FTS tables: the canonical projection guards
+        # on user/assistant roles with non-empty effective text; the locator
+        # projection (story-v1.9.1 task 3) indexes only the mode-3 spoken
+        # derivative of assistant events. The two inserts share the key
+        # (session_id, event_position) and both live inside the same record
+        # insert, so neither table can gain a row the other path would miss
+        # on delete.
         if event.role in {"user", "assistant"} and effective_text.strip():
             connection.execute(
                 """
@@ -705,9 +712,6 @@ class HistoryCorpusRepository:
                 ),
             )
         derivative = event.metadata.get(SPOKEN_DERIVATIVE_METADATA_KEY)
-        # Locator-only surface (story-v1.9.1 task 3): the mode-3 spoken
-        # derivative is indexed in its own FTS table, never in the canonical
-        # FTS. The canonical insert above is untouched by this branch.
         if event.role == "assistant" and isinstance(derivative, str):
             derivative_text = derivative.strip()
             if derivative_text:
@@ -836,6 +840,9 @@ class HistoryCorpusRepository:
     def _delete_session_projection(
         self, connection: sqlite3.Connection, session_id: str
     ) -> None:
+        # Delete parity across both FTS tables and the event store: every
+        # locator-table delete mirrors the canonical one with the same
+        # predicate, so the tables cannot drift through a one-sided edit.
         connection.execute(
             "DELETE FROM history_corpus_event_fts WHERE session_id = ?",
             (session_id,),

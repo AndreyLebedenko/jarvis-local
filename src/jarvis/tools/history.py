@@ -9,7 +9,6 @@ from datetime import date
 from jarvis.core.config import HISTORY_TOOL_PROVIDER_NAME, DataBoundary
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.journal import (
-    AnnotationCandidateIdentity,
     HistoryBatchRead,
     HistoryBatchReadStatus,
     HistoryCorpusEvent,
@@ -853,11 +852,9 @@ def _serialize_retrieval_candidates(
             and candidate.annotation is not None
         ):
             payload["annotation_id"] = candidate.annotation.annotation_id
-            payload["target"] = _annotation_target_payload(candidate.annotation)
         else:
             payload["reference"] = _reference_payload(candidate.reference)
             payload["role"] = candidate.role
-            payload["text_is_transcript"] = candidate.text_is_transcript
         serialized.append(payload)
     return serialized, truncated_count
 
@@ -894,14 +891,6 @@ def _provenance_payload(candidate: HistoryRetrievalCandidate) -> JSONObject:
         "source_kind": descriptor.source_kind.value,
         "is_canonical": descriptor.is_canonical,
         "target": target_payload,
-    }
-
-
-def _annotation_target_payload(annotation: AnnotationCandidateIdentity) -> JSONObject:
-    return {
-        "session_id": annotation.session_id,
-        "start_position": annotation.start_position,
-        "end_position": annotation.end_position,
     }
 
 

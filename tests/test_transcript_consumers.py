@@ -208,7 +208,6 @@ def test_retrieval_returns_transcript_text_source_framed(tmp_path: Path) -> None
     assert [candidate.reference for candidate in result.candidates] == [reference]
     candidate = result.candidates[0]
     assert candidate.text == _TRANSCRIPT
-    assert candidate.text_is_transcript is True
     descriptor = candidate.provenance
     assert descriptor.source_kind is ProvenanceSourceKind.TRANSCRIPT
     assert descriptor.is_canonical is False
@@ -232,7 +231,6 @@ def test_retrieval_maps_raw_event_candidate_to_raw_event_descriptor(
     assert result.status is HistoryRetrievalStatus.ACCEPTED
     assert [candidate.reference for candidate in result.candidates] == [reference]
     candidate = result.candidates[0]
-    assert candidate.text_is_transcript is False
     descriptor = candidate.provenance
     assert descriptor.source_kind is ProvenanceSourceKind.RAW_EVENT
     assert descriptor.is_canonical is True
