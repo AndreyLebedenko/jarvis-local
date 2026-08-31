@@ -846,6 +846,7 @@ def _serialize_retrieval_candidates(
             "semantic_score": candidate.semantic_score,
             "lexical_score": candidate.lexical_score,
             "lexical_rank": candidate.lexical_rank,
+            "provenance": _provenance_payload(candidate),
         }
         if (
             candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
@@ -859,6 +860,41 @@ def _serialize_retrieval_candidates(
             payload["text_is_transcript"] = candidate.text_is_transcript
         serialized.append(payload)
     return serialized, truncated_count
+
+
+def _provenance_payload(candidate: HistoryRetrievalCandidate) -> JSONObject:
+    # The descriptor is the provenance authority and is always present on
+    # candidates the retrieval service produces; model-facing serialization
+    # must never re-derive it from scattered signals.
+    descriptor = candidate.provenance
+    if descriptor is None:
+        raise ValueError(
+            "search_history candidate is missing its provenance descriptor; "
+            "the retrieval service must compute it (story-v1.9.1 task 2)"
+        )
+    target = descriptor.target
+    if target.event_ref is not None:
+        target_payload: JSONObject = {
+            "event_ref": _reference_payload(target.event_ref),
+            "annotation": None,
+        }
+    else:
+        annotation = target.annotation
+        target_payload = {
+            "event_ref": None,
+            "annotation": {
+                "session_id": annotation.session_id,
+                "start_position": annotation.start_position,
+                "end_position": annotation.end_position,
+            }
+            if annotation is not None
+            else None,
+        }
+    return {
+        "source_kind": descriptor.source_kind.value,
+        "is_canonical": descriptor.is_canonical,
+        "target": target_payload,
+    }
 
 
 def _annotation_target_payload(annotation: AnnotationCandidateIdentity) -> JSONObject:

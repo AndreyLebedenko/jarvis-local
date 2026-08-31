@@ -21,6 +21,12 @@ from jarvis.journal import (
     HistoryRetrievalStatus,
     JournalEventRef,
 )
+from jarvis.journal.annotation import AnnotationTarget
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    ProvenanceSourceKind,
+    ProvenanceTarget,
+)
 from jarvis.tools.history import (
     READ_HISTORY_RANGES_TOOL_NAME,
     READ_HISTORY_TOOL_NAME,
@@ -29,6 +35,372 @@ from jarvis.tools.history import (
 )
 from jarvis.tools.host import McpHost, McpModuleStatus
 from jarvis.tools.registry import ToolRegistry
+
+
+def _event_candidate(
+    *,
+    text: str,
+    role: str = "user",
+    source: str = "text",
+    text_is_transcript: bool = False,
+    source_mode: HistoryRetrievalSourceMode = HistoryRetrievalSourceMode.LEXICAL,
+    combined_rank: int = 1,
+    semantic_score: float | None = None,
+    lexical_score: float | None = None,
+    lexical_rank: int | None = None,
+) -> HistoryRetrievalCandidate:
+    """A hand-built event candidate carrying the descriptor the retrieval
+    service would compute for the same event (story-v1.9.1 task 2)."""
+    reference = JournalEventRef("20260801-100000-ab12", 3)
+    source_kind = (
+        ProvenanceSourceKind.TRANSCRIPT
+        if text_is_transcript
+        else ProvenanceSourceKind.RAW_EVENT
+    )
+    return HistoryRetrievalCandidate(
+        reference=reference,
+        text=text,
+        timestamp="2026-08-01T10:00:00Z",
+        role=role,
+        source=source,
+        source_mode=source_mode,
+        combined_rank=combined_rank,
+        kind=HistoryRetrievalCandidateKind.EVENT,
+        provenance=ProvenanceDescriptor(
+            source_kind=source_kind,
+            eligibility=source_kind.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=not text_is_transcript,
+        ),
+        semantic_score=semantic_score,
+        lexical_score=lexical_score,
+        lexical_rank=lexical_rank,
+        text_is_transcript=text_is_transcript,
+    )
+
+
+def _annotation_candidate(
+    *,
+    source_mode: HistoryRetrievalSourceMode = HistoryRetrievalSourceMode.SEMANTIC,
+    combined_rank: int = 1,
+    semantic_score: float | None = None,
+) -> HistoryRetrievalCandidate:
+    identity = AnnotationCandidateIdentity(
+        annotation_id="ann-1",
+        session_id="20260801-100000-ab12",
+        source="generated",
+        start_position=2,
+        end_position=5,
+    )
+    return HistoryRetrievalCandidate(
+        reference=None,
+        text="Пользователь предпочитает краткие ответы.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="annotation",
+        source="generated",
+        source_mode=source_mode,
+        combined_rank=combined_rank,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=identity,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.ANNOTATION,
+            eligibility=ProvenanceSourceKind.ANNOTATION.eligibility,
+            target=ProvenanceTarget(
+                annotation=AnnotationTarget(
+                    identity.session_id, identity.start_position, identity.end_position
+                )
+            ),
+            is_canonical=False,
+        ),
+        semantic_score=semantic_score,
+    )
+
+
+def _event_candidate_with_provenance(
+    *,
+    text: str = "Stored relay answer.",
+    text_is_transcript: bool = False,
+    combined_rank: int = 1,
+) -> HistoryRetrievalCandidate:
+    """Legacy helper kept while its call sites read - a thin wrapper over
+    `_event_candidate` with the fixture's original defaults (task 5 will
+    collapse the naming)."""
+    return _event_candidate(
+        text=text,
+        source="voice" if text_is_transcript else "text",
+        text_is_transcript=text_is_transcript,
+        combined_rank=combined_rank,
+        lexical_score=-0.2,
+        lexical_rank=1,
+    )
+
+
+def _annotation_candidate_with_provenance(
+    *,
+    start_position: int | None = None,
+    end_position: int | None = None,
+    combined_rank: int = 1,
+) -> HistoryRetrievalCandidate:
+    del start_position, end_position
+    return _annotation_candidate(combined_rank=combined_rank)
+
+
+async def test_search_history_serializes_provenance_for_raw_event() -> None:
+    candidate = _event_candidate_with_provenance()
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "relay", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "raw_event"
+    assert provenance["is_canonical"] is True
+    assert provenance["target"] == {
+        "event_ref": {
+            "session_id": "20260801-100000-ab12",
+            "event_position": 3,
+        },
+        "annotation": None,
+    }
+
+
+async def test_search_history_serializes_provenance_for_transcript_event() -> None:
+    candidate = _event_candidate_with_provenance(
+        text="альфа код доступ слышан", text_is_transcript=True
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "альфа", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "transcript"
+    assert provenance["is_canonical"] is False
+    assert provenance["target"] == {
+        "event_ref": {
+            "session_id": "20260801-100000-ab12",
+            "event_position": 3,
+        },
+        "annotation": None,
+    }
+    # The backward-compatible signals stay: the model must still see the
+    # transcript framing it already reads today.
+    assert item["text_is_transcript"] is True
+
+
+async def test_search_history_serializes_provenance_for_annotation() -> None:
+    candidate = _annotation_candidate_with_provenance(start_position=2, end_position=5)
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "краткие ответы", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "annotation"
+    assert provenance["is_canonical"] is False
+    assert provenance["target"] == {
+        "event_ref": None,
+        "annotation": {
+            "session_id": "20260801-100000-ab12",
+            "start_position": 2,
+            "end_position": 5,
+        },
+    }
+    # The existing per-kind payload stays untouched alongside the new field.
+    assert item["annotation_id"] == "ann-1"
+    assert item["target"] == {
+        "session_id": "20260801-100000-ab12",
+        "start_position": 2,
+        "end_position": 5,
+    }
+
+
+async def test_search_history_provenance_follows_descriptor_over_legacy_fields() -> (
+    None
+):
+    # Sentinel: the serialized provenance must come from the descriptor, not
+    # re-derived from kind/text_is_transcript. The legacy fields here
+    # deliberately contradict the descriptor; the descriptor wins.
+    reference = JournalEventRef("20260801-100000-ab12", 3)
+    candidate = HistoryRetrievalCandidate(
+        reference=reference,
+        text="Stored transcript answer.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="user",
+        source="text",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        lexical_score=-0.2,
+        lexical_rank=1,
+        # Legacy signals lie: they claim a raw, canonical event.
+        text_is_transcript=False,
+        kind=HistoryRetrievalCandidateKind.EVENT,
+        # The descriptor truth: this is a derived transcript.
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.TRANSCRIPT,
+            eligibility=ProvenanceSourceKind.TRANSCRIPT.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=False,
+        ),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "anything", "limit": 1}
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    assert item["provenance"]["source_kind"] == "transcript"
+    assert item["provenance"]["is_canonical"] is False
+
+
+async def test_search_history_fails_loudly_when_candidate_lacks_descriptor() -> None:
+    # A candidate without a descriptor must surface as a tool error, never be
+    # silently re-derived from kind/text_is_transcript (codex review of the
+    # green commit: the removed fallback misclassified transcript candidates).
+    # Dispatched through the MCP host, whose per-call boundary converts the
+    # raised ValueError into a failed dispatch.
+    candidate = _event_candidate_with_provenance()
+    missing_descriptor = HistoryRetrievalCandidate(
+        reference=candidate.reference,
+        text=candidate.text,
+        timestamp=candidate.timestamp,
+        role=candidate.role,
+        source=candidate.source,
+        source_mode=candidate.source_mode,
+        combined_rank=candidate.combined_rank,
+        semantic_score=candidate.semantic_score,
+        lexical_score=candidate.lexical_score,
+        lexical_rank=candidate.lexical_rank,
+        text_is_transcript=candidate.text_is_transcript,
+        provenance=None,
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(missing_descriptor,),
+            returned_count=1,
+        )
+    )
+    registry = ToolRegistry()
+    provider.register_tools(registry)
+    host = McpHost(
+        EventBus(),
+        McpSettings(),
+        registry=registry,
+        builtin_clients={HISTORY_TOOL_PROVIDER_NAME: provider},
+    )
+
+    result = await host.dispatcher.dispatch(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "anything", "limit": 1}
+    )
+
+    assert result.ok is False
+    assert "provenance descriptor" in str(result.error)
+
+
+async def test_search_history_provenance_field_is_present_on_every_item() -> None:
+    candidates = (
+        _event_candidate_with_provenance(),
+        _annotation_candidate_with_provenance(),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=candidates,
+            lexical_count=1,
+            returned_count=2,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "anything", "limit": 2},
+    )
+
+    assert result.is_error is False
+    items = result.structured_content["results"]
+    assert len(items) == 2
+    assert all("provenance" in item for item in items)
+    assert [item["provenance"]["source_kind"] for item in items] == [
+        "raw_event",
+        "annotation",
+    ]
+    assert [item["provenance"]["is_canonical"] for item in items] == [True, False]
+
+
+async def test_search_history_candidates_and_order_unchanged_with_provenance() -> None:
+    # Additive-only regression: provenance must not filter or reorder. The
+    # candidates here rank annotation first (semantic) then event (lexical) as
+    # the fusion would; the serialized order and identifying fields must match
+    # exactly what the pre-descriptor pipeline produced for the same input.
+    candidates = (
+        _annotation_candidate_with_provenance(combined_rank=1),
+        _event_candidate_with_provenance(combined_rank=2),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=candidates,
+            returned_count=2,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "краткие ответы", "limit": 2},
+    )
+
+    assert result.is_error is False
+    items = result.structured_content["results"]
+    assert [(item["kind"], item["combined_rank"]) for item in items] == [
+        ("annotation", 1),
+        ("event", 2),
+    ]
+    assert [item["text"] for item in items] == [
+        "Пользователь предпочитает краткие ответы.",
+        "Stored relay answer.",
+    ]
 
 
 def _event(
@@ -153,14 +525,10 @@ async def test_search_history_rejects_token_budget_before_retrieval() -> None:
 
 
 async def test_search_history_returns_grounded_provenance_and_filters() -> None:
-    candidate = HistoryRetrievalCandidate(
-        reference=JournalEventRef("20260801-100000-ab12", 3),
+    candidate = _event_candidate(
         text="A" * 260,
-        timestamp="2026-08-01T10:00:00Z",
         role="assistant",
-        source="text",
         source_mode=HistoryRetrievalSourceMode.BOTH,
-        combined_rank=1,
         semantic_score=0.91,
         lexical_score=-0.2,
         lexical_rank=1,
@@ -364,24 +732,7 @@ async def test_read_history_ranges_rejects_range_outside_session_while_solo() ->
 
 
 async def test_search_history_frames_annotation_as_typed_derived_candidate() -> None:
-    candidate = HistoryRetrievalCandidate(
-        reference=None,
-        text="Пользователь предпочитает краткие ответы.",
-        timestamp="2026-08-01T10:00:00Z",
-        role="annotation",
-        source="generated",
-        source_mode=HistoryRetrievalSourceMode.SEMANTIC,
-        combined_rank=1,
-        kind=HistoryRetrievalCandidateKind.ANNOTATION,
-        annotation=AnnotationCandidateIdentity(
-            annotation_id="ann-1",
-            session_id="20260801-100000-ab12",
-            source="generated",
-            start_position=2,
-            end_position=5,
-        ),
-        semantic_score=0.88,
-    )
+    candidate = _annotation_candidate(semantic_score=0.88)
     _, _, provider = _provider(
         retrieval_result=HistoryRetrievalResult(
             HistoryRetrievalStatus.ACCEPTED,
@@ -540,19 +891,13 @@ async def test_read_history_ranges_surfaces_per_range_failures() -> None:
 
 
 async def test_history_tools_dispatch_while_mcp_is_off() -> None:
-    first = JournalEventRef("20260801-100000-ab12", 0)
     repository, retrieval, provider = _provider(
         retrieval_result=HistoryRetrievalResult(
             HistoryRetrievalStatus.ACCEPTED,
             candidates=(
-                HistoryRetrievalCandidate(
-                    reference=first,
+                _event_candidate(
                     text="Relay status stored.",
-                    timestamp="2026-08-01T10:00:00Z",
                     role="assistant",
-                    source="text",
-                    source_mode=HistoryRetrievalSourceMode.LEXICAL,
-                    combined_rank=1,
                     lexical_score=-0.1,
                     lexical_rank=1,
                 ),
