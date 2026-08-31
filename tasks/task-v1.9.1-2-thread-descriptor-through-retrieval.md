@@ -162,9 +162,13 @@ parallel suite):
     docs should document the `provenance` field shape for the model.
 - TDD split across commits: 986a383 + 1f42255 (red, incl. codex review
   fixes), 0c2d8c7 (green), c705869 (codex green-review fixes), a220183
-  (refactor). Codex reviews: red - 3 blockers (sentinel/regrade/order),
-  all fixed; green - 2 blockers (fallback masking + transcript
-  misclassification), fixed and re-reviewed LGTM.
+  (refactor), 5d1e53e (final-review fix: fail-loud path now directly
+  tested through the MCP host dispatch boundary, where the raised
+  ValueError surfaces as a failed dispatch - covering the exact
+  misclassification failure mode codex caught mid-task). Final ocrb
+  review: LGTM; one earlier blocker (untested fail-loud path) fixed,
+  the other was a codex-sandbox logon-session infrastructure error,
+  gates run by the executor instead: 2343 passed, ruff green.
 
 ## Notes for the executor
 
