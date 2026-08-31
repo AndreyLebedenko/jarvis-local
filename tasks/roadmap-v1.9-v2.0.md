@@ -1,6 +1,8 @@
-# Roadmap: v1.9.0 through v2.0
+# Roadmap: v1.9.0 through v2.1
 
-**Status:** Accepted roadmap update (owner planning dialog, 2026-08-30).
+**Status:** Accepted roadmap update (owner planning dialog, 2026-08-30). Amended
+2026-08-31 (owner planning dialog): v2.0 is now the functional self-model
+(idle-time reflection); the former v2.0 "Canvas-guided voice" moves to v2.1.
 **Branch:** codex/document-mode3-canvas-voice-contract.
 **Predecessor:** `tasks/done/roadmap-v1.5.1-v1.8.0.md`, which planned the v1.5.1
 stabilization through the v1.8.0 unlimited-history arc and is now removed as
@@ -38,7 +40,7 @@ Rejected names for now:
   opposite of the current provenance model.
 
 Use "Text + voice" for the shipped mode label. Use "canvas-guided voice" when
-discussing the broader v2.0 direction.
+discussing the broader v2.1 direction.
 
 ## Cross-cutting rules
 
@@ -158,7 +160,95 @@ Boundary:
 - The canvas must remain readable and user-facing. It must not become a raw
   scratchpad or private intermediate dump.
 
-## v2.0 - Canvas-guided voice
+## v2.0 - Functional self-model (idle-time reflection)
+
+Working name: **functional self-model**. Origin: the standalone "VAC Harness"
+PoC (`D:\AI\VAC`, brief dated 2026-08-31). The PoC proves an idea, not a
+delivery shape: its git-backed storage, separate `Aura/` instance directory, CLI
+surface, YAML commit files, and blocking two-model loop are PoC artifacts and do
+not carry into Jarvis. What carries in is the protocol idea below, re-expressed
+in Jarvis primitives (event bus, append-only Journal, single local model).
+
+Purpose: give Jarvis a stable, versioned, correctable model of its own
+*observable behavior*, so it can better model the user - specifically the user's
+model of Jarvis. The self-model is strictly functional and behavioral: observed
+behavior is evidence, functional explanation is hypothesis. It must never claim
+introspective access to weights, hidden states, hardware, or inner experience.
+This aligns with the project's existing honesty discipline.
+
+Architecture in Jarvis terms:
+
+- **Substrate is the existing append-only Journal**, not git. Reflection events
+  are journaled; the self-model is a derived, versioned projection over them,
+  rebuildable beside the raw journal (cross-cutting rule 5). No new storage
+  engine, no git repo, no separate instance directory.
+- **General idle-time cognition queue with typed jobs.** The queue is not
+  self-model-specific; "analyze self-model influence on the last answer" is job
+  type 1. Other job types (review weakened observations at their `review_after`,
+  consolidate observations, summarize long dialogues) reuse the same scheduler.
+  Build it general, not as a one-off.
+- **Enqueue is cheap and off the voice path.** On turn completion a lightweight
+  pointer to the journal entry is enqueued through a simple salience filter
+  ("interesting only" from the start - not every turn), so the live loop pays
+  almost nothing.
+- **Idle-gated worker.** A background worker drains the queue only during idle
+  (`not is_busy()`), after a debounce; the debounce duration is a config option
+  in seconds.
+- **Single shared model, independent config block.** There is one resident model
+  (VRAM is already committed). The reflection worker uses that same model, but
+  its access is described by a fully independent config block mirroring
+  `[backend]` - currently identical in every value except, possibly, the
+  thinking/reasoning level. The independence is contractual, so the two can
+  diverge later without entangling live inference config.
+- **The worker is preemptible - the single hardest invariant.** Because
+  reflection and live response contend for the same GPU, any in-flight
+  reflection inference is cancelled the instant the user speaks and its job is
+  requeued. The event bus already propagates `CancelledError` cleanly.
+- **Once-coherent commits.** A reflection either commits a whole new self-model
+  version or nothing; the next live turn always reads one complete version,
+  never a half-applied state.
+- **Quality gates on reflection output.** A one-word evaluation is not evidence
+  for a self-model change (a recorded PoC finding).
+
+Phasing:
+
+- **Phase 1 - passive loop only.** The self-model is written and versioned but
+  is NOT injected into the live system prompt. This is observable, testable with
+  logic-only automated tests, and carries no persona-drift risk. Owner reviews
+  the passive output before deciding the next step.
+- **Phase 2 - prompt injection (deferred decision).** Only after reviewing
+  Phase 1 do we decide whether and how the current self-model version feeds the
+  live prompt. This is where user-facing persona-drift risk lives; PoC v0004
+  already anchors stability to append-only observations as a mitigation.
+
+Boundaries:
+
+- **No proactive speech.** The reflection loop updates internal state only; it
+  never initiates dialogue. This is a second cognition context that never speaks
+  unprompted, so it sidesteps the deferred dual-context/proactive-initiative
+  blocker rather than depending on it.
+- **Runtime locality preserved.** Reflection uses the configured local model
+  only. Any future cloud/side-model access is an explicit, off-by-default
+  per-component capability per the runtime-locality contract, not a default.
+- **Testing per protocol.** Automated tests cover pure logic (queue behavior,
+  salience filter, idle/debounce gating, self-model projection updates,
+  config parsing). Anything touching the live model or VRAM is a human-run
+  handoff.
+
+Decisions settled 2026-08-31 (owner): salience filter from the start; both a
+debounce and a config'd idle-seconds option; single shared model with an
+independent `[backend]`-shaped config block; passive loop first.
+
+Open design questions (deferred until a story card):
+
+- Salience filter definition: what makes a turn "interesting" enough to enqueue.
+- Structured observations layer (confidence, scope, status, counterevidence,
+  `review_after`) as the self-model's internal shape - the PoC's recommended
+  next feature.
+- Whether Phase 2 prompt injection is gated by a flag and how the self-model
+  section is bounded in the prompt to contain drift.
+
+## v2.1 - Canvas-guided voice
 
 Purpose: explore the larger capability hinted by Text + voice: a structured
 multi-channel answer where Jarvis can build visible content and guide the user
@@ -185,7 +275,7 @@ Candidate directions:
 
 Boundary:
 
-- v2.0 is exploratory until a spike proves model compliance with the tagged or
+- v2.1 is exploratory until a spike proves model compliance with the tagged or
   interleaved protocol.
 - Do not replace the v1.9 two-pass Text + voice mode until the single-pass or
   interleaved design has better measured behavior on latency, tag stability,
