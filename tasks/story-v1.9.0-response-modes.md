@@ -1,6 +1,12 @@
 # Story v1.9.0: Response modes (Text-Only / TTS-Only / Text+TTS)
 
-**Status:** Proposed. No task cards opened yet.
+**Status:** Completed. Tasks 1, 2, 3, 3b, 4 implemented and owner-verified
+live; task 5 (docs + release verification) closed 2026-08-31 - test suite
+split by topic, user docs written, handoff self-sufficiency audit done,
+assembled release handoff in tasks/done/task-v1.9.0-5-docs-and-release-
+verification.md (its standing checks remain available for release
+playtesting). Gates: 2320 passed / 1 skipped, ruff clean; Codex review
+findings from the task-5 split fixed and re-verified.
 **Created:** 2026-08-26.
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md`.
 **Version note:** `v1.9.0` is now the accepted slot for response modes in the
@@ -203,29 +209,39 @@ Out of scope:
 
 ## Acceptance criteria
 
-- [ ] Default behavior is unchanged: with no config change, Jarvis is in
+- [x] Default behavior is unchanged: with no config change, Jarvis is in
       Text-Only and the current streaming/sentence-buffered TTS path behaves
-      exactly as before this story.
-- [ ] Mode 2 produces a self-contained spoken-friendly answer in one pass;
+      exactly as before this story. (Automated suite byte-identical across
+      the story; the assembled release handoff covers the live re-check.)
+- [x] Mode 2 produces a self-contained spoken-friendly answer in one pass;
       no bullets/tables/inline URLs in the spoken output, and it references
-      nothing that is not present to the listener.
-- [ ] Mode 3 streams canonical rich text to the screen immediately, then
+      nothing that is not present to the listener. (Pure coverage in
+      test_main_response_mode_contracts.py; live check in the release
+      handoff.)
+- [x] Mode 3 streams canonical rich text to the screen immediately, then
       speaks a derivative generated with reasoning off from the exact shown
       text; the first-pass streaming TTS is silent in this mode; spoken
       references ("as in the table above") correspond to actually visible
-      content.
-- [ ] The mode-3 spoken derivative is persisted additively inside its turn's
+      content. (Owner's task-3 handoff verified the construction; audio
+      timing re-check in the release handoff.)
+- [x] The mode-3 spoken derivative is persisted additively inside its turn's
       record and shown as a collapsed block under the reply; the append-only
       journal invariant holds; the derivative does NOT appear in the
-      retrieval/memory corpus (the canonical text alone does).
-- [ ] The single hotkey cycles 1->2->3->1; the UI config page shows and sets
-      the same state; both persist to the same config field and take effect
-      for subsequent turns.
-- [ ] A spoken mode-switch command changes the mode and is reliably
-      distinguished from request content.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green
-      for all non-hardware logic; hotkey, voice, and mode-3 audio-timing
-      checks are prepared human-run handoffs with exact commands.
+      retrieval/memory corpus (the canonical text alone does). (Pure tests +
+      owner-verified task-3 handoff.)
+- [x] The single hotkey cycles 1->2->3->1; the UI config page shows and sets
+      the same state; both drive the persisted/live state per the 3b split
+      and take effect for subsequent turns. (Owner-verified live, task 2 +
+      3b handoffs.)
+- [x] A spoken mode-switch command changes the mode and is reliably
+      distinguished from request content. (Owner-verified live, 2026-08-30,
+      task 4.)
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green
+      for all non-hardware logic (2320 passed / 1 skipped, 2026-08-31; test
+      suite split by topic in task 5); hotkey, voice, and mode-3
+      audio-timing checks are prepared human-run handoffs with exact
+      commands (assembled release handoff in
+      tasks/done/task-v1.9.0-5-docs-and-release-verification.md).
 
 ## Stop conditions
 
