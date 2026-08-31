@@ -1,7 +1,8 @@
 # Story v1.9.1: Provenance-aware indexing and search surfaces
 
-**Status:** Planned. Not started.
-**Created:** 2026-08-31.
+**Status:** In progress
+**Created:** 2026-08-31
+**Updated:** 2026-08-31
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md` (section "v1.9.1 - Provenance-aware
 indexing and search surfaces").
 **Predecessor:** `story-v1.9.0-response-modes.md` (done) shipped the mode-3
