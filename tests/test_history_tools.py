@@ -122,29 +122,16 @@ def _event_candidate_with_provenance(
     text_is_transcript: bool = False,
     combined_rank: int = 1,
 ) -> HistoryRetrievalCandidate:
-    reference = JournalEventRef("20260801-100000-ab12", 3)
-    source_kind = (
-        ProvenanceSourceKind.TRANSCRIPT
-        if text_is_transcript
-        else ProvenanceSourceKind.RAW_EVENT
-    )
-    return HistoryRetrievalCandidate(
-        reference=reference,
+    """Legacy helper kept while its call sites read - a thin wrapper over
+    `_event_candidate` with the fixture's original defaults (task 5 will
+    collapse the naming)."""
+    return _event_candidate(
         text=text,
-        timestamp="2026-08-01T10:00:00Z",
-        role="user",
         source="voice" if text_is_transcript else "text",
-        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        text_is_transcript=text_is_transcript,
         combined_rank=combined_rank,
         lexical_score=-0.2,
         lexical_rank=1,
-        text_is_transcript=text_is_transcript,
-        provenance=ProvenanceDescriptor(
-            source_kind=source_kind,
-            eligibility=source_kind.eligibility,
-            target=ProvenanceTarget(event_ref=reference),
-            is_canonical=not text_is_transcript,
-        ),
     )
 
 
@@ -154,35 +141,8 @@ def _annotation_candidate_with_provenance(
     end_position: int | None = None,
     combined_rank: int = 1,
 ) -> HistoryRetrievalCandidate:
-    identity = AnnotationCandidateIdentity(
-        annotation_id="ann-1",
-        session_id="20260801-100000-ab12",
-        source="generated",
-        start_position=start_position,
-        end_position=end_position,
-    )
-    return HistoryRetrievalCandidate(
-        reference=None,
-        text="Пользователь предпочитает краткие ответы.",
-        timestamp="2026-08-01T10:00:00Z",
-        role="annotation",
-        source="generated",
-        source_mode=HistoryRetrievalSourceMode.SEMANTIC,
-        combined_rank=combined_rank,
-        kind=HistoryRetrievalCandidateKind.ANNOTATION,
-        annotation=identity,
-        semantic_score=0.88,
-        provenance=ProvenanceDescriptor(
-            source_kind=ProvenanceSourceKind.ANNOTATION,
-            eligibility=ProvenanceSourceKind.ANNOTATION.eligibility,
-            target=ProvenanceTarget(
-                annotation=AnnotationTarget(
-                    identity.session_id, start_position, end_position
-                )
-            ),
-            is_canonical=False,
-        ),
-    )
+    del start_position, end_position
+    return _annotation_candidate(combined_rank=combined_rank)
 
 
 async def test_search_history_serializes_provenance_for_raw_event() -> None:
