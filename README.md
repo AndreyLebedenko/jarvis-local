@@ -530,12 +530,13 @@ regardless of how large the local journal grows.
   session and event position.
 - **The Text + voice spoken derivative is not memory.** In Text + voice mode,
   the heard text is spoken commentary over the canonical on-screen answer,
-  stored in `metadata.spoken_derivative` on the same event. It is currently not
+  stored in `metadata.spoken_derivative` on the same event. It is never
   indexed by lexical/semantic retrieval, automatic retrieval, or memory: the
-  authoritative source remains `event.text`. A later v1.9.1 change may add a
-  separate locator-only search for heard phrases, but such search must find the
-  owning assistant event and show the canonical canvas, not promote the spoken
-  derivative into a standalone fact.
+  authoritative source remains `event.text`. You can still find a turn by a
+  phrase you heard: the Journal search has a separate heard-phrase locator
+  that matches a phrase you remember from the spoken commentary and shows the
+  turn with its canonical on-screen answer as the authoritative content (see
+  below).
 - **Rebuildable, and deletion is final.** The corpus, lexical, and semantic
   indexes are disposable projections derived from the append-only raw
   journal; they rebuild from scratch on demand. Deleting a Journal session
@@ -571,6 +572,15 @@ regardless of how large the local journal grows.
   transcript exists for it - the transcript, raw text, annotations, and
   their retrievability are completely unaffected; only the `.wav` file is
   gone. The session currently in progress can never be consolidated.
+- **Heard-phrase Journal search (Text + voice turns).** When you remember
+  what Jarvis *said* in a Text + voice answer but not how it was phrased on
+  screen, type that phrase into the Journal search box. Matches that exist
+  only in the spoken commentary come back in a separate, clearly labeled
+  "found by something you heard" group: each shows which turn was located,
+  the recognized heard fragment as the snippet, and the canonical on-screen
+  answer underneath as the authoritative content. Heard phrases never feed
+  retrieval/memory or Jarvis's own history search - the locator is a
+  Journal UI find-the-turn aid only.
 
 Retrieval, storage, indexing, and the local embedding model all run without
 network access; the only local-network exception is a separately enabled,

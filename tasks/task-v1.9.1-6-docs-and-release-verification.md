@@ -1,6 +1,6 @@
 # Task v1.9.1-6: Docs + release verification
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Depends on:** tasks 1-5 landed (feature complete and cleaned up).
 **Executor:** Sonnet 5 High. Documentation and a self-sufficient human-run
@@ -88,17 +88,63 @@ spoken derivative). Confirm the automated gates are green.
 
 ## Acceptance criteria
 
-- [ ] PROJECT.md records the provenance-descriptor, locator-only-derivative, and
+- [x] PROJECT.md records the provenance-descriptor, locator-only-derivative, and
       non-text-archive facts in settled-fact style, without duplicating existing
       sections.
-- [ ] README (both language files) has an accurate, short heard-phrase Journal
+- [x] README (both language files) has an accurate, short heard-phrase Journal
       search note matching what task 4 shipped.
-- [ ] A self-sufficient human-run verification handoff exists, executable from
+- [x] A self-sufficient human-run verification handoff exists, executable from
       its own text, naming every control/config/command literally with source
       references, and covering the mode-3-then-locator-search check and the
       model-facing exposure assertion.
-- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+- [x] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
       green, counts recorded.
+
+## Completion notes (2026-08-31)
+
+- PROJECT.md: added "Architecture v1.9.1 (provenance-aware indexing and
+  search surfaces)" right after the v1.9.0 section (whose "Future search
+  note" this delivers) - three settled facts: the single typed provenance
+  descriptor with the eligibility axis encoded on the enum; the
+  locator-only, physically-separate spoken-derivative FTS with the UI-only
+  model-facing decision stated; the archive overlay recorded non-text. The
+  v1.9.0 "future search note" bullet was left in place (historical record of
+  the v1.9.0 state, not contradicted - the new section is the delivery).
+- README en + ru: two edits each - (a) updated the stale v1.9.0
+  "currently not indexed ... a later v1.9.1 change may add" wording in the
+  "Unlimited conversation history" section to the shipped state (locator
+  exists, UI-only), (b) added a dedicated heard-phrase Journal search
+  bullet describing the labeled group, the snippet-vs-canonical split, and
+  the never-into-retrieval/memory boundary.
+- Handoff: `tasks/v1.9.1-release-verification-handoff.md` - self-sufficient
+  per Testing protocol item 4: launch command literal; Ctrl+Alt+O named with
+  source (`config.py:140`, `config.example.toml:146`, `[hotkeys]
+  response_mode_toggle`); state-independent mode-reach step; the task-2
+  bug-report lesson applied (no undocumented-hotkey dependency - the binding
+  is documented in README hotkey section and config.example.toml, cited in
+  the handoff). Covers: mode-3 production of a derivative-only phrase,
+  locator search assertion (group label, tag, canonical line), the UI-only
+  model-facing assertion (behavioral), canonical-hit regression sanity.
+  Dependencies on other docs: none - every cited fact is in
+  `src/jarvis/core/config.py`, `src/jarvis/journal/provenance.py`, the
+  `strings.js` UI strings (named literally), or tests, all named in the
+  handoff itself.
+- No production logic change; automated gates re-run green with counts
+  recorded in the handoff (2366 passed / 1 skipped, ruff clean) - identical
+  to the task-5 baseline.
+- Codex docs review found 3 findings (1 medium: PROJECT.md overclaimed
+  "every text-bearing surface maps onto the descriptor" while the Journal UI
+  canonical path still uses the task-4 `kind` string - wording now scoped to
+  the retrieval/tool boundary with the debt named; 1 medium: the UI-only
+  verification step was narration, not an executable step - now a direct
+  `logs/jarvis.log` inspection with `[logging]` source citations; 1 low: UI
+  controls cited without source refs - added index.html/strings.js
+  citations, plus one line-number correction caught in follow-up: RU
+  `journal_search_label` is `strings.js:470`). No findings remained on
+  re-review.
+- Story card NOT closed and no story-level cards moved to done here, per
+  the card's boundary: that waits for the human's review of the run handoff
+  report.
 
 ## Notes for the executor
 
