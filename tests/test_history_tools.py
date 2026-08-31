@@ -75,7 +75,6 @@ def _event_candidate(
         semantic_score=semantic_score,
         lexical_score=lexical_score,
         lexical_rank=lexical_rank,
-        text_is_transcript=text_is_transcript,
     )
 
 
@@ -122,9 +121,8 @@ def _event_candidate_with_provenance(
     text_is_transcript: bool = False,
     combined_rank: int = 1,
 ) -> HistoryRetrievalCandidate:
-    """Legacy helper kept while its call sites read - a thin wrapper over
-    `_event_candidate` with the fixture's original defaults (task 5 will
-    collapse the naming)."""
+    """Locally named wrapper over `_event_candidate` with the fixture's
+    original defaults - one helper per candidate shape in this module."""
     return _event_candidate(
         text=text,
         source="voice" if text_is_transcript else "text",
@@ -205,9 +203,9 @@ async def test_search_history_serializes_provenance_for_transcript_event() -> No
         },
         "annotation": None,
     }
-    # The backward-compatible signals stay: the model must still see the
-    # transcript framing it already reads today.
-    assert item["text_is_transcript"] is True
+    # The backward-compatible framing now rides on the provenance field
+    # alone: source_kind "transcript" is the transcript signal.
+    assert provenance["source_kind"] == "transcript"
 
 
 async def test_search_history_serializes_provenance_for_annotation() -> None:
@@ -238,21 +236,17 @@ async def test_search_history_serializes_provenance_for_annotation() -> None:
             "end_position": 5,
         },
     }
-    # The existing per-kind payload stays untouched alongside the new field.
+    # The annotation item keeps only its id; the session/range target shape
+    # lives solely in provenance.target (one shape, one place).
     assert item["annotation_id"] == "ann-1"
-    assert item["target"] == {
-        "session_id": "20260801-100000-ab12",
-        "start_position": 2,
-        "end_position": 5,
-    }
 
 
 async def test_search_history_provenance_follows_descriptor_over_legacy_fields() -> (
     None
 ):
     # Sentinel: the serialized provenance must come from the descriptor, not
-    # re-derived from kind/text_is_transcript. The legacy fields here
-    # deliberately contradict the descriptor; the descriptor wins.
+    # re-derived from kind. The legacy kind field here deliberately
+    # contradicts the descriptor; the descriptor wins.
     reference = JournalEventRef("20260801-100000-ab12", 3)
     candidate = HistoryRetrievalCandidate(
         reference=reference,
@@ -264,8 +258,6 @@ async def test_search_history_provenance_follows_descriptor_over_legacy_fields()
         combined_rank=1,
         lexical_score=-0.2,
         lexical_rank=1,
-        # Legacy signals lie: they claim a raw, canonical event.
-        text_is_transcript=False,
         kind=HistoryRetrievalCandidateKind.EVENT,
         # The descriptor truth: this is a derived transcript.
         provenance=ProvenanceDescriptor(
@@ -312,7 +304,6 @@ async def test_search_history_fails_loudly_when_candidate_lacks_descriptor() -> 
         semantic_score=candidate.semantic_score,
         lexical_score=candidate.lexical_score,
         lexical_rank=candidate.lexical_rank,
-        text_is_transcript=candidate.text_is_transcript,
         provenance=None,
     )
     _, _, provider = _provider(
@@ -751,7 +742,8 @@ async def test_search_history_frames_annotation_as_typed_derived_candidate() -> 
     [item] = result.structured_content["results"]
     assert item["kind"] == "annotation"
     assert item["annotation_id"] == "ann-1"
-    assert item["target"] == {
+    # The session/range target shape lives solely in provenance.target.
+    assert item["provenance"]["target"]["annotation"] == {
         "session_id": "20260801-100000-ab12",
         "start_position": 2,
         "end_position": 5,

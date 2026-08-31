@@ -22,6 +22,11 @@ from jarvis.journal import (
     HistoryRetrievalSourceMode,
     JournalEventRef,
 )
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    ProvenanceSourceKind,
+    ProvenanceTarget,
+)
 
 
 def _turn(role: str, text: str) -> ConversationTurn:
@@ -509,8 +514,9 @@ def test_select_automatic_retrieval_skips_low_relevance_and_stays_within_budget(
 
 
 def test_automatic_retrieval_passage_marks_transcript_source():
+    reference = JournalEventRef("20260801-100000-ab12", 0)
     candidate = HistoryRetrievalCandidate(
-        reference=JournalEventRef("20260801-100000-ab12", 0),
+        reference=reference,
         text="секретный код альфа",
         timestamp="2026-08-01T10:00:00+01:00",
         role="user",
@@ -519,7 +525,12 @@ def test_automatic_retrieval_passage_marks_transcript_source():
         combined_rank=1,
         lexical_score=1.0,
         lexical_rank=1,
-        text_is_transcript=True,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.TRANSCRIPT,
+            eligibility=ProvenanceSourceKind.TRANSCRIPT.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=False,
+        ),
     )
     request = build_automatic_retrieval_request(
         "код альфа", _recent_history(), roles=("user",), sources=("voice",)
@@ -534,8 +545,9 @@ def test_automatic_retrieval_passage_marks_transcript_source():
 
     assert selection.selected_passage_count == 1
     passage = selection.selected_passages[0]
-    # The transcript flag survives selection and reaches the model-facing
-    # working-context payload, so the transcript is framed as a transcript and
+    # The provenance descriptor survives selection: a transcript candidate
+    # reaches the model-facing working-context payload framed as a transcript
+    # (its text_is_transcript flag is derived from provenance at the boundary),
     # not as the user's own verbatim words.
     assert passage.text_is_transcript is True
     formatted = format_retrieved_history_passages(selection.selected_passages)

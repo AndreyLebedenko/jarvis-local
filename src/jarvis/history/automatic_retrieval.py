@@ -14,6 +14,7 @@ from jarvis.history.working_context import (
     format_retrieved_history_passages,
 )
 from jarvis.journal import HistoryRetrievalCandidate, HistoryRetrievalQuery
+from jarvis.journal.provenance import ProvenanceSourceKind
 
 __all__ = [
     "AutomaticRetrievalRequest",
@@ -232,6 +233,7 @@ def _is_recent_overlap(candidate_text: str, recent_texts: Sequence[str]) -> bool
 def _to_retrieved_history_passage(
     candidate: HistoryRetrievalCandidate,
 ) -> RetrievedHistoryPassage:
+    descriptor = candidate.provenance
     return RetrievedHistoryPassage(
         reference=candidate.reference,
         role=candidate.role,
@@ -239,7 +241,10 @@ def _to_retrieved_history_passage(
         timestamp=candidate.timestamp,
         text=candidate.text,
         truncated=False,
-        text_is_transcript=candidate.text_is_transcript,
+        text_is_transcript=(
+            descriptor is not None
+            and descriptor.source_kind is ProvenanceSourceKind.TRANSCRIPT
+        ),
         kind=candidate.kind,
         annotation=candidate.annotation,
     )
