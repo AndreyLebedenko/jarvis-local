@@ -4,20 +4,24 @@
 tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
-**Status:** Open and unblocked as of 2026-08-11. The named blocker, the debug
-mode (`tasks/done/task-debug-mode-and-request-transcript.md`), has shipped, so
-the next step - reproducing the refusal with a full request transcript in hand
-- is now actionable rather than waiting on tooling. One mechanism
+**Status:** Open. Updated 2026-09-01 (see "Sixth data point" below): the
+report's primary open question - does comprehension work at all today? - is
+now answered YES by a controlled contrast on one wav in one run, and the
+weight of evidence has shifted to the current-turn *framing* as the trigger of
+a first-turn refusal. The recommended next step is now the wording fix in its
+own card (see "Future considerations"), not more reconstruction.
+Prior status (2026-08-11): open and unblocked once the debug mode
+(`tasks/done/task-debug-mode-and-request-transcript.md`) shipped. One mechanism
 confirmed, one input taxonomy established, and the live first refusal not
-reproducible from anything that can be reconstructed - which is the
-argument for stopping reconstruction here.
+reproducible from anything that could be reconstructed.
 Confirmed: the model follows its own previous answer, so one refusal in
 conversation history makes every later voice turn in that session a
 refusal. Reopened by the owner's zero-gain control: a non-refusal is not
-evidence of comprehension, so it is not yet established that the model
-comprehends the audio at all. Not caused by the microphone work; see "Why
-the microphone fix is not the cause" - that half is verified working by
-this very run.
+evidence of comprehension. That control is now superseded - the sixth data
+point separates comprehension from bluffing directly (transcription of the
+exact refused wav). Not caused by the microphone work; see "Why the
+microphone fix is not the cause" - that half is verified working by this
+very run.
 
 ## Symptoms
 
@@ -239,6 +243,85 @@ whatever the engine actually sent, and nothing records it. This is
 exactly the gap `tasks/done/task-debug-mode-and-request-transcript.md` exists
 to close, and further reconstruction is not the way to close it: the next
 step on this bug is a debug run, not another script.
+
+## Sixth data point: comprehension confirmed, first-turn refusal on a clean clip (owner, 2026-09-01)
+
+**Code state:** owner ran a fresh copy with empty history (`D:\AI\Jarvis.bck`),
+code equivalent to `main` at `601e0f3` (story-v1.9.1 merged). This bug predates
+and is unrelated to that story and to the v1.9.0 response-mode/voice-intent
+work; it is the same first-turn refusal this report has tracked since
+2026-07-25.
+
+**What happened.** A fresh context was created (session
+`20260901-003423-ba4272`, New context at 00:34:23). Its **first** voice turn -
+`utterance-20260901-003449-0001.wav`, `audio_duration=2.5s`, an English
+question - was answered:
+
+> К сожалению, ваше голосовое сообщение не дошло до меня или не было
+> преобразовано в текст. Пожалуйста, попробуйте отправить его еще раз, и я
+> сразу же приступлю к расшифровке.
+
+This is the same "there was nothing in this audio" refusal wording the fifth
+experiment characterized, now emitted on turn one of a session with **no prior
+answer in history to follow** - so the confirmed session-poisoning mechanism
+("the model follows its own previous answer") does not explain this instance.
+It is a first-turn refusal.
+
+**The decisive contrast.** At 00:36:20, in the same run, the owner ran the
+manual transcription on that exact wav and it produced the correct verbatim
+text (log: `Transcription transcribed for 20260901-003423-ba4272:1`,
+model `gemma4-12b-jarvis-free-mm`):
+
+> Can you tell me about yourself and a few words?
+
+So on one wav, in one run, two framings gave opposite outcomes:
+
+| framing | current-turn user text | outcome |
+|---|---|---|
+| dialog turn | `[голосовое сообщение]` (`VOICE_PLACEHOLDER_TEXT`) + conversational system prompt | refusal ("нечего слушать") |
+| transcription | `DEFAULT_TRANSCRIPTION_INSTRUCTION` ("Transcribe this recording verbatim...") | correct verbatim transcript |
+
+This is a stronger contrast than any earlier reconstruction: same audio, same
+`build_payload()`/`images` transport, same session, minutes apart. It settles
+two things the report left open:
+
+1. **Comprehension works today.** The transcription proves the audio is
+   intelligible and the model decodes it. The fifth experiment's worry ("does
+   comprehension work at all today?") is answered yes, without relying on the
+   worthless "как ты меня слышишь" criterion - transcription of the exact
+   refused wav cannot be produced by bluffing.
+2. **The first-turn refusal is not gated on a short or unclear clip.** Section
+   "Third experiment" attributed the first refusal to "ordinary model behavior
+   on a short or unclear clip". This clip is 2.5s and fully intelligible (the
+   transcript is perfect), yet turn one refused. So the first refusal is driven
+   by the **current-turn framing**, not clip quality.
+
+**Code path verified correct (framing, not plumbing).** The dialog voice turn
+attaches the wav to `messages[-1]["images"]` via the same
+`OllamaBackend.build_payload()` the transcription path uses
+(`backend.py`), and for a VOICE turn automatic retrieval is skipped, so the
+placeholder message is genuinely the final message the audio rides on. The
+audio is sent. What differs is only the accompanying text: a caption-like
+placeholder versus an explicit "listen and transcribe" instruction. This is
+exactly the mechanism "Future considerations" ranked first.
+
+**New variable worth a test dimension:** the utterance was **English** while
+the dialog system prompt forces Russian ("Отвечай по-русски") and the user
+line is a bracketed Russian placeholder. Whether the audio/prompt language
+mismatch raises the first-turn refusal rate is now a cheap thing to vary in the
+fix card's acceptance session (English clip vs Russian clip, same wording).
+
+**Recommendation.** Proceed with the wording fix (its own card, per "Future
+considerations"): make the voice turn's current-turn text read as a request to
+listen rather than a caption for an attachment - candidate direction: replace
+the bare `[голосовое сообщение]` with a short instruction-framed line, and
+check the history/journal rendering in the same change since that text is also
+what past turns show the model. The audio/prompt language mismatch is an extra
+axis for the acceptance session. Do not ship on one run: this remains
+probabilistic, and the acceptance test is a session (several voice turns,
+including one deliberately unintelligible and one English), not a single
+request. This data point does not itself justify a code change in the current
+release branch; it justifies opening the fix card.
 
 ## Earlier suspected cause (superseded by the run above)
 
