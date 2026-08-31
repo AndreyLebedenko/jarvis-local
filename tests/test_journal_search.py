@@ -13,7 +13,6 @@ from jarvis.journal import (
     JournalSessionSummary,
     JournalStore,
 )
-from jarvis.tools.history import HistoryToolProvider  # noqa: F401  (task-4 guard)
 
 
 def test_rebuild_from_store_can_recreate_disposable_index(tmp_path: Path) -> None:
@@ -542,7 +541,9 @@ def test_journal_locator_search_returns_labeled_hits_with_canonical_text(
     assert (hit.session_id, hit.event_position) == ("20260716-153000-ab12", 1)
     assert hit.kind == "locator"
     assert hit.canonical_text == "Реле перегрелось после обеда."
-    assert "перегрелось" in hit.snippet
+    # Recognition snippet must come from the derivative, only it carries this.
+    assert "из-за пыли" in hit.snippet
+    assert hit.snippet != hit.canonical_text
 
 
 def test_canonical_journal_search_hit_is_labeled_canonical(tmp_path: Path) -> None:
@@ -552,7 +553,45 @@ def test_canonical_journal_search_hit_is_labeled_canonical(tmp_path: Path) -> No
 
     assert len(hits) == 1
     assert hits[0].kind == "canonical"
-    assert hits[0].canonical_text is None
+
+
+async def test_search_history_returns_no_locator_content_for_derivative_phrase(
+    tmp_path: Path,
+) -> None:
+    # Model-facing decision default (task 4): UI-only. search_history must
+    # return neither locator items nor derivative text, and must not count
+    # any locator match among its lexical/semantic hits.
+    index, store = _locator_fixture(tmp_path)
+    from jarvis.journal import HistoryRetrievalResult, HistoryRetrievalStatus
+    from jarvis.tools.history import SEARCH_HISTORY_TOOL_NAME, HistoryToolProvider
+
+    provider = HistoryToolProvider(
+        repository=index.repository,
+        retrieval_service=_StaticRetrievalService(
+            HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+        ),
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "из-за пыли", "limit": 5}
+    )
+
+    assert result.is_error is False
+    payload = result.structured_content
+    assert payload["results"] == []
+    assert payload["lexical_count"] == 0
+    assert payload["semantic_count"] == 0
+    text = str(payload)
+    assert "из-за пыли" not in text
+    assert "Реле перегрелось после обеда." not in text
+
+
+class _StaticRetrievalService:
+    def __init__(self, result: object) -> None:
+        self._result = result
+
+    def retrieve(self, request: object) -> object:
+        return self._result
 
 
 def _event(

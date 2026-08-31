@@ -1258,8 +1258,10 @@ def test_locator_query_returns_owning_ref_canonical_text_and_derivative_snippet(
     assert hit.reference == located_ref
     # Canonical text is the authoritative content, hydrated from the event.
     assert hit.canonical_text == "Реле перегрелось после обеда."
-    # The snippet comes from the derivative, for recognition only.
-    assert "перегрелось" in hit.snippet
+    # The snippet comes from the derivative, for recognition only: it must
+    # carry a phrase that exists ONLY in the derivative text.
+    assert "из-за пыли" in hit.snippet
+    assert hit.snippet != hit.canonical_text
     assert hit.provenance.source_kind is ProvenanceSourceKind.SPOKEN_DERIVATIVE
     assert hit.provenance.eligibility == frozenset({ProvenanceEligibility.LOCATOR_ONLY})
     assert hit.provenance.is_canonical is False
@@ -1307,6 +1309,51 @@ def test_canonical_search_never_returns_derivative_only_phrase(
     assert canonical.hits == ()
     assert locator.status is HistorySearchStatus.ACCEPTED
     assert len(locator.hits) == 1
+
+
+def test_derivative_phrase_never_enters_hybrid_retrieval_candidates(
+    tmp_path: Path,
+) -> None:
+    from jarvis.core.config import HistorySemanticSettings
+    from jarvis.journal.retrieval import (
+        HistoryRetrievalQuery,
+        HistoryRetrievalService,
+        HistoryRetrievalStatus,
+    )
+
+    repository, _, _ = _locator_corpus(tmp_path)
+    service = HistoryRetrievalService(
+        repository,
+        _NoSemanticCandidates(),
+        HistorySemanticSettings(
+            model="locator-fixture",
+            query_prefix="",
+            passage_prefix="",
+            separation=0.05,
+            top_ratio=0.98,
+            dimension=1,
+        ),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery(query="из-за пыли", limit=5))
+
+    assert result.status is HistoryRetrievalStatus.ACCEPTED
+    # The no-auto-promotion invariant: none of the fused candidates may be
+    # derived from a spoken derivative - corpus text only.
+    for candidate in result.candidates:
+        assert "из-за пыли" not in candidate.text
+    assert result.lexical_count == 0
+    assert result.semantic_count == 0
+
+
+class _NoSemanticCandidates:
+    def query(self, request: object) -> object:
+        from jarvis.journal.semantic import (
+            SemanticCandidateResult,
+            SemanticCandidateStatus,
+        )
+
+        return SemanticCandidateResult(SemanticCandidateStatus.UNAVAILABLE)
 
 
 def _append_sequence(
