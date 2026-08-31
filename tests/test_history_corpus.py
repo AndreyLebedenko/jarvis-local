@@ -19,6 +19,7 @@ from jarvis.journal.corpus import (
     HISTORY_READ_MAX_BATCH_RANGES,
     HISTORY_READ_MAX_EVENTS_PER_RANGE,
     HISTORY_READ_MAX_TOTAL_EVENTS,
+    HISTORY_SEARCH_MAX_RESULTS,
     HistoryBatchReadStatus,
     HistoryCorpusRepository,
     HistoryCorpusSchemaError,
@@ -26,7 +27,13 @@ from jarvis.journal.corpus import (
     HistoryEventRangeStatus,
     HistoryEventReadStatus,
     HistoryEventRefsReadStatus,
+    HistorySearchRequest,
+    HistorySearchStatus,
     HistorySessionReadStatus,
+)
+from jarvis.journal.provenance import (
+    ProvenanceEligibility,
+    ProvenanceSourceKind,
 )
 
 
@@ -1205,6 +1212,101 @@ def test_locator_fts_table_exists_without_schema_version_bump(tmp_path: Path) ->
     # The locator row shape stays exactly what task 4 needs: the owner ref,
     # ordering fields, and the derivative text - no extra columns.
     assert columns == list(_LOCATOR_DB_COLUMN_ORDER)
+
+
+# --- Locator query path (story-v1.9.1 task 4) -------------------------------
+
+
+def _locator_corpus(
+    tmp_path: Path,
+) -> tuple[HistoryCorpusRepository, JournalEventRef, JournalEventRef]:
+    store = JournalStore(tmp_path / "journal")
+    canonical_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ про насос.",
+        )
+    )
+    located_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:05+01:00",
+            role="assistant",
+            source="assistant",
+            text="Реле перегрелось после обеда.",
+            metadata={"spoken_derivative": "напоминаю, реле перегрелось из-за пыли"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+    return repository, canonical_ref, located_ref
+
+
+def test_locator_query_returns_owning_ref_canonical_text_and_derivative_snippet(
+    tmp_path: Path,
+) -> None:
+    repository, _, located_ref = _locator_corpus(tmp_path)
+
+    result = repository.search_locator("перегрелось из-за пыли")
+
+    assert result.status is HistorySearchStatus.ACCEPTED
+    assert len(result.hits) == 1
+    hit = result.hits[0]
+    assert hit.reference == located_ref
+    # Canonical text is the authoritative content, hydrated from the event.
+    assert hit.canonical_text == "Реле перегрелось после обеда."
+    # The snippet comes from the derivative, for recognition only.
+    assert "перегрелось" in hit.snippet
+    assert hit.provenance.source_kind is ProvenanceSourceKind.SPOKEN_DERIVATIVE
+    assert hit.provenance.eligibility == frozenset({ProvenanceEligibility.LOCATOR_ONLY})
+    assert hit.provenance.is_canonical is False
+
+
+def test_locator_query_rejects_bad_limit_and_respects_date_filters(
+    tmp_path: Path,
+) -> None:
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    invalid_limit = repository.search_locator("перегрелось", limit=0)
+    assert invalid_limit.status is HistorySearchStatus.INVALID_LIMIT
+
+    over_cap = repository.search_locator(
+        "перегрелось", limit=HISTORY_SEARCH_MAX_RESULTS + 1
+    )
+    assert over_cap.status is HistorySearchStatus.TOO_MANY_RESULTS
+
+    future = repository.search_locator(
+        "перегрелось", date_from="2026-07-17", date_to="2026-07-17"
+    )
+    assert future.status is HistorySearchStatus.ACCEPTED
+    assert future.hits == ()
+
+
+def test_locator_query_is_unavailable_before_projection(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    result = repository.search_locator("что-нибудь")
+
+    assert result.status is HistorySearchStatus.UNAVAILABLE
+    assert result.hits == ()
+
+
+def test_canonical_search_never_returns_derivative_only_phrase(
+    tmp_path: Path,
+) -> None:
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    canonical = repository.search(HistorySearchRequest(query="из-за пыли"))
+    locator = repository.search_locator("из-за пыли")
+
+    assert canonical.status is HistorySearchStatus.ACCEPTED
+    assert canonical.hits == ()
+    assert locator.status is HistorySearchStatus.ACCEPTED
+    assert len(locator.hits) == 1
 
 
 def _append_sequence(

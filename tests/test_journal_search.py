@@ -13,6 +13,7 @@ from jarvis.journal import (
     JournalSessionSummary,
     JournalStore,
 )
+from jarvis.tools.history import HistoryToolProvider  # noqa: F401  (task-4 guard)
 
 
 def test_rebuild_from_store_can_recreate_disposable_index(tmp_path: Path) -> None:
@@ -486,6 +487,72 @@ def _append_assistant(
             text=text,
         )
     )
+
+
+# --- Locator surfacing through the Journal search index (story-v1.9.1 task 4)
+
+
+def _locator_fixture(tmp_path: Path) -> tuple[JournalSearchIndex, JournalStore]:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ.",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:05+01:00",
+            role="assistant",
+            source="assistant",
+            text="Реле перегрелось после обеда.",
+            metadata={"spoken_derivative": "напоминаю, реле перегрелось из-за пыли"},
+        )
+    )
+    index = JournalSearchIndex(store, tmp_path / "derived")
+    index.rebuild()
+    return index, store
+
+
+def test_journal_search_returns_canonical_hits_without_locator_matches(
+    tmp_path: Path,
+) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search("перегрелось из-за пыли")
+
+    # The derivative-only phrase must not surface as an ordinary canonical
+    # hit; the locator path is a separate query.
+    assert hits == []
+
+
+def test_journal_locator_search_returns_labeled_hits_with_canonical_text(
+    tmp_path: Path,
+) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search_locator("перегрелось из-за пыли")
+
+    assert len(hits) == 1
+    hit = hits[0]
+    assert (hit.session_id, hit.event_position) == ("20260716-153000-ab12", 1)
+    assert hit.kind == "locator"
+    assert hit.canonical_text == "Реле перегрелось после обеда."
+    assert "перегрелось" in hit.snippet
+
+
+def test_canonical_journal_search_hit_is_labeled_canonical(tmp_path: Path) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search("Канонический")
+
+    assert len(hits) == 1
+    assert hits[0].kind == "canonical"
+    assert hits[0].canonical_text is None
 
 
 def _event(
