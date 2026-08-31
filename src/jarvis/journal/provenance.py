@@ -9,11 +9,10 @@ centralizes (``HistoryCorpusEvent.text_is_transcript``, ``kind`` +
 provenance through this module instead of re-interpreting them (story-v1.9.1
 task 1).
 
-The eligibility contract encoded at the bottom of this module is the single
-source of truth: raw events, transcripts, and annotations are eligible for
-automatic retrieval, model-facing search, and Journal UI search; the spoken
-derivative is locator-only and must never enter model memory or automatic
-retrieval.
+The eligibility contract encoded in this module is the single source of
+truth: raw events, transcripts, and annotations are eligible for automatic
+retrieval, model-facing search, and Journal UI search; the spoken derivative
+is locator-only and must never enter model memory or automatic retrieval.
 
 This module is pure: no sqlite, no filesystem, no network, no event bus.
 """
@@ -82,8 +81,9 @@ class ProvenanceTarget:
     surfaces (raw event, transcript, spoken derivative) carry the owning
     ``JournalEventRef``; annotations carry their ``AnnotationTarget``-shaped
     whole-session or range anchor. Both set or both unset is a construction
-    error, mirroring how ``AnnotationTarget`` itself encodes the
-    whole-session vs range shape.
+    error. The whole-session vs range *shape* itself is the annotation
+    overlay store's contract: this module carries the anchor faithfully and
+    relies on its producer to have validated the positions.
     """
 
     event_ref: JournalEventRef | None = None
@@ -100,13 +100,23 @@ class ProvenanceDescriptor:
 
     ``is_canonical`` distinguishes text that IS the canonical turn (a raw
     event) from text derived from or attached to it (transcript, annotation,
-    spoken derivative). Field set is limited to what tasks 2-4 consume.
+    spoken derivative). ``eligibility`` always equals
+    ``source_kind.eligibility`` - the contract stays encoded in one place;
+    a mismatching pair is a construction error. Field set is limited to
+    what tasks 2-4 consume.
     """
 
     source_kind: ProvenanceSourceKind
     eligibility: frozenset[ProvenanceEligibility]
     target: ProvenanceTarget
     is_canonical: bool
+
+    def __post_init__(self) -> None:
+        if self.eligibility != self.source_kind.eligibility:
+            raise ValueError(
+                "eligibility must equal source_kind.eligibility; the "
+                "eligibility contract is encoded only on ProvenanceSourceKind"
+            )
 
 
 def provenance_descriptor_from_corpus_event(

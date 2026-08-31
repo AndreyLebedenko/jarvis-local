@@ -158,10 +158,12 @@ fixtures hiding the input under test.
 
 - Delivered `src/jarvis/journal/provenance.py` (pure module, no sqlite/fs/
   network/bus) and `tests/test_journal_provenance.py` (12 tests, all green).
-- Shape chosen within the card's freedom: the eligibility contract lives in a
-  single module-level map `_ELIGIBILITY_BY_SOURCE_KIND`, consulted only
-  through a `ProvenanceSourceKind.eligibility` property - the enum is the one
-  place the canonical vs locator sets are spelled out.
+- Shape chosen within the card's freedom: the eligibility contract lives in
+  module-level constants consulted through a single map
+  (`_ELIGIBILITY_BY_SOURCE_KIND`), exposed via a `ProvenanceSourceKind.
+  eligibility` property. `ProvenanceDescriptor` enforces
+  `eligibility == source_kind.eligibility` at construction, so the contract
+  cannot be contradicted downstream (codex review 2026-08-31).
 - `ProvenanceDerivation`-vs-`is_canonical` choice: took the card's simpler
   option, boolean `ProvenanceDescriptor.is_canonical` - task 2's only
   question is "may the model treat this text as the turn itself".

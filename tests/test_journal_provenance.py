@@ -90,6 +90,15 @@ class TestProvenanceDescriptor:
         with pytest.raises(AttributeError):
             descriptor.source_kind = ProvenanceSourceKind.TRANSCRIPT  # type: ignore[misc]
 
+    def test_mismatched_eligibility_is_a_construction_error(self) -> None:
+        with pytest.raises(ValueError):
+            ProvenanceDescriptor(
+                source_kind=ProvenanceSourceKind.RAW_EVENT,
+                eligibility=_LOCATOR_ELIGIBILITY,
+                target=ProvenanceTarget(event_ref=_ref()),
+                is_canonical=True,
+            )
+
 
 class TestCorpusEventMapping:
     def test_raw_text_event_maps_to_raw_event_canonical(self) -> None:
