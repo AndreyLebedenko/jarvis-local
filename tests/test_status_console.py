@@ -62,6 +62,7 @@ from jarvis.ui.status_console import (
     config_values_payload,
     data_locality_payload,
     data_source_payload,
+    journal_session_payload,
     mcp_state_payload,
     microphone_option_payload,
     model_request_log_payload,
@@ -112,6 +113,29 @@ def test_blank_context_session_title_is_not_voice_fallback(tmp_path):
     )
 
     assert _journal_session_title(session_id, store) == "New context"
+
+
+def test_blank_context_session_payload_carries_new_context_title_kind(tmp_path):
+    session_id = "20260719-100000-ab12"
+    store = JournalStore(tmp_path)
+    store.append(
+        JournalEvent(
+            session_id=session_id,
+            timestamp="2026-07-19T10:00:00+01:00",
+            source="context",
+            role="system",
+            text="Новый пустой контекст создан пользователем.",
+            media=[],
+            transcript=None,
+            metadata={"kind": "new_context"},
+        )
+    )
+    summary = store.list_sessions()[0]
+
+    payload = journal_session_payload(summary, store)
+
+    assert payload["title"] == "New context"
+    assert payload["title_kind"] == "new_context"
 
 
 def test_module_health_payload_shape():

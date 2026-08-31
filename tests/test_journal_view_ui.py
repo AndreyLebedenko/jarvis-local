@@ -455,6 +455,15 @@ def test_new_context_event_body_is_localized_not_the_stored_text():
     assert "return event.text;" in body
 
 
+def test_placeholder_session_titles_are_localized_by_kind():
+    body = APP_JS.split("function _journalSessionTitle(")[1].split("\n}")[0]
+    assert 'session.title_kind === "new_context"' in body
+    assert 'uiString("journal_session_title_new_context")' in body
+    assert 'session.title_kind === "voice_only"' in body
+    assert 'uiString("journal_session_title_voice_only")' in body
+    assert "return session.title;" in body
+
+
 def test_journal_new_context_is_not_the_fork_continue_action():
     new_context_body = APP_JS.split("async function startNewJournalContext(")[1].split(
         "\n}"
@@ -1177,7 +1186,7 @@ def test_session_info_overlay_markup_present():
 
 def test_session_info_overlay_populates_from_session_and_usage():
     body = APP_JS.split("function openSessionInfoOverlay(")[1].split("\n}")[0]
-    assert "session.title" in body
+    assert "_journalSessionTitle(session)" in body
     assert "_formatJournalDate(session.start_timestamp)" in body
     assert "_formatJournalTime(session.start_timestamp)" in body
     assert "_journalUsageBySession.get(session.id)" in body

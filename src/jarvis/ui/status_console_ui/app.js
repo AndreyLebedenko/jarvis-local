@@ -653,7 +653,7 @@ function openSessionInfoOverlay(sessionId) {
   const overlay = document.getElementById("sessionInfoOverlay");
   const session = _journalSessions.find((item) => item.id === sessionId);
   if (!overlay || !overlay.hidden || !session) return;
-  document.getElementById("sessionInfoName").textContent = session.title;
+  document.getElementById("sessionInfoName").textContent = _journalSessionTitle(session);
   document.getElementById("sessionInfoCreated").textContent =
     _formatJournalDate(session.start_timestamp) +
     " " +
@@ -1925,6 +1925,19 @@ function _applyJournalUsage(payload) {
     uiString("journal_usage_total").replace("{size}", _formatJournalBytes(usage.total_bytes || 0));
 }
 
+// A placeholder session title (title_kind "new_context"/"voice_only") is
+// localized to the active UI language; a user-authored title (empty kind) is
+// shown verbatim. Mirrors the server's _journal_session_title_and_kind.
+function _journalSessionTitle(session) {
+  if (session.title_kind === "new_context") {
+    return uiString("journal_session_title_new_context");
+  }
+  if (session.title_kind === "voice_only") {
+    return uiString("journal_session_title_voice_only");
+  }
+  return session.title;
+}
+
 function _journalSessionElement(session) {
   const row = document.createElement("div");
   row.tabIndex = -1; // roving tabindex, set by initRovingList() below
@@ -1940,7 +1953,7 @@ function _journalSessionElement(session) {
   // separate when/size rows - see the CSS comment on .journal-session-title.
   const title = document.createElement("div");
   title.className = "journal-session-title";
-  title.textContent = session.title;
+  title.textContent = _journalSessionTitle(session);
 
   const meta = document.createElement("div");
   meta.className = "journal-session-meta";
@@ -2034,7 +2047,7 @@ function _journalSessionMenuEntries(row) {
     {
       label: uiString("journal_session_copy_title"),
       icon: _icon("copy"),
-      run: () => _copyToClipboardWithJournalStatus(session.title),
+      run: () => _copyToClipboardWithJournalStatus(_journalSessionTitle(session)),
     },
     {
       label: uiString("journal_session_info"),
@@ -2093,7 +2106,7 @@ function _journalForkErrorMessage(payload) {
 
 async function deleteJournalSession(sessionId) {
   const session = _journalSessions.find((item) => item.id === sessionId);
-  const title = session ? session.title : sessionId;
+  const title = session ? _journalSessionTitle(session) : sessionId;
   const size = _formatJournalBytes(_journalUsageBySession.get(sessionId) || 0);
   const message = uiString("journal_delete_confirm")
     .replace("{title}", title)
@@ -2320,7 +2333,7 @@ function _journalSearchSessionHeader(sessionId, timestamp) {
   const title = document.createElement("span");
   title.className = "journal-search-session-title";
   const session = _journalSessions.find((item) => item.id === sessionId);
-  title.textContent = session ? session.title : sessionId;
+  title.textContent = session ? _journalSessionTitle(session) : sessionId;
   header.append(when, title);
   return header;
 }

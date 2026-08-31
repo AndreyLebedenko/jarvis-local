@@ -238,11 +238,13 @@ def journal_event_payload(
 def journal_session_payload(
     summary: JournalSessionSummary, store: JournalStore
 ) -> dict:
+    title, title_kind = _journal_session_title_and_kind(summary.session_id, store)
     payload = JournalSessionPayload(
         id=summary.session_id,
         start_timestamp=summary.first_timestamp,
         end_timestamp=summary.last_timestamp,
-        title=_journal_session_title(summary.session_id, store),
+        title=title,
+        title_kind=title_kind,
         folder_path=str(store.root / summary.session_id),
     )
     return asdict(payload)
@@ -260,13 +262,28 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
     return asdict(payload)
 
 
-def _journal_session_title(session_id: str, store: JournalStore) -> str:
+NEW_CONTEXT_TITLE_KIND = "new_context"
+VOICE_ONLY_TITLE_KIND = "voice_only"
+
+
+def _journal_session_title_and_kind(
+    session_id: str, store: JournalStore
+) -> tuple[str, str]:
+    """Returns the session title and its kind. A placeholder title (a blank
+    new context, or a voice-only session with no text user turn) carries a
+    non-empty kind so the client localizes it to the active UI language; a
+    real user-authored title carries an empty kind and is shown verbatim. The
+    literal titles here remain the client's fallback for an unknown kind."""
     for event in store.read_session(session_id).events:
         if event.source == "context" and event.metadata.get("kind") == "new_context":
-            return NEW_CONTEXT_SESSION_TITLE
+            return NEW_CONTEXT_SESSION_TITLE, NEW_CONTEXT_TITLE_KIND
         if event.role == "user" and event.text.strip():
-            return event.text.strip()
-    return VOICE_ONLY_SESSION_TITLE
+            return event.text.strip(), ""
+    return VOICE_ONLY_SESSION_TITLE, VOICE_ONLY_TITLE_KIND
+
+
+def _journal_session_title(session_id: str, store: JournalStore) -> str:
+    return _journal_session_title_and_kind(session_id, store)[0]
 
 
 def thinking_mode_payload(level: ReasoningLevel) -> dict:
