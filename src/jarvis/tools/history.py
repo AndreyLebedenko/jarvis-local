@@ -28,11 +28,6 @@ from jarvis.journal import (
     JournalEventRef,
 )
 from jarvis.journal.events import parse_journal_timestamp
-from jarvis.journal.provenance import (
-    ProvenanceDescriptor,
-    provenance_descriptor_from_annotation_identity,
-    provenance_descriptor_from_corpus_event,
-)
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.tools.results import ToolArguments, ToolCallResult
@@ -868,12 +863,15 @@ def _serialize_retrieval_candidates(
 
 
 def _provenance_payload(candidate: HistoryRetrievalCandidate) -> JSONObject:
-    # The descriptor is the provenance authority. Candidates built by the
-    # retrieval service always carry one; a None descriptor on a hand-built
-    # candidate falls back to the raw-event default so the field stays total.
+    # The descriptor is the provenance authority and is always present on
+    # candidates the retrieval service produces; model-facing serialization
+    # must never re-derive it from scattered signals.
     descriptor = candidate.provenance
     if descriptor is None:
-        descriptor = _fallback_provenance(candidate)
+        raise ValueError(
+            "search_history candidate is missing its provenance descriptor; "
+            "the retrieval service must compute it (story-v1.9.1 task 2)"
+        )
     target = descriptor.target
     if target.event_ref is not None:
         target_payload: JSONObject = {
@@ -897,42 +895,6 @@ def _provenance_payload(candidate: HistoryRetrievalCandidate) -> JSONObject:
         "is_canonical": descriptor.is_canonical,
         "target": target_payload,
     }
-
-
-def _fallback_provenance(
-    candidate: HistoryRetrievalCandidate,
-) -> ProvenanceDescriptor:
-    """Descriptor for a hand-built candidate that carries none.
-
-    Transitional (story-v1.9.1 task 5 cleanup candidate): re-derives the
-    descriptor from the same ad-hoc signals such candidates already carry.
-    """
-    if (
-        candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
-        and candidate.annotation is not None
-    ):
-        return provenance_descriptor_from_annotation_identity(candidate.annotation)
-    reference = candidate.reference
-    if reference is None:
-        raise AssertionError(
-            "search_history candidate without provenance must carry a "
-            "reference or an annotation identity"
-        )
-    return provenance_descriptor_from_corpus_event(
-        HistoryCorpusEvent(
-            reference=reference,
-            timestamp=candidate.timestamp,
-            timestamp_sort=0.0,
-            role=candidate.role,
-            source=candidate.source,
-            text=candidate.text,
-            media=(),
-            media_count=0,
-            transcript=None,
-            metadata={},
-            effective_text=candidate.text if candidate.text_is_transcript else "",
-        )
-    )
 
 
 def _annotation_target_payload(annotation: AnnotationCandidateIdentity) -> JSONObject:
