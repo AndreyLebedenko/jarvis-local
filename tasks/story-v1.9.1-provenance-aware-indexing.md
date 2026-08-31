@@ -1,6 +1,12 @@
 # Story v1.9.1: Provenance-aware indexing and search surfaces
 
-**Status:** In progress
+**Status:** Done (2026-08-31 - all six task cards landed and verified; the
+human-run mode-3 + locator-search handoff,
+`tasks/v1.9.1-release-verification-handoff.md`, was owner-executed green
+same day: canonical hits render unchanged, derivative-only matches appear
+in the separate "Найдено по фразе, которую вы слышали" group with the
+"совпадение по услышанной фразе" tag and the canonical line
+"Было показано на экране").
 **Created:** 2026-08-31
 **Updated:** 2026-08-31
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md` (section "v1.9.1 - Provenance-aware
@@ -220,31 +226,31 @@ input to task 4, so task 4 is written after task 3 lands.
 
 ## Acceptance criteria
 
-- [ ] A single provenance descriptor type exists and every text-bearing search
+- [x] A single provenance descriptor type exists and every text-bearing search
       surface maps onto it through one total function; the mapping is unit-
       tested and the surface inventory is recorded. (Task 1.)
-- [ ] `search_history` results carry an explicit, documented provenance field
+- [x] `search_history` results carry an explicit, documented provenance field
       that distinguishes raw event / transcript / annotation, verified by tool-
       output tests; no derived or transcript text is presented to the model as a
       canonical turn. (Task 2.)
-- [ ] A lexical, locator-only index over `metadata.spoken_derivative` exists,
+- [x] A lexical, locator-only index over `metadata.spoken_derivative` exists,
       physically separate from the canonical FTS, and follows the full
       projection lifecycle (build/rebuild/incremental/session-delete); the
       canonical FTS output is unchanged by its presence. (Task 3.)
-- [ ] A Journal search for a phrase present only in a mode-3 spoken derivative
+- [x] A Journal search for a phrase present only in a mode-3 spoken derivative
       returns the owning assistant event with the canonical on-screen text as
       the authoritative content, tagged as a locator match; the derivative is
       never fed into automatic retrieval or model memory. (Task 4.)
-- [ ] Whether locator matches are exposed to the model through `search_history`
+- [x] Whether locator matches are exposed to the model through `search_history`
       is decided and recorded; if exposed, they are a distinct locator result
       class the model is told is a locator, never blended into ranked memory
       candidates. (Task 4.)
-- [ ] A behavior-preserving refactoring pass has collapsed duplicated
+- [x] A behavior-preserving refactoring pass has collapsed duplicated
       provenance/projection/serialization paths introduced across tasks 1-4 into
       the single descriptor and shared helpers, and consolidated the tests
       those tasks added; the suite stays green with no acceptance-criterion
       regression. (Task 5.)
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green for
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green for
       all non-hardware logic; the mode-3-then-search verification is a prepared
       human-run handoff with exact commands. (Task 6.)
 
