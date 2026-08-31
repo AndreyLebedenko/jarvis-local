@@ -4094,17 +4094,21 @@ second pass creates a spoken commentary/log over that canvas.
 Settled facts from story-v1.9.1 (do not re-litigate; detail lives in the
 story cards under `tasks/done/`).
 
-- **Provenance is one typed descriptor, not scattered flags.**
-  `src/jarvis/journal/provenance.py` defines `ProvenanceSourceKind`
-  (`raw_event` / `transcript` / `annotation` / `spoken_derivative`) with the
-  eligibility axis encoded once on the enum (`AUTO_RETRIEVAL` /
-  `MODEL_SEARCH` / `JOURNAL_UI` / `LOCATOR_ONLY`) and a frozen
-  `ProvenanceDescriptor` (source kind, eligibility, target, `is_canonical`).
-  Every text-bearing search surface maps onto it at read time; consumers read
-  provenance through it instead of re-deriving meaning from
-  `text_is_transcript` / candidate-kind bits. `HistoryRetrievalCandidate`
-  carries the descriptor computed at construction; serialization reads it
-  and fails loudly when it is missing (no re-derivation fallbacks).
+- **Provenance is one typed descriptor for the retrieval/tool boundary.**
+  `src/jarvis/journal/provenance.py` defines
+  `ProvenanceSourceKind` (`raw_event` / `transcript` / `annotation` /
+  `spoken_derivative`) with the eligibility axis encoded once on the enum
+  (`AUTO_RETRIEVAL` / `MODEL_SEARCH` / `JOURNAL_UI` / `LOCATOR_ONLY`) and a
+  frozen `ProvenanceDescriptor` (source kind, eligibility, target,
+  `is_canonical`). Every hybrid-retrieval candidate and `search_history`
+  result maps onto it at read time; consumers read provenance through it
+  instead of re-deriving meaning from `text_is_transcript` / candidate-kind
+  bits. `HistoryRetrievalCandidate` carries the descriptor computed at
+  construction; serialization reads it and fails loudly when it is missing
+  (no re-derivation fallbacks). The Journal UI canonical search path still
+  labels hits with the task-4 `kind` string ("canonical"/"locator") rather
+  than the descriptor - that payload consolidation is not owed by the story
+  (task 5 notes).
 - **The spoken derivative is locator-only, physically separate.** Mode-3
   derivatives are indexed in a dedicated FTS5 table
   (`history_corpus_derivative_fts` in `history_corpus.db`) that never shares
