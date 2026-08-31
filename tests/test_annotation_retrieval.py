@@ -34,6 +34,10 @@ from jarvis.journal import (
 )
 from jarvis.journal.annotation_search import AnnotationSearchRequest
 from jarvis.journal.annotation_semantic import AnnotationSemanticQuery
+from jarvis.journal.provenance import (
+    ProvenanceSourceKind,
+    provenance_descriptor_from_annotation_identity,
+)
 from jarvis.journal.semantic import (
     CachingQueryEmbeddingProvider,
     SemanticCandidateQuery,
@@ -243,6 +247,31 @@ def test_annotation_range_target_is_preserved_on_candidate() -> None:
     assert identity.start_position == 2
     assert identity.end_position == 5
     assert identity.is_whole_session is False
+
+
+def test_annotation_candidate_carries_provenance_descriptor() -> None:
+    annotation = _annotation("ann-3", "Заметка с диапазоном.", start=2, end=5)
+    service = HistoryRetrievalService(
+        _FakeCorpusRepository(),
+        _NoSemantic(),
+        _settings(),
+        annotation_lexical=_FakeAnnotationLexical(
+            (_annotation_hit("ann-3", order_index=0),)
+        ),
+        annotation_repository=_FakeAnnotationRead({"ann-3": annotation}),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery("заметка", limit=5))
+
+    candidate = result.candidates[0]
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.ANNOTATION
+    assert candidate.provenance.is_canonical is False
+    assert candidate.provenance.target.event_ref is None
+    assert candidate.provenance.target.annotation == AnnotationTarget(_SESSION, 2, 5)
+    # The descriptor is not re-derived inline: it comes from the task-1 mapping.
+    assert candidate.provenance == provenance_descriptor_from_annotation_identity(
+        candidate.annotation
+    )
 
 
 def test_events_and_annotations_fuse_into_one_ranked_result() -> None:

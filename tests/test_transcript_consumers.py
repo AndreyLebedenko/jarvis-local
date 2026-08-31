@@ -27,7 +27,15 @@ from jarvis.journal.lifecycle import (
     TranscriptHistoryProjection,
     UnavailableSemanticHistoryProjection,
 )
-from jarvis.journal.retrieval import HistoryRetrievalQuery, HistoryRetrievalService
+from jarvis.journal.provenance import (
+    ProvenanceSourceKind,
+    provenance_descriptor_from_corpus_event,
+)
+from jarvis.journal.retrieval import (
+    HistoryRetrievalQuery,
+    HistoryRetrievalService,
+    HistoryRetrievalStatus,
+)
 from jarvis.journal.search import JournalSearchIndex
 from jarvis.journal.semantic import SemanticPassageIndex
 from jarvis.journal.store import JournalStore
@@ -51,6 +59,18 @@ def _voice_event(position_timestamp: str, media: tuple[str, ...]) -> JournalEven
         role="user",
         text="",
         media=media,
+        transcript=None,
+    )
+
+
+def _text_event(text: str) -> JournalEvent:
+    return JournalEvent(
+        session_id=_SESSION,
+        timestamp="2026-08-01T12:00:00+01:00",
+        source="text",
+        role="user",
+        text=text,
+        media=(),
         transcript=None,
     )
 
@@ -189,6 +209,37 @@ def test_retrieval_returns_transcript_text_source_framed(tmp_path: Path) -> None
     candidate = result.candidates[0]
     assert candidate.text == _TRANSCRIPT
     assert candidate.text_is_transcript is True
+    descriptor = candidate.provenance
+    assert descriptor.source_kind is ProvenanceSourceKind.TRANSCRIPT
+    assert descriptor.is_canonical is False
+    assert descriptor.target.event_ref == reference
+    assert descriptor.eligibility == ProvenanceSourceKind.TRANSCRIPT.eligibility
+
+
+def test_retrieval_maps_raw_event_candidate_to_raw_event_descriptor(
+    tmp_path: Path,
+) -> None:
+    store, _, corpus = _build(tmp_path)
+    store.append(_text_event("Сырой текст пользователя."))
+    reference = JournalEventRef(_SESSION, 0)
+    corpus.rebuild()
+
+    service = HistoryRetrievalService(
+        corpus, _UnavailableSemantic(), _semantic_settings()
+    )
+    result = service.retrieve(HistoryRetrievalQuery(query="Сырой"))
+
+    assert result.status is HistoryRetrievalStatus.ACCEPTED
+    assert [candidate.reference for candidate in result.candidates] == [reference]
+    candidate = result.candidates[0]
+    assert candidate.text_is_transcript is False
+    descriptor = candidate.provenance
+    assert descriptor.source_kind is ProvenanceSourceKind.RAW_EVENT
+    assert descriptor.is_canonical is True
+    assert descriptor.target.event_ref == reference
+    assert descriptor == provenance_descriptor_from_corpus_event(
+        corpus.read_events((reference,)).events[0]
+    )
 
 
 @pytest.mark.asyncio

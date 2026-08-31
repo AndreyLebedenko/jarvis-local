@@ -21,6 +21,12 @@ from jarvis.journal import (
     HistoryRetrievalStatus,
     JournalEventRef,
 )
+from jarvis.journal.annotation import AnnotationTarget
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    ProvenanceSourceKind,
+    ProvenanceTarget,
+)
 from jarvis.tools.history import (
     READ_HISTORY_RANGES_TOOL_NAME,
     READ_HISTORY_TOOL_NAME,
@@ -29,6 +35,235 @@ from jarvis.tools.history import (
 )
 from jarvis.tools.host import McpHost, McpModuleStatus
 from jarvis.tools.registry import ToolRegistry
+
+
+def _event_candidate_with_provenance(
+    *, text: str = "Stored relay answer.", text_is_transcript: bool = False
+) -> HistoryRetrievalCandidate:
+    reference = JournalEventRef("20260801-100000-ab12", 3)
+    source_kind = (
+        ProvenanceSourceKind.TRANSCRIPT
+        if text_is_transcript
+        else ProvenanceSourceKind.RAW_EVENT
+    )
+    return HistoryRetrievalCandidate(
+        reference=reference,
+        text=text,
+        timestamp="2026-08-01T10:00:00Z",
+        role="user",
+        source="voice" if text_is_transcript else "text",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        lexical_score=-0.2,
+        lexical_rank=1,
+        text_is_transcript=text_is_transcript,
+        provenance=ProvenanceDescriptor(
+            source_kind=source_kind,
+            eligibility=source_kind.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=not text_is_transcript,
+        ),
+    )
+
+
+def _annotation_candidate_with_provenance(
+    *, start_position: int | None = None, end_position: int | None = None
+) -> HistoryRetrievalCandidate:
+    identity = AnnotationCandidateIdentity(
+        annotation_id="ann-1",
+        session_id="20260801-100000-ab12",
+        source="generated",
+        start_position=start_position,
+        end_position=end_position,
+    )
+    return HistoryRetrievalCandidate(
+        reference=None,
+        text="Пользователь предпочитает краткие ответы.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="annotation",
+        source="generated",
+        source_mode=HistoryRetrievalSourceMode.SEMANTIC,
+        combined_rank=1,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=identity,
+        semantic_score=0.88,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.ANNOTATION,
+            eligibility=ProvenanceSourceKind.ANNOTATION.eligibility,
+            target=ProvenanceTarget(
+                annotation=AnnotationTarget(
+                    identity.session_id, start_position, end_position
+                )
+            ),
+            is_canonical=False,
+        ),
+    )
+
+
+async def test_search_history_serializes_provenance_for_raw_event() -> None:
+    candidate = _event_candidate_with_provenance()
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "relay", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "raw_event"
+    assert provenance["is_canonical"] is True
+    assert provenance["target"] == {
+        "event_ref": {
+            "session_id": "20260801-100000-ab12",
+            "event_position": 3,
+        },
+        "annotation": None,
+    }
+
+
+async def test_search_history_serializes_provenance_for_transcript_event() -> None:
+    candidate = _event_candidate_with_provenance(
+        text="альфа код доступ слышан", text_is_transcript=True
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "альфа", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "transcript"
+    assert provenance["is_canonical"] is False
+    assert provenance["target"] == {
+        "event_ref": {
+            "session_id": "20260801-100000-ab12",
+            "event_position": 3,
+        },
+        "annotation": None,
+    }
+    # The backward-compatible signals stay: the model must still see the
+    # transcript framing it already reads today.
+    assert item["text_is_transcript"] is True
+
+
+async def test_search_history_serializes_provenance_for_annotation() -> None:
+    candidate = _annotation_candidate_with_provenance(start_position=2, end_position=5)
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "краткие ответы", "limit": 1},
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    provenance = item["provenance"]
+    assert provenance["source_kind"] == "annotation"
+    assert provenance["is_canonical"] is False
+    assert provenance["target"] == {
+        "event_ref": None,
+        "annotation": {
+            "session_id": "20260801-100000-ab12",
+            "start_position": 2,
+            "end_position": 5,
+        },
+    }
+    # The existing per-kind payload stays untouched alongside the new field.
+    assert item["annotation_id"] == "ann-1"
+    assert item["target"] == {
+        "session_id": "20260801-100000-ab12",
+        "start_position": 2,
+        "end_position": 5,
+    }
+
+
+async def test_search_history_provenance_field_is_present_on_every_item() -> None:
+    candidates = (
+        _event_candidate_with_provenance(),
+        _annotation_candidate_with_provenance(),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=candidates,
+            lexical_count=1,
+            returned_count=2,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "anything", "limit": 2},
+    )
+
+    assert result.is_error is False
+    items = result.structured_content["results"]
+    assert len(items) == 2
+    assert all("provenance" in item for item in items)
+    assert [item["provenance"]["source_kind"] for item in items] == [
+        "raw_event",
+        "annotation",
+    ]
+    assert [item["provenance"]["is_canonical"] for item in items] == [True, False]
+
+
+async def test_search_history_candidates_and_order_unchanged_with_provenance() -> None:
+    # Additive-only regression: provenance must not filter or reorder. The
+    # candidates here rank annotation first (semantic) then event (lexical) as
+    # the fusion would; the serialized order and identifying fields must match
+    # exactly what the pre-descriptor pipeline produced for the same input.
+    candidates = (
+        _annotation_candidate_with_provenance(),
+        _event_candidate_with_provenance(),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=candidates,
+            returned_count=2,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME,
+        {"query": "краткие ответы", "limit": 2},
+    )
+
+    assert result.is_error is False
+    items = result.structured_content["results"]
+    assert [(item["kind"], item["combined_rank"]) for item in items] == [
+        ("annotation", 1),
+        ("event", 2),
+    ]
+    assert [item["text"] for item in items] == [
+        "Пользователь предпочитает краткие ответы.",
+        "Stored relay answer.",
+    ]
 
 
 def _event(
