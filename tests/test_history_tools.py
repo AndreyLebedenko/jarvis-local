@@ -38,7 +38,10 @@ from jarvis.tools.registry import ToolRegistry
 
 
 def _event_candidate_with_provenance(
-    *, text: str = "Stored relay answer.", text_is_transcript: bool = False
+    *,
+    text: str = "Stored relay answer.",
+    text_is_transcript: bool = False,
+    combined_rank: int = 1,
 ) -> HistoryRetrievalCandidate:
     reference = JournalEventRef("20260801-100000-ab12", 3)
     source_kind = (
@@ -53,7 +56,7 @@ def _event_candidate_with_provenance(
         role="user",
         source="voice" if text_is_transcript else "text",
         source_mode=HistoryRetrievalSourceMode.LEXICAL,
-        combined_rank=1,
+        combined_rank=combined_rank,
         lexical_score=-0.2,
         lexical_rank=1,
         text_is_transcript=text_is_transcript,
@@ -67,7 +70,10 @@ def _event_candidate_with_provenance(
 
 
 def _annotation_candidate_with_provenance(
-    *, start_position: int | None = None, end_position: int | None = None
+    *,
+    start_position: int | None = None,
+    end_position: int | None = None,
+    combined_rank: int = 1,
 ) -> HistoryRetrievalCandidate:
     identity = AnnotationCandidateIdentity(
         annotation_id="ann-1",
@@ -83,7 +89,7 @@ def _annotation_candidate_with_provenance(
         role="annotation",
         source="generated",
         source_mode=HistoryRetrievalSourceMode.SEMANTIC,
-        combined_rank=1,
+        combined_rank=combined_rank,
         kind=HistoryRetrievalCandidateKind.ANNOTATION,
         annotation=identity,
         semantic_score=0.88,
@@ -202,6 +208,53 @@ async def test_search_history_serializes_provenance_for_annotation() -> None:
     }
 
 
+async def test_search_history_provenance_follows_descriptor_over_legacy_fields() -> (
+    None
+):
+    # Sentinel: the serialized provenance must come from the descriptor, not
+    # re-derived from kind/text_is_transcript. The legacy fields here
+    # deliberately contradict the descriptor; the descriptor wins.
+    reference = JournalEventRef("20260801-100000-ab12", 3)
+    candidate = HistoryRetrievalCandidate(
+        reference=reference,
+        text="Stored transcript answer.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="user",
+        source="text",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        lexical_score=-0.2,
+        lexical_rank=1,
+        # Legacy signals lie: they claim a raw, canonical event.
+        text_is_transcript=False,
+        kind=HistoryRetrievalCandidateKind.EVENT,
+        # The descriptor truth: this is a derived transcript.
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.TRANSCRIPT,
+            eligibility=ProvenanceSourceKind.TRANSCRIPT.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=False,
+        ),
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(candidate,),
+            lexical_count=1,
+            returned_count=1,
+        )
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "anything", "limit": 1}
+    )
+
+    assert result.is_error is False
+    [item] = result.structured_content["results"]
+    assert item["provenance"]["source_kind"] == "transcript"
+    assert item["provenance"]["is_canonical"] is False
+
+
 async def test_search_history_provenance_field_is_present_on_every_item() -> None:
     candidates = (
         _event_candidate_with_provenance(),
@@ -238,8 +291,8 @@ async def test_search_history_candidates_and_order_unchanged_with_provenance() -
     # the fusion would; the serialized order and identifying fields must match
     # exactly what the pre-descriptor pipeline produced for the same input.
     candidates = (
-        _annotation_candidate_with_provenance(),
-        _event_candidate_with_provenance(),
+        _annotation_candidate_with_provenance(combined_rank=1),
+        _event_candidate_with_provenance(combined_rank=2),
     )
     _, _, provider = _provider(
         retrieval_result=HistoryRetrievalResult(

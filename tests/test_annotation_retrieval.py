@@ -268,7 +268,8 @@ def test_annotation_candidate_carries_provenance_descriptor() -> None:
     assert candidate.provenance.is_canonical is False
     assert candidate.provenance.target.event_ref is None
     assert candidate.provenance.target.annotation == AnnotationTarget(_SESSION, 2, 5)
-    # The descriptor is not re-derived inline: it comes from the task-1 mapping.
+    # Value-level check: equals what the task-1 mapping produces for the same
+    # identity. (Call-path proof lives in the serialization sentinel test.)
     assert candidate.provenance == provenance_descriptor_from_annotation_identity(
         candidate.annotation
     )
@@ -311,6 +312,57 @@ def test_events_and_annotations_fuse_into_one_ranked_result() -> None:
     assert [candidate.combined_rank for candidate in result.candidates] == [1, 2]
     assert result.candidates[0].reference == event.reference
     assert result.candidates[1].annotation is not None
+
+
+def test_fused_candidate_set_and_order_unchanged_by_provenance_threading() -> None:
+    # Additive-only regression at the retrieval boundary itself: threading the
+    # provenance descriptor through candidate construction must not filter or
+    # reorder the fused result for a fixed fixture. The same lexical hit ranks
+    # above the same semantic annotation hit before and after this card.
+    event = _event(0, "Сообщение пользователя о насосе.")
+    repository = _FakeCorpusRepository(
+        hits=(
+            HistorySearchHit(
+                event.reference,
+                event.timestamp,
+                "user",
+                "text",
+                "насос",
+                -0.5,
+                0,
+            ),
+        ),
+        events=(event,),
+    )
+    annotation = _annotation("ann-1", "Насос перегрелся после обеда.")
+    service = HistoryRetrievalService(
+        repository,
+        _NoSemantic(),
+        _settings(),
+        annotation_lexical=_FakeAnnotationLexical(
+            (_annotation_hit("ann-1", order_index=1),)
+        ),
+        annotation_repository=_FakeAnnotationRead({"ann-1": annotation}),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery("насос", limit=5))
+
+    assert result.status is HistoryRetrievalStatus.ACCEPTED
+    assert result.returned_count == 2
+    assert [candidate.kind for candidate in result.candidates] == [
+        HistoryRetrievalCandidateKind.EVENT,
+        HistoryRetrievalCandidateKind.ANNOTATION,
+    ]
+    assert [candidate.combined_rank for candidate in result.candidates] == [1, 2]
+    assert [candidate.reference for candidate in result.candidates] == [
+        event.reference,
+        None,
+    ]
+    assert [candidate.annotation.annotation_id for candidate in result.candidates] == [
+        None,
+        "ann-1",
+    ]
+    assert all(candidate.provenance is not None for candidate in result.candidates)
 
 
 def test_annotation_semantic_candidates_are_hydrated_and_gated() -> None:
