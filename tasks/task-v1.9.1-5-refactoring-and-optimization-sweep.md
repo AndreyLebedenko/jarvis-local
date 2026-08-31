@@ -1,6 +1,6 @@
 # Task v1.9.1-5: Refactoring and optimization sweep (code and tests)
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Depends on:** tasks 1-4 all landed. This card runs after the feature is
 complete and green, before docs/release (task 6).
@@ -91,21 +91,94 @@ Before changing anything, gather the deferred-cleanup notes:
 
 ## Acceptance criteria
 
-- [ ] No provenance fact is expressed two ways: consumers read the task-1
+- [x] No provenance fact is expressed two ways: consumers read the task-1
       descriptor; loose signals that were only its inputs and are no longer read
       are gone.
-- [ ] Transitional shims and redundant `search_history` keys from tasks 2-4 are
+- [x] Transitional shims and redundant `search_history` keys from tasks 2-4 are
       removed where provably unused, with their tests updated to the
       consolidated shape.
-- [ ] Canonical and derivative projection-lifecycle paths share their common
+- [x] Canonical and derivative projection-lifecycle paths share their common
       structure so the two FTS tables cannot silently drift; physical index
       separation is preserved.
-- [ ] Story tests are consolidated into shared helpers with a criterion->test
+- [x] Story tests are consolidated into shared helpers with a criterion->test
       map showing no coverage lost.
-- [ ] Behavior is unchanged: no story acceptance criterion regresses; result
+- [x] Behavior is unchanged: no story acceptance criterion regresses; result
       shapes change only by the deliberate removal of documented-redundant keys.
-- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+- [x] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
       green.
+
+## Completion notes (2026-08-31)
+
+Baseline: 2366 passed + 1 skipped before the sweep; 2366 passed + 1 skipped
+after (same count, consolidation replaced assertions in place - zero tests
+dropped).
+
+What was collapsed:
+
+- `HistoryRetrievalCandidate.text_is_transcript` removed (field, builder
+  arguments in `_event_candidate`/`_annotation_candidate`). The one non-test
+  consumer, `automatic_retrieval._to_retrieved_history_passage`, now derives
+  `RetrievedHistoryPassage.text_is_transcript` from
+  `candidate.provenance.source_kind is ProvenanceSourceKind.TRANSCRIPT`.
+  The model-facing working-context `"text_is_transcript"` key STAYS (the
+  model payload is unchanged - only its source became the descriptor).
+- `search_history` event items no longer emit the redundant
+  `"text_is_transcript"` key (provenance.source_kind == "transcript" is the
+  single signal); annotation items no longer emit the duplicate `target`
+  payload (the session/range shape lives only in
+  `provenance.target.annotation`); `_annotation_target_payload` removed.
+- `journal/__init__.py` exports the task-4 locator types
+  (`HistoryLocatorRequest`/`HistoryLocatorHit`/`HistoryLocatorResult`).
+- Projection lifecycle: insert and both delete paths in `corpus.py` kept
+  as-is (comment only). Codex review concurred: a mechanical helper around
+  two intentionally distinct tables would add indirection without reducing
+  drift risk; delete-then-insert parity is already enforced by shared
+  structure (both FTS deletes sit adjacent to the events delete with
+  identical predicates).
+- Search serialization: locator helpers already reuse
+  `_to_prefix_match_query`, `_append_date_filter`, `_append_in_filter` -
+  no further duplication found.
+- Test consolidation: per-file fixtures (`_locator_corpus` in
+  test_history_corpus.py, `_locator_fixture` in test_journal_search.py)
+  already serve all locator tests in their file; assertions that pinned
+  `text_is_transcript` were rewritten to predicate on the descriptor (the
+  transcript e2e tests in test_consolidation_release_e2e.py and
+  test_voice_annotation_release_e2e.py now assert
+  `provenance.source_kind is TRANSCRIPT` + `is_canonical is False`);
+  `_StaticRetrievalService` kept local to test_journal_search.py (single
+  use).
+
+Criterion -> surviving assertion map (story acceptance criteria 1-4):
+
+1. Descriptor + total mapping + inventory (task 1):
+   `tests/test_journal_provenance.py` (unchanged task-1 unit tests).
+2. `search_history` provenance field distinguishes raw/transcript/annotation:
+   `test_search_history_serializes_provenance_for_raw_event` /
+   `_for_transcript_event` / `_for_annotation` (test_history_tools.py);
+   every-item presence: `test_search_history_provenance_field_is_present_on_
+   every_item`.
+3. No derived/transcript text presented as canonical:
+   `test_search_history_provenance_follows_descriptor_over_legacy_fields`
+   (sentinel) + `test_retrieval_returns_transcript_text_source_framed`
+   (test_transcript_consumers.py) + `test_locator_query_returns_owning_ref_...`
+   (is_canonical False asserted).
+4. Locator index physically separate + lifecycle parity (task 3):
+   test_history_corpus.py - `test_derivative_only_phrase_is_not_matchable_
+   through_canonical_fts`, `test_delete_session_projection_removes_only_...
+   derivatives`, `test_project_event_reprojects_derivative_without_duplicates`,
+   `test_locator_fts_table_exists_without_schema_version_bump`,
+   `test_derivative_projection_keeps_canonical_fts_byte_identical`.
+5. Locator query + hydration + UI surfacing (task 4):
+   `test_journal_locator_search_returns_labeled_hits_with_canonical_text`,
+   `test_journal_search_endpoint_labels_locator_hits_distinctly` (transport).
+6. No auto-promotion: `test_derivative_phrase_never_enters_hybrid_retrieval_
+   candidates` (test_history_corpus.py) +
+   `test_search_history_returns_no_locator_content_for_derivative_phrase`
+   (test_journal_search.py).
+7. No schema-version bump: `test_locator_fts_table_exists_without_schema_
+   version_bump`.
+
+Codex review of the sweep diff: "No findings ... LGTM" (2026-08-31).
 
 ## Notes for the executor
 
