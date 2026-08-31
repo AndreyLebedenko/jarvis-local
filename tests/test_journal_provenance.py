@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from jarvis.journal.annotation import AnnotationSource, AnnotationTarget
+from jarvis.journal.annotation import AnnotationTarget
 from jarvis.journal.events import JournalEventRef
 from jarvis.journal.provenance import (
     ProvenanceDescriptor,
@@ -28,7 +28,9 @@ _CANONICAL_ELIGIBILITY = frozenset(
 _LOCATOR_ELIGIBILITY = frozenset({ProvenanceEligibility.LOCATOR_ONLY})
 
 
-def _ref(position: int = 0, session_id: str = "20260801-120000-ab12") -> JournalEventRef:
+def _ref(
+    position: int = 0, session_id: str = "20260801-120000-ab12"
+) -> JournalEventRef:
     return JournalEventRef(session_id, position)
 
 
@@ -39,16 +41,20 @@ class TestEligibilityContract:
             ProvenanceSourceKind.TRANSCRIPT,
             ProvenanceSourceKind.ANNOTATION,
         ):
-            assert ProvenanceSourceKind._eligibility[kind] == _CANONICAL_ELIGIBILITY
+            assert kind.eligibility == _CANONICAL_ELIGIBILITY
 
     def test_spoken_derivative_is_locator_only(self) -> None:
         assert (
-            ProvenanceSourceKind._eligibility[ProvenanceSourceKind.SPOKEN_DERIVATIVE]
-            == _LOCATOR_ELIGIBILITY
+            ProvenanceSourceKind.SPOKEN_DERIVATIVE.eligibility == _LOCATOR_ELIGIBILITY
         )
 
     def test_mapping_is_exhaustive_over_all_source_kinds(self) -> None:
-        assert set(ProvenanceSourceKind) == set(ProvenanceSourceKind._eligibility)
+        assert {kind: kind.eligibility for kind in ProvenanceSourceKind} == {
+            ProvenanceSourceKind.RAW_EVENT: _CANONICAL_ELIGIBILITY,
+            ProvenanceSourceKind.TRANSCRIPT: _CANONICAL_ELIGIBILITY,
+            ProvenanceSourceKind.ANNOTATION: _CANONICAL_ELIGIBILITY,
+            ProvenanceSourceKind.SPOKEN_DERIVATIVE: _LOCATOR_ELIGIBILITY,
+        }
 
 
 class TestProvenanceTarget:
@@ -96,9 +102,7 @@ class TestCorpusEventMapping:
 
     def test_transcript_backed_event_maps_to_transcript_non_canonical(self) -> None:
         reference = _ref(4)
-        event = _corpus_event(
-            reference, text="", effective_text="transcribed question"
-        )
+        event = _corpus_event(reference, text="", effective_text="transcribed question")
         descriptor = provenance_descriptor_from_corpus_event(event)
         assert descriptor.source_kind is ProvenanceSourceKind.TRANSCRIPT
         assert descriptor.is_canonical is False
@@ -116,9 +120,7 @@ class TestAnnotationIdentityMapping:
         assert descriptor.is_canonical is False
         assert descriptor.eligibility == _CANONICAL_ELIGIBILITY
         assert descriptor.target.event_ref is None
-        assert descriptor.target.annotation == AnnotationTarget(
-            "20260802-090000-cd34"
-        )
+        assert descriptor.target.annotation == AnnotationTarget("20260802-090000-cd34")
 
     def test_ranged_annotation_maps_positions_faithfully(self) -> None:
         identity = AnnotationCandidateIdentity(
