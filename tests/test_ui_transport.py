@@ -3009,7 +3009,10 @@ async def test_journal_search_endpoint_labels_locator_hits_distinctly(
                 "?token=valid-token&query=перегрелось",
             )
             assert locator_search["status"] == "ok"
-            [locator_hit] = locator_search["hits"]
+            # Locator matches travel in their own group, never among the
+            # canonical hits (no ranking blend).
+            assert locator_search["hits"] == []
+            [locator_hit] = locator_search["locator_hits"]
             assert locator_hit["kind"] == "locator"
             assert (locator_hit["session_id"], locator_hit["event_position"]) == (
                 session_id,

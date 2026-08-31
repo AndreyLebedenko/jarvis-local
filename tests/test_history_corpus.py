@@ -27,6 +27,7 @@ from jarvis.journal.corpus import (
     HistoryEventRangeStatus,
     HistoryEventReadStatus,
     HistoryEventRefsReadStatus,
+    HistoryLocatorRequest,
     HistorySearchRequest,
     HistorySearchStatus,
     HistorySessionReadStatus,
@@ -1249,8 +1250,11 @@ def test_locator_query_returns_owning_ref_canonical_text_and_derivative_snippet(
     tmp_path: Path,
 ) -> None:
     repository, _, located_ref = _locator_corpus(tmp_path)
+    canonical_text_marker = "после обеда"
 
-    result = repository.search_locator("перегрелось из-за пыли")
+    result = repository.search_locator(
+        HistoryLocatorRequest(query="перегрелось из-за пыли")
+    )
 
     assert result.status is HistorySearchStatus.ACCEPTED
     assert len(result.hits) == 1
@@ -1259,9 +1263,11 @@ def test_locator_query_returns_owning_ref_canonical_text_and_derivative_snippet(
     # Canonical text is the authoritative content, hydrated from the event.
     assert hit.canonical_text == "Реле перегрелось после обеда."
     # The snippet comes from the derivative, for recognition only: it must
-    # carry a phrase that exists ONLY in the derivative text.
-    assert "из-за пыли" in hit.snippet
+    # carry a phrase that exists ONLY in the derivative text (snippet markup
+    # brackets the matched tokens).
+    assert "из" in hit.snippet and "пыли" in hit.snippet
     assert hit.snippet != hit.canonical_text
+    assert canonical_text_marker not in hit.snippet
     assert hit.provenance.source_kind is ProvenanceSourceKind.SPOKEN_DERIVATIVE
     assert hit.provenance.eligibility == frozenset({ProvenanceEligibility.LOCATOR_ONLY})
     assert hit.provenance.is_canonical is False
@@ -1272,16 +1278,22 @@ def test_locator_query_rejects_bad_limit_and_respects_date_filters(
 ) -> None:
     repository, _, _ = _locator_corpus(tmp_path)
 
-    invalid_limit = repository.search_locator("перегрелось", limit=0)
+    invalid_limit = repository.search_locator(
+        HistoryLocatorRequest(query="перегрелось", limit=0)
+    )
     assert invalid_limit.status is HistorySearchStatus.INVALID_LIMIT
 
     over_cap = repository.search_locator(
-        "перегрелось", limit=HISTORY_SEARCH_MAX_RESULTS + 1
+        HistoryLocatorRequest(query="перегрелось", limit=HISTORY_SEARCH_MAX_RESULTS + 1)
     )
     assert over_cap.status is HistorySearchStatus.TOO_MANY_RESULTS
 
     future = repository.search_locator(
-        "перегрелось", date_from="2026-07-17", date_to="2026-07-17"
+        HistoryLocatorRequest(
+            query="перегрелось",
+            date_from="2026-07-17",
+            date_to="2026-07-17",
+        )
     )
     assert future.status is HistorySearchStatus.ACCEPTED
     assert future.hits == ()
@@ -1291,7 +1303,7 @@ def test_locator_query_is_unavailable_before_projection(tmp_path: Path) -> None:
     store = JournalStore(tmp_path / "journal")
     repository = HistoryCorpusRepository(store, tmp_path / "derived")
 
-    result = repository.search_locator("что-нибудь")
+    result = repository.search_locator(HistoryLocatorRequest(query="что-нибудь"))
 
     assert result.status is HistorySearchStatus.UNAVAILABLE
     assert result.hits == ()
@@ -1303,7 +1315,7 @@ def test_canonical_search_never_returns_derivative_only_phrase(
     repository, _, _ = _locator_corpus(tmp_path)
 
     canonical = repository.search(HistorySearchRequest(query="из-за пыли"))
-    locator = repository.search_locator("из-за пыли")
+    locator = repository.search_locator(HistoryLocatorRequest(query="из-за пыли"))
 
     assert canonical.status is HistorySearchStatus.ACCEPTED
     assert canonical.hits == ()

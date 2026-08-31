@@ -1414,26 +1414,33 @@ class UiTransportServer:
             return self._journal_hidden_response()
         limit = self._parse_search_limit(request.query.get("limit"))
         history = self._journal_history_service
+        query = request.query.get("query", request.query.get("q", ""))
+        date_from = request.query.get("date_from")
+        date_to = request.query.get("date_to")
         if history is not None:
             hits = history.search(
-                request.query.get("query", request.query.get("q", "")),
-                date_from=request.query.get("date_from"),
-                date_to=request.query.get("date_to"),
-                limit=limit,
+                query, date_from=date_from, date_to=date_to, limit=limit
+            )
+            locator_hits = history.search_locator(
+                query, date_from=date_from, date_to=date_to, limit=limit
             )
         elif self._journal_search_index is None:
             hits = []
+            locator_hits = []
         else:
             hits = self._journal_search_index.search(
-                request.query.get("query", request.query.get("q", "")),
-                date_from=request.query.get("date_from"),
-                date_to=request.query.get("date_to"),
-                limit=limit,
+                query, date_from=date_from, date_to=date_to, limit=limit
+            )
+            locator_hits = self._journal_search_index.search_locator(
+                query, date_from=date_from, date_to=date_to, limit=limit
             )
         return web.json_response(
             {
                 "status": "ok",
                 "hits": [journal_search_hit_payload(hit) for hit in hits],
+                "locator_hits": [
+                    journal_search_hit_payload(hit) for hit in locator_hits
+                ],
             }
         )
 

@@ -282,6 +282,21 @@ class JournalHistoryService:
             limit=limit,
         )
 
+    def search_locator(
+        self,
+        query: str,
+        *,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 50,
+    ) -> list[JournalSearchHit]:
+        return self._search_index.search_locator(
+            query,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+
     def delete_session(self, session_id: str) -> None:
         self._store.delete_session(session_id)
         try:

@@ -541,8 +541,9 @@ def test_journal_locator_search_returns_labeled_hits_with_canonical_text(
     assert (hit.session_id, hit.event_position) == ("20260716-153000-ab12", 1)
     assert hit.kind == "locator"
     assert hit.canonical_text == "Реле перегрелось после обеда."
-    # Recognition snippet must come from the derivative, only it carries this.
-    assert "из-за пыли" in hit.snippet
+    # Recognition snippet must come from the derivative, only it carries
+    # these words; snippet markup brackets the matched tokens.
+    assert "пыли" in hit.snippet
     assert hit.snippet != hit.canonical_text
 
 
@@ -579,11 +580,14 @@ async def test_search_history_returns_no_locator_content_for_derivative_phrase(
     assert result.is_error is False
     payload = result.structured_content
     assert payload["results"] == []
+    assert payload["returned_count"] == 0
     assert payload["lexical_count"] == 0
     assert payload["semantic_count"] == 0
-    text = str(payload)
-    assert "из-за пыли" not in text
-    assert "Реле перегрелось после обеда." not in text
+    # The derivative text and the canonical answer never reach the payload
+    # results (the echoed query string is not content).
+    results_text = str(payload["results"])
+    assert "напоминаю" not in results_text
+    assert "Реле перегрелось после обеда." not in results_text
 
 
 class _StaticRetrievalService:
@@ -601,6 +605,7 @@ def _event(
     role: str,
     source: str,
     text: str,
+    metadata: dict | None = None,
 ) -> JournalEvent:
     return JournalEvent(
         session_id=session_id,
@@ -610,6 +615,7 @@ def _event(
         text=text,
         media=[],
         transcript=None,
+        metadata=metadata or {},
     )
 
 

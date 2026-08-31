@@ -142,6 +142,12 @@ class JournalSearchHitPayload:
     timestamp: str
     event_position: int
     snippet: str
+    # "canonical" for an ordinary on-screen text hit; "locator" for a
+    # story-v1.9.1 task-4 heard-phrase match, where ``canonical_text``
+    # carries the hydrated on-screen answer and ``snippet`` is only the
+    # recognized derivative fragment.
+    kind: str = "canonical"
+    canonical_text: str | None = None
 
 
 class VisibilityMode(enum.Enum):

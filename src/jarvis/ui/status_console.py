@@ -254,6 +254,8 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
         timestamp=hit.timestamp,
         event_position=hit.event_position,
         snippet=hit.snippet,
+        kind=hit.kind,
+        canonical_text=hit.canonical_text,
     )
     return asdict(payload)
 
