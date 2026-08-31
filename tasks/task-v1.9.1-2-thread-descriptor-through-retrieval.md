@@ -1,6 +1,6 @@
 # Task v1.9.1-2: Thread the provenance descriptor through model-facing retrieval
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Depends on:** task-v1.9.1-1 (the provenance descriptor module must exist and
 be green before this card starts).
@@ -102,18 +102,69 @@ parallel suite):
 
 ## Acceptance criteria
 
-- [ ] Each `HistoryRetrievalCandidate` carries a `ProvenanceDescriptor` computed
+- [x] Each `HistoryRetrievalCandidate` carries a `ProvenanceDescriptor` computed
       via the task-1 mapping; retrieval no longer re-derives source kind inline.
-- [ ] `search_history` result items include one explicit, documented provenance
+- [x] `search_history` result items include one explicit, documented provenance
       field sourced from the descriptor; raw/transcript/annotation are
       distinguishable from that field alone.
-- [ ] No derived or transcript passage is presented as a canonical turn: the
+- [x] No derived or transcript passage is presented as a canonical turn: the
       canonical flag is false for transcript and annotation, true for raw
       events, asserted in tests.
-- [ ] Returned-candidate set and order are unchanged for a fixed fixture
+- [x] Returned-candidate set and order are unchanged for a fixed fixture
       (additive-only change).
-- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+- [x] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
       green.
+
+## Completion notes (2026-08-31)
+
+- Implementation shape: `HistoryRetrievalCandidate` gained an optional
+  `provenance: ProvenanceDescriptor | None` field;
+  `_event_candidate` / `_annotation_candidate` compute it via
+  `provenance_descriptor_from_corpus_event` /
+  `provenance_descriptor_from_annotation_identity` (task-1 mappings - no
+  inline re-derivation). It is `None` only on hand-built candidates from
+  older fixtures; the model-facing serializer raises `ValueError` on a
+  missing descriptor rather than re-deriving one (codex green-review
+  finding: a re-deriving fallback first misclassified a
+  descriptor-less transcript candidate as `raw_event`/canonical - exactly
+  the leak this card prevents; the fallback was removed entirely, older
+  test fixtures now carry real descriptors).
+- Serialization: `_serialize_retrieval_candidates` emits one additive
+  documented field `provenance` per result item:
+  `{source_kind: <enum .value>, is_canonical: bool, target:
+  {event_ref: reference-or-null, annotation: session/range-or-null}}`.
+  The sentinel test (`test_search_history_provenance_follows_descriptor_
+  over_legacy_fields`) proves the field follows the descriptor even when
+  legacy `kind`/`text_is_transcript` contradict it.
+- Legacy keys kept backward-compatible (per card: no mid-wiring deletions):
+  `kind`, `text_is_transcript`, `reference`/`role` (event items),
+  `annotation_id`/`target` (annotation items) are all still emitted.
+  Summary line needed no change: it reports counts only, it never derived
+  provenance ad hoc.
+- Additive-only verified: a new regression test pins the returned candidate
+  set and order for a fixed event+annotation fixture at the real
+  `HistoryRetrievalService` boundary, plus a fixture-level test at the
+  tool boundary.
+- Cleanup candidates for task 5 (do NOT delete earlier):
+  - `HistoryRetrievalCandidate.text_is_transcript` is now redundant at the
+    serialization boundary (descriptor encodes raw vs transcript); still
+    consumed by `automatic_retrieval.py` and `working_context.py`
+    (`RetrievedHistoryPassage.text_is_transcript`, model-facing
+    `"text_is_transcript"` key). Task 5 should route those through the
+    descriptor too, then possibly drop the candidate field.
+  - The serialized `text_is_transcript` key on event items is redundant
+    with `provenance.source_kind == "transcript"`.
+  - The duplicated `provenance`/`target` shapes on annotation items
+    (`target` vs `provenance.target.annotation`) are identical payloads;
+    one can be retired once consumers are confirmed.
+  - The `search_history` tool description already promises
+    "provenance"; no schema docs file exists for the tool payload - task 6
+    docs should document the `provenance` field shape for the model.
+- TDD split across commits: 986a383 + 1f42255 (red, incl. codex review
+  fixes), 0c2d8c7 (green), c705869 (codex green-review fixes), a220183
+  (refactor). Codex reviews: red - 3 blockers (sentinel/regrade/order),
+  all fixed; green - 2 blockers (fallback masking + transcript
+  misclassification), fixed and re-reviewed LGTM.
 
 ## Notes for the executor
 
