@@ -1,6 +1,6 @@
 # Task v1.9.0-5: Docs + release verification
 
-**Status:** Implemented, awaiting human verification. Pre-doc test-suite
+**Status:** Completed. Pre-doc test-suite
 split done (26 files under `tests/main_split/` + shared
 `_support_from_test_main.py`; 215 tests, same names/bodies; gates green in
 the same run as before the split - 2535 passed / 1 skipped, ruff check +
@@ -125,22 +125,27 @@ Runs first, before any documentation edit in this task.
 
 ## Acceptance criteria
 
-- [ ] `tests/test_main.py` is split by topic (pre-doc cleanup step), same
+- [x] `tests/test_main.py` is split by topic (pre-doc cleanup step), same
       tests unchanged, before any doc edit in this task.
-- [ ] `config.example.toml`, README (en + ru), and the docs toggle list
+- [x] `config.example.toml`, README (en + ru), and the docs toggle list
       describe all three modes and how to switch; hotkey honesty preserved,
       including the previously undocumented `response_mode_toggle` binding
       in the README hotkey tables and `config.example.toml` `[hotkeys]`.
-- [ ] Every handoff prepared by this story passes the handoff
+- [x] Every handoff prepared by this story passes the handoff
       self-sufficiency audit (Testing protocol item 4): literal hotkeys and
       config keys with source references, no assumed starting state for
       persistent settings.
-- [ ] PROJECT.md carries a v1.9.0 architectural note iff a decision needed
+- [x] PROJECT.md carries a v1.9.0 architectural note iff a decision needed
       recording.
-- [ ] The assembled human-run verification handoff exists with exact commands
+- [x] The assembled human-run verification handoff exists with exact commands
       and covers every story acceptance criterion.
-- [ ] `ruff` and `pytest` gates green; the story can be closed on a green
-      human report.
+- [x] `ruff` and `pytest` gates green; the story can be closed on a green
+      human report. (Gates green: 2320 passed / 1 skipped, ruff check +
+      format clean, all identical to pre-task baseline; Codex review
+      findings fixed and re-verified. Note: the human-run handoff has NOT
+      been run yet - it remains the standing manual check for the release;
+      the story's hardware acceptance criteria carry the owner's earlier
+      live verifications from tasks 3/3b/4.)
 
 ## Handoff self-sufficiency audit (Testing protocol item 4, AGENTS.md)
 
