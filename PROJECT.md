@@ -4086,6 +4086,39 @@ second pass creates a spoken commentary/log over that canvas.
   locator-only search surface for `spoken_derivative`, but it must return the
   owning assistant event and hydrate/display the canonical `event.text`; it
   must not feed derivative text into model memory as standalone knowledge.
+  (Delivered by story-v1.9.1, 2026-08-31 - see the next section; the model-
+  facing exposure decision there is UI-only.)
+
+## Architecture v1.9.1 (provenance-aware indexing and the spoken-derivative locator)
+
+Settled facts from story-v1.9.1 (do not re-litigate; detail lives in the
+story cards under `tasks/done/`).
+
+- **Provenance is one typed descriptor, not scattered flags.**
+  `src/jarvis/journal/provenance.py` defines `ProvenanceSourceKind`
+  (`raw_event` / `transcript` / `annotation` / `spoken_derivative`) with the
+  eligibility axis encoded once on the enum (`AUTO_RETRIEVAL` /
+  `MODEL_SEARCH` / `JOURNAL_UI` / `LOCATOR_ONLY`) and a frozen
+  `ProvenanceDescriptor` (source kind, eligibility, target, `is_canonical`).
+  Every text-bearing search surface maps onto it at read time; consumers read
+  provenance through it instead of re-deriving meaning from
+  `text_is_transcript` / candidate-kind bits. `HistoryRetrievalCandidate`
+  carries the descriptor computed at construction; serialization reads it
+  and fails loudly when it is missing (no re-derivation fallbacks).
+- **The spoken derivative is locator-only, physically separate.** Mode-3
+  derivatives are indexed in a dedicated FTS5 table
+  (`history_corpus_derivative_fts` in `history_corpus.db`) that never shares
+  a `MATCH` with the canonical `history_corpus_event_fts` - a shared index
+  needing post-filtering is treated as a leak, not an implementation detail.
+  A locator hit returns the owning assistant `JournalEventRef` with the
+  canonical `event.text` hydrated as the only authoritative content; the
+  derivative appears only as a human-recognition snippet. The derivative
+  never enters automatic retrieval, the model-facing `search_history`, or
+  memory (model-facing exposure decided UI-only, story v1.9.1 task 4).
+- **The archive overlay is a non-text surface.** The archive overlay stores
+  audio-removal outcome metadata (bytes reclaimed, per-file KEEP/REMOVE) -
+  there is no indexable prose in it and no surface to invent for it without
+  a new scope decision.
 
 ## Documentation navigation doctrine (2026-08-30)
 
