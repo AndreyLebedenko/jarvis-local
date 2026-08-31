@@ -447,6 +447,14 @@ def test_journal_new_context_is_an_explicit_journal_action():
     assert 'uiString("journal_new_context_ready")' in body
 
 
+def test_new_context_event_body_is_localized_not_the_stored_text():
+    body = APP_JS.split("function _journalEventBodyText(")[1].split("\n}")[0]
+    assert 'event.source === "context"' in body
+    assert 'event.metadata.kind === "new_context"' in body
+    assert 'uiString("journal_new_context_event")' in body
+    assert "return event.text;" in body
+
+
 def test_journal_new_context_is_not_the_fork_continue_action():
     new_context_body = APP_JS.split("async function startNewJournalContext(")[1].split(
         "\n}"

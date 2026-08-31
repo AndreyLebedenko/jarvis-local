@@ -2562,10 +2562,11 @@ function _journalEventElement(event, position = null) {
         : _journalImageThumbnail(item)
     );
   }
-  if (event.text) {
+  const bodyText = _journalEventBodyText(event);
+  if (bodyText) {
     const text = document.createElement("div");
     text.className = "journal-msg-text";
-    text.textContent = event.text;
+    text.textContent = bodyText;
     message.appendChild(text);
   }
   // Transcript controls only attach to a known event position (the full feed
@@ -2582,6 +2583,22 @@ function _journalEventElement(event, position = null) {
   const spokenDerivativeDetail = _journalSpokenDerivativeDetail(event);
   if (spokenDerivativeDetail !== null) message.appendChild(spokenDerivativeDetail);
   return message;
+}
+
+// The new-context provenance line is stored in the journal in the assistant's
+// conversation language (Russian) as a durable, model-facing artifact; the
+// event is tagged metadata.kind === "new_context" (see start_blank_session).
+// Display it in the active UI language instead of the stored text, mirroring
+// the server-side session-title handling in _journal_session_title.
+function _journalEventBodyText(event) {
+  if (
+    event.source === "context" &&
+    event.metadata &&
+    event.metadata.kind === "new_context"
+  ) {
+    return uiString("journal_new_context_event");
+  }
+  return event.text;
 }
 
 function _journalEventHasAudio(event) {
