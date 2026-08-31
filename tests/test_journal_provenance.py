@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from jarvis.journal.annotation import AnnotationTarget
+from jarvis.journal.corpus import HistoryCorpusEvent
 from jarvis.journal.events import JournalEventRef
 from jarvis.journal.provenance import (
     ProvenanceDescriptor,
@@ -150,9 +151,7 @@ class TestSpokenDerivativeMapping:
 
 def _corpus_event(
     reference: JournalEventRef, *, text: str, effective_text: str
-) -> object:
-    from jarvis.journal.corpus import HistoryCorpusEvent
-
+) -> HistoryCorpusEvent:
     return HistoryCorpusEvent(
         reference=reference,
         timestamp="2026-08-01T12:00:00+00:00",

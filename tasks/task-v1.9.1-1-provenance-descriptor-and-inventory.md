@@ -1,6 +1,6 @@
 # Task v1.9.1-1: Provenance descriptor module + surface inventory
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Executor:** Sonnet 5 High. This card is deliberately closed-ended: it defines
 one pure module and rewires nothing. If you find yourself editing a corpus
@@ -144,7 +144,7 @@ fixtures hiding the input under test.
       today, what text is indexed, and its eligibility set - including the
       archive overlay marked non-text / not-indexed.
 
-## Surface inventory (fill in at completion)
+## Surface inventory (filled in at completion)
 
 | Surface | Stored where | Indexed text today | Source kind | Eligibility |
 |---|---|---|---|---|
@@ -153,6 +153,31 @@ fixtures hiding the input under test.
 | Annotation (generated/edited) | annotation overlay store + own lexical/semantic index | annotation text | ANNOTATION | auto + model + UI |
 | Mode-3 spoken derivative | `event.metadata["spoken_derivative"]` | none today | SPOKEN_DERIVATIVE | locator-only (this story) |
 | Archive overlay | `archive_overlays.db` | none (audio-removal outcome metadata, no prose) | n/a (non-text) | not indexed |
+
+## Completion notes (2026-08-31)
+
+- Delivered `src/jarvis/journal/provenance.py` (pure module, no sqlite/fs/
+  network/bus) and `tests/test_journal_provenance.py` (12 tests, all green).
+- Shape chosen within the card's freedom: the eligibility contract lives in a
+  single module-level map `_ELIGIBILITY_BY_SOURCE_KIND`, consulted only
+  through a `ProvenanceSourceKind.eligibility` property - the enum is the one
+  place the canonical vs locator sets are spelled out.
+- `ProvenanceDerivation`-vs-`is_canonical` choice: took the card's simpler
+  option, boolean `ProvenanceDescriptor.is_canonical` - task 2's only
+  question is "may the model treat this text as the turn itself".
+- `ProvenanceTarget` models the two anchor shapes as two optional fields with
+  a construction-time exactly-one invariant (a `ValueError` on both/neither),
+  reusing `JournalEventRef` and `AnnotationTarget` as instructed.
+- Surface inventory verified against source: table above is accurate as of
+  commit b58e10b. The spoken-derivative row is the design target (indexed
+  nowhere today); all other rows reflect current indexing. Archive overlay
+  was confirmed non-text by its module docstring (`archive.py` stores
+  per-file KEEP/REMOVE outcome metadata only).
+- No fifth text-bearing surface found; story-level stop condition not
+  triggered.
+- Nothing outside the new module, its test, and this card changed.
+  TDD split across commits: f772424 (red), b58e10b (green), refactor commit
+  follows this note.
 
 ## Notes for the executor
 
