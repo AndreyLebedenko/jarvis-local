@@ -1,0 +1,150 @@
+# Task v1.9.1-4: Locator query + canonical hydration + Journal UI surfacing
+
+**Status:** Not started.
+**Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
+**Depends on:** task-v1.9.1-3 (the locator FTS table and its lifecycle) and
+task-v1.9.1-1 (the descriptor). The index-shape decision from task 3 is a
+direct input; do not start until task 3 has landed and its derivative-table
+columns are fixed.
+**Executor:** Sonnet 5 High. This card turns the task-3 index into a user-
+visible capability: query it, resolve the owning event, hydrate the canonical
+on-screen text, and surface it in Journal search framed as a heard-phrase
+locator. Two things you must NOT do: feed the derivative into automatic
+retrieval/model memory, and blend locator scores into the canonical ranking.
+
+## Summary
+
+Add the locator query path over the task-3 derivative FTS: match heard phrases,
+return the owning assistant `JournalEventRef`, hydrate its canonical
+`event.text`, and present the result tagged as a locator match with the
+derivative text used only as a recognition snippet. Wire it into the Journal UI
+search path so a user searching a phrase they only heard finds the turn and
+sees the canonical answer. Decide, and record, whether the model-facing
+`search_history` exposes locator matches at all - defaulting to UI-only unless a
+clean, honestly-labeled contract is reachable.
+
+## Why this exists
+
+Task 3 built the index but nothing reads it. This card is where "find a turn by
+a phrase you heard" becomes real, while holding the two invariants the whole
+story exists to protect: the canonical canvas is authoritative (a locator hit
+shows canonical text, not the derivative as fact), and a heard phrase never
+gets promoted into memory (cross-cutting rules 1 and 3).
+
+## Required reading before implementing
+
+- `tasks/task-v1.9.1-3-spoken-derivative-locator-index.md` and the derivative
+  table it created; note its exact columns and key.
+- `src/jarvis/journal/corpus.py` - the canonical `search` method and
+  `_search_sql`/`_search_where_parts` for the query pattern to mirror; the
+  read/hydration methods (`read_event`, `read_events`) for canonical-text
+  hydration.
+- `src/jarvis/journal/search.py` - `JournalSearchIndex` and `JournalSearchHit`,
+  the UI-facing search wrapper. This is the seam where the Journal UI reaches
+  search.
+- `src/jarvis/app.py` around line 1807 - how `JournalSearchIndex` is
+  constructed and wired.
+- `src/jarvis/ui/status_console.py` and `src/jarvis/ui/status_console_ui/`
+  (`app.js`, `strings.js`) - how Journal search results are requested and
+  rendered; find where a hit becomes a UI row, and where the mode-3
+  "spoken aloud" block already renders (grep `spoken_derivative`).
+- `src/jarvis/tools/history.py` - `_serialize_retrieval_candidates` (task 2's
+  provenance field) - the reference point if a model-facing locator class is
+  taken.
+- Cross-cutting rules 1 and 3 in `tasks/roadmap-v1.9-v2.0.md`, and this story's
+  "Locator search is UI-first" decision.
+
+## What to build
+
+1. **A locator query method** (on the corpus repository or a small locator
+   type - mirror where the canonical `search` lives). Input: a query string
+   (plus the same date/session filters the canonical search accepts, only if
+   free to add - do not gold-plate). Output: locator hits, each carrying the
+   owning assistant `JournalEventRef`, a matched-phrase snippet from the
+   derivative (for human recognition), and the score. Reuse the canonical query
+   tokenization/prefix logic; do not invent a second query dialect.
+2. **Canonical hydration.** For each locator hit, resolve the owning event and
+   attach its canonical `event.text` as the authoritative content. The result
+   object must make it unmistakable which text is canonical (shown, authored on
+   screen) and which is the heard-phrase snippet (recognition only). Tag it with
+   the task-1 `SPOKEN_DERIVATIVE` / `LOCATOR_ONLY` provenance so no consumer can
+   treat it as a canonical turn.
+3. **Journal UI surfacing.** Extend `JournalSearchIndex` (or a sibling method)
+   so the Journal UI search can return locator matches distinctly from canonical
+   hits, and render them so the user sees: this turn was located by something you
+   heard; here is what was shown on screen. Keep the canonical-hit rendering
+   unchanged; the locator result is an additional, clearly-labeled kind. Follow
+   the existing Journal-search request/render path rather than adding a parallel
+   one. Mind the Browser-pane sub-resource caching note in project `CLAUDE.md`
+   tooling note 7 when verifying `app.js`/`strings.js` edits.
+4. **Model-facing decision (bounded).** Decide whether `search_history` exposes
+   locator matches:
+   - Default and safe: UI-only. `search_history` continues to return only
+     model-eligible surfaces (raw/transcript/annotation); the locator surface's
+     `LOCATOR_ONLY` eligibility keeps it out. Record the deferral in this card's
+     completion notes with the reason.
+   - Only if a clean contract is obvious: expose locator matches as a *distinct*
+     result class in `search_history`, explicitly labeled a locator (owning
+     event + canonical text hydrated + provenance), never blended into the
+     ranked memory candidates, never counted as a lexical/semantic memory hit.
+   Do not split the difference: no half-labeled locator leaking into the memory
+   candidate list. If in doubt, ship UI-only.
+5. **Working-context rendering.** Touch it only if a locator/provenance
+   distinction must be visible there. If canonical turns and locator matches
+   cannot be rendered without reworking the shared working-context contract,
+   that is a story stop condition - raise it, do not absorb it.
+
+## Explicitly out of scope
+
+- No automatic-retrieval eligibility for the derivative - it never enters the
+  hybrid candidate feed (`retrieval.py` fusion), only the explicit locator path.
+- No cross-surface ranking blend: locator hits are their own result group.
+- No change to task-3 storage/lifecycle (if you need a column task 3 did not
+  provide, that is a task-3 gap to report, not to patch here ad hoc).
+- No mode-3 generation change; no new persisted derivative data.
+- No semantic locator.
+
+## Tests
+
+- A query for a phrase present only in a mode-3 derivative returns a locator hit
+  whose owning ref is the assistant event, whose canonical text equals that
+  event's `event.text`, and whose snippet comes from the derivative.
+- The same query returns no *canonical* hit for that phrase (it was never in
+  canonical text) - proving the surfaces stay separate end to end.
+- A locator hit is tagged locator-only provenance; a consumer checking "is this
+  a canonical turn" gets false.
+- The derivative never appears among `retrieve()` hybrid candidates for the
+  same query (guards the no-auto-promotion invariant).
+- If model-facing exposure is taken: a `search_history` locator item is a
+  distinct class, carries canonical text + provenance, and does not appear in or
+  inflate the lexical/semantic memory counts. If UI-only: a test asserts
+  `search_history` returns no locator/derivative content for a derivative-only
+  phrase.
+- Journal UI search path (mirror existing `test_journal_view_ui.py` style)
+  returns and labels a locator match distinctly from a canonical hit.
+
+## Acceptance criteria
+
+- [ ] A locator query over the task-3 index returns owning-event refs with
+      canonical `event.text` hydrated and a derivative snippet for recognition,
+      tagged locator-only provenance.
+- [ ] Journal UI search reaches locator matches and renders them distinctly from
+      canonical hits, with canonical rendering unchanged.
+- [ ] The derivative is provably absent from automatic retrieval and (unless the
+      model-facing class is deliberately taken) from `search_history`; the
+      model-facing decision is recorded with its reason.
+- [ ] No ranking blend: locator hits are a separate group, never merged into or
+      counted among canonical/annotation ranked candidates.
+- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+      green; JS/CSS UI edits verified against the caching note before claiming
+      they apply.
+
+## Notes for the executor
+
+- The user-visible payoff of the whole story lands here, but the guardrails are
+  the point: if a change makes the derivative easier to find at the cost of
+  blurring "heard" vs "said", it is wrong even if search feels better. Canonical
+  text authoritative; heard phrase is a locator only.
+- Prefer UI-only for the model-facing decision unless the clean contract is
+  genuinely obvious. Shipping UI-only and recording the deferral fully satisfies
+  this card; inventing a model contract that blurs the line does not.
