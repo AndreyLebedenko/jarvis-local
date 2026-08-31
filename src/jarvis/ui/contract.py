@@ -134,6 +134,9 @@ class JournalSessionPayload:
     end_timestamp: str
     title: str
     folder_path: str
+    # Empty for a user-authored title; "new_context"/"voice_only" for a
+    # placeholder the client localizes to the active UI language.
+    title_kind: str = ""
 
 
 @dataclass(frozen=True)

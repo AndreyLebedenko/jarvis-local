@@ -1415,6 +1415,7 @@ async def test_journal_sessions_feed_and_search_use_existing_http_transport(
                     "start_timestamp": "2026-07-16T15:30:00+01:00",
                     "end_timestamp": "2026-07-16T15:30:03+01:00",
                     "title": "the real topic after voice",
+                    "title_kind": "",
                     "folder_path": str(store.root / session_id),
                 },
                 {
@@ -1422,6 +1423,7 @@ async def test_journal_sessions_feed_and_search_use_existing_http_transport(
                     "start_timestamp": "2026-07-17T09:00:00+01:00",
                     "end_timestamp": "2026-07-17T09:00:01+01:00",
                     "title": "reactor check",
+                    "title_kind": "",
                     "folder_path": str(store.root / later_session_id),
                 },
             ]
