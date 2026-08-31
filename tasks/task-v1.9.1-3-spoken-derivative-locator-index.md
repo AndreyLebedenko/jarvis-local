@@ -1,6 +1,6 @@
 # Task v1.9.1-3: Spoken-derivative locator index + projection lifecycle
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Depends on:** task-v1.9.1-1 (descriptor vocabulary). Independent of task 2 in
 code, but opened after it per the story's one-at-a-time order.
@@ -106,18 +106,56 @@ lifecycle and a query/hydration/UI path.
 
 ## Acceptance criteria
 
-- [ ] A separate `*_derivative_fts` table exists in `history_corpus.db`, created
+- [x] A separate `*_derivative_fts` table exists in `history_corpus.db`, created
       via the additive `_ensure_schema` path with no corpus schema-version bump.
-- [ ] Assistant events with a non-empty `spoken_derivative` project exactly one
+- [x] Assistant events with a non-empty `spoken_derivative` project exactly one
       locator row keyed to the owning event; all other events project none.
-- [ ] Full lifecycle parity: rebuild, `project_event`,
+- [x] Full lifecycle parity: rebuild, `project_event`,
       `update_session_projection`, `delete_session_projection`, and per-event
       delete keep the two tables coherent.
-- [ ] The canonical FTS contents and any canonical search behavior are provably
+- [x] The canonical FTS contents and any canonical search behavior are provably
       unchanged by the derivative table's presence.
-- [ ] A derivative-only phrase is not matchable through the canonical FTS.
-- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+- [x] A derivative-only phrase is not matchable through the canonical FTS.
+- [x] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
       green.
+
+## Completion notes (2026-08-31)
+
+- Implementation lives entirely in `src/jarvis/journal/corpus.py`:
+  `_create_derivative_fts_schema` (FTS5, same unicode61 tokenizer + prefix
+  settings as the canonical FTS, five columns per the card), projection in
+  `_insert_record` guarded by `event.role == "assistant"` plus a
+  `.strip()`-non-empty check on `metadata[SPOKEN_DERIVATIVE_METADATA_KEY]`,
+  and delete parity in `_delete_session_projection` /
+  `_delete_event_projection`. `rebuild`, `project_event`,
+  `update_session_projection` need no changes of their own - they route
+  through `_insert_record` + the two delete helpers, so parity is inherited
+  structurally, not copy-pasted.
+- Additive schema guard: `_ensure_schema` creates the derivative table when
+  it is missing even if the canonical FTS exists (existing DBs gain the
+  table on the next write path). `CURRENT_HISTORY_CORPUS_SCHEMA_VERSION`
+  stays 2; a test pins it.
+- Canonical-unchanged proof is a dual-corpus test: two otherwise identical
+  journals differing only in `metadata.spoken_derivative` must produce
+  identical canonical-FTS rows (all eight columns) and identical canonical
+  MATCH results for a derivative-only phrase.
+- Physical separation asserted at the SQL level: a quoted multi-token
+  phrase present only in the derivative matches the locator table and not
+  `history_corpus_event_fts`.
+- Stale-row re-projection is tested by poisoning the derivative row and
+  asserting `project_event` / `update_session_projection` rebuild it from
+  the journal record (codex red-review finding; would otherwise pass with
+  a stale row).
+- Red-phase commit history: dad15d8 (red), d8092fc (red-review fixes),
+  5f4e739 (green). Codex reviews: red - 4 blockers + 1 minor (timestamp
+  math, weak byte-identity, single-token separation probe, stale-row
+  blindspot), all fixed pre-green; green - no findings, LGTM.
+- The card's TDD "refactor" phase had no code to change: the green commit
+  already matched the canonical structure; gates were rerun green, so no
+  separate refactor commit exists.
+- For task 4: the owning ref is `(session_id, event_position)`, snippet
+  source is the FTS `text` column; the query surface must use its own
+  `MATCH` against `history_corpus_derivative_fts` only.
 
 ## Notes for the executor
 

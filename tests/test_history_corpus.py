@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -681,6 +682,529 @@ def _event(
         transcript=transcript,
         metadata=metadata or {},
     )
+
+
+# --- Spoken-derivative locator FTS (story-v1.9.1 task 3) --------------------
+
+_LOCATOR_DB_COLUMN_ORDER = (
+    "session_id",
+    "event_position",
+    "timestamp",
+    "timestamp_sort",
+    "text",
+)
+
+
+def _derivative_rows(repository: HistoryCorpusRepository) -> list[tuple]:
+    with sqlite3.connect(repository.db_path) as connection:
+        return list(
+            connection.execute(
+                """
+                SELECT session_id, event_position, timestamp, timestamp_sort, text
+                FROM history_corpus_derivative_fts
+                ORDER BY session_id, event_position
+                """
+            )
+        )
+
+
+def _canonical_fts_full_rows(repository: HistoryCorpusRepository) -> list[tuple]:
+    with sqlite3.connect(repository.db_path) as connection:
+        return list(
+            connection.execute(
+                """
+                SELECT session_id, event_position, timestamp, timestamp_sort,
+                       event_date, role, source, text
+                FROM history_corpus_event_fts
+                ORDER BY session_id, event_position
+                """
+            )
+        )
+
+
+def _canonical_fts_search_hits(repository: HistoryCorpusRepository, query: str) -> list:
+    with sqlite3.connect(repository.db_path) as connection:
+        return list(
+            connection.execute(
+                "SELECT session_id, event_position FROM history_corpus_event_fts "
+                "WHERE history_corpus_event_fts MATCH ? "
+                "ORDER BY session_id, event_position",
+                (query,),
+            )
+        )
+
+
+def _derivative_fts_search_hits(
+    repository: HistoryCorpusRepository, query: str
+) -> list:
+    with sqlite3.connect(repository.db_path) as connection:
+        return list(
+            connection.execute(
+                "SELECT session_id, event_position FROM history_corpus_derivative_fts "
+                "WHERE history_corpus_derivative_fts MATCH ? "
+                "ORDER BY session_id, event_position",
+                (query,),
+            )
+        )
+
+
+def test_derivative_projected_for_assistant_event_with_spoken_derivative(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    reference = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ на экране.",
+            metadata={"spoken_derivative": "Слушай, реле перегрелось из-за пыли."},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    repository.rebuild()
+
+    rows = _derivative_rows(repository)
+    assert len(rows) == 1
+    session_id, event_position, timestamp, timestamp_sort, text = rows[0]
+    assert session_id == reference.session_id
+    assert event_position == reference.event_position
+    assert timestamp == "2026-07-16T15:30:00+01:00"
+    assert timestamp_sort == pytest.approx(
+        datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
+    )
+    assert text == "Слушай, реле перегрелось из-за пыли."
+
+
+def test_derivative_projection_keeps_canonical_fts_byte_identical(
+    tmp_path: Path,
+) -> None:
+    # Two otherwise identical corpora that differ ONLY in the assistant event's
+    # metadata.spoken_derivative: the canonical FTS projection and its MATCH
+    # behavior must be identical for both (physical-separation guarantee).
+    plain_store = JournalStore(tmp_path / "journal_plain")
+    derivative_store = JournalStore(tmp_path / "journal_derivative")
+    for store, derivative in (
+        (plain_store, None),
+        (derivative_store, "слышанная фраза про фильтр"),
+    ):
+        store.append(
+            _event(
+                session_id="20260716-153000-ab12",
+                timestamp="2026-07-16T15:30:00+01:00",
+                role="assistant",
+                source="assistant",
+                text="Канонический ответ номер 0.",
+            )
+        )
+        store.append(
+            _event(
+                session_id="20260716-153000-ab12",
+                timestamp="2026-07-16T15:30:01+01:00",
+                role="assistant",
+                source="assistant",
+                text="Канонический ответ номер 1.",
+                metadata=(
+                    {"spoken_derivative": derivative} if derivative is not None else {}
+                ),
+            )
+        )
+    plain_repository = HistoryCorpusRepository(plain_store, tmp_path / "plain_derived")
+    derivative_repository = HistoryCorpusRepository(
+        derivative_store, tmp_path / "derivative_derived"
+    )
+
+    plain_repository.rebuild()
+    derivative_repository.rebuild()
+
+    assert _canonical_fts_full_rows(derivative_repository) == (
+        _canonical_fts_full_rows(plain_repository)
+    )
+    derivative_only_phrase = '"слышанная фраза"'
+    assert _canonical_fts_search_hits(
+        plain_repository, derivative_only_phrase
+    ) == _canonical_fts_search_hits(derivative_repository, derivative_only_phrase)
+    # Sanity for the comparison itself: the derivative store does carry the
+    # locator row, so a canonical-only comparison is meaningful.
+    assert len(_derivative_rows(derivative_repository)) == 1
+    assert _derivative_rows(plain_repository) == []
+
+
+def test_events_without_spoken_derivative_project_no_locator_rows(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Обычный режим 1-2 ответ.",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:01+01:00",
+            role="user",
+            source="voice",
+            text="Вопрос пользователя.",
+            metadata={"spoken_derivative": "производная у пользователя не бывает"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    repository.rebuild()
+
+    assert _derivative_rows(repository) == []
+
+
+def test_rebuild_populates_derivatives_for_mixed_mode_corpus(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    session_id = "20260716-153000-ab12"
+    start = datetime.fromisoformat("2026-07-16T15:30:00+01:00")
+    store.append(
+        _event(
+            session_id=session_id,
+            timestamp=(start + timedelta(seconds=0)).isoformat(),
+            role="user",
+            source="voice",
+            text="Расскажи про реле.",
+        )
+    )
+    store.append(
+        _event(
+            session_id=session_id,
+            timestamp=(start + timedelta(seconds=1)).isoformat(),
+            role="assistant",
+            source="assistant",
+            text="Реле исправно.",
+        )
+    )
+    derivative_ref = store.append(
+        _event(
+            session_id=session_id,
+            timestamp=(start + timedelta(seconds=2)).isoformat(),
+            role="assistant",
+            source="assistant",
+            text="Реле перегрелось после обеда.",
+            metadata={"spoken_derivative": "Реле перегрелось, надо почистить фильтр."},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    repository.rebuild()
+
+    assert _derivative_rows(repository) == [
+        (
+            derivative_ref.session_id,
+            derivative_ref.event_position,
+            "2026-07-16T15:30:02+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-16T15:30:02+01:00").timestamp()
+            ),
+            "Реле перегрелось, надо почистить фильтр.",
+        )
+    ]
+
+
+def test_project_event_reprojects_derivative_without_duplicates(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    reference = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Ответ.",
+            metadata={"spoken_derivative": "производная фраза"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    # Poison the projected row with stale text provenance is wrong about:
+    # the re-projection must rebuild the row from the journal record, not
+    # merely avoid duplicating it.
+    with sqlite3.connect(repository.db_path) as connection:
+        connection.execute("BEGIN")
+        connection.execute(
+            "DELETE FROM history_corpus_derivative_fts "
+            "WHERE session_id = ? AND event_position = ?",
+            (reference.session_id, reference.event_position),
+        )
+        connection.execute(
+            "INSERT INTO history_corpus_derivative_fts "
+            "(session_id, event_position, timestamp, timestamp_sort, text) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                reference.session_id,
+                reference.event_position,
+                "2000-01-01T00:00:00+00:00",
+                0.0,
+                "устаревший текст производной",
+            ),
+        )
+        connection.commit()
+
+    repository.project_event(store.read_session(reference.session_id).records[0])
+
+    rows = _derivative_rows(repository)
+    assert rows == [
+        (
+            reference.session_id,
+            reference.event_position,
+            "2026-07-16T15:30:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
+            ),
+            "производная фраза",
+        )
+    ]
+
+
+def test_update_session_projection_keeps_derivative_single(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    reference = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Ответ.",
+            metadata={"spoken_derivative": "слышанная фраза"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    # Stale row for the same key: session re-projection must rebuild it from
+    # the journal, not leave the stale text in place.
+    with sqlite3.connect(repository.db_path) as connection:
+        connection.execute("BEGIN")
+        connection.execute(
+            "DELETE FROM history_corpus_derivative_fts WHERE session_id = ?",
+            (reference.session_id,),
+        )
+        connection.execute(
+            "INSERT INTO history_corpus_derivative_fts "
+            "(session_id, event_position, timestamp, timestamp_sort, text) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                reference.session_id,
+                reference.event_position,
+                "2000-01-01T00:00:00+00:00",
+                0.0,
+                "несвежий производный текст",
+            ),
+        )
+        connection.commit()
+
+    repository.update_session_projection(reference.session_id)
+
+    assert _derivative_rows(repository) == [
+        (
+            reference.session_id,
+            reference.event_position,
+            "2026-07-16T15:30:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
+            ),
+            "слышанная фраза",
+        )
+    ]
+
+
+def test_delete_session_projection_removes_only_that_sessions_derivatives(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    keep_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Оставшийся ответ.",
+            metadata={"spoken_derivative": "оставшаяся производная"},
+        )
+    )
+    drop_ref = store.append(
+        _event(
+            session_id="20260717-090000-cd34",
+            timestamp="2026-07-17T09:00:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Удаляемый ответ.",
+            metadata={"spoken_derivative": "удаляемая производная"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    repository.delete_session_projection(drop_ref.session_id)
+
+    assert _derivative_rows(repository) == [
+        (
+            keep_ref.session_id,
+            keep_ref.event_position,
+            "2026-07-16T15:30:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
+            ),
+            "оставшаяся производная",
+        )
+    ]
+
+
+def test_delete_event_projection_removes_only_that_events_derivative_row(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    keep_same_session = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Оставшийся ответ той же сессии.",
+            metadata={"spoken_derivative": "оставшаяся производная"},
+        )
+    )
+    drop_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:05+01:00",
+            role="assistant",
+            source="assistant",
+            text="Удаляемый ответ.",
+            metadata={"spoken_derivative": "удаляемая производная"},
+        )
+    )
+    keep_other_session = store.append(
+        _event(
+            session_id="20260717-090000-cd34",
+            timestamp="2026-07-17T09:00:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Ответ другой сессии.",
+            metadata={"spoken_derivative": "чужая производная"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    with closing(sqlite3.connect(repository.db_path)) as connection, connection:
+        repository._delete_event_projection(connection, drop_ref)
+
+    assert _derivative_rows(repository) == [
+        (
+            keep_same_session.session_id,
+            keep_same_session.event_position,
+            "2026-07-16T15:30:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
+            ),
+            "оставшаяся производная",
+        ),
+        (
+            keep_other_session.session_id,
+            keep_other_session.event_position,
+            "2026-07-17T09:00:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-17T09:00:00+01:00").timestamp()
+            ),
+            "чужая производная",
+        ),
+    ]
+
+    # Full parity with the canonical FTS: the same delete must have removed
+    # exactly the same key there as well (delete parity, not content equality).
+    canonical_refs = [(row[0], row[1]) for row in _canonical_fts_full_rows(repository)]
+    assert (drop_ref.session_id, drop_ref.event_position) not in canonical_refs
+    assert (keep_same_session.session_id, keep_same_session.event_position) in (
+        canonical_refs
+    )
+
+
+def test_derivative_only_phrase_is_not_matchable_through_canonical_fts(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ про насос.",
+            metadata={"spoken_derivative": "услышали уникальное слово квазимодо"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    # A quoted multi-token phrase that exists only in the derivative text.
+    phrase = '"уникальное слово квазимодо"'
+    assert _derivative_fts_search_hits(repository, phrase) == [
+        ("20260716-153000-ab12", 0)
+    ]
+    assert _canonical_fts_search_hits(repository, phrase) == []
+    # The owning event remains reachable through its canonical text by its
+    # own phrase, so canonical FTS is functional alongside the locator table.
+    assert _canonical_fts_search_hits(repository, '"канонический ответ"') == [
+        ("20260716-153000-ab12", 0)
+    ]
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_spoken_derivative_projects_no_locator_row(
+    tmp_path: Path, blank: str
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Ответ без производной.",
+            metadata={"spoken_derivative": blank},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    repository.rebuild()
+
+    assert _derivative_rows(repository) == []
+
+
+def test_locator_fts_table_exists_without_schema_version_bump(tmp_path: Path) -> None:
+    repository = HistoryCorpusRepository(
+        JournalStore(tmp_path / "journal"), tmp_path / "derived"
+    )
+    repository.rebuild()
+
+    assert CURRENT_HISTORY_CORPUS_SCHEMA_VERSION == 2
+    with sqlite3.connect(repository.db_path) as connection:
+        version = connection.execute(
+            "SELECT value FROM history_corpus_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        columns = [
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(history_corpus_derivative_fts)"
+            )
+        ]
+    assert version == (str(CURRENT_HISTORY_CORPUS_SCHEMA_VERSION),)
+    # The locator row shape stays exactly what task 4 needs: the owner ref,
+    # ordering fields, and the derivative text - no extra columns.
+    assert columns == list(_LOCATOR_DB_COLUMN_ORDER)
 
 
 def _append_sequence(
