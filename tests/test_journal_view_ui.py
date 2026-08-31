@@ -1050,8 +1050,10 @@ def test_search_snippet_highlighting_uses_text_nodes_not_html_injection():
 def test_date_only_search_renders_the_raw_snippet_as_plain_text():
     search_body = APP_JS.split("async function _runJournalSearch(")[1].split("\n}")[0]
     expected_render = (
-        "_renderJournalSearchResults(payload ? payload.hits : [], "
-        'criteria.query !== "");'
+        "_renderJournalSearchResults(\n"
+        "    payload ? payload.hits : [],\n"
+        "    payload ? payload.locator_hits : [],\n"
+        '    criteria.query !== "");'
     )
     assert expected_render in search_body
     hit_body = APP_JS.split("function _journalSearchHitElement(")[1].split("\n}")[0]

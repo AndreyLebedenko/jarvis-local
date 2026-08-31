@@ -1,6 +1,6 @@
 # Task v1.9.1-4: Locator query + canonical hydration + Journal UI surfacing
 
-**Status:** Not started.
+**Status:** Completed. (2026-08-31; see completion notes below.)
 **Story:** `tasks/story-v1.9.1-provenance-aware-indexing.md`.
 **Depends on:** task-v1.9.1-3 (the locator FTS table and its lifecycle) and
 task-v1.9.1-1 (the descriptor). The index-shape decision from task 3 is a
@@ -125,19 +125,80 @@ gets promoted into memory (cross-cutting rules 1 and 3).
 
 ## Acceptance criteria
 
-- [ ] A locator query over the task-3 index returns owning-event refs with
+- [x] A locator query over the task-3 index returns owning-event refs with
       canonical `event.text` hydrated and a derivative snippet for recognition,
       tagged locator-only provenance.
-- [ ] Journal UI search reaches locator matches and renders them distinctly from
+- [x] Journal UI search reaches locator matches and renders them distinctly from
       canonical hits, with canonical rendering unchanged.
-- [ ] The derivative is provably absent from automatic retrieval and (unless the
+- [x] The derivative is provably absent from automatic retrieval and (unless the
       model-facing class is deliberately taken) from `search_history`; the
       model-facing decision is recorded with its reason.
-- [ ] No ranking blend: locator hits are a separate group, never merged into or
+- [x] No ranking blend: locator hits are a separate group, never merged into or
       counted among canonical/annotation ranked candidates.
-- [ ] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
+- [x] `python -m pytest`, `python -m ruff check`, `python -m ruff format --check`
       green; JS/CSS UI edits verified against the caching note before claiming
       they apply.
+
+## Model-facing decision (recorded 2026-08-31)
+
+**UI-only.** `search_history` does not expose locator matches. Reasons:
+
+- The card's default and safe path. A clean, honestly-labeled model-facing
+  locator contract was not reachable within this card's bounds without
+  answering two open product questions the card leaves open: in what
+  situations should the model know a phrase the user merely heard (it invites
+  the model to treat heard content as conversation context), and what would a
+  model do with a locator hit that it cannot do with the same event through
+  canonical search. Neither has a clean answer today.
+- The eligibility contract already encodes the correct state:
+  `SPOKEN_DERIVATIVE.eligibility == {LOCATOR_ONLY}` - the derivative keeps
+  itself out of `search_history` by construction. No special-casing was
+  added or needed.
+- Deferral recorded for task 5/6 or a later story. If revisited, the
+  contract must be a distinct, non-blended result class labeled a locator,
+  never counted as a memory hit (per the story's wording).
+
+## Completion notes (2026-08-31)
+
+- Repository surface: `HistoryLocatorRequest`/`HistoryLocatorHit`/
+  `HistoryLocatorResult` + `HistoryCorpusRepository.search_locator`
+  (corpus.py). Query mirrors the canonical prefix-token dialect
+  (`_to_prefix_match_query`), reuses `_append_date_filter`-style bound
+  math; hits hydrate the owning event's canonical `text` from
+  `history_corpus_events` and carry the task-1
+  `spoken_derivative_provenance_descriptor`. Snippet column: FTS `snippet`
+  on the derivative text (column 4), marked tokens for recognition.
+- Phrase-lookup semantics (codex green-review finding): an empty or
+  date-only locator request matches nothing instead of listing every
+  derivative. The locator is a heard-phrase lookup, not a feed.
+- Journal UI: `JournalSearchHit` gained `kind` ("canonical"|"locator") and
+  `canonical_text`; `JournalSearchIndex.search_locator` mirrors `search`;
+  `JournalHistoryService.search_locator` fans out; `/api/journal/search`
+  returns locator matches in a separate `locator_hits` group (never mixed
+  into `hits` - no ranking blend by construction); app.js renders the
+  locator group after canonical groups with its own header, dashed
+  per-hit border, "heard-phrase match" tag, and a "shown on screen:"
+  canonical line fed by `hit.canonical_text`. Canonical hit rendering is
+  byte-unchanged (regression test on the old render signature updated for
+  the new one).
+- Model-facing: no `search_history` change (see decision above); tests
+  assert `search_history` returns zero results/counts for a derivative-only
+  phrase, and `HistoryRetrievalService.retrieve()` produces no candidate
+  whose text derives from a derivative (no-auto-promotion invariant).
+- Working-context rendering: untouched - locator matches never enter the
+  working context (they are not model-eligible), so no change was needed
+  and the shared contract is intact.
+- Red-phase history: b06b6c0-ish (red) + review-fix commit (4 blockers:
+  UI-only guard untested, retrieve() invariant missing, transport seam
+  untested, snippet assertion could confuse canonical and derivative text;
+  1 minor resolved). Green: implementation commit + fix commit (date-only
+  locator semantics) + bookkeeping; codex green review LGTM after the fix.
+- TDD note: refactor phase had nothing to collapse - the green shape
+  already matched the canonical search structure; gates rerun green
+  (2366 passed, ruff clean), so no separate refactor commit exists.
+- For task 5: candidate cleanup list now includes the UI payload `kind`
+  field being a plain string (could be an enum shared with the descriptor
+  vocabulary) if task 5 agrees the collapse is worth it.
 
 ## Notes for the executor
 

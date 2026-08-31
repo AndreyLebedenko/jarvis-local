@@ -17,6 +17,10 @@ from jarvis.journal.events import (
     JSONValue,
     parse_journal_timestamp,
 )
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    spoken_derivative_provenance_descriptor,
+)
 from jarvis.journal.store import JournalStore
 
 # Schema version 2 adds the derived ``effective_text`` column: the text a
@@ -225,6 +229,42 @@ class HistorySearchHit:
     snippet: str
     score: float
     order_index: int
+
+
+@dataclass(frozen=True)
+class HistoryLocatorHit:
+    """One heard-phrase locator match (story-v1.9.1 task 4).
+
+    ``canonical_text`` is the owning event's on-screen text - the only
+    authoritative content. ``snippet`` comes from the spoken derivative and
+    is for human recognition of what was heard, never authoritative.
+    ``provenance`` is the task-1 locator-only descriptor; it makes the
+    result impossible to consume as a canonical turn.
+    """
+
+    reference: JournalEventRef
+    timestamp: str
+    snippet: str
+    canonical_text: str
+    score: float
+    order_index: int
+    provenance: ProvenanceDescriptor
+
+
+@dataclass(frozen=True)
+class HistoryLocatorRequest:
+    query: str = ""
+    date_from: str | None = None
+    date_to: str | None = None
+    session_ids: tuple[str, ...] = ()
+    limit: int = 50
+
+
+@dataclass(frozen=True)
+class HistoryLocatorResult:
+    status: HistorySearchStatus
+    hits: tuple[HistoryLocatorHit, ...] = ()
+    max_results: int = HISTORY_SEARCH_MAX_RESULTS
 
 
 @dataclass(frozen=True)
@@ -502,6 +542,68 @@ class HistoryCorpusRepository:
             for index, row in enumerate(rows)
         )
         return HistorySearchResult(HistorySearchStatus.ACCEPTED, hits)
+
+    def search_locator(self, request: HistoryLocatorRequest) -> HistoryLocatorResult:
+        """Heard-phrase locator search over the task-3 derivative FTS.
+
+        Mirrors the canonical `search` query dialect (prefix tokens, same
+        date-bound parsing) but queries only
+        `history_corpus_derivative_fts`; a locator phrase can never surface
+        through the canonical FTS and vice versa. Each hit hydrates the
+        owning event's canonical `text` from the store as the authoritative
+        content and tags the result with the task-1 locator-only provenance.
+        """
+        if request.limit < 1:
+            return HistoryLocatorResult(HistorySearchStatus.INVALID_LIMIT)
+        if request.limit > HISTORY_SEARCH_MAX_RESULTS:
+            return HistoryLocatorResult(
+                HistorySearchStatus.TOO_MANY_RESULTS,
+                max_results=HISTORY_SEARCH_MAX_RESULTS,
+            )
+        # A locator search is a phrase lookup: without a heard phrase there
+        # is nothing to locate, so a date-only (or empty) request matches
+        # nothing rather than listing every derivative ever spoken.
+        if not _to_prefix_match_query(request.query):
+            return HistoryLocatorResult(HistorySearchStatus.ACCEPTED)
+        connection = self._open_read_connection()
+        if connection is None:
+            return HistoryLocatorResult(HistorySearchStatus.UNAVAILABLE)
+        with closing(connection):
+            if not _table_exists(connection, "history_corpus_derivative_fts"):
+                return HistoryLocatorResult(HistorySearchStatus.UNAVAILABLE)
+            rows = connection.execute(
+                _locator_search_sql(request),
+                _locator_search_parameters(request),
+            ).fetchall()
+            hits = []
+            for index, row in enumerate(rows):
+                reference = JournalEventRef(str(row[0]), int(row[1]))
+                canonical_text = self._read_canonical_event_text(connection, reference)
+                hits.append(
+                    HistoryLocatorHit(
+                        reference=reference,
+                        timestamp=str(row[2]),
+                        snippet=str(row[3]),
+                        canonical_text=canonical_text,
+                        score=float(row[4]),
+                        order_index=index,
+                        provenance=spoken_derivative_provenance_descriptor(reference),
+                    )
+                )
+        return HistoryLocatorResult(HistorySearchStatus.ACCEPTED, tuple(hits))
+
+    def _read_canonical_event_text(
+        self, connection: sqlite3.Connection, reference: JournalEventRef
+    ) -> str:
+        row = connection.execute(
+            """
+            SELECT text
+            FROM history_corpus_events
+            WHERE session_id = ? AND event_position = ?
+            """,
+            (reference.session_id, reference.event_position),
+        ).fetchone()
+        return str(row[0]) if row is not None else ""
 
     def delete_session_projection(self, session_id: str) -> None:
         if not self._db_path.exists():
@@ -1147,6 +1249,82 @@ def _search_where_parts(request: HistorySearchRequest) -> list[str]:
     _append_in_filter(where_parts, "role", request.roles)
     _append_in_filter(where_parts, "source", request.sources)
     return where_parts
+
+
+def _locator_search_sql(request: HistoryLocatorRequest) -> str:
+    where_parts: list[str] = []
+    match_query = _to_prefix_match_query(request.query)
+    if match_query:
+        where_parts.append("history_corpus_derivative_fts MATCH ?")
+    # The locator table has no ``event_date`` column (task-3 row shape), so
+    # date bounds resolve to ``timestamp_sort`` comparisons always; the
+    # timestamp column stores full ISO timestamps, which compare correctly
+    # against both ISO dates resolved to midnight boundaries via
+    # _parse_date_bound below.
+    _append_locator_date_filter(where_parts, request.date_from, "date_from")
+    _append_locator_date_filter(where_parts, request.date_to, "date_to")
+    _append_in_filter(where_parts, "session_id", request.session_ids)
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    return f"""
+        SELECT
+            session_id,
+            event_position,
+            timestamp,
+            snippet(history_corpus_derivative_fts, 4, '[', ']', '...', 24),
+            bm25(history_corpus_derivative_fts)
+        FROM history_corpus_derivative_fts
+        {where_sql}
+        ORDER BY
+            bm25(history_corpus_derivative_fts),
+            timestamp_sort,
+            session_id,
+            event_position
+        LIMIT ?
+    """
+
+
+def _append_locator_date_filter(
+    where_parts: list[str], value: str | None, field: Literal["date_from", "date_to"]
+) -> None:
+    if value is None:
+        return
+    # Validates the bound parses; the matching parameter is appended by
+    # _append_locator_date_param in the same order.
+    _parse_date_bound(value)
+    operator = ">=" if field == "date_from" else "<="
+    where_parts.append(f"timestamp_sort {operator} ?")
+
+
+def _locator_search_parameters(
+    request: HistoryLocatorRequest,
+) -> list[str | int | float]:
+    parameters: list[str | int | float] = []
+    match_query = _to_prefix_match_query(request.query)
+    if match_query:
+        parameters.append(match_query)
+    _append_locator_date_param(parameters, request.date_from, "date_from")
+    _append_locator_date_param(parameters, request.date_to, "date_to")
+    parameters.extend(request.session_ids)
+    parameters.append(request.limit)
+    return parameters
+
+
+def _append_locator_date_param(
+    parameters: list[str | int | float],
+    value: str | None,
+    field: Literal["date_from", "date_to"],
+) -> None:
+    if value is None:
+        return
+    bound = _parse_date_bound(value)
+    if isinstance(bound, datetime):
+        parameters.append(bound.timestamp())
+    elif field == "date_to":
+        parameters.append(
+            datetime.combine(bound, datetime.min.time()).timestamp() + 86399.0
+        )
+    else:
+        parameters.append(datetime.combine(bound, datetime.min.time()).timestamp())
 
 
 def _search_parameters(request: HistorySearchRequest) -> list[str | int | float]:

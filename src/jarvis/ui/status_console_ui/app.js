@@ -2252,7 +2252,10 @@ async function _runJournalSearch(searchGeneration) {
     _isHiddenActive() ||
     !_isJournalSearchActive()
   ) return;
-  _renderJournalSearchResults(payload ? payload.hits : [], criteria.query !== "");
+  _renderJournalSearchResults(
+    payload ? payload.hits : [],
+    payload ? payload.locator_hits : [],
+    criteria.query !== "");
 }
 
 function clearJournalSearch() {
@@ -2268,15 +2271,16 @@ function clearJournalSearch() {
   }
 }
 
-function _renderJournalSearchResults(hits, highlightMatches) {
+function _renderJournalSearchResults(hits, locatorHits, highlightMatches) {
   const feed = document.getElementById("journalFeed");
   const empty = document.getElementById("journalFeedEmpty");
   _stopJournalPlayback();
   _clearJournalContextHighlight();
   feed.replaceChildren();
-  empty.hidden = hits.length !== 0;
+  const total = hits.length + locatorHits.length;
+  empty.hidden = total !== 0;
   empty.textContent = uiString("journal_search_no_results");
-  if (hits.length === 0) return;
+  if (total === 0) return;
 
   const groups = new Map();
   for (const hit of hits) {
@@ -2292,6 +2296,18 @@ function _renderJournalSearchResults(hits, highlightMatches) {
       group.appendChild(_journalSearchHitElement(hit, highlightMatches));
     }
     feed.appendChild(group);
+  }
+  if (locatorHits.length > 0) {
+    const notice = document.createElement("section");
+    notice.className = "journal-search-group journal-search-locator-group";
+    const label = document.createElement("div");
+    label.className = "journal-search-locator-label";
+    label.textContent = uiString("journal_search_locator_header");
+    notice.appendChild(label);
+    for (const hit of locatorHits) {
+      notice.appendChild(_journalSearchHitElement(hit, highlightMatches));
+    }
+    feed.appendChild(notice);
   }
   feed.scrollTop = 0;
 }
@@ -2313,6 +2329,7 @@ function _journalSearchHitElement(hit, highlightMatches) {
   const result = document.createElement("button");
   result.type = "button";
   result.className = "journal-search-hit";
+  if (hit.kind === "locator") result.classList.add("journal-search-hit-locator");
   const meta = document.createElement("div");
   meta.className = "journal-msg-meta";
   const source = document.createElement("span");
@@ -2321,6 +2338,12 @@ function _journalSearchHitElement(hit, highlightMatches) {
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(hit.timestamp);
   meta.append(source, time);
+  if (hit.kind === "locator") {
+    const locatorLabel = document.createElement("div");
+    locatorLabel.className = "journal-search-locator-tag";
+    locatorLabel.textContent = uiString("journal_search_locator_tag");
+    result.appendChild(locatorLabel);
+  }
   const snippet = document.createElement("div");
   snippet.className = "journal-search-snippet";
   if (highlightMatches) {
@@ -2329,6 +2352,13 @@ function _journalSearchHitElement(hit, highlightMatches) {
     snippet.textContent = hit.snippet;
   }
   result.append(meta, snippet);
+  if (hit.kind === "locator" && hit.canonical_text) {
+    const canonical = document.createElement("div");
+    canonical.className = "journal-search-locator-canonical";
+    canonical.textContent = uiString("journal_search_locator_canonical_prefix")
+      + hit.canonical_text;
+    result.appendChild(canonical);
+  }
   result.addEventListener("click", () => _jumpToJournalSearchHit(hit));
   return result;
 }

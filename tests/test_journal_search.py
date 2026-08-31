@@ -488,6 +488,116 @@ def _append_assistant(
     )
 
 
+# --- Locator surfacing through the Journal search index (story-v1.9.1 task 4)
+
+
+def _locator_fixture(tmp_path: Path) -> tuple[JournalSearchIndex, JournalStore]:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ.",
+        )
+    )
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:05+01:00",
+            role="assistant",
+            source="assistant",
+            text="Реле перегрелось после обеда.",
+            metadata={"spoken_derivative": "напоминаю, реле перегрелось из-за пыли"},
+        )
+    )
+    index = JournalSearchIndex(store, tmp_path / "derived")
+    index.rebuild()
+    return index, store
+
+
+def test_journal_search_returns_canonical_hits_without_locator_matches(
+    tmp_path: Path,
+) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search("перегрелось из-за пыли")
+
+    # The derivative-only phrase must not surface as an ordinary canonical
+    # hit; the locator path is a separate query.
+    assert hits == []
+
+
+def test_journal_locator_search_returns_labeled_hits_with_canonical_text(
+    tmp_path: Path,
+) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search_locator("перегрелось из-за пыли")
+
+    assert len(hits) == 1
+    hit = hits[0]
+    assert (hit.session_id, hit.event_position) == ("20260716-153000-ab12", 1)
+    assert hit.kind == "locator"
+    assert hit.canonical_text == "Реле перегрелось после обеда."
+    # Recognition snippet must come from the derivative, only it carries
+    # these words; snippet markup brackets the matched tokens.
+    assert "пыли" in hit.snippet
+    assert hit.snippet != hit.canonical_text
+
+
+def test_canonical_journal_search_hit_is_labeled_canonical(tmp_path: Path) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search("Канонический")
+
+    assert len(hits) == 1
+    assert hits[0].kind == "canonical"
+
+
+async def test_search_history_returns_no_locator_content_for_derivative_phrase(
+    tmp_path: Path,
+) -> None:
+    # Model-facing decision default (task 4): UI-only. search_history must
+    # return neither locator items nor derivative text, and must not count
+    # any locator match among its lexical/semantic hits.
+    index, store = _locator_fixture(tmp_path)
+    from jarvis.journal import HistoryRetrievalResult, HistoryRetrievalStatus
+    from jarvis.tools.history import SEARCH_HISTORY_TOOL_NAME, HistoryToolProvider
+
+    provider = HistoryToolProvider(
+        repository=index.repository,
+        retrieval_service=_StaticRetrievalService(
+            HistoryRetrievalResult(HistoryRetrievalStatus.ACCEPTED)
+        ),
+    )
+
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "из-за пыли", "limit": 5}
+    )
+
+    assert result.is_error is False
+    payload = result.structured_content
+    assert payload["results"] == []
+    assert payload["returned_count"] == 0
+    assert payload["lexical_count"] == 0
+    assert payload["semantic_count"] == 0
+    # The derivative text and the canonical answer never reach the payload
+    # results (the echoed query string is not content).
+    results_text = str(payload["results"])
+    assert "напоминаю" not in results_text
+    assert "Реле перегрелось после обеда." not in results_text
+
+
+class _StaticRetrievalService:
+    def __init__(self, result: object) -> None:
+        self._result = result
+
+    def retrieve(self, request: object) -> object:
+        return self._result
+
+
 def _event(
     *,
     session_id: str,
@@ -495,6 +605,7 @@ def _event(
     role: str,
     source: str,
     text: str,
+    metadata: dict | None = None,
 ) -> JournalEvent:
     return JournalEvent(
         session_id=session_id,
@@ -504,6 +615,7 @@ def _event(
         text=text,
         media=[],
         transcript=None,
+        metadata=metadata or {},
     )
 
 

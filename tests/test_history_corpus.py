@@ -19,6 +19,7 @@ from jarvis.journal.corpus import (
     HISTORY_READ_MAX_BATCH_RANGES,
     HISTORY_READ_MAX_EVENTS_PER_RANGE,
     HISTORY_READ_MAX_TOTAL_EVENTS,
+    HISTORY_SEARCH_MAX_RESULTS,
     HistoryBatchReadStatus,
     HistoryCorpusRepository,
     HistoryCorpusSchemaError,
@@ -26,7 +27,14 @@ from jarvis.journal.corpus import (
     HistoryEventRangeStatus,
     HistoryEventReadStatus,
     HistoryEventRefsReadStatus,
+    HistoryLocatorRequest,
+    HistorySearchRequest,
+    HistorySearchStatus,
     HistorySessionReadStatus,
+)
+from jarvis.journal.provenance import (
+    ProvenanceEligibility,
+    ProvenanceSourceKind,
 )
 
 
@@ -1205,6 +1213,175 @@ def test_locator_fts_table_exists_without_schema_version_bump(tmp_path: Path) ->
     # The locator row shape stays exactly what task 4 needs: the owner ref,
     # ordering fields, and the derivative text - no extra columns.
     assert columns == list(_LOCATOR_DB_COLUMN_ORDER)
+
+
+# --- Locator query path (story-v1.9.1 task 4) -------------------------------
+
+
+def _locator_corpus(
+    tmp_path: Path,
+) -> tuple[HistoryCorpusRepository, JournalEventRef, JournalEventRef]:
+    store = JournalStore(tmp_path / "journal")
+    canonical_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Канонический ответ про насос.",
+        )
+    )
+    located_ref = store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:05+01:00",
+            role="assistant",
+            source="assistant",
+            text="Реле перегрелось после обеда.",
+            metadata={"spoken_derivative": "напоминаю, реле перегрелось из-за пыли"},
+        )
+    )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+    return repository, canonical_ref, located_ref
+
+
+def test_locator_query_returns_owning_ref_canonical_text_and_derivative_snippet(
+    tmp_path: Path,
+) -> None:
+    repository, _, located_ref = _locator_corpus(tmp_path)
+    canonical_text_marker = "после обеда"
+
+    result = repository.search_locator(
+        HistoryLocatorRequest(query="перегрелось из-за пыли")
+    )
+
+    assert result.status is HistorySearchStatus.ACCEPTED
+    assert len(result.hits) == 1
+    hit = result.hits[0]
+    assert hit.reference == located_ref
+    # Canonical text is the authoritative content, hydrated from the event.
+    assert hit.canonical_text == "Реле перегрелось после обеда."
+    # The snippet comes from the derivative, for recognition only: it must
+    # carry a phrase that exists ONLY in the derivative text (snippet markup
+    # brackets the matched tokens).
+    assert "из" in hit.snippet and "пыли" in hit.snippet
+    assert hit.snippet != hit.canonical_text
+    assert canonical_text_marker not in hit.snippet
+    assert hit.provenance.source_kind is ProvenanceSourceKind.SPOKEN_DERIVATIVE
+    assert hit.provenance.eligibility == frozenset({ProvenanceEligibility.LOCATOR_ONLY})
+    assert hit.provenance.is_canonical is False
+
+
+def test_locator_query_rejects_bad_limit_and_respects_date_filters(
+    tmp_path: Path,
+) -> None:
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    invalid_limit = repository.search_locator(
+        HistoryLocatorRequest(query="перегрелось", limit=0)
+    )
+    assert invalid_limit.status is HistorySearchStatus.INVALID_LIMIT
+
+    over_cap = repository.search_locator(
+        HistoryLocatorRequest(query="перегрелось", limit=HISTORY_SEARCH_MAX_RESULTS + 1)
+    )
+    assert over_cap.status is HistorySearchStatus.TOO_MANY_RESULTS
+
+    future = repository.search_locator(
+        HistoryLocatorRequest(
+            query="перегрелось",
+            date_from="2026-07-17",
+            date_to="2026-07-17",
+        )
+    )
+    assert future.status is HistorySearchStatus.ACCEPTED
+    assert future.hits == ()
+
+
+def test_locator_query_is_unavailable_before_projection(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "journal")
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+
+    result = repository.search_locator(HistoryLocatorRequest(query="что-нибудь"))
+
+    assert result.status is HistorySearchStatus.UNAVAILABLE
+    assert result.hits == ()
+
+
+def test_locator_query_without_a_heard_phrase_returns_no_matches(
+    tmp_path: Path,
+) -> None:
+    # A locator search without a phrase (date-only browsing) must not dump
+    # every derivative as a "heard" match: the locator is a phrase-lookup
+    # surface, not a feed of everything spoken.
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    result = repository.search_locator(
+        HistoryLocatorRequest(query="", date_from="2026-07-16", date_to="2026-07-16")
+    )
+
+    assert result.status is HistorySearchStatus.ACCEPTED
+    assert result.hits == ()
+
+
+def test_canonical_search_never_returns_derivative_only_phrase(
+    tmp_path: Path,
+) -> None:
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    canonical = repository.search(HistorySearchRequest(query="из-за пыли"))
+    locator = repository.search_locator(HistoryLocatorRequest(query="из-за пыли"))
+
+    assert canonical.status is HistorySearchStatus.ACCEPTED
+    assert canonical.hits == ()
+    assert locator.status is HistorySearchStatus.ACCEPTED
+    assert len(locator.hits) == 1
+
+
+def test_derivative_phrase_never_enters_hybrid_retrieval_candidates(
+    tmp_path: Path,
+) -> None:
+    from jarvis.core.config import HistorySemanticSettings
+    from jarvis.journal.retrieval import (
+        HistoryRetrievalQuery,
+        HistoryRetrievalService,
+        HistoryRetrievalStatus,
+    )
+
+    repository, _, _ = _locator_corpus(tmp_path)
+    service = HistoryRetrievalService(
+        repository,
+        _NoSemanticCandidates(),
+        HistorySemanticSettings(
+            model="locator-fixture",
+            query_prefix="",
+            passage_prefix="",
+            separation=0.05,
+            top_ratio=0.98,
+            dimension=1,
+        ),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery(query="из-за пыли", limit=5))
+
+    assert result.status is HistoryRetrievalStatus.ACCEPTED
+    # The no-auto-promotion invariant: none of the fused candidates may be
+    # derived from a spoken derivative - corpus text only.
+    for candidate in result.candidates:
+        assert "из-за пыли" not in candidate.text
+    assert result.lexical_count == 0
+    assert result.semantic_count == 0
+
+
+class _NoSemanticCandidates:
+    def query(self, request: object) -> object:
+        from jarvis.journal.semantic import (
+            SemanticCandidateResult,
+            SemanticCandidateStatus,
+        )
+
+        return SemanticCandidateResult(SemanticCandidateStatus.UNAVAILABLE)
 
 
 def _append_sequence(

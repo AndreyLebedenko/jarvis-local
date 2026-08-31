@@ -2971,6 +2971,68 @@ def _rebuilt_history_service(
     return JournalHistoryService(store, lifecycle, search_index)
 
 
+@pytest.mark.asyncio
+async def test_journal_search_endpoint_labels_locator_hits_distinctly(
+    tmp_path: Path,
+) -> None:
+    # story-v1.9.1 task 4: a derivative-only phrase reaches the Journal UI as
+    # a DISTINCTY labeled locator hit with hydrated canonical text; the
+    # canonical hit kind is unchanged for canonical queries.
+    bus = EventBus()
+    store = JournalStore(tmp_path)
+    session_id = "20260716-153000-ab12"
+    store.append(
+        JournalEvent(
+            session_id=session_id,
+            timestamp="2026-07-16T15:30:00+01:00",
+            source="assistant",
+            role="assistant",
+            text="Канонический ответ про насос.",
+            media=[],
+            transcript=None,
+            metadata={"spoken_derivative": "напоминаю, реле перегрелось из-за пыли"},
+        )
+    )
+    search_index = JournalSearchIndex(store, tmp_path)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_history_service=_rebuilt_history_service(bus, store, search_index),
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            locator_search = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                "?token=valid-token&query=перегрелось",
+            )
+            assert locator_search["status"] == "ok"
+            # Locator matches travel in their own group, never among the
+            # canonical hits (no ranking blend).
+            assert locator_search["hits"] == []
+            [locator_hit] = locator_search["locator_hits"]
+            assert locator_hit["kind"] == "locator"
+            assert (locator_hit["session_id"], locator_hit["event_position"]) == (
+                session_id,
+                0,
+            )
+            assert locator_hit["canonical_text"] == "Канонический ответ про насос."
+            assert locator_hit["snippet"] != locator_hit["canonical_text"]
+            assert "из-за пыли" in locator_hit["snippet"]
+
+            canonical_search = await _get_json(
+                session,
+                f"http://127.0.0.1:{info.port}/api/journal/search"
+                "?token=valid-token&query=канонический",
+            )
+            [canonical_hit] = canonical_search["hits"]
+            assert canonical_hit["kind"] == "canonical"
+    finally:
+        await server.stop()
+
+
 def _history_lifecycle(
     bus: EventBus, search_index: JournalSearchIndex
 ) -> HistoryProjectionLifecycle:
