@@ -560,6 +560,11 @@ class HistoryCorpusRepository:
                 HistorySearchStatus.TOO_MANY_RESULTS,
                 max_results=HISTORY_SEARCH_MAX_RESULTS,
             )
+        # A locator search is a phrase lookup: without a heard phrase there
+        # is nothing to locate, so a date-only (or empty) request matches
+        # nothing rather than listing every derivative ever spoken.
+        if not _to_prefix_match_query(request.query):
+            return HistoryLocatorResult(HistorySearchStatus.ACCEPTED)
         connection = self._open_read_connection()
         if connection is None:
             return HistoryLocatorResult(HistorySearchStatus.UNAVAILABLE)

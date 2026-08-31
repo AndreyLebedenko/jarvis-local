@@ -1309,6 +1309,22 @@ def test_locator_query_is_unavailable_before_projection(tmp_path: Path) -> None:
     assert result.hits == ()
 
 
+def test_locator_query_without_a_heard_phrase_returns_no_matches(
+    tmp_path: Path,
+) -> None:
+    # A locator search without a phrase (date-only browsing) must not dump
+    # every derivative as a "heard" match: the locator is a phrase-lookup
+    # surface, not a feed of everything spoken.
+    repository, _, _ = _locator_corpus(tmp_path)
+
+    result = repository.search_locator(
+        HistoryLocatorRequest(query="", date_from="2026-07-16", date_to="2026-07-16")
+    )
+
+    assert result.status is HistorySearchStatus.ACCEPTED
+    assert result.hits == ()
+
+
 def test_canonical_search_never_returns_derivative_only_phrase(
     tmp_path: Path,
 ) -> None:
