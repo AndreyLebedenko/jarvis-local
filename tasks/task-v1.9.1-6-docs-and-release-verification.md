@@ -132,6 +132,16 @@ spoken derivative). Confirm the automated gates are green.
 - No production logic change; automated gates re-run green with counts
   recorded in the handoff (2366 passed / 1 skipped, ruff clean) - identical
   to the task-5 baseline.
+- Codex docs review found 3 findings (1 medium: PROJECT.md overclaimed
+  "every text-bearing surface maps onto the descriptor" while the Journal UI
+  canonical path still uses the task-4 `kind` string - wording now scoped to
+  the retrieval/tool boundary with the debt named; 1 medium: the UI-only
+  verification step was narration, not an executable step - now a direct
+  `logs/jarvis.log` inspection with `[logging]` source citations; 1 low: UI
+  controls cited without source refs - added index.html/strings.js
+  citations, plus one line-number correction caught in follow-up: RU
+  `journal_search_label` is `strings.js:470`). No findings remained on
+  re-review.
 - Story card NOT closed and no story-level cards moved to done here, per
   the card's boundary: that waits for the human's review of the run handoff
   report.
