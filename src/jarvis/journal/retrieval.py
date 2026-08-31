@@ -42,6 +42,11 @@ from jarvis.journal.corpus import (
     HistorySearchStatus,
 )
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    provenance_descriptor_from_annotation_identity,
+    provenance_descriptor_from_corpus_event,
+)
 from jarvis.journal.semantic import (
     SEMANTIC_MAX_RESULTS,
     SemanticCandidateQuery,
@@ -144,6 +149,11 @@ class HistoryRetrievalCandidate:
     for an annotation candidate ``reference`` is ``None`` and ``annotation``
     carries the derived-note identity. ``kind`` discriminates the two so a
     consumer never mistakes derived annotation text for a raw turn.
+    ``provenance`` is the task-1 descriptor computed at construction by the
+    retrieval service from the candidate's event or annotation identity - the
+    authoritative "what kind of text is this" record. It is optional only for
+    backward compatibility with candidates constructed outside the retrieval
+    service (older tests, fixtures); the retrieval builders always set it.
     """
 
     reference: JournalEventRef | None
@@ -155,6 +165,7 @@ class HistoryRetrievalCandidate:
     combined_rank: int
     kind: HistoryRetrievalCandidateKind = HistoryRetrievalCandidateKind.EVENT
     annotation: AnnotationCandidateIdentity | None = None
+    provenance: ProvenanceDescriptor | None = None
     semantic_score: float | None = None
     lexical_score: float | None = None
     lexical_rank: int | None = None
@@ -611,6 +622,7 @@ def _event_candidate(
         source_mode=_source_mode(accumulator),
         combined_rank=rank,
         kind=HistoryRetrievalCandidateKind.EVENT,
+        provenance=provenance_descriptor_from_corpus_event(event),
         semantic_score=accumulator.semantic_score,
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,
@@ -641,6 +653,7 @@ def _annotation_candidate(
         combined_rank=rank,
         kind=HistoryRetrievalCandidateKind.ANNOTATION,
         annotation=identity,
+        provenance=provenance_descriptor_from_annotation_identity(identity),
         semantic_score=accumulator.semantic_score,
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,

@@ -28,6 +28,11 @@ from jarvis.journal import (
     JournalEventRef,
 )
 from jarvis.journal.events import parse_journal_timestamp
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    provenance_descriptor_from_annotation_identity,
+    provenance_descriptor_from_corpus_event,
+)
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.tools.results import ToolArguments, ToolCallResult
@@ -846,6 +851,7 @@ def _serialize_retrieval_candidates(
             "semantic_score": candidate.semantic_score,
             "lexical_score": candidate.lexical_score,
             "lexical_rank": candidate.lexical_rank,
+            "provenance": _provenance_payload(candidate),
         }
         if (
             candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
@@ -859,6 +865,74 @@ def _serialize_retrieval_candidates(
             payload["text_is_transcript"] = candidate.text_is_transcript
         serialized.append(payload)
     return serialized, truncated_count
+
+
+def _provenance_payload(candidate: HistoryRetrievalCandidate) -> JSONObject:
+    # The descriptor is the provenance authority. Candidates built by the
+    # retrieval service always carry one; a None descriptor on a hand-built
+    # candidate falls back to the raw-event default so the field stays total.
+    descriptor = candidate.provenance
+    if descriptor is None:
+        descriptor = _fallback_provenance(candidate)
+    target = descriptor.target
+    if target.event_ref is not None:
+        target_payload: JSONObject = {
+            "event_ref": _reference_payload(target.event_ref),
+            "annotation": None,
+        }
+    else:
+        annotation = target.annotation
+        target_payload = {
+            "event_ref": None,
+            "annotation": {
+                "session_id": annotation.session_id,
+                "start_position": annotation.start_position,
+                "end_position": annotation.end_position,
+            }
+            if annotation is not None
+            else None,
+        }
+    return {
+        "source_kind": descriptor.source_kind.value,
+        "is_canonical": descriptor.is_canonical,
+        "target": target_payload,
+    }
+
+
+def _fallback_provenance(
+    candidate: HistoryRetrievalCandidate,
+) -> ProvenanceDescriptor:
+    """Descriptor for a hand-built candidate that carries none.
+
+    Transitional (story-v1.9.1 task 5 cleanup candidate): re-derives the
+    descriptor from the same ad-hoc signals such candidates already carry.
+    """
+    if (
+        candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
+        and candidate.annotation is not None
+    ):
+        return provenance_descriptor_from_annotation_identity(candidate.annotation)
+    reference = candidate.reference
+    if reference is None:
+        raise AssertionError(
+            "search_history candidate without provenance must carry a "
+            "reference or an annotation identity"
+        )
+    return provenance_descriptor_from_corpus_event(
+        HistoryCorpusEvent(
+            reference=reference,
+            timestamp=candidate.timestamp,
+            timestamp_sort=0.0,
+            role=candidate.role,
+            source=candidate.source,
+            text=candidate.text,
+            media=(),
+            media_count=0,
+            transcript=None,
+            metadata={},
+            effective_text=candidate.text if candidate.text_is_transcript else "",
+        )
+    )
 
 
 def _annotation_target_payload(annotation: AnnotationCandidateIdentity) -> JSONObject:

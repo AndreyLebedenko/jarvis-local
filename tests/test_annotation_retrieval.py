@@ -358,10 +358,11 @@ def test_fused_candidate_set_and_order_unchanged_by_provenance_threading() -> No
         event.reference,
         None,
     ]
-    assert [candidate.annotation.annotation_id for candidate in result.candidates] == [
-        None,
-        "ann-1",
-    ]
+    assert [
+        candidate.annotation.annotation_id
+        for candidate in result.candidates
+        if candidate.annotation is not None
+    ] == ["ann-1"]
     assert all(candidate.provenance is not None for candidate in result.candidates)
 
 
