@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -785,19 +786,31 @@ def test_derivative_projection_keeps_canonical_fts_byte_identical(
     # behavior must be identical for both (physical-separation guarantee).
     plain_store = JournalStore(tmp_path / "journal_plain")
     derivative_store = JournalStore(tmp_path / "journal_derivative")
-    for store in (plain_store, derivative_store):
-        for position, derivative in enumerate((None, "слышанная фраза про фильтр")):
-            metadata = {"spoken_derivative": derivative} if position == 1 else {}
-            store.append(
-                _event(
-                    session_id="20260716-153000-ab12",
-                    timestamp=f"2026-07-16T15:30:0{position}+01:00",
-                    role="assistant",
-                    source="assistant",
-                    text=f"Канонический ответ номер {position}.",
-                    metadata=metadata,
-                )
+    for store, derivative in (
+        (plain_store, None),
+        (derivative_store, "слышанная фраза про фильтр"),
+    ):
+        store.append(
+            _event(
+                session_id="20260716-153000-ab12",
+                timestamp="2026-07-16T15:30:00+01:00",
+                role="assistant",
+                source="assistant",
+                text="Канонический ответ номер 0.",
             )
+        )
+        store.append(
+            _event(
+                session_id="20260716-153000-ab12",
+                timestamp="2026-07-16T15:30:01+01:00",
+                role="assistant",
+                source="assistant",
+                text="Канонический ответ номер 1.",
+                metadata=(
+                    {"spoken_derivative": derivative} if derivative is not None else {}
+                ),
+            )
+        )
     plain_repository = HistoryCorpusRepository(plain_store, tmp_path / "plain_derived")
     derivative_repository = HistoryCorpusRepository(
         derivative_store, tmp_path / "derivative_derived"
@@ -1049,17 +1062,17 @@ def test_delete_session_projection_removes_only_that_sessions_derivatives(
     ]
 
 
-def test_project_event_of_one_event_deletes_only_its_derivative_row(
+def test_delete_event_projection_removes_only_that_events_derivative_row(
     tmp_path: Path,
 ) -> None:
     store = JournalStore(tmp_path / "journal")
-    keep_ref = store.append(
+    keep_same_session = store.append(
         _event(
             session_id="20260716-153000-ab12",
             timestamp="2026-07-16T15:30:00+01:00",
             role="assistant",
             source="assistant",
-            text="Оставшийся ответ.",
+            text="Оставшийся ответ той же сессии.",
             metadata={"spoken_derivative": "оставшаяся производная"},
         )
     )
@@ -1069,28 +1082,54 @@ def test_project_event_of_one_event_deletes_only_its_derivative_row(
             timestamp="2026-07-16T15:30:05+01:00",
             role="assistant",
             source="assistant",
-            text="Перепроектируемый ответ.",
-            metadata={"spoken_derivative": "старая производная"},
+            text="Удаляемый ответ.",
+            metadata={"spoken_derivative": "удаляемая производная"},
+        )
+    )
+    keep_other_session = store.append(
+        _event(
+            session_id="20260717-090000-cd34",
+            timestamp="2026-07-17T09:00:00+01:00",
+            role="assistant",
+            source="assistant",
+            text="Ответ другой сессии.",
+            metadata={"spoken_derivative": "чужая производная"},
         )
     )
     repository = HistoryCorpusRepository(store, tmp_path / "derived")
     repository.rebuild()
 
-    record = store.read_session(drop_ref.session_id).records[drop_ref.event_position]
-    record.event.metadata = {"different": "value"}
-    repository.project_event(record)
+    with closing(sqlite3.connect(repository.db_path)) as connection, connection:
+        repository._delete_event_projection(connection, drop_ref)
 
     assert _derivative_rows(repository) == [
         (
-            keep_ref.session_id,
-            keep_ref.event_position,
+            keep_same_session.session_id,
+            keep_same_session.event_position,
             "2026-07-16T15:30:00+01:00",
             pytest.approx(
                 datetime.fromisoformat("2026-07-16T15:30:00+01:00").timestamp()
             ),
             "оставшаяся производная",
-        )
+        ),
+        (
+            keep_other_session.session_id,
+            keep_other_session.event_position,
+            "2026-07-17T09:00:00+01:00",
+            pytest.approx(
+                datetime.fromisoformat("2026-07-17T09:00:00+01:00").timestamp()
+            ),
+            "чужая производная",
+        ),
     ]
+
+    # Full parity with the canonical FTS: the same delete must have removed
+    # exactly the same key there as well (delete parity, not content equality).
+    canonical_refs = [(row[0], row[1]) for row in _canonical_fts_full_rows(repository)]
+    assert (drop_ref.session_id, drop_ref.event_position) not in canonical_refs
+    assert (keep_same_session.session_id, keep_same_session.event_position) in (
+        canonical_refs
+    )
 
 
 def test_derivative_only_phrase_is_not_matchable_through_canonical_fts(
@@ -1166,29 +1205,6 @@ def test_locator_fts_table_exists_without_schema_version_bump(tmp_path: Path) ->
     # The locator row shape stays exactly what task 4 needs: the owner ref,
     # ordering fields, and the derivative text - no extra columns.
     assert columns == list(_LOCATOR_DB_COLUMN_ORDER)
-
-
-def _event(
-    *,
-    session_id: str,
-    timestamp: str,
-    role: str,
-    source: str,
-    text: str,
-    media: tuple[str, ...] = (),
-    transcript: str | None = None,
-    metadata: dict | None = None,
-) -> JournalEvent:
-    return JournalEvent(
-        session_id=session_id,
-        timestamp=timestamp,
-        source=source,
-        role=role,
-        text=text,
-        media=media,
-        transcript=transcript,
-        metadata=metadata or {},
-    )
 
 
 def _append_sequence(

@@ -31,6 +31,9 @@ HISTORY_READ_MAX_TOTAL_EVENTS = 500
 HISTORY_SEARCH_MAX_RESULTS = 500
 _CORPUS_FILE_NAME = "history_corpus.db"
 _SCHEMA_VERSION_KEY = "schema_version"
+# The mode-3 spoken derivative lives in the journal event's metadata; the
+# locator FTS (story-v1.9.1 task 3) projects it, the canonical FTS never sees it.
+SPOKEN_DERIVATIVE_METADATA_KEY = "spoken_derivative"
 _QUERY_TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
 
 
@@ -599,6 +602,32 @@ class HistoryCorpusRepository:
                     effective_text,
                 ),
             )
+        derivative = event.metadata.get(SPOKEN_DERIVATIVE_METADATA_KEY)
+        # Locator-only surface (story-v1.9.1 task 3): the mode-3 spoken
+        # derivative is indexed in its own FTS table, never in the canonical
+        # FTS. The canonical insert above is untouched by this branch.
+        if event.role == "assistant" and isinstance(derivative, str):
+            derivative_text = derivative.strip()
+            if derivative_text:
+                connection.execute(
+                    """
+                    INSERT INTO history_corpus_derivative_fts (
+                        session_id,
+                        event_position,
+                        timestamp,
+                        timestamp_sort,
+                        text
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        reference.session_id,
+                        reference.event_position,
+                        event.timestamp,
+                        timestamp.timestamp(),
+                        derivative_text,
+                    ),
+                )
 
     def _create_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -660,6 +689,27 @@ class HistoryCorpusRepository:
             )
             """
         )
+        self._create_derivative_fts_schema(connection)
+
+    def _create_derivative_fts_schema(self, connection: sqlite3.Connection) -> None:
+        # Locator-only surface (story-v1.9.1 task 3), physically separate from
+        # the canonical FTS: a derivative phrase must never be matchable
+        # through `history_corpus_event_fts MATCH`. Same tokenizer/prefix
+        # settings so query behavior matches task 4's expectations.
+        connection.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS history_corpus_derivative_fts
+            USING fts5(
+                session_id UNINDEXED,
+                event_position UNINDEXED,
+                timestamp UNINDEXED,
+                timestamp_sort UNINDEXED,
+                text,
+                tokenize = 'unicode61',
+                prefix = '1 2 3 4 5 6 7 8 9 10'
+            )
+            """
+        )
 
     def _drop_existing_schema(self, connection: sqlite3.Connection) -> None:
         views = _schema_objects(connection, "view")
@@ -674,6 +724,10 @@ class HistoryCorpusRepository:
             self._check_schema_version(connection)
             if not _table_exists(connection, "history_corpus_event_fts"):
                 self._create_fts_schema(connection)
+            elif not _table_exists(connection, "history_corpus_derivative_fts"):
+                # Additive guard (story-v1.9.1 task 3): an existing corpus DB
+                # gains the locator table without a schema-version bump.
+                self._create_derivative_fts_schema(connection)
             return
         self._create_schema(connection)
 
@@ -682,6 +736,10 @@ class HistoryCorpusRepository:
     ) -> None:
         connection.execute(
             "DELETE FROM history_corpus_event_fts WHERE session_id = ?",
+            (session_id,),
+        )
+        connection.execute(
+            "DELETE FROM history_corpus_derivative_fts WHERE session_id = ?",
             (session_id,),
         )
         connection.execute(
@@ -696,6 +754,13 @@ class HistoryCorpusRepository:
         connection.execute(
             """
             DELETE FROM history_corpus_event_fts
+            WHERE session_id = ? AND event_position = ?
+            """,
+            parameters,
+        )
+        connection.execute(
+            """
+            DELETE FROM history_corpus_derivative_fts
             WHERE session_id = ? AND event_position = ?
             """,
             parameters,
