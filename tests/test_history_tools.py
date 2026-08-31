@@ -294,6 +294,51 @@ async def test_search_history_provenance_follows_descriptor_over_legacy_fields()
     assert item["provenance"]["is_canonical"] is False
 
 
+async def test_search_history_fails_loudly_when_candidate_lacks_descriptor() -> None:
+    # A candidate without a descriptor must surface as a tool error, never be
+    # silently re-derived from kind/text_is_transcript (codex review of the
+    # green commit: the removed fallback misclassified transcript candidates).
+    # Dispatched through the MCP host, whose per-call boundary converts the
+    # raised ValueError into a failed dispatch.
+    candidate = _event_candidate_with_provenance()
+    missing_descriptor = HistoryRetrievalCandidate(
+        reference=candidate.reference,
+        text=candidate.text,
+        timestamp=candidate.timestamp,
+        role=candidate.role,
+        source=candidate.source,
+        source_mode=candidate.source_mode,
+        combined_rank=candidate.combined_rank,
+        semantic_score=candidate.semantic_score,
+        lexical_score=candidate.lexical_score,
+        lexical_rank=candidate.lexical_rank,
+        text_is_transcript=candidate.text_is_transcript,
+        provenance=None,
+    )
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=(missing_descriptor,),
+            returned_count=1,
+        )
+    )
+    registry = ToolRegistry()
+    provider.register_tools(registry)
+    host = McpHost(
+        EventBus(),
+        McpSettings(),
+        registry=registry,
+        builtin_clients={HISTORY_TOOL_PROVIDER_NAME: provider},
+    )
+
+    result = await host.dispatcher.dispatch(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "anything", "limit": 1}
+    )
+
+    assert result.ok is False
+    assert "provenance descriptor" in str(result.error)
+
+
 async def test_search_history_provenance_field_is_present_on_every_item() -> None:
     candidates = (
         _event_candidate_with_provenance(),
