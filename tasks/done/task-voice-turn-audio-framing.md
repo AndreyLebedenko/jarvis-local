@@ -200,10 +200,23 @@ The real consequence surface is narrower than the card described:
 `ConversationHistory` (in-memory, feeds the model on later turns of the same
 session via `self._history.add("user", self._current_turn_history_text)`,
 `app.py`) and `journal/fork.py:_model_facing_text()`'s fallback for an old
-voice event with no transcript (imports the same constant, so it tracks the
-new wording automatically; deliberately **not** threaded to the live
-`[prompts]` override - `fork.py` is a pure, settings-free module, and
-reconstructing a fork seed for an old session is out of this card's scope).
+voice event with no transcript.
+
+**Correction (Codex stop-review, 2026-09-02): "it imports the same constant,
+so it tracks the new wording automatically" was the wrong conclusion, and
+shipping it would have been a bug.** A fork seed reconstructs past turns as
+text and carries none of their audio, so tracking the new wording meant
+seeding the model an instruction to listen to a recording the request does
+not contain - the same refusal-shaped input this whole line of work is about.
+`fork.py` now owns `UNTRANSCRIBED_VOICE_TURN_TEXT`
+("[голосовое сообщение без расшифровки]"), a label for something that
+happened rather than an instruction, and no longer imports from
+`core.lifecycle` at all. Two tests pin it: one on the label, one asserting a
+seed never carries `VOICE_PLACEHOLDER_TEXT`. This also matches the precedent
+already in the codebase - `inputs/attachment_audio.py`'s cue is deliberately
+not `VOICE_PLACEHOLDER_TEXT` for the same class of reason. The live
+`[prompts]` override still does not reach `fork.py`, which stays a pure,
+settings-free module.
 
 **Tests added/changed** (TDD - written before the implementation above):
 `tests/test_config.py` (defaults-to-None, literal override, `@file`

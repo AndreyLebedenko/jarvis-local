@@ -3,9 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.store import JournalReplay
+
+# Stands in for a past voice turn whose words were never transcribed. A seed
+# reconstructs turns as text and carries none of their audio, so this has to
+# read as a label for something that happened, never as an instruction to
+# listen to a recording the request does not contain.
+UNTRANSCRIBED_VOICE_TURN_TEXT = "[голосовое сообщение без расшифровки]"
 
 
 @dataclass(frozen=True)
@@ -118,5 +123,5 @@ def _model_facing_text(event: JournalEvent) -> str:
             return event.transcript
         if event.text != "":
             return event.text
-        return VOICE_PLACEHOLDER_TEXT
+        return UNTRANSCRIBED_VOICE_TURN_TEXT
     return event.text

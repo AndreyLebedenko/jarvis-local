@@ -5,6 +5,7 @@ import pytest
 from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
 from jarvis.journal.events import JournalEvent, JournalEventRecord, JournalEventRef
 from jarvis.journal.fork import (
+    UNTRANSCRIBED_VOICE_TURN_TEXT,
     ForkSeedOversizeTurnError,
     ForkSeedTurn,
     build_fork_seed,
@@ -81,12 +82,32 @@ def test_fork_seed_rejects_only_when_the_newest_turn_is_over_budget() -> None:
     assert result.drop_report.dropped_turns == 1
 
 
-def test_fork_seed_uses_voice_placeholder_without_transcript() -> None:
+def test_fork_seed_labels_an_untranscribed_voice_turn() -> None:
     replay = _replay(_event(role="user", source="voice", text="", media=("u.wav",)))
 
-    result = build_fork_seed(replay, budget_chars=len(VOICE_PLACEHOLDER_TEXT) + 50)
+    budget = len(UNTRANSCRIBED_VOICE_TURN_TEXT) + 50
+    result = build_fork_seed(replay, budget_chars=budget)
 
-    assert result.turns == (ForkSeedTurn(role="user", text=VOICE_PLACEHOLDER_TEXT),)
+    assert result.turns == (
+        ForkSeedTurn(role="user", text=UNTRANSCRIBED_VOICE_TURN_TEXT),
+    )
+
+
+def test_fork_seed_never_carries_the_voice_turn_instruction() -> None:
+    """A seed is text only - it reconstructs past turns without their audio.
+
+    Seeding the live voice turn's own instruction ("listen to this recording
+    and answer what is said in it") would tell the model to listen to a
+    recording this request does not carry, which is the refusal-shaped input
+    tasks/bug_reports/2026-07-25-model-stopped-comprehending-voice-audio.md
+    is about."""
+    replay = _replay(_event(role="user", source="voice", text="", media=("u.wav",)))
+
+    result = build_fork_seed(replay, budget_chars=1000)
+
+    seeded = result.turns[0].text
+    assert seeded != VOICE_PLACEHOLDER_TEXT
+    assert VOICE_PLACEHOLDER_TEXT not in seeded
 
 
 def test_fork_seed_prefers_existing_voice_transcript() -> None:
@@ -94,7 +115,7 @@ def test_fork_seed_prefers_existing_voice_transcript() -> None:
         _event(
             role="user",
             source="voice",
-            text=VOICE_PLACEHOLDER_TEXT,
+            text="",
             transcript="записанная расшифровка",
         )
     )
