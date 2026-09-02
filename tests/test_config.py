@@ -1650,6 +1650,7 @@ def test_prompts_default_to_the_russian_dialog_prompts(tmp_path):
     assert settings.prompts.reasoning_low is None
     assert settings.prompts.reasoning_medium is None
     assert settings.prompts.reasoning_high is None
+    assert settings.prompts.voice_turn_instruction is None
 
 
 def test_prompts_parse_from_config(tmp_path):
@@ -1814,6 +1815,45 @@ def test_empty_literal_reasoning_prompt_raises_config_error(tmp_path, field_name
     )
 
     with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
+        load_settings(config_path)
+
+
+def test_voice_turn_instruction_preserves_literal_text(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[prompts]\nvoice_turn_instruction = "Listen and answer."\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.prompts.voice_turn_instruction == "Listen and answer."
+
+
+def test_voice_turn_instruction_reference_resolves_under_config_local_jarvis_directory(
+    tmp_path,
+):
+    config_path = tmp_path / "config.toml"
+    prompt_path = tmp_path / ".jarvis" / "voice_turn.md"
+    prompt_path.parent.mkdir(parents=True)
+    prompt_path.write_text("Listen to the recording and answer.", encoding="utf-8")
+    config_path.write_text(
+        '[prompts]\nvoice_turn_instruction = "@voice_turn.md"\n',
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert (
+        settings.prompts.voice_turn_instruction == "Listen to the recording and answer."
+    )
+
+
+def test_empty_literal_voice_turn_instruction_raises_config_error(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[prompts]\nvoice_turn_instruction = ""\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"\[prompts\].voice_turn_instruction"):
         load_settings(config_path)
 
 

@@ -54,7 +54,7 @@ from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.dialog.time_context import format_time_context
 
 # Utterances whose 2026-07-17 answers prove comprehension outright: none
-# of them can be produced from "[голосовое сообщение]" alone.
+# of them can be produced from the voice turn's current-turn text alone.
 KNOWN_GOOD = [
     (
         "journal/20260717-222941-402ff9/utterance-20260717-223230-0004.wav",
@@ -70,16 +70,29 @@ KNOWN_GOOD = [
     ),
 ]
 
-REFUSAL_HISTORY = [
-    {"role": "user", "content": VOICE_PLACEHOLDER_TEXT},
-    {
-        "role": "assistant",
-        "content": (
-            "Я не могу прослушать голосовое сообщение напрямую. "
-            "Пожалуйста, напишите текстом то, что вы хотели сказать."
-        ),
-    },
-]
+
+def refusal_history(voice_turn_text: str) -> list[dict[str, str]]:
+    """One prior voice turn + its refusal, to reproduce the confirmed
+    self-consistency effect (the model follows its own previous answer).
+
+    The prior turn's user message must be the same resolved voice_turn_text
+    as the live turn below, not the bare VOICE_PLACEHOLDER_TEXT default -
+    ConversationHistory always records _current_turn_history_text (app.py),
+    the one resolved value, for every voice turn in a session, so a
+    configured [prompts].voice_turn_instruction override applies to past
+    turns exactly as it does to the current one. A hardcoded default here
+    would simulate a session that mixes wordings, which no real session
+    with an override configured ever does."""
+    return [
+        {"role": "user", "content": voice_turn_text},
+        {
+            "role": "assistant",
+            "content": (
+                "Я не могу прослушать голосовое сообщение напрямую. "
+                "Пожалуйста, напишите текстом то, что вы хотели сказать."
+            ),
+        },
+    ]
 
 
 async def ask(
@@ -87,13 +100,20 @@ async def ask(
     client: httpx.AsyncClient,
     system_prompt: str,
     audio_b64: str,
+    voice_turn_text: str,
     history: list | None = None,
 ) -> str:
-    """One turn composed exactly as app.py's _start_turn composes it."""
+    """One turn composed exactly as app.py's _start_turn composes it.
+
+    voice_turn_text is resolved by the caller exactly as
+    Orchestrator.on_utterance() resolves it (settings.prompts
+    .voice_turn_instruction or VOICE_PLACEHOLDER_TEXT), so a configured
+    override in config.toml is exercised here too, not silently ignored -
+    see tasks/done/task-voice-turn-audio-framing.md."""
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history or [])
     messages.append({"role": "system", "content": format_time_context(time.time())})
-    messages.append({"role": "user", "content": VOICE_PLACEHOLDER_TEXT})
+    messages.append({"role": "user", "content": voice_turn_text})
     payload = backend.build_payload(messages, [audio_b64], ReasoningLevel.OFF)
     payload["stream"] = False
     response = await client.post("/api/chat", json=payload)
@@ -127,8 +147,13 @@ def synthetic_silence(seconds: float) -> str:
 
 async def main_async(args: argparse.Namespace) -> None:
     settings = load_settings(args.config)
+    # Resolved exactly as Orchestrator.on_utterance() resolves it, so a
+    # configured [prompts].voice_turn_instruction override is exercised
+    # here too, not silently ignored (tasks/done/task-voice-turn-audio-framing.md).
+    voice_turn_text = settings.prompts.voice_turn_instruction or VOICE_PLACEHOLDER_TEXT
     print(f"model:    {settings.backend.model}")
-    print(f"endpoint: {settings.backend.endpoint}\n")
+    print(f"endpoint: {settings.backend.endpoint}")
+    print(f"voice turn text: {voice_turn_text!r}\n")
 
     backend = OllamaBackend(EventBus(), settings.backend)
     async with httpx.AsyncClient(
@@ -139,10 +164,17 @@ async def main_async(args: argparse.Namespace) -> None:
             audio_b64 = encoded(Path(wav))
             print(f"--- {wav}")
             print(f"    2026-07-17: {july_answer}")
-            fresh = await ask(backend, client, settings.prompts.system, audio_b64)
+            fresh = await ask(
+                backend, client, settings.prompts.system, audio_b64, voice_turn_text
+            )
             print(f"RESULT|case=fresh context   |answer={fresh[:300]}")
             poisoned = await ask(
-                backend, client, settings.prompts.system, audio_b64, REFUSAL_HISTORY
+                backend,
+                client,
+                settings.prompts.system,
+                audio_b64,
+                voice_turn_text,
+                history=refusal_history(voice_turn_text),
             )
             print(f"RESULT|case=after a refusal |answer={poisoned[:300]}\n")
 
@@ -156,13 +188,16 @@ async def main_async(args: argparse.Namespace) -> None:
                 client,
                 settings.prompts.system,
                 synthetic_silence(args.silence_seconds),
+                voice_turn_text,
             )
             print(f"RESULT|case=silence        |answer={answer[:300]}\n")
 
         if args.quiet_wav:
             audio_b64 = encoded(Path(args.quiet_wav))
             print(f"--- {args.quiet_wav} (negative control: nothing intelligible)")
-            answer = await ask(backend, client, settings.prompts.system, audio_b64)
+            answer = await ask(
+                backend, client, settings.prompts.system, audio_b64, voice_turn_text
+            )
             print(f"RESULT|case=unintelligible |answer={answer[:300]}\n")
 
     print(

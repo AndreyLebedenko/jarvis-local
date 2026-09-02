@@ -84,7 +84,7 @@ def test_fork_seed_rejects_only_when_the_newest_turn_is_over_budget() -> None:
 def test_fork_seed_uses_voice_placeholder_without_transcript() -> None:
     replay = _replay(_event(role="user", source="voice", text="", media=("u.wav",)))
 
-    result = build_fork_seed(replay, budget_chars=100)
+    result = build_fork_seed(replay, budget_chars=len(VOICE_PLACEHOLDER_TEXT) + 50)
 
     assert result.turns == (ForkSeedTurn(role="user", text=VOICE_PLACEHOLDER_TEXT),)
 

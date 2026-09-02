@@ -618,8 +618,16 @@ class Orchestrator:
         inputs = [ModelRequestInput.AUDIO]
         if has_pending_screenshot:
             inputs.append(ModelRequestInput.SCREENSHOT)
+        # One resolved value feeds both the model-facing turn text and what
+        # ConversationHistory records for later turns
+        # (_current_turn_history_text, set from it in _start_turn), so a
+        # session never mixes wordings across its own voice turns.
+        voice_turn_text = (
+            self._reasoning_prompt_settings.voice_turn_instruction
+            or VOICE_PLACEHOLDER_TEXT
+        )
         await self._start_turn(
-            VOICE_PLACEHOLDER_TEXT,
+            voice_turn_text,
             media,
             TurnSource.VOICE,
             inputs=tuple(inputs),
