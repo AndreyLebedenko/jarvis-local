@@ -20,8 +20,10 @@ from jarvis.audio.input import (
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     HistorySettings,
+    PromptSettings,
 )
 from jarvis.core.lifecycle import (
+    VOICE_PLACEHOLDER_TEXT,
     ModelRequestInput,
     ModelRequestStarted,
 )
@@ -265,7 +267,7 @@ async def test_on_utterance_sends_media_and_plays_thinking_cue():
     assert messages[0] == {"role": "system", "content": SYSTEM_PROMPT}
     assert messages[-1] == {
         "role": "user",
-        "content": "[голосовое сообщение]",
+        "content": VOICE_PLACEHOLDER_TEXT,
         "images": [
             base64.b64encode(b"wav").decode(),
             base64.b64encode(b"png").decode(),
@@ -276,6 +278,26 @@ async def test_on_utterance_sends_media_and_plays_thinking_cue():
         base64.b64encode(b"wav").decode(),
         base64.b64encode(b"png").decode(),
     ]
+
+
+async def test_on_utterance_uses_configured_voice_turn_instruction_override():
+    """[prompts].voice_turn_instruction (config.py's PromptSettings), when
+    set, replaces the built-in VOICE_PLACEHOLDER_TEXT as the voice turn's
+    model-facing and recorded-history text - the tunability the fix card
+    for the first-turn audio-comprehension refusal asks for, so the
+    framing can be adjusted against the live model without a code change."""
+    orchestrator, backend, _sound_cues = _orchestrator(
+        reasoning_prompt_settings=PromptSettings(
+            voice_turn_instruction="Listen to the recording and answer it."
+        )
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
+    )
+
+    [(messages, _media)] = backend.calls
+    assert messages[-1]["content"] == "Listen to the recording and answer it."
 
 
 async def test_on_utterance_without_screenshot_sends_only_audio():

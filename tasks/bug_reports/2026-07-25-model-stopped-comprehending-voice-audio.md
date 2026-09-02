@@ -4,12 +4,24 @@
 tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
-**Status:** Open. Updated 2026-09-01 (see "Sixth data point" below): the
-report's primary open question - does comprehension work at all today? - is
-now answered YES by a controlled contrast on one wav in one run, and the
-weight of evidence has shifted to the current-turn *framing* as the trigger of
-a first-turn refusal. The recommended next step is now the wording fix in its
-own card (see "Future considerations"), not more reconstruction.
+**Status:** Open, and root-caused elsewhere. Updated 2026-09-02: the wording
+fix (`tasks/task-voice-turn-audio-framing.md`, Option A) is **not** a fix for
+this bug. The acceptance session for it, running live first-turn refusals down,
+found something larger than any wording: **attention to attached audio is
+suppressed by the dialog request shape itself** - tool declarations, the
+system prompt, and the current-turn wording each break it independently,
+measured at 10 runs per condition in
+`tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`.
+That report is where this bug is now tracked. It explains this one's
+long-standing "refusing vs bluffing" puzzle, and it contradicts this report's
+own first/second experiments, which cleared tools on four requests total. This
+report's primary open question (does comprehension work at all today?) is
+answered YES but narrowly: it works reliably through the transcription path
+(bare request, no system prompt, no tools) and unreliably through the dialog
+path, with long clear clips surviving where short ones do not. **Caveat on
+everything below: these experiments run one to five requests per condition,
+and this failure is probabilistic - nothing here may be read as a controlled
+result. See the seventh data point's corrections.**
 Prior status (2026-08-11): open and unblocked once the debug mode
 (`tasks/done/task-debug-mode-and-request-transcript.md`) shipped. One mechanism
 confirmed, one input taxonomy established, and the live first refusal not
@@ -322,6 +334,129 @@ probabilistic, and the acceptance test is a session (several voice turns,
 including one deliberately unintelligible and one English), not a single
 request. This data point does not itself justify a code change in the current
 release branch; it justifies opening the fix card.
+
+## Seventh data point: three wording iterations, and two wrong conclusions drawn from them (owner + agent, 2026-09-01)
+
+> Read this section with its two corrections at the end. Written as the
+> session ran, it twice announced a root cause on one-to-three runs per
+> condition, and both announcements were overturned by 10-run measurements the
+> same night. It is kept intact as the record of how the real cause was
+> reached; the standing account is
+> `tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`.
+
+Human-run acceptance session for the wording fix (`tasks/task-voice-turn-audio-framing.md`, Option A), same day as the sixth data point, later that evening.
+
+**Three wording iterations, live.** The card's first candidate (English,
+borrowing `DEFAULT_TRANSCRIPTION_INSTRUCTION`'s proven-good direction) leaked
+into the *response* language: the owner spoke Russian, first-turn answer came
+back in English ("I haven't received an audio recording yet. Please attach or
+upload the file..."). Cause: the system prompt's own conditional - "Отвечай
+по-русски, **если пользователь явно не попросил другой язык**" - reads an
+English user-role message as such a request, regardless of what language the
+audio is in. A literal Russian translation of the same sentence structure
+removed the language leak (confirmed: Russian speech, Russian answer) but kept
+the refusal, now echoing the instruction's own vocabulary back near-verbatim
+("Пожалуйста, прикрепите аудиозапись... как если бы я был участником этого
+разговора") - read as a standing instruction about a future attachment, not a
+statement that audio is already in this message. Dropping "attached" ("приложенную")
+and the "as the next turn of this conversation" clause - "Прослушай эту запись
+и ответь на то, что в ней сказано." - stopped the refusal on the first live
+retry.
+
+**Checked against known content, not a live guess** - but, as the first
+correction below shows, against clips that could not discriminate.
+`manual/manual_check_audio_comprehension.py`
+(fixed in this same card to resolve `[prompts].voice_turn_instruction` instead
+of ignoring it) replayed the three known-good July wavs under the new wording:
+all three landed on-subject - cyclic cosmology with real detail, "some humans
+become addicted to AI", the sycophancy phenomenon named correctly - in both the
+fresh-context and after-a-refusal (poisoned-history) cases. Genuine
+comprehension, confirmed the same way the sixth data point confirmed it, not
+the "как ты меня слышишь"-style bluff the fourth experiment already
+discredited as a criterion.
+
+**Then a live first turn still refused - "Как ты меня слышишь?", 1.3s, spoken
+Russian, under the new wording.** Root-caused directly (agent, `OllamaBackend`
+called straight from a script, no Jarvis process/journal/history in the loop,
+so nothing but the wav and the prompt text could be in play):
+
+- The exact wav replayed 3x against the new wording: refused 3/3 -
+  reproducible, not a one-off.
+- The same wav against the **pre-fix** bracket placeholder
+  (`[голосовое сообщение]`), as a control: also did not answer the question -
+  a generic self-introduction ("Вы можете обращаться ко мне как к Джарвису...
+  Чем я могу быть полезен прямо сейчас?"), not "да, слышу вас хорошо" and not
+  anything about this recording's content. The owner's "this phrase always
+  worked" read on the pre-fix wording was a read on a *plausible-sounding,
+  content-free* answer - exactly the fourth experiment's "worthless success
+  criterion" - not a verified one. The new wording did not break a working
+  case here; it turned an unverifiable bluff into a visible failure.
+- **Decisive contrast, same method as the sixth data point:** the exact wav
+  through `DEFAULT_TRANSCRIPTION_INSTRUCTION` - the path that correctly
+  transcribed a different refused clip earlier the same day - refused 3/3
+  ("Please provide the audio file/recording you would like me to
+  transcribe..."). This rules out dialog wording/framing entirely for this
+  clip: even the proven-good, non-dialog, no-persona instruction fails on it.
+- `jarvis.audio.metrics.utterance_metrics_from_wav_bytes` against the three
+  known-good clips: this clip is `duration=1.30s peak=-4.1dBFS`, the
+  **shortest** of the four compared (July clips: 2.70-6.60s) and **louder**,
+  not quieter (July clips: -8.2 to -12.1dBFS peak) - ruling out signal level
+  as the discriminator, consistent with the report's earlier level analysis.
+
+**Conclusion drawn at the time (WRONG, see both corrections): two independent
+causes, separable by clip, both real** - the framing fix working on the three
+substantive clips (2.70-6.60s), and the 1.30s clip failing at the audio level
+before any dialog framing enters the picture.
+
+**First correction, same evening, after a properly powered measurement.** The
+paragraph above attributed the second cause to the clip being *short*, on the
+strength of one to three runs per condition. Both the attribution and the
+method were wrong. The failure is probabilistic per request: the same bytes
+returned a refusal on one run and a correct transcript on the next, which
+produced two flatly contradictory "controlled" results within the same hour of
+this session. At 10 runs per cell, duration is not the discriminator: a
+0.3s-padded copy of the 1.30s clip is 10/10 where the original is 0/10, level
+normalization without added silence stays 0/10, and the bytes are
+byte-identical 16 kHz mono PCM_16 in every case.
+
+**Second correction, later the same night.** The first correction then named
+*trailing silence* as the real discriminator. That does not hold either: a
+July clip with a 0.140s tail is 9/10 while the 0.114s-tail clip above is 0/10
+at identical duration and byte size, and a 2.70s clip with a 0.093s tail
+works. Padding moves a marginal clip across a threshold; it does not identify
+what makes a clip marginal. The cause is the request shape, and the framing
+fix is not confirmed working - the three substantive clips pass under the old
+wording too, so they never discriminated. Full tables, the threshold sweep,
+and what this retires from the sections above are in
+`tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`.
+
+That report also answers this one's "Fourth experiment" question. In the
+dialog request shape the model frequently has no usable audio at all and
+answers from the current-turn text alone, so refusing and bluffing (and
+fabricating) were never separate behaviors -
+they are the same state, and which one surfaces depends only on what the
+accompanying text invites. **Methodological note for anything built on this
+report: its own experiments are n=1 to n=5 per condition. At that sample size
+this failure is indistinguishable from noise; treat those conclusions as
+provisional until re-measured at n>=10.**
+
+**Second correction, later the same night: the padding story above is itself
+superseded.** Re-measured at n=10, the request *shape* is what suppresses
+audio attention - tools, the system prompt, and the current-turn wording each
+independently drop a clip from 10/10 heard to 0/10, and the clip this section
+called undecodable transcribes fine in a bare request. Silence padding still
+moves a marginal clip across the threshold, but it is an intervention without
+an explained mechanism, not the cause. See
+`tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`;
+no fix card exists yet, because the direction (tools off for audio turns vs a
+two-pass transcribe-then-answer shape) is the owner's call.
+
+**Not this card's target either way.** `tasks/task-voice-turn-audio-framing.md`
+is scoped to the current-turn text and is not blocked by this. The acceptance
+session continues with substantive first-turn questions (verifiable against
+real content, like the known-good replays) rather than short channel-check
+phrases like "как ты меня слышишь", which cannot distinguish comprehension
+from a bluff on either the old or the new wording.
 
 ## Earlier suspected cause (superseded by the run above)
 

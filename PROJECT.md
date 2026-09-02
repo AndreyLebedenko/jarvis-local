@@ -1546,6 +1546,45 @@ system is intended to grow.
   `tasks/attachment-policy-v1.6.0.md`; proof is
   `tests/test_audio_decoder_formats.py`.
 
+## Verified fact (2026-09-02): dialog request structure suppresses audio attention
+
+Measured at 10 runs per condition against a live endpoint; full tables and
+method in `tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`.
+Everything below is about **audio only** - image input is unaffected by any of
+it, verified in the same session.
+
+- The model attends to audio attached via `images` only in a nearly bare
+  request. Every layer of dialog structure around that audio costs attention,
+  and each of these is independently sufficient to reduce it to zero:
+  - a system message - including an **empty** one (10/10 -> 3/10) and a
+    one-sentence one (2/10); the full Jarvis persona reaches 0/10. A SYSTEM
+    prompt baked into a Modelfile counts, because Ollama injects it whenever
+    the request sends no system message of its own;
+  - `tools` declarations - a **single no-op** declaration is enough
+    (10/10 -> 0/10), and the request then behaves exactly as if no media had
+    been attached;
+  - the accompanying user text: English "transcribe verbatim" 10/10, its
+    literal Russian translation 2/10, English "listen and answer" 4/10, the
+    Russian voice-turn instruction 0/10.
+- Changing the transport does not escape this. Ollama has no `audio` message
+  field (re-confirming the day-0 fact above - it is silently dropped), and the
+  OpenAI-compatible `/v1` `input_audio` content part does deliver audio but at
+  3/10, collapsing to 0/10 with tools attached.
+- Consequence for design: **a request that must hear audio has to be bare.**
+  The only reliable shape is the one `src/jarvis/journal/transcription.py`
+  already sends - one user message, English transcription instruction, the
+  audio, no system prompt, no tools. The engine's voice turn stacks every
+  suppressor at once, which is why voice turns are the least reliable path in
+  the product for hearing the user while the explicit transcription action is
+  the most reliable.
+- Methodological rule this established: **nothing about this model's audio
+  handling may be concluded from fewer than 10 runs per condition.** The
+  failure is probabilistic per request; smaller samples produced three
+  mutually contradictory "controlled" results in one evening.
+- `config.ui.toml` overrides `[backend].model` from `config.toml`. Any
+  audio measurement must record the *effective* model, not the one written in
+  `config.toml`.
+
 ## Open questions (unverified - do not assume an answer)
 
 - **Resolved (v1.2.5 human follow-up): prefer q8_0 KV cache for large

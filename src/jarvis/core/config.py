@@ -685,6 +685,11 @@ class PromptSettings:
     # (a latency cost paid on every utterance), so it is deliberately not
     # a built-in default like the two contracts above.
     voice_intent_directive: str | None = None
+    # None (the default) means jarvis.core.lifecycle.VOICE_PLACEHOLDER_TEXT
+    # is used as-is; setting this overrides it, the same
+    # tunable-without-a-code-change pattern as
+    # journal.transcription.DEFAULT_TRANSCRIPTION_INSTRUCTION.
+    voice_turn_instruction: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1080,6 +1085,7 @@ def _build_prompts_section(
             "response_voice",
             "response_text_voice",
             "voice_intent_directive",
+            "voice_turn_instruction",
         )
     }
     return replace(settings, **resolved)

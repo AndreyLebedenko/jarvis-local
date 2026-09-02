@@ -26,8 +26,10 @@ from jarvis.audio.input import (
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     FilesSettings,
+    PromptSettings,
 )
 from jarvis.core.lifecycle import (
+    VOICE_PLACEHOLDER_TEXT,
     AttachmentSubmissionReason,
     ModelRequestInput,
     NewContextReason,
@@ -512,8 +514,33 @@ async def test_on_response_complete_records_history():
     await orchestrator.on_response_complete(_complete_event())
 
     messages = orchestrator._history.as_messages()
-    assert messages[-2] == {"role": "user", "content": "[голосовое сообщение]"}
+    assert messages[-2] == {"role": "user", "content": VOICE_PLACEHOLDER_TEXT}
     assert messages[-1] == {"role": "assistant", "content": "Привет, мир"}
+
+
+async def test_configured_voice_turn_instruction_override_flows_into_history():
+    """Same tunable framing as the backend-facing test in
+    test_main_orchestrator_turns.py, checked here on the history side: a
+    voice turn's [prompts].voice_turn_instruction override is what
+    ConversationHistory records for later turns, not the built-in
+    VOICE_PLACEHOLDER_TEXT."""
+    orchestrator, _backend, _sound_cues = _orchestrator(
+        reasoning_prompt_settings=PromptSettings(
+            voice_turn_instruction="Listen to the recording and answer it."
+        )
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_token(ResponseToken(text="ok"))
+    await orchestrator.on_response_complete(_complete_event())
+
+    messages = orchestrator._history.as_messages()
+    assert messages[-2] == {
+        "role": "user",
+        "content": "Listen to the recording and answer it.",
+    }
 
 
 async def test_on_response_complete_records_plain_response_text_in_history():

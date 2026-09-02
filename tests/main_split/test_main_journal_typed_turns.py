@@ -14,6 +14,7 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import (
+    VOICE_PLACEHOLDER_TEXT,
     ModelRequestInput,
     TextSubmissionReason,
 )
@@ -210,7 +211,7 @@ async def test_voice_turn_does_not_invoke_automatic_retrieval():
     assert retrieval_service.calls == []
     assert sound_cues.played == ["thinking"]
     [(messages, _media)] = backend.calls
-    assert messages[-1]["content"] == "[голосовое сообщение]"
+    assert messages[-1]["content"] == VOICE_PLACEHOLDER_TEXT
 
 
 async def test_automatic_retrieval_scopes_to_current_session_while_solo():

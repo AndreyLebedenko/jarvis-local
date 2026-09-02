@@ -440,6 +440,24 @@ warmup = "Привет"
 # config change; override here to customize what "voice-friendly" means.
 # response_voice = "Speak in plain connected prose, no lists or tables."
 # response_text_voice = "Restate the shown text aloud; you may refer to it."
+#
+# A voice turn's current-turn text, sent to the model alongside the audio and
+# recorded in ConversationHistory for later turns (fix card:
+# tasks/done/task-voice-turn-audio-framing.md). Has a working built-in default
+# (jarvis.core.lifecycle.VOICE_PLACEHOLDER_TEXT); override here to tune the
+# framing against the live model without a code change.
+#
+# Do not expect a rewrite here to fix voice turns that answer as if no audio
+# had arrived. That is a property of the whole request, not of this line:
+# tool declarations and the system prompt each suppress the model's attention
+# to attached audio on their own, and so does this text
+# (tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md,
+# 10 runs per condition). The one rule that measurement does support: write
+# it in the assistant's dialog language. This string sits in the `user` role,
+# and the default system prompt answers in the user's language ("если
+# пользователь явно не попросил другой язык") - an English line here made
+# the model reply in English to Russian speech.
+# voice_turn_instruction = "Прослушай запись и ответь по существу сказанного."
 
 [response]
 # Jarvis's response mode: how a turn's answer is produced, shown, and

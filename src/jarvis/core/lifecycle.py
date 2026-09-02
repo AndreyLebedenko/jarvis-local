@@ -10,7 +10,17 @@ the engine is doing.
 from dataclasses import dataclass
 from enum import Enum
 
-VOICE_PLACEHOLDER_TEXT = "[голосовое сообщение]"
+# Model-facing current-turn text for a voice turn (not user-facing TTS or
+# dialog text), overridable via [prompts].voice_turn_instruction.
+#
+# Keep it in the assistant's dialog language. This string sits in the `user`
+# role, and the system prompt answers in the user's language, so an English
+# line here makes the model answer Russian speech in English.
+#
+# It does not decide whether the model hears the audio - no wording does; a
+# request that carries a system prompt or tool declarations loses the audio
+# regardless of this text.
+VOICE_PLACEHOLDER_TEXT = "Прослушай эту запись и ответь на то, что в ней сказано."
 
 
 class TurnSource(Enum):
