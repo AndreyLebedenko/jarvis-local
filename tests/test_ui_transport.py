@@ -1098,6 +1098,8 @@ def _full_config_arguments() -> dict:
         "vad": {
             "threshold": 0.6,
             "max_chunk_seconds": 25,
+            "min_chunk_seconds": 3.0,
+            "padding_noise_rms": 0.002,
             "request_end_pause_seconds": 1.5,
             "resume_cooldown_seconds": 0.5,
         },
@@ -1141,6 +1143,8 @@ def test_save_config_selection_parses_iteration_2_arguments():
     assert control_api.config_kwargs["vad"] == VadSettings(
         threshold=0.6,
         max_chunk_seconds=25,
+        min_chunk_seconds=3.0,
+        padding_noise_rms=0.002,
         request_end_pause_seconds=1.5,
         resume_cooldown_seconds=0.5,
     )

@@ -124,7 +124,21 @@
    locally and in CI.
 5. When reading project text files with PowerShell, pass `-Encoding UTF8`
    explicitly, e.g. `Get-Content -Raw -Encoding UTF8 PROJECT.md`.
-6. Graphify is an agent/dev tool, not a Jarvis runtime dependency.
+6. Codex may correct a Python command's console-encoding mismatch by setting
+   `PYTHONUTF8=1` and/or `PYTHONIOENCODING=utf-8` for that process only. This
+   is an approved environment normalization, not an infrastructure workaround,
+   and does not require a stop under section 0.9. Do not change the system code
+   page, registry, or persistent user/machine environment for this purpose. If
+   the same encoding error recurs after the per-process setting, section 0.7 or
+   0.9 applies as usual.
+7. On Windows, do not pass wildcard path arguments such as `logs/*.log` or
+   `src/module*` to `rg`; they can fail with OS error 123 because PowerShell
+   does not expand them as a POSIX shell would. Keep `rg` as the default search
+   tool and use its `-g` option when possible. If the operation specifically
+   needs PowerShell wildcard enumeration, use
+   `Get-ChildItem -File -Filter ... | Select-String -Pattern ...` instead of
+   retrying the failing `rg` form.
+8. Graphify is an agent/dev tool, not a Jarvis runtime dependency.
    Generated graph data lives under `graphify-out/` and is not committed.
    The graph contains deterministic parser/AST data only. Graphify's code-only
    path also parses supported documentation formats such as Markdown when a

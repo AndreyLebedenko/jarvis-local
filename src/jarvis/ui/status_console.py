@@ -44,6 +44,8 @@ from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.config_selection import (
     VAD_MAX_CHUNK_RANGE,
+    VAD_MIN_CHUNK_RANGE,
+    VAD_PADDING_NOISE_RMS_RANGE,
     VAD_REQUEST_END_PAUSE_RANGE,
     VAD_RESUME_COOLDOWN_RANGE,
     VAD_THRESHOLD_RANGE,
@@ -370,12 +372,16 @@ def config_values_payload(settings: Settings) -> dict:
         "vad": {
             "threshold": settings.vad.threshold,
             "max_chunk_seconds": settings.vad.max_chunk_seconds,
+            "min_chunk_seconds": settings.vad.min_chunk_seconds,
+            "padding_noise_rms": settings.vad.padding_noise_rms,
             "request_end_pause_seconds": settings.vad.request_end_pause_seconds,
             "resume_cooldown_seconds": settings.vad.resume_cooldown_seconds,
         },
         "vad_ranges": {
             "threshold": list(VAD_THRESHOLD_RANGE),
             "max_chunk_seconds": list(VAD_MAX_CHUNK_RANGE),
+            "min_chunk_seconds": list(VAD_MIN_CHUNK_RANGE),
+            "padding_noise_rms": list(VAD_PADDING_NOISE_RMS_RANGE),
             "request_end_pause_seconds": list(VAD_REQUEST_END_PAUSE_RANGE),
             "resume_cooldown_seconds": list(VAD_RESUME_COOLDOWN_RANGE),
         },

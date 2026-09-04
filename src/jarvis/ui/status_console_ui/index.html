@@ -208,6 +208,14 @@
       <input type="number" id="vadMaxChunk" step="1" oninput="onConfigInputChanged()">
     </div>
     <div class="config-field">
+      <label for="vadMinChunk" data-i18n="config_vad_min_chunk_label">Min submitted audio, s</label>
+      <input type="number" id="vadMinChunk" step="0.1" oninput="onConfigInputChanged()">
+    </div>
+    <div class="config-field">
+      <label for="vadPaddingNoiseRms" data-i18n="config_vad_padding_noise_rms_label">Padding noise RMS</label>
+      <input type="number" id="vadPaddingNoiseRms" step="0.001" oninput="onConfigInputChanged()">
+    </div>
+    <div class="config-field">
       <label for="vadEndPause" data-i18n="config_vad_end_pause_label">End-of-request pause, s</label>
       <input type="number" id="vadEndPause" step="0.1" oninput="onConfigInputChanged()">
     </div>

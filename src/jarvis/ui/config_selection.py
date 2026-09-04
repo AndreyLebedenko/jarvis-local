@@ -24,6 +24,8 @@ from jarvis.core.config import (
 
 VAD_THRESHOLD_RANGE = (0.0, 1.0)  # exclusive bounds: silence/always-on are typos
 VAD_MAX_CHUNK_RANGE = (1, 120)
+VAD_MIN_CHUNK_RANGE = (0.0, 30.0)
+VAD_PADDING_NOISE_RMS_RANGE = (0.0, 0.1)
 VAD_REQUEST_END_PAUSE_RANGE = (0.1, 10.0)
 VAD_RESUME_COOLDOWN_RANGE = (0.0, 10.0)
 
@@ -110,6 +112,18 @@ def _validate_vad(vad: VadSettings) -> list[str]:
         problems.append(
             f"vad.max_chunk_seconds must be between {low} and {high}; "
             f"got {vad.max_chunk_seconds}"
+        )
+    low, high = VAD_MIN_CHUNK_RANGE
+    if not low <= vad.min_chunk_seconds <= high:
+        problems.append(
+            f"vad.min_chunk_seconds must be between {low} and {high}; "
+            f"got {vad.min_chunk_seconds}"
+        )
+    low, high = VAD_PADDING_NOISE_RMS_RANGE
+    if not low <= vad.padding_noise_rms <= high:
+        problems.append(
+            f"vad.padding_noise_rms must be between {low} and {high}; "
+            f"got {vad.padding_noise_rms}"
         )
     low, high = VAD_REQUEST_END_PAUSE_RANGE
     if not low <= vad.request_end_pause_seconds <= high:

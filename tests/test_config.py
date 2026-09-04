@@ -2067,6 +2067,8 @@ def test_write_ui_config_iteration_2_fields_round_trip(tmp_path):
         vad=VadSettings(
             threshold=0.7,
             max_chunk_seconds=20,
+            min_chunk_seconds=2.5,
+            padding_noise_rms=0.003,
             request_end_pause_seconds=1.5,
             resume_cooldown_seconds=0.5,
         ),
@@ -2100,6 +2102,8 @@ def test_write_ui_config_iteration_2_fields_round_trip(tmp_path):
     assert settings.vad == VadSettings(
         threshold=0.7,
         max_chunk_seconds=20,
+        min_chunk_seconds=2.5,
+        padding_noise_rms=0.003,
         request_end_pause_seconds=1.5,
         resume_cooldown_seconds=0.5,
     )

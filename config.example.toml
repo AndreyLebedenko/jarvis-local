@@ -148,6 +148,15 @@ response_mode_toggle = "ctrl+alt+o"
 [vad]
 threshold = 0.5
 max_chunk_seconds = 30
+# Short speech chunks are padded before they are sent to the model. This
+# keeps very short phrases away from the empirically weak sub-3 s path
+# without changing the VAD start/end timestamps recorded for the speech.
+min_chunk_seconds = 3.0
+# The padding is deterministic white noise at this RMS level, not digital
+# silence. Set to 0.0 to use silence while keeping the minimum duration.
+# Owner end-to-end checks on 2026-09-04 found 0.001 to be a useful first
+# tuning value for short messages if the default is more noise than needed.
+padding_noise_rms = 0.002
 # Silero itself splits raw speech into small segments at any internal
 # pause (~100 ms, not configurable here). Adjacent segments closer
 # together than request_end_pause_seconds are merged into one utterance
@@ -441,23 +450,21 @@ warmup = "Привет"
 # response_voice = "Speak in plain connected prose, no lists or tables."
 # response_text_voice = "Restate the shown text aloud; you may refer to it."
 #
+# Optional voice-intent probe. When configured, every voice utterance first
+# gets a short non-dialog audio classification pass that may switch the live
+# response mode. Keep this directive in English: Gemma 4 audio recognition was
+# observed to degrade when VAD/probe requests were written in Russian.
+# voice_intent_directive = """This is a system instruction for classifying one voice message. If the audio contains a command to switch the response mode, reply with exactly one line: SWITCH_RESPONSE_MODE=<text|voice|text_voice>, where text means text-only mode, voice means voice-only mode, and text_voice means text plus voice mode. If this is ANY other message - an ordinary question, request, conversation about modes without asking to switch - reply with exactly one word: PROCEED. Output no other text before or after."""
+#
 # A voice turn's current-turn text, sent to the model alongside the audio and
 # recorded in ConversationHistory for later turns (fix card:
 # tasks/done/task-voice-turn-audio-framing.md). Has a working built-in default
 # (jarvis.core.lifecycle.VOICE_PLACEHOLDER_TEXT); override here to tune the
 # framing against the live model without a code change.
 #
-# Do not expect a rewrite here to fix voice turns that answer as if no audio
-# had arrived. That is a property of the whole request, not of this line:
-# tool declarations and the system prompt each suppress the model's attention
-# to attached audio on their own, and so does this text
-# (tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md,
-# 10 runs per condition). The one rule that measurement does support: write
-# it in the assistant's dialog language. This string sits in the `user` role,
-# and the default system prompt answers in the user's language ("если
-# пользователь явно не попросил другой язык") - an English line here made
-# the model reply in English to Russian speech.
-# voice_turn_instruction = "Прослушай запись и ответь по существу сказанного."
+# For this model, voice-audio prompts are safer in English even when the
+# spoken audio is Russian. Keep this line short and instruction-shaped.
+# voice_turn_instruction = "Listen to the recording and answer the user."
 
 [response]
 # Jarvis's response mode: how a turn's answer is produced, shown, and

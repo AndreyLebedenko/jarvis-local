@@ -190,20 +190,15 @@ inside this card.
 Live model + microphone per the Testing protocol. Launch Jarvis with
 `python -m jarvis --status-console` (or your usual entry point) after
 opting in: set `[prompts] voice_intent_directive` in `config.toml` to the
-built-in default below (the feature is OFF without it), then restart.
+English directive below (the feature is OFF without it), then restart.
 Reference: `PromptSettings.voice_intent_directive`, default None -
 `src/jarvis/core/config.py:~690`. If a turn (probe or answer) hangs and
 you need to cancel it, press **Ctrl+Alt+I** (`hotkeys.interrupt`, default
 `src/jarvis/core/config.py:134`; may be overridden by `[hotkeys]
 interrupt` in config.toml). The directive text that turns the feature
-on (paste into `[prompts]` in config.toml, one line):
+on (paste into `[prompts]` in config.toml):
 
-    voice_intent_directive = "Это системная инструкция для классификации
-    голосовой команды. Если аудио - команда сменить режим ответа,
-    ответь ровно одной строкой SWITCH_RESPONSE_MODE=<text|voice|
-    text_voice> (text - только текст, voice - только голос, text_voice
-    - текст и голос). Если это НЕ команда смены режима, ответь ровно
-    словом PROCEED. Никакого другого текста."
+    voice_intent_directive = """This is a system instruction for classifying one voice message. If the audio contains a command to switch the response mode, reply with exactly one line: SWITCH_RESPONSE_MODE=<text|voice|text_voice>, where text means text-only mode, voice means voice-only mode, and text_voice means text plus voice mode. If this is ANY other message - an ordinary question, request, conversation about modes without asking to switch - reply with exactly one word: PROCEED. Output no other text before or after."""
 
 1. **Command switches the mode.** Say "переключись на голосовой режим".
    Expect: no spoken/text answer to the command (the events panel shows

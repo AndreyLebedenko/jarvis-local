@@ -1546,44 +1546,61 @@ system is intended to grow.
   `tasks/attachment-policy-v1.6.0.md`; proof is
   `tests/test_audio_decoder_formats.py`.
 
-## Verified fact (2026-09-02): dialog request structure suppresses audio attention
+## Verified experiment (2026-09-03): short Gemma 4 audio is request-shape-sensitive
 
-Measured at 10 runs per condition against a live endpoint; full tables and
-method in `tasks/bug_reports/2026-09-01-request-shape-suppresses-audio-attention.md`.
-Everything below is about **audio only** - image input is unaffected by any of
-it, verified in the same session.
+The earlier single-clip investigation incorrectly promoted a request-shape
+correlation to a universal "audio attention suppressor" and recommended a
+two-pass design before controlling the model or testing independent clips.
+The corrected human-run experiment is recorded in
+`2026-09-01-request-shape-suppresses-audio-attention.md`; its harness is
+`manual_check_audio_request_shape.py`.
 
-- The model attends to audio attached via `images` only in a nearly bare
-  request. Every layer of dialog structure around that audio costs attention,
-  and each of these is independently sufficient to reduce it to zero:
-  - a system message - including an **empty** one (10/10 -> 3/10) and a
-    one-sentence one (2/10); the full Jarvis persona reaches 0/10. A SYSTEM
-    prompt baked into a Modelfile counts, because Ollama injects it whenever
-    the request sends no system message of its own;
-  - `tools` declarations - a **single no-op** declaration is enough
-    (10/10 -> 0/10), and the request then behaves exactly as if no media had
-    been attached;
-  - the accompanying user text: English "transcribe verbatim" 10/10, its
-    literal Russian translation 2/10, English "listen and answer" 4/10, the
-    Russian voice-turn instruction 0/10.
-- Changing the transport does not escape this. Ollama has no `audio` message
-  field (re-confirming the day-0 fact above - it is silently dropped), and the
-  OpenAI-compatible `/v1` `input_audio` content part does deliver audio but at
-  3/10, collapsing to 0/10 with tools attached.
-- Consequence for design: **a request that must hear audio has to be bare.**
-  The only reliable shape is the one `src/jarvis/journal/transcription.py`
-  already sends - one user message, English transcription instruction, the
-  audio, no system prompt, no tools. The engine's voice turn stacks every
-  suppressor at once, which is why voice turns are the least reliable path in
-  the product for hearing the user while the explicit transcription action is
-  the most reliable.
-- Methodological rule this established: **nothing about this model's audio
-  handling may be concluded from fewer than 10 runs per condition.** The
-  failure is probabilistic per request; smaller samples produced three
-  mutually contradictory "controlled" results in one evening.
-- `config.ui.toml` overrides `[backend].model` from `config.toml`. Any
-  audio measurement must record the *effective* model, not the one written in
-  `config.toml`.
+- Ollama 0.33.3 ran 126 deterministic cells: three explicitly named and
+  digest-recorded models, six independent WAV files, and seven request shapes.
+  Five WAVs had human-supported reference text; the sixth was diagnostic only.
+  Every trial retained the sanitized request and raw response. The schema-v2
+  record proves `options.num_gpu=99` in every payload and records the same
+  effective value for each model.
+- Clip duration/identity dominated the result. Across the six audio-bearing
+  shapes, the two 1.1/1.3 s clips produced an exact or <=0.10 WER transcript in
+  6/36 cells. The three scored 4.8/6.8/9.5 s clips did so in 50/54 cells. An
+  unscored 12.5 s clip produced clearly audio-derived content in all
+  18/18 audio-bearing cells, including system-plus-tool shapes; its three
+  no-media controls refused instead.
+- Neither a system message nor a tool declaration is an independently
+  sufficient universal suppressor. Adding one no-op tool to the bare shape
+  degraded 2/15 scored model/clip pairs and changed no pass/fail result in the
+  other 13. Adding the same tool to the configured-system shape degraded 0/15,
+  improved 3/15, and left 12 unchanged. Empty, short, and configured system
+  messages likewise helped some short model/clip pairs and hurt others while
+  long clips generally remained decodable.
+- Model identity matters. The bare transcription shape was usable on 5/5
+  scored clips for `gemma4:12b-it-q4_K_M`, but only 3/5 for
+  `gemma4:12b-it-q8_0` and `gemma4-12b-jarvis-free-mm:latest`; both short clips
+  failed for the latter two. `/api/show` confirmed that the custom model is
+  Q8_0 and carries a baked English system prompt, while the two stock model
+  records have no baked system prompt. This records correlation, not a causal
+  attribution to quantization or the baked prompt.
+- The 15 scored no-media controls produced 0 exact or <=0.10 WER matches and
+  refused the absent recording. This makes the successful long-clip outputs
+  evidence of audio decoding rather than text-only guessing.
+- The prior 2026-09-02 run used the same fixtures and model digests, but did
+  not explicitly set `num_gpu`; its custom model alone declared `num_gpu 99`
+  in its Modelfile. Its 0.33.2 server and uncontrolled GPU placement make it a
+  legacy record, not the primary comparison. It differs from the controlled
+  rerun in 27/126 raw response strings, but the concurrent server upgrade and
+  one trial per cell prohibit attributing those differences to GPU layers or
+  estimating repeat variance.
+- No internal "attention" mechanism was measured. The supported description
+  is short-clip fragility with model/clip/request-shape interactions. The bare
+  transcription pass is not reliable across the three tested models, so the
+  previous two-pass recommendation is withdrawn. No production architecture
+  change follows from this experiment.
+- Repetitions of one clip do not substitute for independent fixtures. Future
+  audio claims must record model digest/template/system/options, retain raw
+  outputs, use task-valid scoring, and separate repeat variance from variation
+  across clips. The effective model must be recorded because `config.ui.toml`
+  can override `[backend].model` from `config.toml`.
 
 ## Open questions (unverified - do not assume an answer)
 
@@ -4751,6 +4768,28 @@ latency-for-quality trade.
 - Not plumbed through `UiConfigSelection`/`write_ui_config`/the Settings
   form - this is a `config.toml`-only value (no live dashboard control
   requested), unlike `[tts].enabled`.
+
+## Architecture (short microphone-audio padding, 2026-09-04)
+
+- Production microphone utterances detected by `VadChunker` are padded before
+  WAV encoding when the speech segment is shorter than
+  `[vad].min_chunk_seconds` (default 3.0). This affects only the submitted WAV
+  duration; `UtteranceChunk.start_seconds` and `end_seconds` continue to report
+  the VAD speech boundaries.
+- Padding is symmetric and deterministic. `[vad].padding_noise_rms` (default
+  0.002) sets the RMS of white noise added only in the padding before and after
+  the speech. `0.0` means digital silence. Speech samples are not peak, RMS, or
+  LUFS normalized and no AGC, DC-offset removal, or filtering is applied.
+- Rationale: the closed 2026-09-04 level/padding study found short-fixture
+  usability improved from 6/36 raw to 34/36 with 3.0 s deterministic
+  white-noise padding at RMS 0.002, while peak normalization did not justify a
+  production change. RMS 0.003 tied RMS 0.002 at 3.0 s in that matrix, so the
+  lower-noise default was selected.
+- Owner end-to-end validation on 2026-09-04 found `min_chunk_seconds = 3.0`
+  with `padding_noise_rms = 0.001` to be a practically ideal local tuning for
+  short voice messages. Treat 0.001 as the first useful manual adjustment if
+  the default 0.002 noise floor is more than the current microphone/model setup
+  needs.
 
 ## Architecture (Solo session mode, 2026-08-10)
 

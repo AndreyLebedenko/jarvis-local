@@ -2312,6 +2312,8 @@ async def test_save_config_selection_writes_iteration_2_sections(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
     assert settings.ui.language == "ru"
     assert settings.vad.threshold == 0.7
+    assert settings.vad.min_chunk_seconds == 3.0
+    assert settings.vad.padding_noise_rms == 0.002
     assert settings.tts.languages["en"].model == "voices/en.onnx"
 
 

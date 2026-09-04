@@ -55,6 +55,8 @@ def test_each_vad_field_is_range_checked():
     bad = VadSettings(
         threshold=1.5,
         max_chunk_seconds=0,
+        min_chunk_seconds=31.0,
+        padding_noise_rms=0.2,
         request_end_pause_seconds=100.0,
         resume_cooldown_seconds=-1.0,
     )
@@ -62,9 +64,11 @@ def test_each_vad_field_is_range_checked():
 
     problems = validate_selection(selection)
 
-    assert len(problems) == 4
+    assert len(problems) == 6
     assert any("threshold" in p for p in problems)
     assert any("max_chunk_seconds" in p for p in problems)
+    assert any("min_chunk_seconds" in p for p in problems)
+    assert any("padding_noise_rms" in p for p in problems)
     assert any("request_end_pause_seconds" in p for p in problems)
     assert any("resume_cooldown_seconds" in p for p in problems)
 
@@ -73,6 +77,8 @@ def test_vad_boundary_values_are_accepted():
     boundary = VadSettings(
         threshold=0.01,
         max_chunk_seconds=120,
+        min_chunk_seconds=30.0,
+        padding_noise_rms=0.1,
         request_end_pause_seconds=0.1,
         resume_cooldown_seconds=0.0,
     )

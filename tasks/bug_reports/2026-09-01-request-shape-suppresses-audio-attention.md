@@ -1,288 +1,271 @@
-# The dialog request shape suppresses the model's attention to attached audio
+# Short Gemma 4 audio is request-shape-sensitive; no universal suppressor established
 
 **Detected at commit:** `72b4a0b`, branch `fix/voice-turn-audio-framing`
 (working tree), during the human-run acceptance session for
-`tasks/task-voice-turn-audio-framing.md`.
-**Reported by:** owner + agent, 2026-09-01/02.
-**Status:** Open, mechanism established, no fix implemented. Read the
-2026-09-02 sections at the end first - they supersede the model attribution in
-the table below and narrow the cause to one mechanism with several doors into
-it. Recommended direction: two-pass (transcribe in the bare shape that already
-works, then answer the transcript as an ordinary text turn).
+`task-voice-turn-audio-framing.md`.
 
-> **This file replaces an earlier draft of the same night**
-> (`...-utterances-cut-flush-are-not-decoded-by-the-model.md`) that named
-> flush-cut audio as the cause. That draft was wrong - see "What this
-> supersedes" below. Its padding measurement is kept here as a secondary
-> observation, because the intervention is real even though the causal story
-> around it was not.
+**Reinvestigated at commit:**
+`de45ac8d3d93a489e29eb1c997f8b3f70a2bf7f2` with uncommitted research-harness
+changes, 2026-09-02 and 2026-09-03.
 
-## Symptoms
+**Reported by:** owner + agent, 2026-09-01 to 2026-09-03.
 
-Voice turns - especially short ones - are answered as if no audio had
-arrived. Depending on the current-turn text, the model either refuses
-("Пожалуйста, предоставьте аудиозапись..."), bluffs a generic greeting
-("Да, я вас слышу отлично. Чем я могу вам помочь?"), or fabricates a
-confident "transcript" of words that were never spoken (a 70-word quote from
-a 1.3 s clip; "Здравствуйте. На связи команда разработчиков продукта
-Jarvis..."). `logs/jarvis.log` records `inputs=audio count=1` for these turns
-and the journal plays the recording back clearly, so the wav is captured and
-attached.
+**Status:** Open. The user-visible short-audio failure is reproduced, but no
+root cause or production fix is established. The earlier universal
+request-shape-suppression conclusion and two-pass recommendation are withdrawn.
 
-Meanwhile the explicit transcription action on the *same* stored wav returns
-the correct words verbatim.
+## User-visible symptom
 
-## The measurement
+Some voice turns, especially short ones, are answered as if no audio arrived.
+Observed surfaces include an explicit refusal, a generic bluff, a near-miss,
+or fabricated words. The journal can still play the stored WAV and the request
+log records an audio attachment, so capture and attachment occurred.
 
-One-shot `OllamaBackend` calls from a script (no engine, no journal, no
-history) against `gemma4-12b-jarvis-free-mm:latest`, **10 runs per cell**.
-Clip: `journal/20260902-002313-5af193/utterance-20260902-002320-0001.wav`,
-1.1 s, the spoken phrase is "Как ты меня слышишь?". "heard" counts answers
-that contain the actually spoken words.
+Longer recordings often remain understandable under the same production
+framing. This is the important boundary: there is a real short-audio problem,
+but it is not evidence that one request field universally disables audio.
 
-| # | request | heard |
-|---|---|---|
-| A | `DEFAULT_TRANSCRIPTION_INSTRUCTION` alone, no system message, no tools | **10/10** |
-| G | the voice turn's `VOICE_PLACEHOLDER_TEXT` alone | 0/10 |
-| F | time context + `VOICE_PLACEHOLDER_TEXT` | 0/10 |
-| E | system prompt + `VOICE_PLACEHOLDER_TEXT` | 0/10 |
-| C | system prompt + time context + `VOICE_PLACEHOLDER_TEXT` | 0/10 |
-| H | system prompt + `DEFAULT_TRANSCRIPTION_INSTRUCTION` | 0/10 |
-| B | `DEFAULT_TRANSCRIPTION_INSTRUCTION` + two tool declarations | 0/10 (10/10 explicit refusals) |
+## Correction to the original investigation
 
-## Cause
+The first investigation was not adequate for a causal conclusion:
 
-**Attention to the attached audio is fragile, and at least three independent
-parts of an ordinary dialog request each suppress it on their own:**
+- It repeated one 1.1 s clip ten times instead of testing independent clips.
+  Repetition estimates run variance for that clip; it does not establish how
+  the behavior generalizes across recordings.
+- The effective model was not recorded and was later found to be affected by
+  the `config.ui.toml` override. Some tables were therefore labeled with a
+  model that did not run, and the model for earlier tables cannot be recovered.
+- The pass criterion searched an answer for words from the recording. That is
+  not a valid comprehension metric when the prompt asks for an answer rather
+  than a transcript, and it allows both bluffing and paraphrase to be
+  misclassified.
+- Raw requests, raw responses, model digests, `/api/show` data, and a committed
+  harness were not retained.
+- Several comparisons changed more than one factor, then described the result
+  as one internal "attention" or template mechanism. No internal attention
+  state was measured.
+- The rule requiring at least ten runs per condition was unsupported. Repeat
+  count and independent-fixture count answer different questions; neither has
+  a universal minimum detached from the expected effect and decision risk.
 
-1. **Tool declarations.** A vs B: the identical request stops seeing the
-   audio the moment a non-empty `tools` array is attached - 10/10 explicit
-   "you haven't provided an audio file". This is the mechanism the 2026-07-25
-   report ranked first on plausibility ("a chat template that switches to a
-   tool-calling path can stop honoring `images`") and never tested at a
-   sample size that could show it. Builtin tools have been registered
-   unconditionally since v1.6.1, so every engine turn carries them.
-2. **The system prompt.** A vs H: adding the Jarvis persona system message to
-   the *proven-good* transcription instruction drops it from 10/10 to 0/10,
-   with no tools involved.
-3. **The current-turn wording.** A vs G: with nothing else in the request,
-   swapping the transcription instruction for the voice turn's own text drops
-   it from 10/10 to 0/10.
+The historical single-clip and padding observations may be useful hypotheses,
+but they are not used as verified causal evidence below.
 
-The engine's dialog path carries all three at once, which is why it is the
-worst configuration in the product for actually hearing the user, while
-`TranscriptionService` - a single bare user message, no system prompt, no
-tools (`journal/transcription.py`) - is cell A and works.
+## Controlled follow-up
 
-Fragility, not a hard switch: longer, clearer recordings still get through
-the same suppressed configuration (the three known-good July wavs, 2.7-6.6 s,
-answered on-subject through the full engine framing in
-`manual/manual_check_audio_comprehension.py`), while short ones do not. That
-is the "short questions stopped working" symptom, and it is a *threshold*
-effect on top of the suppression, not a separate audio defect.
+### Reproducibility record
 
-## Secondary observation: silence padding moves a marginal clip
+Human-run harness: `manual_check_audio_request_shape.py`.
 
-Kept from the superseded draft, still valid as an intervention and still
-unexplained as a mechanism. On
-`journal/20260901-232544-9826cf/utterance-20260901-232552-0001.wav` (1.30 s),
-transcription-instruction cells, 10 runs each: as recorded 0/10 correct; with
-0.3 s of appended digital silence 10/10; level-normalized to -12 dBFS without
-added silence 0/10; threshold sweep 0.00 s 0/10, 0.10 s 0/10, 0.15 s 10/10,
-0.20 s 8/10, 0.25 s 10/10, 0.30 s 10/10.
+Primary controlled raw artifact:
+`manual_check_audio_request_shape_out/results-20260903T193753Z.jsonl`.
 
-What that does **not** support is the draft's causal claim. Trailing-silence
-length does not predict which clips fail: a July clip with a 0.140 s tail is
-9/10 as recorded while the 0.114 s-tail clip above is 0/10, two clips of
-identical duration and byte size; and a 2.70 s July clip with a 0.093 s tail
-works. Padding shifts a marginal clip across the fragility threshold; it does
-not identify what makes a clip marginal.
+Artifact SHA-256:
+`2c5e84ce4158b661dcce72390d06e8e5b89cbe797972a4c7ccc95453a02ef490`.
 
-## What this supersedes
+The earlier, GPU-layer-uncontrolled artifact remains available as a legacy
+comparison record:
+`manual_check_audio_request_shape_out/results-20260902T223154Z.jsonl`,
+SHA-256
+`523543c2de7087d7f185917bc7e10391f4537f37f6f57040e09ddcd5b612b485`.
 
-- **The flush-cut/padding root cause** written earlier the same night. Wrong
-  attribution; the padding numbers survive, the explanation does not.
-- **The 2026-07-25 report's "Fourth experiment" puzzle** ("Да, я вас отлично
-  слышу" is producible without comprehension, so the criterion is worthless).
-  Now explained: in the dialog configuration the model frequently has no
-  usable audio at all, so refusing, bluffing and fabricating are one state -
-  which of the three surfaces depends only on what the accompanying text
-  invites.
-- **The 2026-07-25 report's "First/Second experiment" clearances of tools and
-  wrapping.** Those runs used four requests total, and this failure is
-  probabilistic per request. The tool clearance in particular is now
-  contradicted at n=10.
+The artifact is intentionally ignored by Git because it contains raw local
+model outputs and prompt material. It records the sanitized payload and raw
+response for every cell, plus WAV hashes and model provenance.
 
-**Methodological rule this bug establishes: nothing about this model's audio
-handling may be concluded from fewer than 10 runs per condition.** Across one
-evening, n=1 to n=3 sampling produced three mutually contradictory "controlled"
-results, including two from the agent within the same hour.
+Environment:
+
+- Ollama `0.33.3`.
+- `temperature=0.0`, `seed=20260902`, `num_predict=256`.
+- Common live options: `num_ctx=65536`, `flash_attention=true`,
+  `kv_cache_type=q8_0`, `top_p=0.9`, `top_k=50`, `min_p=0.05`, and
+  `repeat_penalty=1.1`, plus `num_gpu=99` on every `/api/chat` request.
+- One run per model x fixture x condition. The cells were deterministically
+  shuffled within each model while models ran sequentially to avoid repeated
+  model loading. This run does not estimate stochastic repeat variance.
+
+The three model digests and all six WAV SHA-256 values match the legacy run.
+
+Models were named explicitly and verified through `/api/tags` and `/api/show`:
+
+| model | quant | digest | baked system |
+|---|---:|---|---|
+| `gemma4:12b-it-q4_K_M` | Q4_K_M | `4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c` | none |
+| `gemma4:12b-it-q8_0` | Q8_0 | `41c402fdddc2a87e40a4391caa400961e93786383fbb92a88fc764c333c25322` | none |
+| `gemma4-12b-jarvis-free-mm:latest` | Q8_0 | `1f18172bd78b85959df28a29baaf7648863e13c2d1ecca9818d23cc8b4329b5f` | long English persona prompt |
+
+All three `/api/show` records exposed `{{ .Prompt }}` as the template. The
+custom model differs in more than its baked system and has a distinct digest;
+this experiment therefore does not identify either quantization or that system
+prompt as its causal difference.
+
+### Fixtures
+
+Five WAVs have human-supported reference text and are scored. The sixth has no
+human-verified transcript and is diagnostic only.
+
+| key | duration | bytes | reference provenance | role |
+|---|---:|---:|---|---|
+| `short_1_1s` | 1.1 s | 35244 | owner statement in the original report | scored |
+| `short_1_3s` | 1.3 s | 41644 | owner statement in the original report | scored |
+| `edited_4_8s` | 4.8 s | 153644 | human-edited transcript overlay | scored |
+| `edited_6_8s` | 6.8 s | 217644 | human-edited transcript overlay | scored |
+| `missing_long_turn_1_replacement` | 9.5 s | 304044 | human-edited transcript overlay | scored replacement |
+| `missing_long_turn_2_replacement` | 12.5 s | 400044 | none | unscored replacement |
+
+The original 2026-08-05 WAV pair was removed by journal consolidation. Its
+archive record retains only the combined size, `704088` bytes. The selected
+9.5 s and 12.5 s substitutes sum to exactly that byte count. The individual
+mapping is an approximation; neither substitute is represented as recovered
+audio.
+
+The two short WAVs contain the same reported words, "Как ты меня слышишь?",
+but they are independent recordings. This gives some replication of content,
+not broad linguistic coverage.
+
+### Conditions and scoring
+
+Every audio-bearing condition sends the same English verbatim-transcription
+instruction and the same WAV bytes through the verified `images` field:
+
+1. `bare_audio`: one user message.
+2. `bare_audio_noop_tool`: bare plus one `noop` declaration.
+3. `empty_system_audio`: explicit empty system message plus the user message.
+4. `short_system_audio`: `You are Jarvis.` plus the user message.
+5. `configured_system_audio`: current composed Jarvis system prompt plus the
+   user message.
+6. `configured_system_audio_noop_tool`: configured system plus `noop`.
+7. `no_media_control`: bare request with no media.
+
+Normalization case-folds text, maps `ё` to `е`, removes punctuation, and
+collapses whitespace. Exact match is reported directly. For a compact
+descriptive comparison below, "usable" means WER <= 0.10. That boundary is not
+a product acceptance standard and does not convert the five fixtures into a
+population-rate estimate. The unverified 12.5 s reference is never scored.
+
+## Results
+
+Each table cell is based on five scored fixtures.
+
+| model | condition | exact | usable |
+|---|---|---:|---:|
+| Q4_K_M | bare | 4/5 | 5/5 |
+| Q4_K_M | bare + noop | 3/5 | 3/5 |
+| Q4_K_M | empty system | 3/5 | 4/5 |
+| Q4_K_M | short system | 3/5 | 3/5 |
+| Q4_K_M | configured system | 0/5 | 0/5 |
+| Q4_K_M | configured system + noop | 1/5 | 2/5 |
+| Q8_0 | bare | 2/5 | 3/5 |
+| Q8_0 | bare + noop | 3/5 | 3/5 |
+| Q8_0 | empty system | 4/5 | 4/5 |
+| Q8_0 | short system | 2/5 | 3/5 |
+| Q8_0 | configured system | 2/5 | 3/5 |
+| Q8_0 | configured system + noop | 2/5 | 3/5 |
+| custom Q8_0 | bare | 3/5 | 3/5 |
+| custom Q8_0 | bare + noop | 3/5 | 3/5 |
+| custom Q8_0 | empty system | 4/5 | 4/5 |
+| custom Q8_0 | short system | 2/5 | 3/5 |
+| custom Q8_0 | configured system | 2/5 | 3/5 |
+| custom Q8_0 | configured system + noop | 2/5 | 4/5 |
+
+Duration/fixture stratum is much more predictive than request shape:
+
+| scored stratum | cells | exact | usable |
+|---|---:|---:|---:|
+| short, 1.1/1.3 s | 36 | 6/36 | 6/36 |
+| longer, 4.8/6.8/9.5 s | 54 | 38/54 | 50/54 |
+| no-media controls | 15 | 0/15 | 0/15 |
+
+The unscored 12.5 s replacement produced closely matching, clearly
+audio-derived Russian content in all 18/18 audio-bearing cells. All three of
+its no-media controls refused the absent recording. This directly refutes the
+claim that any tested system-plus-tool shape necessarily makes audio
+unavailable.
+
+### GPU-layer control (resolved)
+
+The 2026-09-02 harness did not explicitly send Ollama `options.num_gpu`. The
+custom model's `/api/show` data declared `num_gpu 99` in its Modelfile, while
+the Q4_K_M and Q8_0 requests had no harness-controlled GPU-layer value. The
+2026-09-03 rerun resolves that gap: metadata records
+`requested_num_gpu_layers=99`, every one of its 126 sanitized payloads records
+`options.num_gpu=99`, and every model's effective options reports the same
+value.
+
+The two runs cannot measure the effect of this change: Ollama also changed
+from `0.33.2` to `0.33.3`, and 27/126 raw response strings differ. With one
+trial per cell, neither run estimates repeat variance. The controlled rerun is
+the primary record; the differences do not support an attribution to GPU-layer
+placement, server version, or any internal mechanism.
+
+### Paired tool comparison
+
+Using the same <=0.10 WER boundary across the 15 model/fixture pairs:
+
+- `bare_audio` -> `bare_audio_noop_tool`: 2 degraded, 0 improved, 13 unchanged.
+  Both degradations are the Q4_K_M short clips. The longer clips remain usable.
+- `configured_system_audio` -> `configured_system_audio_noop_tool`: 0 degraded,
+  3 improved, 12 unchanged.
+
+A no-op tool can interact adversely with a marginal short clip, but it is not
+an independent universal audio-off switch. The direction also depends on the
+surrounding request.
+
+### Paired system observations
+
+- Q4_K_M bare transcribed both short clips, while Q8_0 and custom Q8_0 bare
+  refused both.
+- An explicit empty system message made the 1.3 s clip exact for all three
+  models, but the 1.1 s clip still failed for all three except Q4_K_M bare.
+- The configured system failed all five scored Q4_K_M fixtures, yet the same
+  long clips generally remained usable for Q8_0 and custom Q8_0.
+- In the custom model, configured system plus `noop` made the 1.3 s clip exact
+  even though configured system without `noop` was only a near-miss.
+
+These are interactions among model, WAV, and request shape. They do not support
+a monotonic rule in which every additional prompt layer consumes audio
+attention.
+
+## Supported conclusion
+
+The reproduced behavior is:
+
+> Very short Gemma 4 audio is fragile. Whether it is decoded depends on the
+> exact model, exact recording, and request framing. Longer audio in this
+> fixture set survives all tested request shapes almost always.
+
+The experiment does not inspect internal attention, prove a chat-template
+defect, isolate a quantization effect, or establish a single suppressor.
+Refusal wording is only an observable output, not evidence that Ollama dropped
+the `images` field.
+
+The bare transcription request remains the best measured Q4_K_M condition,
+but it is not reliable across the requested model set: it is usable on only
+3/5 scored clips for both Q8_0 variants, with both short clips failing.
+Therefore a mandatory two-pass architecture is not justified by this evidence.
+It would move the same unresolved short-audio failure into pass one.
 
 ## Temporary decision
 
-No fix on `fix/voice-turn-audio-framing`. That card is scoped to the
-current-turn text, its change is measured and independent, and the request
-shape is a different and larger question. The wording card ships or does not
-on its own merits; this gets its own card once the direction below is chosen
-by the owner.
+Make no production request-shape or two-pass change from this report. Keep the
+explicit Journal transcription action as an available diagnostic/user action,
+not as a proven universally reliable workaround.
 
-Workaround available today: the explicit transcription action on a recorded
-voice turn (Journal -> the turn's menu -> generate transcript) is cell A and
-returns the real words.
+The bug remains open as short-audio fragility. A production decision needs a
+second study with a larger human-transcribed set of distinct short utterances,
+predeclared scoring, and separate factors for clip boundary/padding, prompt
+language/task, system framing, and tools. The production answer task must be
+tested separately from verbatim transcription because its valid outcome metric
+is different.
 
-## Future considerations and boundaries
+## Facts retained from earlier work
 
-- **Do not attach tools to a voice turn's first pass.** The cheapest
-  intervention with a measured effect: a turn carrying audio omits `tools`,
-  and a tool-using follow-up pass (which no longer needs the audio, since the
-  model has already answered from it) may carry them. Needs a decision about
-  what happens to a voice turn that genuinely needs a tool.
-- **The system prompt suppressing audio on its own (cell H) is the harder
-  half** and has no cheap fix: the persona is what makes Jarvis Jarvis.
-  Options worth measuring before choosing: a shorter system message on
-  audio-carrying turns, moving the persona into the user turn, or a two-pass
-  shape where a bare cell-A pass transcribes the audio and the dialog pass
-  answers the resulting text (which would make voice turns as reliable as the
-  transcription action, at the cost of a second request per turn).
-- The two-pass option deserves special attention because it converts an
-  unreliable capability into a reliable one using a path that is already
-  measured at 10/10, and because it would make the recorded transcript a
-  by-product of every voice turn rather than an explicit user action.
-- Everything above is measured against one model
-  (`gemma4-12b-jarvis-free-mm:latest`); the owner separately confirmed the
-  same failure on `gemma4:12b-it-q8_0`, so it is not a quantization artifact.
-  Whether it is specific to this model family is untested.
-
-## 2026-09-02 measurement: what the suppressor actually is
-
-Prompted by the owner's hypothesis that `tools` do not break audio as such,
-but switch the request onto a template path that expects media in a different
-field. Same clip and method as above, 10 runs per cell, payloads built through
-`OllamaBackend.build_payload` so every cell carries the live config exactly as
-the engine sends it.
-
-**The hypothesis is refuted in its specific form - there is no other field.**
-
-| request | heard |
-|---|---|
-| `images`, no tools | **10/10** |
-| `images` + tools | 0/10 |
-| `audio` field instead of `images`, no tools | 0/10 |
-| `audio` field + tools | 0/10 |
-| both `images` and `audio` + tools | 0/10 |
-| no media at all + tools | 0/10 |
-
-Ollama has no `audio` message field: the `audio`-only cells answer identically
-to the no-media-at-all cell, so the field is silently dropped. And with `tools`
-declared, the `images` cell is likewise indistinguishable from sending no media
-- same refusal wording, same rate.
-
-The OpenAI-compatible endpoint does carry audio as audio
-(`/v1/chat/completions`, `input_audio` content part): 3/10 heard, and the
-misses are Russian near-misses rather than refusals, so the model is decoding
-something. It is worse than the native `images` path, and it collapses to 0/10
-the moment tools are attached - so a different transport does not escape the
-suppression either. (An audio `data:` URI passed as `image_url` is rejected:
-HTTP 400 `invalid image input`.)
-
-**The suppression is specific to audio, and one trivial tool is enough.**
-
-| request | result |
-|---|---|
-| image (PNG) + no tools | 10/10 described correctly |
-| image + 2 realistic tool declarations | 10/10 described correctly |
-| image + 1 no-op tool | 10/10 described correctly |
-| audio + no tools | 10/10 heard |
-| audio + 1 no-op tool (name `noop`, description "Does nothing.") | 0/10, 10/10 refusals |
-
-Images are untouched by tools. Audio dies from a single no-op declaration, so
-this is the tool-calling template path, not prompt-token volume, and not media
-in general. **A fix may keep tools on screenshot turns; only audio turns need
-them gone.**
-
-**Dropping tools is not sufficient - peeling the engine turn apart:**
-
-| request (all with the audio attached) | heard |
-|---|---|
-| full engine shape: system + time context + voice text + tools | 0/10 |
-| minus tools | 0/10 |
-| minus tools and time context | 0/10 |
-| minus tools and system prompt (time context + voice text) | 0/10 |
-| voice text alone | 0/10 |
-| system prompt + transcription instruction | 0/10 |
-| transcription instruction alone | **9/10** |
-
-**What in the accompanying text decides it - both language and task, and they
-compound:**
-
-| user text, no system message, no tools | heard |
-|---|---|
-| English "Transcribe this recording verbatim..." | **10/10** |
-| Russian translation of the same instruction | 2/10 |
-| English "Listen to this recording and answer what is said in it." | 4/10 |
-| Russian `VOICE_PLACEHOLDER_TEXT` | 0/10 |
-
-And the system message degrades it by its mere presence, before any content:
-
-| system message | heard |
-|---|---|
-| none | **10/10** |
-| empty string | 3/10 |
-| "Ты - Джарвис, голосовой ассистент." | 2/10 |
-| the full Jarvis persona | 0/10 |
-
-## The model was an uncontrolled variable, and the earlier tables are mislabeled
-
-`config.ui.toml` overrides `[backend].model` from `config.toml`. It currently
-holds `gemma4:12b-it-q4_K_M`, so every measurement here that loaded settings
-ran on that model, not on the `gemma4-12b-jarvis-free-mm:latest` named in
-`config.toml` and in this report's original header. Which model last night's
-tables actually used cannot be recovered - the effective value at the time is
-recorded nowhere. **Everything in the 2026-09-02 sections above is
-`gemma4:12b-it-q4_K_M` unless a row says otherwise.**
-
-The two models differ sharply on the best-case cell:
-
-| model | transcription instruction alone | + 1 no-op tool |
-|---|---|---|
-| `gemma4:12b-it-q4_K_M` (stock) | **10/10** | 0/10 |
-| `gemma4-12b-jarvis-free-mm:latest` (the `config.toml` model) | 0/10 | 0/10 |
-
-That looked like the custom model being deaf. It is not: its Modelfile bakes a
-long English SYSTEM prompt, which Ollama injects whenever the request sends no
-system message of its own. Overriding it with an *empty* system message lifts
-it to 4/10, the misses now near-miss transcripts rather than refusals - it
-hears the audio. So the custom model's apparent deafness is the same
-system-prompt suppression measured above, arriving through the Modelfile
-instead of through the request. The same effect from the other side: adding an
-empty system message to the stock model drops it from 10/10 to 3/10.
-
-## Standing conclusion
-
-One mechanism, several doors into it: **the model attends to attached audio
-only in a nearly bare request, and every layer of dialog structure placed
-around that audio costs attention** - a baked or explicit system message
-(empty ones included), tool declarations (one no-op is enough), an instruction
-in Russian rather than English, and asking it to *answer* rather than to
-*transcribe*. Each is independently costly; the engine's voice turn stacks all
-of them, which is why it is the worst configuration in the product for hearing
-the user. Images are unaffected by any of this.
-
-The only configuration measured reliable is the bare one the product already
-ships: a single user message carrying the English transcription instruction and
-the audio, no system prompt, no tools - `TranscriptionService`
-(`src/jarvis/journal/transcription.py`).
-
-**This makes the two-pass option the recommended direction**, and no longer one
-of three: pass 1 is exactly that already-working request and yields the words;
-pass 2 is an ordinary text dialog turn over the transcript, needing no audio
-and free to carry the persona, the time context and every tool. It converts an
-unreliable capability into a measured-reliable one, and makes the transcript a
-by-product of every voice turn instead of an explicit user action. Cost: a
-second request per voice turn, and the transcription pass's own error rate
-becomes the turn's error rate.
-
-Open, and deliberately not chased tonight: whether a shorter or English-side
-system prompt would be enough on its own (the gradient above says it would help
-but not restore 10/10), and whether any of this is specific to the gemma4
-family.
+- Audio continues to use the `images` field of native `/api/chat`; the project
+  day-0 transport decision is unchanged.
+- An `audio` message field is not a supported native Ollama transport. This is
+  independent of the rejected attention-suppression explanation.
+- Padding changed outcomes for one historical marginal clip, but that sweep
+  lacked the provenance controls of the corrected run. Treat it as a candidate
+  intervention for the next short-clip study, not an established root cause.
+- The earlier image/tool comparison was not repeated by the corrected audio
+  harness and is outside this report's supported conclusion.

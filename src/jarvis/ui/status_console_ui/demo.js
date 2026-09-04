@@ -338,12 +338,16 @@ function _demoConfigValues(bilingual) {
     vad: {
       threshold: 0.5,
       max_chunk_seconds: 30,
+      min_chunk_seconds: 3.0,
+      padding_noise_rms: 0.002,
       request_end_pause_seconds: 2.0,
       resume_cooldown_seconds: 1.0,
     },
     vad_ranges: {
       threshold: [0.0, 1.0],
       max_chunk_seconds: [1, 120],
+      min_chunk_seconds: [0.0, 30.0],
+      padding_noise_rms: [0.0, 0.1],
       request_end_pause_seconds: [0.1, 10.0],
       resume_cooldown_seconds: [0.0, 10.0],
     },

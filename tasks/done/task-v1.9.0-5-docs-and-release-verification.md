@@ -294,9 +294,9 @@ Task 4's handoff was owner-verified live on 2026-08-30
 required for release. Optional re-check:
 
 5.1. Opt in: add to `config.toml` under `[prompts]` (create the section if
-     absent; the feature is OFF without this line) the directive from
+     absent; the feature is OFF without this line) the English directive from
      `tasks/done/task-v1.9.0-4-voice-toggle-intent.md` (the ready-to-paste
-     `voice_intent_directive = "..."` one-liner in its handoff preamble),
+     `voice_intent_directive = """..."""` block in its handoff preamble),
      then restart Jarvis.
 
 5.2. Say "переключись на голосовой режим". Expect: no spoken/text answer to

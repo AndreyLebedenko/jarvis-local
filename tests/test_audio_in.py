@@ -108,7 +108,9 @@ def test_long_utterance_is_split_at_max_chunk_seconds():
 
 def test_chunk_wav_bytes_round_trip_to_same_sample_count(vad_model):
     samples = read_audio("audio/a2.wav", sampling_rate=SAMPLE_RATE)
-    chunker = VadChunker(VadSettings(), model=vad_model)
+    chunker = VadChunker(
+        VadSettings(min_chunk_seconds=0.0, padding_noise_rms=0.0), model=vad_model
+    )
 
     [chunk] = chunker.chunk(samples)
     decoded, sample_rate = sf.read(io.BytesIO(chunk.wav_bytes))
@@ -116,6 +118,27 @@ def test_chunk_wav_bytes_round_trip_to_same_sample_count(vad_model):
     assert sample_rate == SAMPLE_RATE
     expected_samples = int((chunk.end_seconds - chunk.start_seconds) * SAMPLE_RATE)
     assert abs(len(decoded) - expected_samples) <= 1
+
+
+def test_short_chunk_wav_is_padded_without_changing_speech_boundaries():
+    settings = VadSettings(
+        max_chunk_seconds=30,
+        min_chunk_seconds=3.0,
+        padding_noise_rms=0.002,
+    )
+    chunker = VadChunker(settings, model=_AlwaysSpeechModel())
+    samples = torch.zeros(SAMPLE_RATE)
+
+    [chunk] = chunker.chunk(samples)
+    decoded, sample_rate = sf.read(io.BytesIO(chunk.wav_bytes), dtype="float32")
+
+    assert sample_rate == SAMPLE_RATE
+    assert len(decoded) == SAMPLE_RATE * 3
+    assert chunk.start_seconds == pytest.approx(0.0, abs=0.05)
+    assert chunk.end_seconds == pytest.approx(1.0, abs=0.05)
+    assert np.sqrt(np.mean(decoded[:SAMPLE_RATE] ** 2)) == pytest.approx(
+        0.002, rel=0.25
+    )
 
 
 async def test_publish_from_samples_publishes_expected_chunks(vad_model):

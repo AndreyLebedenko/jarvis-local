@@ -144,6 +144,8 @@ class HotkeySettings:
 class VadSettings:
     threshold: float = 0.5
     max_chunk_seconds: int = 30
+    min_chunk_seconds: float = 3.0
+    padding_noise_rms: float = 0.002
     request_end_pause_seconds: float = 2.0
     resume_cooldown_seconds: float = 1.0
 
@@ -1824,6 +1826,26 @@ def _validate_settings(settings: Settings) -> None:
             "[history].reasoning_generation_reserve_tokens must fit "
             f"backend.num_ctx: {context_window_tokens} > {settings.backend.num_ctx}"
         )
+    if settings.vad.min_chunk_seconds < 0.0:
+        raise ConfigError(
+            "[vad].min_chunk_seconds must be non-negative, "
+            f"got {settings.vad.min_chunk_seconds}"
+        )
+    if settings.vad.min_chunk_seconds > 30.0:
+        raise ConfigError(
+            "[vad].min_chunk_seconds must not exceed the verified "
+            f"30 s audio clip cap, got {settings.vad.min_chunk_seconds}"
+        )
+    if settings.vad.padding_noise_rms < 0.0:
+        raise ConfigError(
+            "[vad].padding_noise_rms must be non-negative, "
+            f"got {settings.vad.padding_noise_rms}"
+        )
+    if settings.vad.padding_noise_rms > 0.1:
+        raise ConfigError(
+            "[vad].padding_noise_rms must be no greater than 0.1, "
+            f"got {settings.vad.padding_noise_rms}"
+        )
 
 
 def write_ui_config(
@@ -1886,6 +1908,8 @@ def write_ui_config(
             "[vad]",
             f"threshold = {vad.threshold}",
             f"max_chunk_seconds = {vad.max_chunk_seconds}",
+            f"min_chunk_seconds = {vad.min_chunk_seconds}",
+            f"padding_noise_rms = {vad.padding_noise_rms}",
             f"request_end_pause_seconds = {vad.request_end_pause_seconds}",
             f"resume_cooldown_seconds = {vad.resume_cooldown_seconds}",
         ]

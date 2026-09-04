@@ -880,6 +880,8 @@ function applyConfigValues(payload) {
   }
   document.getElementById("vadThreshold").value = payload.vad.threshold;
   document.getElementById("vadMaxChunk").value = payload.vad.max_chunk_seconds;
+  document.getElementById("vadMinChunk").value = payload.vad.min_chunk_seconds;
+  document.getElementById("vadPaddingNoiseRms").value = payload.vad.padding_noise_rms;
   document.getElementById("vadEndPause").value = payload.vad.request_end_pause_seconds;
   document.getElementById("vadCooldown").value = payload.vad.resume_cooldown_seconds;
   document.getElementById("ttsEnabled").checked = payload.tts.enabled;
@@ -1006,6 +1008,10 @@ function _configInputsValid() {
   valid = _numberInRange(
     document.getElementById("vadMaxChunk"), ranges.max_chunk_seconds) && valid;
   valid = _numberInRange(
+    document.getElementById("vadMinChunk"), ranges.min_chunk_seconds) && valid;
+  valid = _numberInRange(
+    document.getElementById("vadPaddingNoiseRms"), ranges.padding_noise_rms) && valid;
+  valid = _numberInRange(
     document.getElementById("vadEndPause"), ranges.request_end_pause_seconds) && valid;
   valid = _numberInRange(
     document.getElementById("vadCooldown"), ranges.resume_cooldown_seconds) && valid;
@@ -1073,6 +1079,8 @@ function applyConfigSelection() {
     vad: {
       threshold: Number(document.getElementById("vadThreshold").value),
       max_chunk_seconds: Math.round(Number(document.getElementById("vadMaxChunk").value)),
+      min_chunk_seconds: Number(document.getElementById("vadMinChunk").value),
+      padding_noise_rms: Number(document.getElementById("vadPaddingNoiseRms").value),
       request_end_pause_seconds: Number(document.getElementById("vadEndPause").value),
       resume_cooldown_seconds: Number(document.getElementById("vadCooldown").value),
     },

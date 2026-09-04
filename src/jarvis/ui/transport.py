@@ -255,6 +255,8 @@ def _parse_vad(raw: JSONValue) -> VadSettings | None:
     fields = {
         "threshold": float,
         "max_chunk_seconds": int,
+        "min_chunk_seconds": float,
+        "padding_noise_rms": float,
         "request_end_pause_seconds": float,
         "resume_cooldown_seconds": float,
     }

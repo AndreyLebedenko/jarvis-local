@@ -17,7 +17,7 @@ import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
 from jarvis.audio.devices import enumerate_input_devices, resolve_input_device
-from jarvis.audio.utils import samples_to_wav_bytes
+from jarvis.audio.utils import pad_samples_to_min_duration, samples_to_wav_bytes
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HotkeySettings, VadSettings
 from jarvis.inputs.hotkeys import HotkeyProvider, run_hotkey_provider
@@ -157,6 +157,12 @@ class VadChunker:
             start_sample = int(stamp["start"] * SAMPLE_RATE)
             end_sample = int(stamp["end"] * SAMPLE_RATE)
             segment = samples[start_sample:end_sample]
+            segment = pad_samples_to_min_duration(
+                segment,
+                SAMPLE_RATE,
+                min_duration_seconds=self._settings.min_chunk_seconds,
+                padding_noise_rms=self._settings.padding_noise_rms,
+            )
             chunks.append(
                 UtteranceChunk(
                     wav_bytes=samples_to_wav_bytes(segment, SAMPLE_RATE),
