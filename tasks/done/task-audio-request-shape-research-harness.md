@@ -1,6 +1,7 @@
 # Task: Reproducible audio request-shape research harness
 
-**Status:** Awaiting human review.
+**Status:** Completed. Owner reviewed the controlled 2026-09-03 results and
+closed the audio track on 2026-09-11.
 
 ## Summary
 

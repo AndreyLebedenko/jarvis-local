@@ -4,7 +4,15 @@
 tree), during the human-run verification of
 `tasks/done/story-microphone-device-identity.md`, step A4.
 **Reported by:** owner, 2026-07-25.
-**Status:** Open, and root-caused elsewhere. Updated 2026-09-02: the wording
+**Status:** Closed 2026-09-11 by the owner, together with its successor report
+`2026-09-01-request-shape-suppresses-audio-attention.md`. The controlled
+2026-09-03 study withdrew the "request shape suppresses audio attention"
+explanation quoted in the 2026-09-02 update below and narrowed the failure to
+short-clip fragility. Short microphone chunks are now padded before encoding
+(`4ce94aa`, released in v1.9.1). The owner's full end-to-end re-test found
+voice comprehension errors back at the pre-incident level. See the successor
+report's "Resolution" section.
+Superseded status (2026-09-02): open, and root-caused elsewhere. The wording
 fix (`tasks/task-voice-turn-audio-framing.md`, Option A) is **not** a fix for
 this bug. The acceptance session for it, running live first-turn refusals down,
 found something larger than any wording: **attention to attached audio is

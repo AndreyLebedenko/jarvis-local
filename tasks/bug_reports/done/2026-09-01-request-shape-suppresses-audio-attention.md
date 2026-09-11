@@ -10,9 +10,10 @@ changes, 2026-09-02 and 2026-09-03.
 
 **Reported by:** owner + agent, 2026-09-01 to 2026-09-03.
 
-**Status:** Open. The user-visible short-audio failure is reproduced, but no
-root cause or production fix is established. The earlier universal
-request-shape-suppression conclusion and two-pass recommendation are withdrawn.
+**Status:** Closed 2026-09-11 by the owner. Short-clip padding (`4ce94aa`,
+released in v1.9.1) brought user-visible voice errors back to the pre-incident
+level; see "Resolution". The earlier universal request-shape-suppression
+conclusion and two-pass recommendation remain withdrawn.
 
 ## User-visible symptom
 
@@ -257,6 +258,30 @@ predeclared scoring, and separate factors for clip boundary/padding, prompt
 language/task, system framing, and tools. The production answer task must be
 tested separately from verbatim transcription because its valid outcome metric
 is different.
+
+## Resolution (2026-09-11)
+
+The temporary decision above held: no request-shape or two-pass change shipped.
+Two follow-up studies (`task-audio-level-and-padding-study.md` and
+`task-audio-wav-subtype-decoder-study.md`) led to one production change:
+microphone chunks shorter than `[vad].min_chunk_seconds` are padded
+symmetrically with deterministic low-RMS white noise (`[vad].padding_noise_rms`)
+before WAV encoding. The change landed in `4ce94aa` and was released in v1.9.1.
+The architecture entry is in `PROJECT.md`, "Architecture (short
+microphone-audio padding, 2026-09-04)".
+
+The owner then re-tested end to end, by every available path. Voice
+comprehension errors still occur, but at the level observed before the
+2026-07-25 incident, not above it. The WAV subtype comparison found no
+practical difference between PCM16 and float32 payloads, so production keeps
+PCM16.
+
+What stays unresolved, and would justify a new report instead of reopening
+this one: model-internal short-audio fragility is mitigated, not explained, and
+this closure rests on the owner's end-to-end judgment, not on a new
+predeclared-scoring study. A regression above the pre-incident baseline, or a
+model change away from the Gemma 4 12B family, should start from the second
+study design described under "Temporary decision".
 
 ## Facts retained from earlier work
 
