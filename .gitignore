@@ -29,3 +29,4 @@ graphify-out/**
 /memory/
 examples/mcp/data/
 *.egg-info/
+manual_check_answer_revision_out/
