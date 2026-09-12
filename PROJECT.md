@@ -4856,6 +4856,17 @@ latency-for-quality trade.
   `journal_active_session_id` lambda pattern already used in
   `run_with_status_console()`).
 
+## v1.9.2 planning boundary (2026-09-12)
+
+The owner accepted `story-v1.9.2-local-generation-critique-integration.md`.
+`task-v1.9.2-1-local-answer-revision-spike.md` defines the next evaluation task;
+its numeric protocol must pass its own approval gate before live runs.
+The proposed local one/two/three-pass procedures are not implemented or verified.
+GLM via Ollama Cloud is approved as a developer-only preliminary rubric checker
+for approved nonpersonal spike cases, isolated from `src/jarvis`; real Journal
+samples stay local. This adds no runtime cloud capability and makes no quality
+claim. The active roadmap records the new v1.9.2 slot.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old

@@ -135,6 +135,17 @@ Open design questions:
 - How should ranking blend a locator match against a canonical-text match
   without implying equal epistemic status?
 
+## v1.9.2 - Local answer revision and review
+
+Accepted story, 2026-09-12: `story-v1.9.2-local-generation-critique-integration.md`.
+First task: `task-v1.9.2-1-local-answer-revision-spike.md`.
+Compare ordinary generation, independent self-revision, and critique/integration
+before choosing a production slice. GLM through Ollama Cloud is permitted only
+as an isolated spike rubric checker over approved nonpersonal cases; real Journal
+samples and the evaluated answer procedures stay local. Numeric experiment gates
+require approval before live execution. No runtime cloud adapter or second
+scheduler is introduced. Text success does not establish spoken-output quality.
+
 ## v1.9.x - First-pass canvas prompt experiments
 
 Purpose: test whether Text + voice improves when pass 1 knows, explicitly, that
