@@ -1,0 +1,11 @@
+{
+  "text": "В 4 KiB — 4096 байт, в 4 kB — 4000 байт.",
+  "thinking_chars": 811,
+  "wall_seconds": 6.88,
+  "eval_count": 338,
+  "prompt_eval_count": 1664,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "p01",
+  "stage": "pass1"
+}

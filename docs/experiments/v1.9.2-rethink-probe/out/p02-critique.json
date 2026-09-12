@@ -1,0 +1,11 @@
+{
+  "text": "VERDICT: OK\nANSWER: Задержка снизилась на 20%. При возврате с 200 мс к 250 мс она вырастет на 25%.",
+  "thinking_chars": 2199,
+  "wall_seconds": 14.87,
+  "eval_count": 764,
+  "prompt_eval_count": 1984,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "p02",
+  "stage": "critique"
+}

@@ -1,0 +1,11 @@
+{
+  "text": "Кэш растет внутри\nДлинный текст поглотит всё\nПамять на нуле",
+  "thinking_chars": 7357,
+  "wall_seconds": 60.87,
+  "eval_count": 3113,
+  "prompt_eval_count": 1688,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c01",
+  "stage": "draft-medium"
+}

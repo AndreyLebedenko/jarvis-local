@@ -1,0 +1,11 @@
+{
+  "text": "KV-cache — это как уже заложенный фундамент здания, позволяющий возводить новые этажи без необходимости каждый раз заново перестраивать основание.",
+  "thinking_chars": 7037,
+  "wall_seconds": 36.5,
+  "eval_count": 1854,
+  "prompt_eval_count": 1698,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c04",
+  "stage": "draft-medium"
+}

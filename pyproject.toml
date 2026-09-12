@@ -19,7 +19,10 @@ where = ["src"]
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["graphify-out", ".venv-mcp-*"]
+# docs/experiments holds archived one-off study scripts, kept byte-identical
+# to the run that produced their committed results. They are evidence, not
+# maintained code, so linting them would only invite edits that break that.
+extend-exclude = ["graphify-out", ".venv-mcp-*", "docs/experiments"]
 
 [tool.ruff.lint]
 select = [

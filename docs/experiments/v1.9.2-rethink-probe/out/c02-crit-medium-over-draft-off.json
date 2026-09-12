@@ -1,0 +1,11 @@
+{
+  "text": "",
+  "thinking_chars": 12412,
+  "wall_seconds": 78.56,
+  "eval_count": 4000,
+  "prompt_eval_count": 2046,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c02",
+  "stage": "crit-medium-over-draft-off"
+}

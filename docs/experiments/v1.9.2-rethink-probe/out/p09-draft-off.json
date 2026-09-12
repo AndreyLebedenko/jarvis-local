@@ -1,0 +1,11 @@
+{
+  "text": "Для реализации этих требований оптимально использовать схему с разделением на «сырые данные» и «обогащенные данные» внутри одной структуры, где поле transcript является опциональным.\n\nСхема сущности Event:\n\n- id: UUID (Primary Key)\n- timestamp: DateTime (Created at)\n- raw_audio_path: String (Путь к файлу или ссылка на объект в S3/Blob)\n- transcript: Text (Nullable)\n- metadata: JSONB (Дополнительные данные о сессии, устройстве и т.д.)\n\nЛогика работы:\n\n1. Append-only: При поступлении голосового запроса создается запись с id, timestamp и raw_audio_path. Поле transcript остается NULL.\n2. Постфактумная транскрипция: Когда транскриптор обрабатывает файл, он ищет запись по raw_audio_path или id и выполняет UPDATE только для поля transcript.\n3. Отсутствие миграций: Поскольку transcript изначально nullable, структура таблицы остается неизменной. Новые версии модели транскрибации просто заполняют это поле.\n4. Прозрачность для чтения: Читающий код обращается к полю transcript. Если оно NULL, код понимает, что транскрипция еще не готова (или не требуется), не заботясь о том, как именно данные попали в это поле.\n\nТехническая реализация (SQL пример):\nCREATE TABLE events (\n    id UUID PRIMARY KEY,\n    created_at TIMESTAMP NOT NULL,\n    raw_audio_path TEXT NOT NULL,\n    transcript TEXT,\n    metadata JSONB\n);\n\nДля обеспечения строгого append-only на уровне БД можно добавить триггер или использовать права доступа, запрещающие UPDATE и DELETE для всех колонок, кроме transcript.",
+  "thinking_chars": 0,
+  "wall_seconds": 7.63,
+  "eval_count": 389,
+  "prompt_eval_count": 689,
+  "think_param": false,
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "p09",
+  "stage": "draft-off"
+}

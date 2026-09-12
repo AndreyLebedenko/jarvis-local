@@ -1,0 +1,11 @@
+{
+  "text": "VERDICT: OK\nANSWER: KV-cache — это сохранение промежуточных состояний в конвейере производства, позволяющее не пересчитывать уже готовые детали при сборке следующего звена цепи.",
+  "thinking_chars": 1530,
+  "wall_seconds": 8.79,
+  "eval_count": 439,
+  "prompt_eval_count": 1987,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c04",
+  "stage": "crit-medium-over-draft-off"
+}

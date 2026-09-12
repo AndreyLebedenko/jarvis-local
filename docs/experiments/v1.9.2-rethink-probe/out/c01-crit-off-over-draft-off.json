@@ -1,0 +1,11 @@
+{
+  "text": "VERDICT: OK\nANSWER: Кэш растет в памяти,\nВидеокарта горит,\nПамять на нуле.",
+  "thinking_chars": 0,
+  "wall_seconds": 0.95,
+  "eval_count": 30,
+  "prompt_eval_count": 892,
+  "think_param": false,
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c01",
+  "stage": "crit-off-over-draft-off"
+}

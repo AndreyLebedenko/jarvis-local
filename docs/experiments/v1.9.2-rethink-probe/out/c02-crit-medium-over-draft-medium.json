@@ -1,0 +1,11 @@
+{
+  "text": "VERDICT: Черновик отсутствует в запросе.\nANSWER: Вы не предоставили текст черновика для проверки. Пожалуйста, вставьте его после строки \"Мой черновик ответа:\", чтобы я мог провести анализ на соответствие всем ограничениям.",
+  "thinking_chars": 11180,
+  "wall_seconds": 61.56,
+  "eval_count": 3139,
+  "prompt_eval_count": 1942,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "c02",
+  "stage": "crit-medium-over-draft-medium"
+}

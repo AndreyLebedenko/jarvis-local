@@ -135,20 +135,16 @@ Open design questions:
 - How should ranking blend a locator match against a canonical-text match
   without implying equal epistemic status?
 
-## v1.9.2 - Local answer revision and review
+## v1.9.2 - Local answer revision and review - CLOSED, UNREALISTIC
 
-Accepted story, 2026-09-12: `story-v1.9.2-local-generation-critique-integration.md`.
-Staged reduction accepted 2026-09-12 (`spike-1.9.2-reduction-proposal.md`):
-stage 0 damage/inertness probe over Journal turns first
-(`task-v1.9.2-9-stage0-damage-and-inertness-probe.md`), local-only, no cloud;
-the repair-measurement apparatus (contract source `task-v1.9.2-1` plus cards
-`-2`..`-6`, `-8`, deferred) runs only if stage 0's stop rule authorizes it.
-Compare ordinary generation, independent self-revision, and critique/integration
-before choosing a production slice. GLM through Ollama Cloud is permitted only
-as an isolated spike rubric checker over approved nonpersonal cases; real Journal
-samples and the evaluated answer procedures stay local. Numeric experiment gates
-require approval before live execution. No runtime cloud adapter or second
-scheduler is introduced. Text success does not establish spoken-output quality.
+Closed 2026-09-12, the day it was authorized: measured and refuted. A second
+local pass cannot exceed the reasoning level it runs at, and raising that level
+is cheaper than running twice. Closure record and numbers:
+`story-v1.9.2-local-generation-critique-integration.md`; raw study in
+`docs/experiments/v1.9.2-rethink-probe/`; settled facts in `PROJECT.md`.
+
+Nothing from this slot carries forward. The GLM-as-rubric-checker permission
+lapses with it. No runtime change was made.
 
 ## v1.9.x - First-pass canvas prompt experiments
 
