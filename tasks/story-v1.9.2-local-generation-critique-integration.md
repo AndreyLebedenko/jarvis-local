@@ -5,10 +5,14 @@ refuted, not deferred and not blocked. Do not re-open without evidence that
 contradicts the numbers below.
 **Evidence:** `docs/experiments/v1.9.2-rethink-probe/` - 70 local calls,
 scripts, raw outputs.
-**Planning history:** the original story text, its notes, the staged reduction
-proposal and the eight task cards (`task-v1.9.2-1`, `-3`..`-9`) were deleted
-from the working tree on closure and remain in git history at `eb24bf9` and
-earlier.
+**Planning history:** the original story text, the eight task cards
+(`task-v1.9.2-1`, `-3`..`-9`), the spike protocol story, the staged reduction
+proposal and its notes, the stage-0 sampling handoff and the stage-0 stop-rule
+record were deleted from the working tree on closure. They remain in git
+history at `eb24bf9` and earlier. They described an evaluation ladder built
+before anyone measured whether it could run, and a handoff written as live
+instructions for a protocol that no longer exists; left in `tasks/`, they
+invite agents to take their frozen parameters as given.
 
 ## 1. What we thought
 
