@@ -3,7 +3,8 @@
 **Status:** In Progress.
 **Active task:** `task-v1.9.2-9-stage0-damage-and-inertness-probe.md` (stage 0
 of the accepted reduction proposal
-`spike-1.9.2-reduction-proposal.md`).
+`spike-1.9.2-reduction-proposal.md`; owner authorization to begin
+stage 0 recorded 2026-09-12).
 **Deferred slices:** `task-v1.9.2-2` through `-6` and `-8` are deferred drafts
 of stage 1 (repair measurement), retained for reuse if stage 0 authorizes it;
 `task-v1.9.2-7` is superseded by stage 0. Contract source
