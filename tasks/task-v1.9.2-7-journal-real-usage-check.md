@@ -1,7 +1,13 @@
 # Task v1.9.2-7: Local Journal real-usage check
 
-**Status:** Planned. Blocked on G2 computation (may run in parallel with the
-owner's G2 review only if the owner says so; default is after).
+**Status:** Superseded 2026-09-12 by stage 0 (card v1.9.2-9) under the
+accepted reduction proposal (`spike-1.9.2-reduction-proposal.md`). The
+Journal-sample idea is absorbed, with its task changed from regression check
+to damage-and-inertness probe; this card's response-mode exclusion rule and
+reasoning-level recording requirement are superseded accordingly - stage 0
+hand-marks the mode during pre-marking and drops the reasoning-level
+requirement (the schema gap is filed in
+`tasks/bug_reports/2026-09-12-journal-turn-does-not-record-response-mode-or-reasoning-level.md`).
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, Phase 5.
 **Depends on:** task-v1.9.2-6 (audited held-out outcome).

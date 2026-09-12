@@ -1,6 +1,10 @@
 # Task v1.9.2-3: Harness and pure verification
 
-**Status:** Planned.
+**Status:** Deferred 2026-09-12. Retained as the draft of stage 1 (repair
+measurement) under the accepted reduction proposal
+(`spike-1.9.2-reduction-proposal.md`); the CLI contract, ledger, cloud helper
+and scoring plumbing described here belong to stage 1. Stage 0 (card
+v1.9.2-9) uses its own smaller local-only harness with a separate card.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, Phase 1.
 **Depends on:** task-v1.9.2-2 (protocol, corpus, sidecar, egress manifest exist).
@@ -20,10 +24,17 @@ tests against fixtures and fake clients.
 
 1. `manual/manual_check_answer_revision.py`: human-run entry point following
    the `python -m manual.manual_check_*` convention. Subcommands exactly as
-   the spike card's CLI contract states: `validate`, `run --phase
-   pilot|held-out|journal`, `score-cloud --run-id ... --approve-manifest ...`,
-   `freeze`, `report`. Adjust the spike card only if the implemented parser
-   needs a different approved contract.
+   the spike card's CLI contract states: `validate`,
+   `run --phase pilot-framing|pilot-continuation|held-out|journal`,
+   `score-cloud --run-id ... --approve-manifest ...`, `select-framing`,
+   `freeze`, `report`. The pilot is split into two phases with an explicit
+   framing-selection seam: `select-framing` applies the frozen rule to the
+   scored sheets, records the choice and its provenance (measured or
+   tiebreak) into the run ledger and protocol sidecar, refuses to run while
+   decisive sheets are unscored or disputed, and is offline; the held-out
+   `run` reads the selected framing from the sidecar and fails validation if
+   absent. Adjust the spike card only if the implemented parser needs a
+   different approved contract.
 2. `manual/answer_revision_cloud_checker.py`: isolated cloud transport module
    for the GLM checker, never imported directly or transitively by
    `src/jarvis` (enforced by a pure test).
@@ -57,11 +68,15 @@ tests against fixtures and fake clients.
 ## Pure test coverage (required)
 
 Composition/isolation of role requests; budgets/caps; deterministic matrix
-counts; seed assignment; scorer parsing; severity/scoring logic; interruption
-and resume; no duplicate dispatch/publication; secret redaction; no runtime
-import of the cloud helper; one fake-client end-to-end functional test
-exercising all selected arms and the report path. No test invokes local or
-cloud inference.
+counts (including the split pilot phases: 24 framing-comparison calls, 18
+pilot-continuation calls, 18 injected-diagnostic calls); seed assignment;
+scorer parsing; severity/scoring logic; the `select-framing` rule (fewer
+introduced material errors, then more corrected defects, ties keep
+first-person) and its refusal on unscored/disputed decisive sheets; sidecar
+write-back and read-back of the selected framing; interruption and resume; no
+duplicate dispatch/publication; secret redaction; no runtime import of the
+cloud helper; one fake-client end-to-end functional test exercising all
+selected arms and the report path. No test invokes local or cloud inference.
 
 ## Boundary
 

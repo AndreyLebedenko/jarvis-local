@@ -1,6 +1,11 @@
 # Task v1.9.2-2: Spike protocol and corpus preparation
 
-**Status:** Planned.
+**Status:** Deferred 2026-09-12. Retained as the draft of stage 1 (repair
+measurement) under the accepted reduction proposal
+(`spike-1.9.2-reduction-proposal.md`); the authored corpus, rubrics, protocol
+sidecar and egress manifest described here belong to stage 1 and are not
+prepared while stage 0 (card v1.9.2-9) is the active slice. Do not start this
+card until stage 0's outcome authorizes stage 1.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, Phase 0.
 **Created:** 2026-09-12.
@@ -37,8 +42,9 @@ this card adds no new thresholds.
    parsed configuration.
 4. `tasks/v1.9.2-spike-cloud-manifest.json`: explicit cloud-eligible
    nonpersonal case/packet allowlist.
-5. `.gitignore` rule `/manual_check_answer_revision_out/` added and verified
-   before any payload-writing code exists.
+5. `.gitignore` rule `manual_check_answer_revision_out/` added and verified
+   before any payload-writing code exists (no leading slash, matching the
+   file's existing raw-output convention).
 
 ## Content rules
 
@@ -70,19 +76,30 @@ this card adds no new thresholds.
 
 ## Open questions fixed for G0 decision (owner)
 
-These are raised by the review notes (`spike-1.9.2-tasks-notes.md`, findings
-19 and 23); the protocol drafts the owner's chosen answers, G0 approves them:
+These are raised by the review notes (`spike-1.9.2-tasks-notes.md` findings
+19 and 23; `spike-1.9.2-tasks-notes-2.md` findings 30 and 33); the protocol
+drafts the owner's chosen answers, G0 approves them:
 
 1. **G2 introduced-defect denominator.** Whether the zero-introduced-
    material/critical-defects test runs over all 18 held-out cases or over
    15 excluding correct-but-suspicious, with a narrowed "qualifies except
    for correct-but-suspicious inputs" outcome in the latter case. Stress-
    category results are computed and reported separately under either choice.
-2. **Framing evidence budget.** Whether to add 2-3 development cases
-   specifically for the first-person/neutral framing comparison (+14 local
-   calls against the 260 ceiling that currently forbids exploratory
-   variants), or to keep 6 cases and record the framing as "selected by
+2. **Framing evidence budget.** Whether to add development cases
+   specifically for the first-person/neutral framing comparison - +14 local
+   calls for 2 cases or +21 for 3, either of which requires an explicit
+   amendment of the 260-call ceiling, which currently forbids exploratory
+   variants - or to keep 6 cases and record the framing as "selected by
    tiebreak, not tested" in the report.
+3. **G2 latency-ratio anchor.** The proposed table divides by baseline B's
+   median; B is expected to be roughly 5x A in cost with no quality gain
+   (pre-registered expectation), so the ratio rows would pass automatically
+   and bind nothing. Proposed amendment: anchor full-latency ratios to A's
+   median (e.g. R_full <= 3.0 x A median, I_full <= 4.0 x A median, keeping
+   the existing I <= 1.8 x R incremental row and the absolute p90 caps of
+   60 s / 90 s), keep the B ratios as reported documentation columns, and
+   make the absolute p90 caps the operative cost gate. Numbers are proposals;
+   the owner sets them at G0.
 
 ## Boundary
 

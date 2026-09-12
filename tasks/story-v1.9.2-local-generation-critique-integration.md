@@ -1,16 +1,29 @@
 # Story v1.9.2: Local answer revision and review
 
 **Status:** In Progress.
-**Active task:** `task-v1.9.2-1-local-answer-revision-spike.md`.
-**Approval:** Story accepted by owner on 2026-09-12; numeric spike protocol awaits its own gate.
+**Active task:** `task-v1.9.2-9-stage0-damage-and-inertness-probe.md` (stage 0
+of the accepted reduction proposal
+`spike-1.9.2-reduction-proposal.md`).
+**Deferred slices:** `task-v1.9.2-2` through `-6` and `-8` are deferred drafts
+of stage 1 (repair measurement), retained for reuse if stage 0 authorizes it;
+`task-v1.9.2-7` is superseded by stage 0. Contract source
+`task-v1.9.2-1-local-answer-revision-spike.md` stays live as the stage 1
+draft; its gates apply to stage 1, not stage 0.
+**Approval:** Story accepted by owner on 2026-09-12; reduction proposal
+accepted 2026-09-12; stage 0's frozen parameters are approved in the proposal
+and re-stated in the stage-0 card.
 **Created:** 2026-09-12.
 **Updated:** 2026-09-12.
 **Predecessors:** `story-v1.9.0-response-modes.md` and
 `story-v1.9.1-provenance-aware-indexing.md`.
 **Review input:** `story-v1.9.2-local-generation-critique-integration-notes.md`.
 **Planning context:** `roadmap-v1.9-v2.0.md`, `VISION.md`, and `PROJECT.md`.
-**Current boundary:** Accepted planning; the active spike card defines preparation and gates. No runtime implementation or live evaluation run,
-production configuration change, or later implementation slice is authorized by story acceptance alone.
+**Current boundary:** Accepted planning, then accepted staged reduction. The
+active stage-0 card defines the only authorized live step (a local-only
+damage/inertness probe over Journal turns). No runtime implementation or live
+evaluation run beyond stage 0's approved scope, no production configuration
+change, and no later implementation slice is authorized by story acceptance
+or by the reduction proposal alone.
 The filename retains its original identity; product naming remains open.
 
 ## Goal and design position

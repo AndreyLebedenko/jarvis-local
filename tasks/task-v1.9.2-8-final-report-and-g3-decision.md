@@ -1,6 +1,10 @@
 # Task v1.9.2-8: Final spike report and owner decision (G3)
 
-**Status:** Planned. Blocked on tasks v1.9.2-6 and v1.9.2-7.
+**Status:** Deferred 2026-09-12 in the full form below, under the accepted
+reduction proposal (`spike-1.9.2-reduction-proposal.md`). The decision-report
+function stays live in reduced form: stage 0 (card v1.9.2-9) produces its own
+small decision record per the stop rule; this card's full report content
+applies only if stage 1 is authorized.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, G3 and Acceptance checklist.
 **Depends on:** task-v1.9.2-6 (G2), task-v1.9.2-7 (Journal check).
@@ -19,6 +23,14 @@ owner's explicit G3 choice among the three predeclared outcomes.
 
 - All arms and exclusions with score denominators; case/repeat outcomes;
   corrected and introduced errors by severity; unnecessary edits.
+- Conditional repair rate per strategy (repaired defects divided by defective
+  A drafts) alongside whole-answer end-to-end quality; the story requires
+  these two quantities to be distinguished.
+- The defective-A-draft counts for development (G1) and held-out (G2); if the
+  held-out count is below the win threshold, the outcome is reported as
+  inconclusive/underpowered - a ceiling effect of the corpus, not evidence
+  against the mechanism - inside outcome 3 below, never filed as
+  nonqualification.
 - Checker calibration and audit results, drift/version limits.
 - Actual cost, latency, token usage, and consumed human time.
 - Cloud privacy-policy reference/date and egress manifest summary.
@@ -48,7 +60,11 @@ One of exactly three outcomes per strategy:
    remains a separate release gate).
 2. **Does not meet the gate** in the tested scope; ordinary single-pass
    behavior is retained.
-3. **Inconclusive/deferred** with one specific next question.
+3. **Inconclusive/deferred** with one specific next question. The
+   inconclusive label covers an underpowered corpus (win threshold
+   unreachable because natural drafts were mostly correct) as well as
+   missing evidence; the specific next question then names the corpus
+   amendment or the follow-up measurement.
 
 Record: no broker, settings UI, or production three-pass work starts as part
 of this spike regardless of outcome.

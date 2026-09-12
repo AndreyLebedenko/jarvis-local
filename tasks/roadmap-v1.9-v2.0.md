@@ -138,7 +138,11 @@ Open design questions:
 ## v1.9.2 - Local answer revision and review
 
 Accepted story, 2026-09-12: `story-v1.9.2-local-generation-critique-integration.md`.
-First task: `task-v1.9.2-1-local-answer-revision-spike.md`.
+Staged reduction accepted 2026-09-12 (`spike-1.9.2-reduction-proposal.md`):
+stage 0 damage/inertness probe over Journal turns first
+(`task-v1.9.2-9-stage0-damage-and-inertness-probe.md`), local-only, no cloud;
+the repair-measurement apparatus (contract source `task-v1.9.2-1` plus cards
+`-2`..`-6`, `-8`, deferred) runs only if stage 0's stop rule authorizes it.
 Compare ordinary generation, independent self-revision, and critique/integration
 before choosing a production slice. GLM through Ollama Cloud is permitted only
 as an isolated spike rubric checker over approved nonpersonal cases; real Journal

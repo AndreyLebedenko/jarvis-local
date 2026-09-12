@@ -3,8 +3,29 @@
 **Status:** Planned. Preparation authorized by the accepted story; live execution
 is blocked on gates G0 and G1. Numeric values below are proposals for G0, not
 already approved merely because this planning card is committed.
+**Staged reduction, accepted 2026-09-12:** the single large experiment
+described below is deferred in favor of the staged shape in
+`spike-1.9.2-reduction-proposal.md`. Stage 0 (card v1.9.2-9) is the only
+authorized step now. This card remains the contract source and draft for
+stage 1 (repair measurement); its gates G0/G1/G2 apply to stage 1 if and when
+stage 0's stop rule authorizes it, not to stage 0.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Created:** 2026-09-12.
+**Lifecycle:** This card is the contract source for cards v1.9.2-2 through -8
+and stays in `tasks/` with the story; it moves to `tasks/done/` only when card
+v1.9.2-8 closes, never independently.
+**Revision 2026-09-12 (review-notes-2 absorption; uncommitted corrections
+pending owner review):** phase 2 step order corrected - GLM calibration and
+development/injected sheet scoring precede the framing-dependent calls
+(finding 26); GLM named as the development/injected sheet scorer with human
+adjudication (finding 25); the pilot CLI is split with an explicit
+framing-selection seam (finding 27); the high-reasoning revision condition is
+re-anchored to an evaluable pilot latency bound (finding 31); G1/G2
+underpowered-corpus reporting and conditional repair rate added (finding 29);
+the raw-output ignore rule follows the `.gitignore` convention without a
+leading slash (smaller note). The G2 latency-ratio anchor is a G0 decision
+drafted in card 2 (finding 30); G2's introduced-defect denominator remains a
+G0 decision (finding 19).
 **Current boundary:** Prepare a reproducible developer-only comparison, obtain
 protocol approval, hand over live commands, analyze returned evidence, and stop
 for the owner's decision. No production feature implementation in this card.
@@ -58,7 +79,9 @@ they already exist. Use UTF-8 explicitly in Windows file operations.
 - `tasks/v1.9.2-spike-report.md`: sanitized outcome tables and decision record.
 - `manual_check_answer_revision_out/<run-id>/`: durable raw packets, responses,
   score sheets, local-only Journal cases and run ledger. Add and verify
-  `/manual_check_answer_revision_out/` in `.gitignore` before writing payloads.
+  `manual_check_answer_revision_out/` in `.gitignore` before writing payloads
+  (matching the file's existing convention of raw-output entries without a
+  leading slash).
 
 A case has ID, source class, split, original request, evidence E, constraints,
 allowed answer alternatives, expected properties, forbidden errors, severity,
@@ -173,7 +196,10 @@ if the implementation needs a different approved contract.
 
 ```powershell
 python -m manual.manual_check_answer_revision validate --protocol tasks/v1.9.2-spike-protocol.md
-python -m manual.manual_check_answer_revision run --phase pilot --run-id v192-pilot-01
+python -m manual.manual_check_answer_revision run --phase pilot-framing --run-id v192-pilot-01
+python -m manual.manual_check_answer_revision score-cloud --run-id v192-pilot-01 --approve-manifest tasks/v1.9.2-spike-cloud-manifest.json
+python -m manual.manual_check_answer_revision select-framing --run-id v192-pilot-01
+python -m manual.manual_check_answer_revision run --phase pilot-continuation --run-id v192-pilot-01
 python -m manual.manual_check_answer_revision score-cloud --run-id v192-pilot-01 --approve-manifest tasks/v1.9.2-spike-cloud-manifest.json
 python -m manual.manual_check_answer_revision freeze --run-id v192-pilot-01
 python -m manual.manual_check_answer_revision run --phase held-out --run-id v192-heldout-01
@@ -181,6 +207,16 @@ python -m manual.manual_check_answer_revision score-cloud --run-id v192-heldout-
 python -m manual.manual_check_answer_revision run --phase journal --run-id v192-journal-01
 python -m manual.manual_check_answer_revision report --protocol tasks/v1.9.2-spike-protocol.md
 ```
+
+`pilot-framing` covers the framing-comparison batch (A, B, revision A,
+revision B per case); `pilot-continuation` covers high-reasoning revision, C,
+I, and the injected diagnostics after the framing is selected. `select-framing`
+applies the frozen selection rule to the scored sheets, records the choice and
+its provenance (measured or tiebreak) into the run ledger and the protocol
+sidecar, and refuses to run while decisive sheets are unscored or disputed.
+The held-out `run` reads the selected framing from the sidecar and fails
+validation if it is absent. `select-framing` is offline. Adjust this card if
+the implemented parser needs a different approved contract.
 
 Validation, freeze and report are offline. All `run` and `score-cloud` commands
 are human-run. Use explicit `--resume` only after reviewing an interrupted ledger;
@@ -192,29 +228,60 @@ in the final handoff after checking the official API docs; never embed its value
 in arguments, protocol, source, or logs. No live command is authorized by this card
 until the stated gates have passed.
 
-## Phase 2: development pilot and checker calibration (human-run)
+## Phase 2: checker calibration, development pilot, and diagnostics (human-run)
 
-For each of 6 development cases run: A generation, B high baseline, revision A,
-revision B, high-reasoning revision using the better framing, C and I. Select the
-framing after the ordinary A/B revision comparison, before high-revision calls.
-This is 7 local calls/case = 42. Generate D once and reuse it. Choose the framing
-by fewer introduced material errors, then more corrected defects; ties keep
-first-person A. Choose high revision only if it corrects at least one additional
-development material error, adds none, and satisfies the two-pass latency bound.
-No further prompt tuning in this protocol version. Record this selection as
-exploratory, not confirmation evidence.
+Revision 2026-09-12: calibration and sheet scoring moved ahead of the
+framing-dependent calls, so the checker is validated before its scores are
+relied on. GLM scores the development and injected final sheets; the human
+adjudicates disputes. Phase 2 consumption: 62 local calls (2 preflight + 42
+development + 18 injected) and 69 cloud calls (1 connectivity probe + 20
+calibration + 36 development sheets + 12 injected sheets).
 
-Run the 6 fixed injected candidates through selected R and C/I: 18 local calls.
-Do not count their fabricated initial generation as a live call or as a naturally
-occurring defect. Keep their scores out of the held-out gate.
+Order of execution:
 
-Calibrate GLM against the 20 human-scored sheets before relying on its scores.
-No preference ranking. Record item-level true/false positives/negatives and
-unclear outputs, separately on decisive items. Proposed calibration pass:
-zero missed material/critical defects, at most 1 false defect sheet out of 10
-correct sheets, at least 90% determinate item agreement, and at most 2 unclear
-sheets out of 20. These are operational acceptance rules on this sample, not
-proof of a small population error rate. Human adjudication overrides GLM.
+1. Preflight probes (2 local calls): record model version/digest/template,
+   context capacity, effective request options, baseline A's reasoning level.
+2. GLM calibration (20 cloud calls over preauthored sheets) and the synthetic
+   connectivity probe (1 cloud call). Calibration needs no development output;
+   a failed calibration stops before the local budget is spent, for a revised
+   proposal or an owner-approved human-scoring fallback - uncalibrated GLM
+   scores are never relied on.
+3. Framing comparison batch: per case - A generation, B high baseline,
+   revision A, revision B (4 local calls x 6 = 24). Generate D once and reuse
+   it. The selected R framing is recorded through the CLI's explicit
+   selection step (see the CLI contract), which applies the frozen rule to
+   GLM-scored sheets: fewer introduced material errors, then more corrected
+   defects; ties keep first-person A. The choice is recorded as exploratory,
+   not confirmation evidence.
+4. Pilot continuation: high-reasoning revision using the better framing, C and
+   I (3 local calls x 6 = 18). Choose high revision only if it corrects at
+   least one additional development material error, adds none, and satisfies
+   the pilot latency bound below. No further prompt tuning in this protocol
+   version.
+5. Injected diagnostics: 6 fixed candidates through selected R and C/I
+   (3 calls x 6 = 18 local calls). Do not count their fabricated initial
+   generation as a live call or as a naturally occurring defect. Keep their
+   scores out of the held-out gate.
+6. GLM scores all 36 development and 12 injected final sheets; human
+   adjudication overrides GLM on disputes. Record per-stage timings and
+   scoring minutes/sheet; derive whether the full matrix fits the agreed
+   owner-time and machine-time budgets.
+
+Pilot latency bound (replaces the unevaluable held-out ratio reference):
+choose high revision only if its full user latency (A + R_high) on
+development cases is at most 2.5 x the development B median and at most
+60 seconds absolute.
+
+Underpowered-corpus check (G1 input): report the count of development cases
+whose natural A draft violated at least one material rubric item. If fewer
+than 3 development drafts contain a material defect, flag the corpus as
+underpowered for the win threshold before any held-out calls are spent.
+
+Calibration acceptance rules: zero missed material/critical defects, at most
+1 false defect sheet out of 10 correct sheets, at least 90% determinate item
+agreement, and at most 2 unclear sheets out of 20. These are operational
+acceptance rules on this sample, not proof of a small population error rate.
+Human adjudication overrides GLM.
 
 ### G1: feasibility and freeze (owner)
 
@@ -226,6 +293,9 @@ explained before proceeding. Systematic cap censoring or scoring unreliability
 requires a revised protocol, not trimming the failed outputs. If GLM fails,
 reduce to a human-scoreable proposal or stop inconclusive. No automatic fallback.
 Freeze all prompts/options, rubric versions and thresholds before held-out output.
+Also confirm the underpowered-corpus flag: if fewer than 3 development drafts
+contained a material defect, held-out execution is deferred until the owner
+approves proceeding anyway or amends the corpus.
 
 ## Phase 3: held-out paired experiment (human-run)
 
@@ -279,6 +349,19 @@ critical = an error the case rubric explicitly identifies as unacceptable for it
 hypothetical consequence. No medical/legal/high-impact user decisions are executed.
 Critical vetoes are never averaged away. A strategy meeting counts on these small
 sets qualifies only for a bounded text implementation proposal, not default-on use.
+
+Reachability and conditional repair reporting (G2 inputs): count held-out
+A drafts (case x repeat) that violated at least one material rubric item. If
+fewer than 3 such drafts exist, the win threshold was unreachable and the
+outcome is recorded as inconclusive/underpowered, never as nonqualification -
+a ceiling is a property of the corpus, not evidence against the mechanism.
+Report the conditional repair rate: defects repaired by each strategy divided
+by the number of defective A drafts, alongside the whole-answer end-to-end
+quality figures. The latency-ratio rows above are anchored to baseline B's
+median, which is expected to be degenerate (pre-registered expectation);
+their operative reading and possible re-anchoring to A are the G0 decision
+drafted in card 2 - until then the absolute p90 caps are the operative cost
+gate and the B ratios are reported as documentation columns.
 
 ## Phase 5: small local real-usage check (human)
 

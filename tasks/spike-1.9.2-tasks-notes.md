@@ -1,7 +1,11 @@
 # Review notes: v1.9.2 spike task cards
 
-**Status:** Agent review of the first task-card set. Input for owner review, not
-a decision record.
+**Status:** Agent review of the first task-card set. Retained as the record of
+why the cards changed, not a list of open defects. Findings 18, 20 and 24 were
+fixed in the card set after this review; finding 19 became an explicit G0
+decision in card 2 and finding 23 likewise (see the "Status of findings 18-24"
+section in `spike-1.9.2-tasks-notes-2.md` for the per-finding status). Input
+for owner review, not a decision record.
 **Created:** 2026-09-12.
 **Reviewed documents:** `task-v1.9.2-1-local-answer-revision-spike.md` (committed
 in `cd03eed`) and `task-v1.9.2-2` through `-8` (uncommitted at review time).

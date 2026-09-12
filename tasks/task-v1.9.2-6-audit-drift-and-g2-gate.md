@@ -1,6 +1,10 @@
 # Task v1.9.2-6: Human audit, drift check, and G2 gate
 
-**Status:** Planned. Blocked on complete held-out evidence from task v1.9.2-5.
+**Status:** Deferred 2026-09-12. Retained as the draft of stage 1 (repair
+measurement) under the accepted reduction proposal
+(`spike-1.9.2-reduction-proposal.md`); the G2 numeric table is superseded for
+the immediate experiment by stage 0's stop rule (card v1.9.2-9) and would be
+re-derived for stage 1 on its own G0 gate if stage 1 is authorized.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, Phase 4 and G2.
 **Depends on:** task-v1.9.2-5 (complete held-out run).
@@ -45,10 +49,16 @@ the frozen table to audited data:
 - Complete 18 cases x 2 repeats required for an affirmative outcome; missing
   cases give inconclusive, with failure rates reported.
 - The introduced material/critical defect test uses the denominator fixed at
-  G0 (all 18 cases, or 18 excluding correct-but-suspicious with a narrowed
+  G0 (all 18 cases, or 15 excluding correct-but-suspicious with a narrowed
   "qualifies except for correct-but-suspicious inputs" outcome). Whichever
   denominator the protocol freezes, the stress-category outcomes are still
   computed and reported separately.
+- Reachability: count held-out A drafts (case x repeat) that violated at
+  least one material rubric item. If fewer than 3 such drafts exist, the win
+  threshold was unreachable; the outcome is recorded as inconclusive/
+  underpowered with the corpus ceiling stated - never as nonqualification.
+- Report the conditional repair rate per strategy: repaired defects divided
+  by defective A drafts, alongside whole-answer end-to-end quality.
 - Critical vetoes are never averaged away. Severity per the frozen rubric.
 - Meeting the counts qualifies a strategy only for a bounded text-slice
   proposal, never default-on use.

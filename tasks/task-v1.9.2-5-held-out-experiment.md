@@ -1,6 +1,10 @@
 # Task v1.9.2-5: Held-out paired experiment
 
-**Status:** Planned. Blocked on G1 freeze.
+**Status:** Deferred 2026-09-12. Retained as the draft of stage 1 (repair
+measurement) under the accepted reduction proposal
+(`spike-1.9.2-reduction-proposal.md`); the three-pass comparisons described
+here are additionally conditional on stage 1 showing two-pass value
+(stage 2 of the proposal), and deferral there is not refutation.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Spike card (contract source):** `task-v1.9.2-1-local-answer-revision-spike.md`, Phase 3.
 **Depends on:** task-v1.9.2-4 (G1 freeze recorded).
