@@ -1,9 +1,10 @@
 # Task v1.9.2-9: Stage 0 damage and inertness probe
 
-**Status:** Planned. Frozen parameters approved by the owner with the
-reduction proposal (`spike-1.9.2-reduction-proposal.md`); the agent prepares
-harness, sampling handoff, and scoring template - all live steps are
-human-run.
+**Status:** Planned, not started; deliberately held back by the owner
+(2026-09-12) until more data accumulates - the card is accepted as written,
+but work on it is not authorized yet. When the owner green-lights it, this
+card is the working contract and the frozen parameters below are re-read
+against the then-current configuration before the run.
 **Story:** `story-v1.9.2-local-generation-critique-integration.md`.
 **Reduction proposal:** `spike-1.9.2-reduction-proposal.md` (accepted
 2026-09-12; this card implements its stage 0).
