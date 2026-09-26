@@ -1,0 +1,11 @@
+{
+  "text": "VERDICT: OK\nANSWER: В 4 KiB — 4096 байт, в 4 kB — 4000 байт.",
+  "thinking_chars": 1481,
+  "wall_seconds": 11.15,
+  "eval_count": 558,
+  "prompt_eval_count": 1941,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "p01",
+  "stage": "critique"
+}

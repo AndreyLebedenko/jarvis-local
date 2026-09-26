@@ -1,0 +1,11 @@
+{
+  "text": "Задержка снизилась на 20%.\nПри возврате с 200 мс к 250 мс она вырастет на 25%.",
+  "thinking_chars": 2935,
+  "wall_seconds": 20.43,
+  "eval_count": 1051,
+  "prompt_eval_count": 1696,
+  "think_param": "medium",
+  "model": "gemma4:12b-it-q8_0",
+  "case_id": "p02",
+  "stage": "pass1"
+}

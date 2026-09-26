@@ -4856,6 +4856,36 @@ latency-for-quality trade.
   `journal_active_session_id` lambda pattern already used in
   `run_with_status_console()`).
 
+## v1.9.2 closed as unrealistic (2026-09-12) - do not re-litigate
+
+An independent second local pass over a finished draft ("Rethink") was measured
+and refuted the same day it was authorized. Closure record and numbers:
+`tasks/story-v1.9.2-local-generation-critique-integration.md`; raw study in
+`docs/experiments/v1.9.2-rethink-probe/`.
+
+Verified facts from that study, with the production `[backend]` options and the
+production-composed system prompt on `gemma4:12b-it-q8_0`:
+
+- Reasoning level 2 already performs the second look. `.jarvis/prompts/think-level-2.md`
+  specifies orthogonal self-verification and an anti-sycophancy gate, so an
+  external pass with the same weights over the same evidence adds nothing:
+  10 of 10 answers unchanged, and it missed the one defect present.
+- A single level-2 pass answered 9.5 of 10 trap-bearing analytical prompts
+  correctly, including exact KV-cache arithmetic, three simultaneous output
+  constraints, refusal to fabricate an unknowable value, and detection of
+  mutually exclusive requirements. At reasoning OFF all of those break.
+- A level-2 critic over reasoning-OFF drafts repaired 3 of 6 defects exactly,
+  but every repaired defect was one a single level-2 pass never made, and two
+  cases came out worse. The repair pipeline costs about twice a single level-2
+  pass for the same ceiling.
+- Zero damage in 42 critique calls: the mechanism is safe, just bounded by the
+  same model at the same level.
+- Diagnosis and repair are separate abilities: a critic can state a defect in
+  its verdict and return an answer that still contains it.
+
+No runtime cloud capability was added and no cloud adapter was introduced. The
+GLM-as-rubric-checker permission lapses with the story.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old

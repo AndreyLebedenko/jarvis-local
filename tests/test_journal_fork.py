@@ -99,7 +99,7 @@ def test_fork_seed_never_carries_the_voice_turn_instruction() -> None:
     Seeding the live voice turn's own instruction ("listen to this recording
     and answer what is said in it") would tell the model to listen to a
     recording this request does not carry, which is the refusal-shaped input
-    tasks/bug_reports/2026-07-25-model-stopped-comprehending-voice-audio.md
+    tasks/bug_reports/done/2026-07-25-model-stopped-comprehending-voice-audio.md
     is about."""
     replay = _replay(_event(role="user", source="voice", text="", media=("u.wav",)))
 

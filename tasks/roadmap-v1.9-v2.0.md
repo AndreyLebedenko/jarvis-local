@@ -135,6 +135,17 @@ Open design questions:
 - How should ranking blend a locator match against a canonical-text match
   without implying equal epistemic status?
 
+## v1.9.2 - Local answer revision and review - CLOSED, UNREALISTIC
+
+Closed 2026-09-12, the day it was authorized: measured and refuted. A second
+local pass cannot exceed the reasoning level it runs at, and raising that level
+is cheaper than running twice. Closure record and numbers:
+`story-v1.9.2-local-generation-critique-integration.md`; raw study in
+`docs/experiments/v1.9.2-rethink-probe/`; settled facts in `PROJECT.md`.
+
+Nothing from this slot carries forward. The GLM-as-rubric-checker permission
+lapses with it. No runtime change was made.
+
 ## v1.9.x - First-pass canvas prompt experiments
 
 Purpose: test whether Text + voice improves when pass 1 knows, explicitly, that

@@ -1,6 +1,9 @@
 # Task: Compare PCM16 and float32 WAV decoding for short audio
 
-**Status:** In progress.
+**Status:** Completed. The owner ran both subtype conditions and reported no
+practical difference in transcription outcomes (2026-09-11). Production
+microphone encoding stays PCM16. The float32 path is only extra conversion
+work with no measured benefit.
 
 ## Summary
 
