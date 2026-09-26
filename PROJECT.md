@@ -4860,7 +4860,7 @@ latency-for-quality trade.
 
 An independent second local pass over a finished draft ("Rethink") was measured
 and refuted the same day it was authorized. Closure record and numbers:
-`tasks/story-v1.9.2-local-generation-critique-integration.md`; raw study in
+`tasks/done/story-v1.9.2-local-generation-critique-integration.md`; raw study in
 `docs/experiments/v1.9.2-rethink-probe/`.
 
 Verified facts from that study, with the production `[backend]` options and the
