@@ -75,12 +75,13 @@ class _FakeBackend:
 
     async def chat(
         self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF, *, options
-    ) -> None:
+    ) -> ResponseComplete | None:
         self.calls.append((messages, images_b64))
         self.reasoning_level_calls.append(reasoning_level)
         self.options_calls.append(options)
-        if self._chat_impl is not None:
-            await self._chat_impl()
+        if self._chat_impl is None:
+            return None
+        return await self._chat_impl()
 
 
 class _FakeStreamingBackend:

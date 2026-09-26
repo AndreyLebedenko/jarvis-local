@@ -399,12 +399,12 @@ async def test_truncated_derivative_pass_flags_only_the_derivative_as_truncated(
     history gets no truncation note - same reasoning as an interrupted
     derivative pass."""
 
-    async def chat_impl() -> None:
+    async def chat_impl() -> ResponseComplete | None:
         if len(backend.calls) == 1:
             await orchestrator.on_response_token(ResponseToken(text="canonical"))
-            return
+            return None
         await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
-        orchestrator.observe_response_complete(_complete_event(done_reason="length"))
+        return _complete_event(done_reason="length")
 
     journal_recorder = _FakeJournalRecorder()
     orchestrator, backend, _sound_cues = _text_voice_orchestrator(
@@ -427,12 +427,12 @@ async def test_truncated_derivative_pass_flags_only_the_derivative_as_truncated(
 
 
 async def test_both_passes_truncated_record_both_markers():
-    async def chat_impl() -> None:
+    async def chat_impl() -> ResponseComplete | None:
         if len(backend.calls) == 1:
             await orchestrator.on_response_token(ResponseToken(text="cut canonical"))
-            return
+            return None
         await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
-        orchestrator.observe_response_complete(_complete_event(done_reason="length"))
+        return _complete_event(done_reason="length")
 
     journal_recorder = _FakeJournalRecorder()
     orchestrator, backend, _sound_cues = _text_voice_orchestrator(
@@ -453,12 +453,12 @@ async def test_both_passes_truncated_record_both_markers():
 async def test_derivative_pass_not_stopped_by_the_length_cap_is_not_flagged(
     done_reason,
 ):
-    async def chat_impl() -> None:
+    async def chat_impl() -> ResponseComplete | None:
         if len(backend.calls) == 1:
             await orchestrator.on_response_token(ResponseToken(text="canonical"))
-            return
+            return None
         await orchestrator.on_response_token(ResponseToken(text="derivative"))
-        orchestrator.observe_response_complete(_complete_event(done_reason=done_reason))
+        return _complete_event(done_reason=done_reason)
 
     journal_recorder = _FakeJournalRecorder()
     orchestrator, backend, _sound_cues = _text_voice_orchestrator(
@@ -476,8 +476,8 @@ async def test_derivative_pass_not_stopped_by_the_length_cap_is_not_flagged(
 
 
 async def test_first_pass_cap_is_not_attributed_to_a_derivative_that_never_completed():
-    """The first pass's own ResponseComplete is observed too; a derivative
-    pass that publishes none (here: interrupted) must not inherit it."""
+    """An interrupted derivative pass completes no request of its own, so
+    the first pass's cap must not be read as the derivative's."""
     still_busy = asyncio.Event()
 
     async def chat_impl() -> None:
@@ -494,9 +494,7 @@ async def test_first_pass_cap_is_not_attributed_to_a_derivative_that_never_compl
     await orchestrator.on_utterance(
         UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
     )
-    first_pass_complete = _complete_event(done_reason="length")
-    orchestrator.observe_response_complete(first_pass_complete)
-    await orchestrator.on_response_complete(first_pass_complete)
+    await orchestrator.on_response_complete(_complete_event(done_reason="length"))
     derivative_task = asyncio.create_task(orchestrator.run_derivative_pass())
     await asyncio.sleep(0)
     await asyncio.sleep(0)  # let the derivative pass's own chat() start
@@ -505,6 +503,67 @@ async def test_first_pass_cap_is_not_attributed_to_a_derivative_that_never_compl
 
     assert journal_recorder.assistant_spoken_derivative_interrupted == [True]
     assert journal_recorder.assistant_spoken_derivative_truncated == [False]
+
+
+# --- _dispatch_backend_request()'s own result --------------------------------
+
+
+async def _dispatch(orchestrator, interrupt_requested: asyncio.Event):
+    return await orchestrator._dispatch_backend_request(
+        [{"role": "user", "content": "x"}],
+        None,
+        ReasoningLevel.OFF,
+        (),
+        None,
+        interrupt_requested,
+        options=GenerationOptions(),
+    )
+
+
+async def test_dispatch_returns_its_own_requests_completion():
+    own_completion = _complete_event(done_reason="length")
+
+    async def chat_impl() -> ResponseComplete:
+        return own_completion
+
+    orchestrator, _backend, _sound_cues = _orchestrator(chat_impl=chat_impl)
+
+    assert await _dispatch(orchestrator, asyncio.Event()) is own_completion
+
+
+async def test_dispatch_interrupted_before_it_starts_returns_none():
+    orchestrator, backend, _sound_cues = _orchestrator()
+    interrupt_requested = asyncio.Event()
+    interrupt_requested.set()
+
+    assert await _dispatch(orchestrator, interrupt_requested) is None
+    assert backend.calls == []
+
+
+async def test_cancelled_dispatch_returns_none():
+    chat_started = asyncio.Event()
+
+    async def chat_impl() -> ResponseComplete:
+        chat_started.set()
+        await asyncio.Event().wait()
+        return _complete_event(done_reason="length")
+
+    orchestrator, _backend, _sound_cues = _orchestrator(chat_impl=chat_impl)
+    dispatch_task = asyncio.create_task(_dispatch(orchestrator, asyncio.Event()))
+    await chat_started.wait()
+
+    orchestrator.cancel_active_turn()
+
+    assert await dispatch_task is None
+
+
+async def test_failed_dispatch_returns_none():
+    async def chat_impl() -> ResponseComplete:
+        raise RuntimeError("backend call failed")
+
+    orchestrator, _backend, _sound_cues = _orchestrator(chat_impl=chat_impl)
+
+    assert await _dispatch(orchestrator, asyncio.Event()) is None
 
 
 def _text_voice_app(orchestrator, backend, sound_cues, bus: EventBus) -> App:
@@ -528,21 +587,14 @@ def _text_voice_app(orchestrator, backend, sound_cues, bus: EventBus) -> App:
     return app
 
 
-async def test_derivative_cap_reaches_the_journal_through_the_reentrant_bus_event():
-    """The derivative's ResponseComplete re-enters _on_full_response_complete()
-    after the turn's one claim is spent; that call must still hand its
-    done_reason to run_derivative_pass()."""
-    bus = EventBus()
+async def _publish_and_return(
+    bus: EventBus, event: ResponseComplete
+) -> ResponseComplete:
+    await bus.publish(ResponseComplete, event)
+    return event
 
-    async def chat_impl() -> None:
-        if len(backend.calls) == 1:
-            await orchestrator.on_response_token(ResponseToken(text="canonical"))
-            await bus.publish(ResponseComplete, _complete_event())
-            return
-        await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
-        await bus.publish(ResponseComplete, _complete_event(done_reason="length"))
 
-    journal_recorder = _FakeJournalRecorder()
+def _text_voice_orchestrator_on_bus(bus: EventBus, *, chat_impl, journal_recorder):
     orchestrator, backend, sound_cues = _orchestrator(
         chat_impl=chat_impl,
         response_mode=ResponseModeState(bus=bus, initial_mode=ResponseMode.TEXT_VOICE),
@@ -551,6 +603,27 @@ async def test_derivative_cap_reaches_the_journal_through_the_reentrant_bus_even
         bus=bus,
     )
     _text_voice_app(orchestrator, backend, sound_cues, bus)
+    return orchestrator, backend, sound_cues
+
+
+async def test_derivative_cap_reaches_the_journal_while_its_bus_event_is_a_no_op():
+    """The derivative's own ResponseComplete re-enters
+    _on_full_response_complete() after the turn's one claim is spent, so
+    that call does nothing; the cap reaches the journal through the
+    derivative dispatch's own return value instead."""
+    bus = EventBus()
+
+    async def chat_impl() -> ResponseComplete:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+            return await _publish_and_return(bus, _complete_event())
+        await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
+        return await _publish_and_return(bus, _complete_event(done_reason="length"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator_on_bus(
+        bus, chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
 
     await orchestrator.on_clipboard(
         ClipboardSubmitted(text="question", truncated=False, is_empty=False)
@@ -558,6 +631,37 @@ async def test_derivative_cap_reaches_the_journal_through_the_reentrant_bus_even
 
     assert journal_recorder.assistant_outcomes == [None]
     assert journal_recorder.assistant_spoken_derivative_truncated == [True]
+    assert orchestrator.is_busy is False
+
+
+async def test_foreign_capped_event_during_pass_2_does_not_flag_the_derivative():
+    """task-generation-num-predict-cap.md, owner review: ResponseComplete
+    carries no request identity, so a capped event from another request
+    that lands on the bus while pass 2 is in flight - here after pass 2's
+    own "stop" event, before its dispatch returns - must not be taken for
+    pass 2's own outcome."""
+    bus = EventBus()
+
+    async def chat_impl() -> ResponseComplete:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+            return await _publish_and_return(bus, _complete_event())
+        await orchestrator.on_response_token(ResponseToken(text="derivative"))
+        own_completion = await _publish_and_return(bus, _complete_event("stop"))
+        await bus.publish(ResponseComplete, _complete_event(done_reason="length"))
+        return own_completion
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator_on_bus(
+        bus, chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="question", truncated=False, is_empty=False)
+    )
+
+    assert journal_recorder.assistant_spoken_derivatives == ["derivative"]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [False]
 
 
 async def test_blank_truncated_first_pass_still_ends_the_turn_without_pass_2():
@@ -565,18 +669,13 @@ async def test_blank_truncated_first_pass_still_ends_the_turn_without_pass_2():
     turns_completed: list[TurnCompleted] = []
     bus.subscribe(TurnCompleted, _collecting_subscriber(turns_completed))
 
-    async def chat_impl() -> None:
-        await bus.publish(ResponseComplete, _complete_event(done_reason="length"))
+    async def chat_impl() -> ResponseComplete:
+        return await _publish_and_return(bus, _complete_event(done_reason="length"))
 
     journal_recorder = _FakeJournalRecorder()
-    orchestrator, backend, sound_cues = _orchestrator(
-        chat_impl=chat_impl,
-        response_mode=ResponseModeState(bus=bus, initial_mode=ResponseMode.TEXT_VOICE),
-        generation_settings=_generation_with({"spoken_derivative": "contract"}),
-        journal_recorder=journal_recorder,
-        bus=bus,
+    orchestrator, backend, sound_cues = _text_voice_orchestrator_on_bus(
+        bus, chat_impl=chat_impl, journal_recorder=journal_recorder
     )
-    _text_voice_app(orchestrator, backend, sound_cues, bus)
 
     await orchestrator.on_clipboard(
         ClipboardSubmitted(text="write a sonnet", truncated=False, is_empty=False)

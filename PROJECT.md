@@ -5021,10 +5021,13 @@ or to the model (`tasks/done/task-generation-num-predict-cap.md`).
   `metadata.spoken_derivative_truncated = true` and no outcome, for the same
   reason `spoken_derivative_interrupted` exists: the outcome describes
   `text`, which is complete.
-- Pass 2's own `ResponseComplete` reaches `_on_full_response_complete()` only
-  as a reentrant call that loses `claim_turn_end()`, so
-  `Orchestrator.observe_response_complete()` runs before the claim to let
-  `run_derivative_pass()` see its dispatch's `done_reason`.
+- Pass 2 learns its own `done_reason` from the return path, not the bus:
+  `OllamaBackend.chat()` and `ToolAwareDialog.chat()` return the
+  `ResponseComplete` they publish, and `_dispatch_backend_request()` returns
+  it, or `None` when the request was interrupted, cancelled, or failed.
+  `ResponseComplete` carries no request identity, so reading it off the bus
+  could attribute another request's event to pass 2; pass 2's own bus event
+  stays a no-op reentrant call that loses `claim_turn_end()`.
 - Journal UI: `journal_outcome_truncated` renders through the existing
   `_journalOutcomeDetail`, one label with or without partial text;
   `journal_spoken_derivative_truncated` renders inside the collapsed spoken

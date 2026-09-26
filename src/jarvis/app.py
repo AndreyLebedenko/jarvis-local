@@ -499,9 +499,6 @@ class Orchestrator:
         self._pending_derivative_pass = False
         self._pending_canonical_text: str | None = None
         self._pending_canonical_outcome: TurnOutcome | None = None
-        # See observe_response_complete(): how run_derivative_pass() learns
-        # whether its own dispatch stopped at the length cap.
-        self._last_response_hit_length_cap = False
         self._current_turn_response_mode: ResponseMode = ResponseMode.TEXT
         # Set once record_voice_user()/record_text_user() actually returns
         # (task-v1.7.0-3 review) - see record_aborted_turn(). Replaced with
@@ -1293,14 +1290,14 @@ class Orchestrator:
         options: GenerationOptions,
         speak_streaming: bool = True,
         pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY,
-    ) -> None:
+    ) -> ResponseComplete | None:
         """Runs the backend call as a cancellable task and handles its
-        three outcomes: normal completion (nothing further to do here -
-        ResponseComplete drives the rest), interruption (cancel_active_turn()
-        cancelled it; app.py's _cancel_current_turn() owns busy-clearing,
-        mic resume, and TurnCompleted via claim_turn_end(), so this returns
-        quietly rather than racing it), and failure (this turn's own
-        responsibility to clean up).
+        three outcomes: normal completion (ResponseComplete drives the rest;
+        the event is also returned, see OllamaBackend.chat()), interruption
+        (cancel_active_turn() cancelled it; app.py's _cancel_current_turn()
+        owns busy-clearing, mic resume, and TurnCompleted via
+        claim_turn_end(), so this returns quietly rather than racing it),
+        and failure (this turn's own responsibility to clean up).
 
         Checks interrupt_requested before dispatching anything (review
         finding 2): an interrupt landing during the journal/bus/cue work
@@ -1313,9 +1310,12 @@ class Orchestrator:
         round): a later turn can replace that attribute with its own fresh
         Event while this call is still suspended below (e.g. still awaiting
         ModelRequestStarted's publish) - reading the parameter instead means
-        this call keeps checking *this* turn's own signal even then."""
+        this call keeps checking *this* turn's own signal even then.
+
+        Returns None whenever no completed request of its own exists:
+        interrupted before dispatch, cancelled, or failed."""
         if interrupt_requested.is_set():
-            return
+            return None
         # Single source of truth for on_response_token()'s cue/auto-pause
         # gate (reuse finding: this used to be set separately by both
         # callers of this method, which could drift out of sync with what
@@ -1330,7 +1330,7 @@ class Orchestrator:
         # task in self._active_chat_task - A's finally must then leave B's
         # reference alone, or the next interrupt would find nothing to
         # cancel while B's backend request keeps running.
-        own_chat_task: asyncio.Task | None = None
+        own_chat_task: asyncio.Task[ResponseComplete] | None = None
         try:
             if self._bus is not None:
                 request_started = ModelRequestStarted(
@@ -1363,7 +1363,7 @@ class Orchestrator:
                 # still go on to dispatch a stale backend request - into a
                 # later turn's own state, if one has since started.
                 if interrupt_requested.is_set():
-                    return
+                    return None
             own_chat_task = asyncio.create_task(
                 self._backend.chat(
                     messages,
@@ -1373,9 +1373,9 @@ class Orchestrator:
                 )
             )
             self._active_chat_task = own_chat_task
-            await own_chat_task
+            return await own_chat_task
         except asyncio.CancelledError:
-            return
+            return None
         except Exception:
             logger.exception("Request failed")
             if self._bus is not None:
@@ -1394,6 +1394,7 @@ class Orchestrator:
             if self.claim_turn_end():
                 await self.record_aborted_turn(outcome=TurnOutcome.FAILED)
                 self._busy = False
+            return None
         finally:
             if self._active_chat_task is own_chat_task:
                 self._active_chat_task = None
@@ -1452,13 +1453,6 @@ class Orchestrator:
             await self._journal_recorder.record_assistant(full_text, outcome=outcome)
             self._journal_turn_started = False
 
-    def observe_response_complete(self, event: ResponseComplete) -> None:
-        """Called for every ResponseComplete, including the derivative
-        pass's own, which reaches _on_full_response_complete() (app.py)
-        only as a claim-losing reentrant call that never gets to
-        on_response_complete() above."""
-        self._last_response_hit_length_cap = event.hit_length_cap
-
     def needs_derivative_pass(self) -> bool:
         return self._pending_derivative_pass
 
@@ -1482,7 +1476,6 @@ class Orchestrator:
         canonical_text = self._pending_canonical_text
         assert canonical_text is not None
         self._response_tokens = []
-        self._last_response_hit_length_cap = False
         derivative_profile = self._generation_settings.profile(
             SPOKEN_DERIVATIVE_PROFILE
         )
@@ -1490,7 +1483,7 @@ class Orchestrator:
             {"role": "system", "content": derivative_profile.prompt or ""},
             {"role": "user", "content": canonical_text},
         ]
-        await self._dispatch_backend_request(
+        derivative_completion = await self._dispatch_backend_request(
             messages,
             None,
             _profile_reasoning(derivative_profile),
@@ -1508,7 +1501,10 @@ class Orchestrator:
                 outcome=self._pending_canonical_outcome,
                 spoken_derivative=derivative_text,
                 spoken_derivative_interrupted=self._interrupt_requested.is_set(),
-                spoken_derivative_truncated=self._last_response_hit_length_cap,
+                spoken_derivative_truncated=(
+                    derivative_completion is not None
+                    and derivative_completion.hit_length_cap
+                ),
             )
             self._journal_turn_started = False
         self._pending_derivative_pass = False
@@ -2251,12 +2247,7 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
     may already have ended the turn by the time this runs. Recording
     history or scheduling more speech for an already-ended turn would be
     wrong, so a lost claim means this whole handler is a no-op, not just
-    its finish sequence.
-
-    The one exception is observe_response_complete(), which runs before the
-    claim: it is how run_derivative_pass() sees its own dispatch's
-    done_reason, delivered by exactly that claim-losing reentrant call."""
-    app.orchestrator.observe_response_complete(event)
+    its finish sequence."""
     if not app.orchestrator.claim_turn_end():
         return
     try:
@@ -2270,9 +2261,9 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
             # derivative's own ResponseComplete (published inside this
             # call, from OllamaBackend.chat()) re-enters this very
             # function recursively, but claim_turn_end() is already spent
-            # for this turn, so that reentrant call does nothing past
-            # observe_response_complete() by construction - this call is
-            # the only one that ever finishes a mode-3 turn.
+            # for this turn, so that reentrant call is a no-op by
+            # construction - this call is the only one that ever finishes
+            # a mode-3 turn.
             await app.orchestrator.run_derivative_pass()
             # flushes the derivative pass's own trailing sentence
             await app.tts_output.on_response_complete(event)

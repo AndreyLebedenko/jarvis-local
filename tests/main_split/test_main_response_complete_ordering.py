@@ -45,9 +45,6 @@ class _OrderingOrchestrator:
     def __init__(self, events: list[str]) -> None:
         self._events = events
 
-    def observe_response_complete(self, event) -> None:
-        pass
-
     def claim_turn_end(self) -> bool:
         return True
 
@@ -122,9 +119,6 @@ async def test_on_full_response_complete_runs_the_derivative_pass_before_finishi
             events.append("tts_wait_for_pending")
 
     class _FakeOrchestratorForDerivative:
-        def observe_response_complete(self, event) -> None:
-            pass
-
         def claim_turn_end(self) -> bool:
             return True
 

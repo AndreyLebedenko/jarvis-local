@@ -252,12 +252,16 @@ deviations from the design text above:
 - The length-cap warning lives in `OllamaBackend.iter_chat`, which both
   `chat()` and the tool loop (and every service) go through, so each request
   cut at the cap logs exactly once whatever its kind.
-- `Orchestrator.observe_response_complete()` runs in
-  `_on_full_response_complete()` before `claim_turn_end()`. Mode 3's pass-2
-  `ResponseComplete` reaches that handler only as a reentrant call that loses
-  the claim; recording its `done_reason` before the claim is the only way
-  `run_derivative_pass()` learns its own dispatch hit the cap. Nothing else
-  moved in front of the claim.
+- Pass 2 learns whether it hit the cap from its dispatch's return value:
+  `OllamaBackend.chat()` and `ToolAwareDialog.chat()` return the
+  `ResponseComplete` they publish, and `_dispatch_backend_request()` returns
+  it, or `None` when the request was interrupted, cancelled, or failed.
+  Revised after owner review, before the handoff: the first version recorded
+  every `ResponseComplete` in `_on_full_response_complete()` ahead of
+  `claim_turn_end()` and read the last one after pass 2. `ResponseComplete`
+  carries no request identity, so any other publisher during pass 2 would
+  have flagged it falsely. `_on_full_response_complete()` is again a pure
+  no-op when it loses the claim.
 - Pass 2 is skipped only for a truncated empty canvas. A non-truncated empty
   canvas still runs pass 2, as before this card.
 - A truncated empty answer still adds an empty assistant entry to the history,

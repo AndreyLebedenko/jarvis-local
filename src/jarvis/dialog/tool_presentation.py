@@ -38,7 +38,7 @@ class DialogTransport(Protocol):
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         *,
         options: GenerationOptions,
-    ) -> None: ...
+    ) -> ResponseComplete: ...
 
     def iter_chat(
         self,
@@ -243,13 +243,12 @@ class ToolAwareDialog:
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         *,
         options: GenerationOptions,
-    ) -> None:
+    ) -> ResponseComplete:
         tools = tuple(tool for tool in self._registry.all() if tool.enabled)
         if not tools:
-            await self._backend.chat(
+            return await self._backend.chat(
                 messages, images_b64, reasoning_level, options=options
             )
-            return
 
         prepared = self._presentation.prepare(tools)
         current_messages = [dict(message) for message in messages]
@@ -285,8 +284,7 @@ class ToolAwareDialog:
                     if format_error is None and not calls and final_text
                     else _FALLBACK_FINAL_TEXT
                 )
-                await self._publish_final(response, answer)
-                return
+                return await self._publish_final(response, answer)
             if format_error is not None:
                 current_messages.extend(
                     _forced_answer_context(response.assistant_message, format_error)
@@ -294,8 +292,7 @@ class ToolAwareDialog:
                 force_text = True
                 continue
             if not calls:
-                await self._publish_final(response, final_text)
-                return
+                return await self._publish_final(response, final_text)
 
             current_messages.append(response.assistant_message)
             calls_used, stop_reason = await self._dispatch_calls(
@@ -392,7 +389,7 @@ class ToolAwareDialog:
 
     async def _publish_final(
         self, response: ParsedResponse, final_text: str | None
-    ) -> None:
+    ) -> ResponseComplete:
         if final_text and not response.content_published:
             chunks = (
                 response.content_chunks
@@ -402,12 +399,11 @@ class ToolAwareDialog:
             )
             for chunk in chunks:
                 await self._bus.publish(ResponseToken, ResponseToken(text=chunk))
-        await self._bus.publish(
-            ResponseComplete,
-            ResponseComplete(
-                metrics=response.metrics, done_reason=response.done_reason
-            ),
+        completion = ResponseComplete(
+            metrics=response.metrics, done_reason=response.done_reason
         )
+        await self._bus.publish(ResponseComplete, completion)
+        return completion
 
 
 async def _consume_message(

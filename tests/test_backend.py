@@ -593,6 +593,36 @@ async def test_a_stream_without_a_done_chunk_publishes_no_done_reason(caplog):
     assert _length_cap_warnings(caplog) == []
 
 
+@pytest.mark.parametrize(
+    "backend_lines",
+    [
+        _stream_ending_with("length"),
+        [{"message": {"content": "Hello"}, "done": False}],
+    ],
+    ids=["done_chunk", "no_done_chunk"],
+)
+async def test_chat_returns_the_completion_it_published(backend_lines):
+    bus = EventBus()
+    received: list[ResponseComplete] = []
+
+    async def on_complete(event: ResponseComplete) -> None:
+        received.append(event)
+
+    bus.subscribe(ResponseComplete, on_complete)
+    backend = OllamaBackend(
+        bus=bus,
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body(backend_lines),
+    )
+
+    returned = await backend.chat(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
+
+    assert len(received) == 1
+    assert returned is received[0]
+
+
 async def test_a_length_stop_is_warned_once_for_a_direct_iter_chat_consumer(caplog):
     """Non-dialog services and the tool loop read iter_chat() directly and
     never go through chat(); the warning is their only surfacing."""
