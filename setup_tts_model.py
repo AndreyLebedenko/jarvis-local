@@ -2,7 +2,7 @@
 """One-time setup: downloads and caches the Silero TTS model tts.py uses.
 
 Requires network access - run this once before starting the offline
-runtime, the same way `ollama pull gemma4:12b-it-qat` is a one-time setup
+runtime, the same way `ollama pull gemma4:12b` is a one-time setup
 step for the backend model (PROJECT.md: the runtime itself must not
 require network access).
 

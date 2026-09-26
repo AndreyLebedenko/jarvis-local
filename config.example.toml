@@ -14,7 +14,7 @@
 # request but never vary per request: Ollama reloads the model when a
 # request carries a different num_ctx, flash_attention, or kv_cache_type.
 # Per-request options live in [generation] below.
-model = "gemma4:12b-it-qat"
+model = "gemma4:12b"
 endpoint = "http://localhost:11434"
 num_ctx = 65536
 # If VRAM pressure appears, PROJECT.md's fallback is
