@@ -212,6 +212,14 @@ annotation, transcription); it can override any `[generation]` option such as
 guidance only when the selected reasoning level is Low, Medium, or High; Off
 has no section by default.
 
+Every request is capped by `num_predict`, the number of tokens (reasoning plus
+answer) the model may generate; `[generation].num_predict` defaults to 16384,
+and a profile can set its own. The largest dialog-profile cap is the room the
+conversation history leaves for the answer, so
+`[history].prompt_capacity_tokens` plus that cap must fit `[backend].num_ctx`,
+otherwise startup stops with a config error. An answer cut at the cap is
+labelled "Cut off at the generation length limit." in the Journal.
+
 Each profile prompt can be inline text or an `@file-path` reference:
 
 ```toml

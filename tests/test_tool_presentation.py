@@ -17,6 +17,9 @@ from jarvis.tools.interception import ToolDispatchResult
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 
 NO_OPTIONS = GenerationOptions()
+TRANSPORT_COMPLETION = ResponseComplete(
+    metrics=LatencyMetrics(0.0, 0.0, 0.0, 0), done_reason="stop"
+)
 
 
 def _tool(name: str = "search_web", *, enabled: bool = True) -> RegisteredTool:
@@ -52,7 +55,7 @@ class FakeBackend:
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         *,
         options: GenerationOptions,
-    ) -> None:
+    ) -> ResponseComplete:
         self.legacy_calls.append(
             {
                 "messages": list(messages),
@@ -61,6 +64,7 @@ class FakeBackend:
                 "options": options,
             }
         )
+        return TRANSPORT_COMPLETION
 
     async def iter_chat(
         self,
@@ -273,6 +277,24 @@ async def test_registry_with_only_disabled_tools_uses_legacy_path():
 
     assert len(backend.legacy_calls) == 1
     assert backend.raw_calls == []
+
+
+@pytest.mark.asyncio
+async def test_legacy_path_returns_the_transports_own_completion():
+    dialog = ToolAwareDialog(
+        FakeBackend([]),
+        EventBus(),
+        _registry(),
+        FakeDispatcher([]),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    returned = await dialog.chat(
+        [{"role": "user", "content": "hello"}], options=NO_OPTIONS
+    )
+
+    assert returned is TRANSPORT_COMPLETION
 
 
 @pytest.mark.asyncio
@@ -822,8 +844,69 @@ async def test_stream_without_done_still_completes_final_turn_once():
     await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert completions == [
-        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
+        ResponseComplete(
+            metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0),
+            done_reason=None,
+        )
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_final_requests_done_reason_is_the_one_published():
+    """task-generation-num-predict-cap.md: a tool loop turn is
+    truncated when its final request hit the length cap, whatever the
+    earlier requests ended with."""
+    bus = EventBus()
+    completions: list[ResponseComplete] = []
+    bus.subscribe(ResponseComplete, _append_completion(completions))
+    tool_call_request = _native_calls(("search_web", {"query": "weather"}))
+    tool_call_request[-1]["done_reason"] = "stop"
+    final_request = _done("It is sun")
+    final_request[-1]["done_reason"] = "length"
+    backend = FakeBackend([tool_call_request, final_request])
+    dialog = ToolAwareDialog(
+        backend,
+        bus,
+        _registry(_tool()),
+        FakeDispatcher(
+            [ToolDispatchResult(ok=True, correlation_id="1", content={"sunny": True})]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    returned = await dialog.chat(
+        [{"role": "user", "content": "weather?"}], options=NO_OPTIONS
+    )
+
+    assert [event.done_reason for event in completions] == ["length"]
+    assert returned is completions[-1]
+
+
+@pytest.mark.asyncio
+async def test_forced_final_request_returns_its_published_completion():
+    bus = EventBus()
+    completions: list[ResponseComplete] = []
+    bus.subscribe(ResponseComplete, _append_completion(completions))
+    forced_final_request = _done("still not json")
+    forced_final_request[-1]["done_reason"] = "length"
+    backend = FakeBackend([_done("not json"), forced_final_request])
+    dialog = ToolAwareDialog(
+        backend,
+        bus,
+        _registry(_tool()),
+        FakeDispatcher([]),
+        PromptToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    returned = await dialog.chat(
+        [{"role": "user", "content": "search"}], options=NO_OPTIONS
+    )
+
+    assert len(backend.raw_calls) == 2
+    assert [event.done_reason for event in completions] == ["length"]
+    assert returned is completions[-1]
 
 
 @pytest.mark.asyncio

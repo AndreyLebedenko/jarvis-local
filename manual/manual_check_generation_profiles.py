@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Manual handoff for tasks/done/task-config-generation-profiles.md.
+"""Manual handoff for tasks/done/task-config-generation-profiles.md and
+tasks/done/task-generation-num-predict-cap-handoff.md.
 
 Reads the debug transcript written by `python -m jarvis --status-console
 --debug` and prints, for every model exchange at or after --since, the
-reasoning value sent (`think`), the generation options sent, and the start
-of the first message - enough to tell the request kinds apart and to see
-which options each one carried. No live Ollama access; it only reads the
-file the run already wrote.
+reasoning value sent (`think`), the generation options sent, the start
+of the first message, and the `done_reason` the response ended with -
+enough to tell the request kinds apart, to see which options each one
+carried, and to see which ones stopped at the length cap. No live Ollama
+access; it only reads the file the run already wrote.
 
 Example:
 
@@ -33,6 +35,7 @@ class ExchangeSummary:
     think: object
     options: dict[str, object]
     first_message: str
+    done_reason: object
 
 
 def summarize_exchanges(lines: Iterable[str], since: str) -> list[ExchangeSummary]:
@@ -53,6 +56,7 @@ def summarize_exchanges(lines: Iterable[str], since: str) -> list[ExchangeSummar
                 think=request.get("think"),
                 options=request.get("options") or {},
                 first_message=" ".join(preview.split())[:_PREVIEW_CHARS],
+                done_reason=(record.get("response") or {}).get("done_reason"),
             )
         )
     return summaries
@@ -76,6 +80,7 @@ def main() -> None:
         print(f"\n{summary.timestamp}  think={summary.think!r}")
         print(f"  first message: {summary.first_message}")
         print(f"  options: {json.dumps(summary.options, sort_keys=True)}")
+        print(f"  done_reason: {json.dumps(summary.done_reason)}")
 
 
 if __name__ == "__main__":

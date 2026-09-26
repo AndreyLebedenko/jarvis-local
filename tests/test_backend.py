@@ -383,7 +383,8 @@ async def test_latency_metrics_parsed_and_published_on_completion():
                 eval_seconds=1.0,
                 eval_count=87,
                 prompt_eval_count=321,
-            )
+            ),
+            done_reason=None,
         )
     ]
 
@@ -487,7 +488,10 @@ async def test_stream_ending_without_done_still_publishes_response_complete():
     await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == [
-        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
+        ResponseComplete(
+            metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0),
+            done_reason=None,
+        )
     ]
 
 
@@ -507,6 +511,137 @@ async def test_stream_ending_without_done_still_republishes_seen_tokens():
     await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == ["Hello"]
+
+
+# --- done_reason and the length cap warning -----------------------------------
+# task-generation-num-predict-cap.md: done_reason travels on
+# ResponseComplete, and any request that stops at the length cap is warned
+# about once, whoever consumes the stream.
+
+BACKEND_LOGGER = "jarvis.dialog.backend"
+SECRET_ANSWER = "секретный ответ"
+
+
+def _stream_ending_with(done_reason: str) -> list[dict]:
+    return [
+        {"message": {"content": SECRET_ANSWER}, "done": False},
+        {
+            "message": {"content": ""},
+            "done": True,
+            "done_reason": done_reason,
+            "eval_count": 30,
+        },
+    ]
+
+
+def _length_cap_warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if record.name == BACKEND_LOGGER
+        and record.levelno == logging.WARNING
+        and "length cap" in record.getMessage()
+    ]
+
+
+async def _published_completions(backend_lines: list[dict]) -> list[ResponseComplete]:
+    bus = EventBus()
+    received: list[ResponseComplete] = []
+
+    async def on_complete(event: ResponseComplete) -> None:
+        received.append(event)
+
+    bus.subscribe(ResponseComplete, on_complete)
+    backend = OllamaBackend(
+        bus=bus,
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body(backend_lines),
+    )
+    await backend.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        options=GenerationOptions(num_predict=30),
+    )
+    return received
+
+
+async def test_a_length_stop_is_published_with_its_done_reason_and_warned_once(caplog):
+    with caplog.at_level(logging.WARNING, logger=BACKEND_LOGGER):
+        received = await _published_completions(_stream_ending_with("length"))
+
+    assert [event.done_reason for event in received] == ["length"]
+    warnings = _length_cap_warnings(caplog)
+    assert len(warnings) == 1
+    assert "num_predict=30" in warnings[0].getMessage()
+    assert SECRET_ANSWER not in caplog.text
+
+
+async def test_a_normal_stop_is_published_with_its_done_reason_and_not_warned(caplog):
+    with caplog.at_level(logging.WARNING, logger=BACKEND_LOGGER):
+        received = await _published_completions(_stream_ending_with("stop"))
+
+    assert [event.done_reason for event in received] == ["stop"]
+    assert _length_cap_warnings(caplog) == []
+
+
+async def test_a_stream_without_a_done_chunk_publishes_no_done_reason(caplog):
+    with caplog.at_level(logging.WARNING, logger=BACKEND_LOGGER):
+        received = await _published_completions(
+            [{"message": {"content": "Hello"}, "done": False}]
+        )
+
+    assert [event.done_reason for event in received] == [None]
+    assert _length_cap_warnings(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "backend_lines",
+    [
+        _stream_ending_with("length"),
+        [{"message": {"content": "Hello"}, "done": False}],
+    ],
+    ids=["done_chunk", "no_done_chunk"],
+)
+async def test_chat_returns_the_completion_it_published(backend_lines):
+    bus = EventBus()
+    received: list[ResponseComplete] = []
+
+    async def on_complete(event: ResponseComplete) -> None:
+        received.append(event)
+
+    bus.subscribe(ResponseComplete, on_complete)
+    backend = OllamaBackend(
+        bus=bus,
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body(backend_lines),
+    )
+
+    returned = await backend.chat(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
+
+    assert len(received) == 1
+    assert returned is received[0]
+
+
+async def test_a_length_stop_is_warned_once_for_a_direct_iter_chat_consumer(caplog):
+    """Non-dialog services and the tool loop read iter_chat() directly and
+    never go through chat(); the warning is their only surfacing."""
+    backend = OllamaBackend(
+        bus=EventBus(),
+        settings=BackendSettings(),
+        client=_client_with_ndjson_body(_stream_ending_with("length")),
+    )
+
+    with caplog.at_level(logging.WARNING, logger=BACKEND_LOGGER):
+        async for _ in backend.iter_chat(
+            [{"role": "user", "content": "hi"}],
+            options=GenerationOptions(num_predict=30),
+        ):
+            pass
+
+    warnings = _length_cap_warnings(caplog)
+    assert len(warnings) == 1
+    assert "num_predict=30" in warnings[0].getMessage()
 
 
 # --- debug transcript wiring ------------------------------------------------

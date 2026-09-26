@@ -20,9 +20,9 @@ num_ctx = 65536
 # If VRAM pressure appears, PROJECT.md's fallback is
 # OLLAMA_KV_CACHE_TYPE=q8_0, then num_ctx = 32768 (applied by the human,
 # not automatically by this config). If you lower num_ctx below 65536,
-# lower [history].prompt_capacity_tokens and/or
-# [history].reasoning_generation_reserve_tokens at the same time so their
-# sum still fits num_ctx.
+# lower [history].prompt_capacity_tokens and/or the dialog profiles'
+# num_predict (see [generation]) at the same time so their sum still fits
+# num_ctx.
 # Optional spike knobs:
 # flash_attention = true
 # kv_cache_type = "q8_0"  # Ollama docs also list "f16" (default) and
@@ -40,8 +40,23 @@ read_timeout_seconds = 120.0
 # that request kind only. A key unset in both is left out of the request, so
 # Ollama's own default applies. Profiles never inherit from each other, and a
 # model-load key (num_ctx, flash_attention, kv_cache_type) inside a profile
-# is a config error. Leave options unset to preserve current behavior; no
-# project defaults are chosen here without local measurements.
+# is a config error.
+#
+# num_predict is the one option with a project default: it caps how many
+# tokens (reasoning plus answer) one request may generate, so no request is
+# bounded only by num_ctx. 16384 is the former history generation reserve:
+# with [history].prompt_capacity_tokens = 49152 it fills num_ctx = 65536
+# exactly. The largest num_predict across the four dialog profiles is the
+# history budget's generation reserve, so prompt_capacity_tokens plus that
+# maximum must fit [backend].num_ctx; non-dialog profiles are not checked
+# against it. num_predict <= 0 is a config error (Ollama reads -1 as
+# unlimited). Tighter per-profile caps, for example
+# [generation.dialog.off] num_predict = 2048, are local tuning.
+num_predict = 16384
+#
+# Every other option is unset by default; leave options unset to preserve
+# current behavior. No project defaults are chosen here without local
+# measurements.
 # temperature = 0.2
 # top_p = 0.9
 # top_k = 40
@@ -49,7 +64,6 @@ read_timeout_seconds = 120.0
 # repeat_penalty = 1.1
 # repeat_last_n = 64
 # seed = 123
-# num_predict = 128
 # stop = ["</speak>"]
 # draft_num_predict = 16
 #
@@ -111,17 +125,17 @@ prompt = "Привет"
 
 [history]
 # Prompt input capacity for the bounded working context. This excludes the
-# reasoning/generation reserve below; by default the two sum exactly to
-# backend.num_ctx, so lowering backend.num_ctx requires lowering one or both.
+# generation reserve, which is the largest dialog-profile num_predict in
+# [generation]; by default the two sum exactly to backend.num_ctx, so lowering
+# backend.num_ctx requires lowering one or both.
 prompt_capacity_tokens = 49152
 # Optional maxima for later context assembly policies. Fixed prompt input can
 # reduce the realized recent-history or automatic-retrieval allocation.
 recent_history_max_tokens = 24576
 automatic_retrieval_max_tokens = 8192
-# Mandatory reserves inside the prompt budget and outside it. These are not
-# borrowed by recent history or retrieval.
+# Mandatory reserve inside the prompt budget. It is not borrowed by recent
+# history or retrieval.
 tool_result_reserve_tokens = 8192
-reasoning_generation_reserve_tokens = 16384
 # One global estimator margin applied after estimating the complete prompt.
 estimator_safety_margin_tokens = 1024
 minimum_recent_exchanges = 1

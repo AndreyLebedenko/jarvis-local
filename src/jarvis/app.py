@@ -281,6 +281,7 @@ def _compose_response_mode_contract(
 
 def _history_limits_from_settings(
     history_settings: HistorySettings,
+    generation_settings: GenerationSettings,
 ) -> ContextBudgetLimits:
     return ContextBudgetLimits(
         prompt_capacity_tokens=history_settings.prompt_capacity_tokens,
@@ -288,7 +289,7 @@ def _history_limits_from_settings(
         automatic_retrieval_max_tokens=history_settings.automatic_retrieval_max_tokens,
         tool_result_reserve_tokens=history_settings.tool_result_reserve_tokens,
         reasoning_generation_reserve_tokens=(
-            history_settings.reasoning_generation_reserve_tokens
+            generation_settings.dialog_generation_reserve().tokens
         ),
         estimator_safety_margin_tokens=history_settings.estimator_safety_margin_tokens,
         minimum_recent_exchanges=history_settings.minimum_recent_exchanges,
@@ -385,6 +386,9 @@ _MODE_SWITCH_HISTORY_NOTE = (
     "Это была команда переключения режима ответа; "
     "режим переключён, ответ не требовался."
 )
+# Follows the assistant text of a turn that stopped at the generation length
+# cap, so a later turn's model does not read the cut answer as finished.
+_TRUNCATED_HISTORY_NOTE = "Предыдущий ответ обрезан: достигнут лимит длины генерации."
 
 
 def _compose_session_file_cue(storage_names: Sequence[str]) -> str:
@@ -452,7 +456,9 @@ class Orchestrator:
         self._history_limits = (
             history_limits
             if history_limits is not None
-            else _history_limits_from_settings(Settings().history)
+            else _history_limits_from_settings(
+                HistorySettings(), self._generation_settings
+            )
         )
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
@@ -483,8 +489,8 @@ class Orchestrator:
         # the ModelRequestStarted that call publishes. False for mode 3's
         # muted first pass so neither fires before any audio is actually
         # about to play, then True again for the derivative pass.
-        # _pending_derivative_pass and
-        # _pending_canonical_text carry on_response_complete()'s decision
+        # _pending_derivative_pass, _pending_canonical_text and
+        # _pending_canonical_outcome carry on_response_complete()'s decision
         # (mode 3: defer the journal write, do not finish the turn yet) to
         # _on_full_response_complete(), which owns running the second
         # dispatch and only then finishing the turn - see
@@ -492,6 +498,7 @@ class Orchestrator:
         self._current_pass_speaks = True
         self._pending_derivative_pass = False
         self._pending_canonical_text: str | None = None
+        self._pending_canonical_outcome: TurnOutcome | None = None
         self._current_turn_response_mode: ResponseMode = ResponseMode.TEXT
         # Set once record_voice_user()/record_text_user() actually returns
         # (task-v1.7.0-3 review) - see record_aborted_turn(). Replaced with
@@ -1283,14 +1290,14 @@ class Orchestrator:
         options: GenerationOptions,
         speak_streaming: bool = True,
         pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY,
-    ) -> None:
+    ) -> ResponseComplete | None:
         """Runs the backend call as a cancellable task and handles its
-        three outcomes: normal completion (nothing further to do here -
-        ResponseComplete drives the rest), interruption (cancel_active_turn()
-        cancelled it; app.py's _cancel_current_turn() owns busy-clearing,
-        mic resume, and TurnCompleted via claim_turn_end(), so this returns
-        quietly rather than racing it), and failure (this turn's own
-        responsibility to clean up).
+        three outcomes: normal completion (ResponseComplete drives the rest;
+        the event is also returned, see OllamaBackend.chat()), interruption
+        (cancel_active_turn() cancelled it; app.py's _cancel_current_turn()
+        owns busy-clearing, mic resume, and TurnCompleted via
+        claim_turn_end(), so this returns quietly rather than racing it),
+        and failure (this turn's own responsibility to clean up).
 
         Checks interrupt_requested before dispatching anything (review
         finding 2): an interrupt landing during the journal/bus/cue work
@@ -1303,9 +1310,12 @@ class Orchestrator:
         round): a later turn can replace that attribute with its own fresh
         Event while this call is still suspended below (e.g. still awaiting
         ModelRequestStarted's publish) - reading the parameter instead means
-        this call keeps checking *this* turn's own signal even then."""
+        this call keeps checking *this* turn's own signal even then.
+
+        Returns None whenever no completed request of its own exists:
+        interrupted before dispatch, cancelled, or failed."""
         if interrupt_requested.is_set():
-            return
+            return None
         # Single source of truth for on_response_token()'s cue/auto-pause
         # gate (reuse finding: this used to be set separately by both
         # callers of this method, which could drift out of sync with what
@@ -1320,7 +1330,7 @@ class Orchestrator:
         # task in self._active_chat_task - A's finally must then leave B's
         # reference alone, or the next interrupt would find nothing to
         # cancel while B's backend request keeps running.
-        own_chat_task: asyncio.Task | None = None
+        own_chat_task: asyncio.Task[ResponseComplete] | None = None
         try:
             if self._bus is not None:
                 request_started = ModelRequestStarted(
@@ -1353,7 +1363,7 @@ class Orchestrator:
                 # still go on to dispatch a stale backend request - into a
                 # later turn's own state, if one has since started.
                 if interrupt_requested.is_set():
-                    return
+                    return None
             own_chat_task = asyncio.create_task(
                 self._backend.chat(
                     messages,
@@ -1363,9 +1373,9 @@ class Orchestrator:
                 )
             )
             self._active_chat_task = own_chat_task
-            await own_chat_task
+            return await own_chat_task
         except asyncio.CancelledError:
-            return
+            return None
         except Exception:
             logger.exception("Request failed")
             if self._bus is not None:
@@ -1384,6 +1394,7 @@ class Orchestrator:
             if self.claim_turn_end():
                 await self.record_aborted_turn(outcome=TurnOutcome.FAILED)
                 self._busy = False
+            return None
         finally:
             if self._active_chat_task is own_chat_task:
                 self._active_chat_task = None
@@ -1416,16 +1427,30 @@ class Orchestrator:
         dispatch that has not run. Setting _pending_derivative_pass tells
         _on_full_response_complete() (app.py) to run that dispatch - via
         run_derivative_pass() - before finishing the turn; that method is
-        what actually calls record_assistant(), once, with both fields."""
+        what actually calls record_assistant(), once, with both fields.
+
+        A turn that stopped at the length cap is TurnOutcome.TRUNCATED and
+        gets _TRUNCATED_HISTORY_NOTE after its text. In mode 3, a truncated
+        first pass with no text leaves nothing to render, so the derivative
+        pass is skipped and the turn is recorded here like a single-pass
+        one."""
         full_text = "".join(self._response_tokens)
+        outcome = TurnOutcome.TRUNCATED if event.hit_length_cap else None
         self._history.add("user", self._current_turn_history_text)
         self._history.add("assistant", full_text)
-        if self._current_turn_response_mode is ResponseMode.TEXT_VOICE:
+        if outcome is TurnOutcome.TRUNCATED:
+            self._history.add("system", _TRUNCATED_HISTORY_NOTE)
+        nothing_to_render = outcome is TurnOutcome.TRUNCATED and not full_text.strip()
+        if (
+            self._current_turn_response_mode is ResponseMode.TEXT_VOICE
+            and not nothing_to_render
+        ):
             self._pending_derivative_pass = True
             self._pending_canonical_text = full_text
+            self._pending_canonical_outcome = outcome
             return
         if self._journal_recorder is not None and self._journal_turn_started:
-            await self._journal_recorder.record_assistant(full_text)
+            await self._journal_recorder.record_assistant(full_text, outcome=outcome)
             self._journal_turn_started = False
 
     def needs_derivative_pass(self) -> bool:
@@ -1458,7 +1483,7 @@ class Orchestrator:
             {"role": "system", "content": derivative_profile.prompt or ""},
             {"role": "user", "content": canonical_text},
         ]
-        await self._dispatch_backend_request(
+        derivative_completion = await self._dispatch_backend_request(
             messages,
             None,
             _profile_reasoning(derivative_profile),
@@ -1473,12 +1498,18 @@ class Orchestrator:
         if self._journal_recorder is not None and self._journal_turn_started:
             await self._journal_recorder.record_assistant(
                 canonical_text,
+                outcome=self._pending_canonical_outcome,
                 spoken_derivative=derivative_text,
                 spoken_derivative_interrupted=self._interrupt_requested.is_set(),
+                spoken_derivative_truncated=(
+                    derivative_completion is not None
+                    and derivative_completion.hit_length_cap
+                ),
             )
             self._journal_turn_started = False
         self._pending_derivative_pass = False
         self._pending_canonical_text = None
+        self._pending_canonical_outcome = None
 
     async def record_aborted_turn(self, *, outcome: TurnOutcome) -> None:
         """Records a turn that ends without its answer being recorded
@@ -1984,7 +2015,9 @@ def build_app(
         prompt_settings=settings.prompts,
         generation_settings=settings.generation,
         response_settings=settings.response,
-        history_limits=_history_limits_from_settings(settings.history),
+        history_limits=_history_limits_from_settings(
+            settings.history, settings.generation
+        ),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
         solo_session_state=solo_session_state,
         session_file_repository=session_file_repository,

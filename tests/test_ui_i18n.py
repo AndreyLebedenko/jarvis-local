@@ -19,6 +19,7 @@ from jarvis.core.config import (
 from jarvis.core.lifecycle import ModelRequestInput
 from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.inputs.attachments import AttachmentClass
+from jarvis.journal import TurnOutcome
 from jarvis.journal.consolidation import MediaActionReason
 from jarvis.memory.files import MemoryFileRepository, build_memory_file_specs
 from jarvis.tools.builtin import BuiltinToolProvider
@@ -161,6 +162,17 @@ def test_every_media_action_reason_has_a_consolidation_label():
     }
 
     assert expected <= keys
+
+
+def test_every_turn_outcome_has_a_journal_outcome_label_in_every_language():
+    """app.js's _journalOutcomeDetail() renders metadata.outcome through
+    uiString("journal_outcome_" + outcome), a key the static lookup test
+    above cannot see. Every TurnOutcome value must have a label, or the
+    first journal event with that outcome throws inside uiString()."""
+    expected = {f"journal_outcome_{member.value}" for member in TurnOutcome}
+
+    for language, language_keys in _strings_js_keys().items():
+        assert expected <= language_keys, language
 
 
 def test_every_projected_tts_field_has_a_localized_label():

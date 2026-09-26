@@ -219,7 +219,9 @@ def test_build_app_constructs_annotation_generation_service_with_settings():
     assert service.max_source_chars == 15000
     assert service._max_annotation_chars == 3000
     assert service._instruction == "Summarize only the cited excerpt."
-    assert service._backend._options == GenerationOptions(temperature=0.9)
+    assert service._backend._options == GenerationOptions(
+        temperature=0.9, num_predict=16384
+    )
 
 
 def _annotation_generation():

@@ -115,7 +115,9 @@ async def run_samples(tts: TtsOutput, samples: tuple[SampleText, ...]) -> None:
         print(f"sample,{sample.label},{sample.text}")
         for token in stream_tokens(sample.text):
             await tts.on_token(ResponseToken(text=token))
-        await tts.on_response_complete(ResponseComplete(metrics=_zero_metrics()))
+        await tts.on_response_complete(
+            ResponseComplete(metrics=_zero_metrics(), done_reason="stop")
+        )
         await tts.wait_for_pending()
 
 

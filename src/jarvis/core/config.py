@@ -534,7 +534,6 @@ class HistorySettings:
     recent_history_max_tokens: int = 24576
     automatic_retrieval_max_tokens: int = 8192
     tool_result_reserve_tokens: int = 8192
-    reasoning_generation_reserve_tokens: int = 16384
     estimator_safety_margin_tokens: int = 1024
     minimum_recent_exchanges: int = 1
     semantic: "HistorySemanticSettings" = field(
@@ -747,13 +746,34 @@ def _default_generation_profiles() -> dict[str, GenerationProfile]:
     return profiles
 
 
+# The one option with a code default: an unbounded request is what it
+# prevents, and TOML cannot write "unset". 49152 prompt + 16384 = num_ctx 65536.
+DEFAULT_NUM_PREDICT = 16384
+
+
+def _default_generation_options() -> GenerationOptions:
+    return GenerationOptions(num_predict=DEFAULT_NUM_PREDICT)
+
+
+@dataclass(frozen=True)
+class DialogGenerationReserve:
+    """The largest dialog-profile num_predict and the profile holding it: the
+    room the dialog history budget keeps for reasoning plus answer. `table` is
+    where that value is written: the profile's own table, or [generation]
+    when the profile inherits it."""
+
+    profile: str
+    tokens: int
+    table: str
+
+
 @dataclass(frozen=True)
 class GenerationSettings:
     """Per-request model-call settings, one profile per request kind.
     A profile key wins over `defaults`; a key unset in both is left out of the
     request. Profiles never inherit from each other."""
 
-    defaults: GenerationOptions = field(default_factory=GenerationOptions)
+    defaults: GenerationOptions = field(default_factory=_default_generation_options)
     profiles: dict[str, GenerationProfile] = field(
         default_factory=_default_generation_profiles
     )
@@ -763,6 +783,30 @@ class GenerationSettings:
 
     def options_for(self, name: str) -> GenerationOptions:
         return self.defaults.overridden_by(self.profiles[name].options)
+
+    def dialog_generation_reserve(self) -> DialogGenerationReserve:
+        return max(
+            (
+                DialogGenerationReserve(
+                    profile=name,
+                    tokens=self._num_predict_for(name),
+                    table=self._num_predict_table_for(name),
+                )
+                for name in DIALOG_PROFILE_BY_REASONING.values()
+            ),
+            key=lambda reserve: reserve.tokens,
+        )
+
+    def _num_predict_table_for(self, name: str) -> str:
+        if self.profiles[name].options.num_predict is None:
+            return "generation"
+        return f"generation.{name}"
+
+    def _num_predict_for(self, name: str) -> int:
+        num_predict = self.options_for(name).num_predict
+        if num_predict is None:
+            raise ValueError(f"generation profile {name!r} has no num_predict")
+        return num_predict
 
 
 # Hard migration: a key that moved raises a ConfigError naming its new home
@@ -784,6 +828,9 @@ MOVED_CONFIG_KEYS: dict[str, str] = {
     "history.annotation.instruction": f"[generation.{ANNOTATION_PROFILE}].prompt",
     "history.transcription.instruction": (
         f"[generation.{TRANSCRIPTION_PROFILE}].prompt"
+    ),
+    "history.reasoning_generation_reserve_tokens": (
+        "[generation].num_predict or a [generation.dialog.<level>] num_predict"
     ),
 }
 
@@ -1215,9 +1262,21 @@ def _build_generation_section(
             prompt_root=prompt_root,
         )
     return GenerationSettings(
-        defaults=_build_plain_section(section_name, GenerationOptions, defaults_raw),
+        defaults=_default_generation_options().overridden_by(
+            _build_generation_options(section_name, defaults_raw)
+        ),
         profiles=profiles,
     )
+
+
+def _build_generation_options(location: str, raw: dict[str, Any]) -> GenerationOptions:
+    options = _build_plain_section(location, GenerationOptions, raw)
+    if options.num_predict is not None and options.num_predict <= 0:
+        raise ConfigError(
+            f"[{location}].num_predict must be a positive int, "
+            f"got {options.num_predict!r}"
+        )
+    return options
 
 
 def _build_generation_profile(
@@ -1261,9 +1320,8 @@ def _build_generation_profile(
         )
 
     return GenerationProfile(
-        options=_build_plain_section(
+        options=_build_generation_options(
             location,
-            GenerationOptions,
             {key: value for key, value in raw.items() if key in option_names},
         ),
         prompt=prompt,
@@ -1380,7 +1438,6 @@ def _build_history_section(section_name: str, raw: dict[str, Any]) -> "HistorySe
         "recent_history_max_tokens",
         "automatic_retrieval_max_tokens",
         "tool_result_reserve_tokens",
-        "reasoning_generation_reserve_tokens",
         "estimator_safety_margin_tokens",
         "minimum_recent_exchanges",
     ):
@@ -2022,14 +2079,12 @@ def load_settings(
 
 
 def _validate_settings(settings: Settings) -> None:
-    context_window_tokens = (
-        settings.history.prompt_capacity_tokens
-        + settings.history.reasoning_generation_reserve_tokens
-    )
+    reserve = settings.generation.dialog_generation_reserve()
+    context_window_tokens = settings.history.prompt_capacity_tokens + reserve.tokens
     if context_window_tokens > settings.backend.num_ctx:
         raise ConfigError(
-            "[history].prompt_capacity_tokens plus "
-            "[history].reasoning_generation_reserve_tokens must fit "
+            "[history].prompt_capacity_tokens plus the largest dialog cap "
+            f"[{reserve.table}].num_predict ({reserve.tokens}) must fit "
             f"backend.num_ctx: {context_window_tokens} > {settings.backend.num_ctx}"
         )
     if settings.vad.min_chunk_seconds < 0.0:

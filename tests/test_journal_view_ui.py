@@ -881,6 +881,16 @@ def test_journal_spoken_derivative_detail_notes_an_interrupted_pass():
     assert "innerHTML" not in body
 
 
+def test_journal_spoken_derivative_detail_notes_a_truncated_pass():
+    """task-generation-num-predict-cap.md: a derivative pass cut at its own
+    length cap is journaled with spoken_derivative_truncated=True and
+    renders as a note inside the same collapsed block, like an interrupted
+    one - the canonical reply itself is complete."""
+    body = APP_JS.split("function _journalSpokenDerivativeDetail(")[1].split("\n}")[0]
+    assert "event.metadata.spoken_derivative_truncated" in body
+    assert 'uiString("journal_spoken_derivative_truncated")' in body
+
+
 def test_journal_view_has_no_context_menu():
     """Copy is explicit button plus normal text selection; no custom
     context menu is introduced."""

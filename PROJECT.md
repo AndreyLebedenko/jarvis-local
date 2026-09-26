@@ -64,7 +64,9 @@ system is intended to grow.
   lowering `backend.num_ctx` also requires lowering `[history]`
   `prompt_capacity_tokens` and/or `reasoning_generation_reserve_tokens` so
   their sum still fits the configured context window; a standalone `num_ctx`
-  reduction is a startup `ConfigError`.
+  reduction is a startup `ConfigError`. Since 2026-09-26 the reserve is the
+  largest dialog-profile `num_predict` (default 16384), and the history key is
+  gone (see "Architecture: generation profiles (2026-09-26)").
 - **Context budget estimator and defaults, 2026-07-31 (task v1.8.0-3):**
   pre-dispatch budgeting uses the no-dependency conservative estimator
   `ceil(canonical_utf8_bytes / 2) + 32 + 12 * message_count + 24 * tool_count`,
@@ -91,7 +93,11 @@ system is intended to grow.
   reasoning/generation reserves are mandatory and cannot be borrowed. Rejected
   approaches: `prompt_eval_count` is exact but post-dispatch only, and a
   standalone SentencePiece tokenizer is neither supplied by an Ollama model
-  name nor exact for Ollama's rendered Gemma4 chat template.
+  name nor exact for Ollama's rendered Gemma4 chat template. Since 2026-09-26
+  the reasoning/generation reserve is no longer a `[history]` key: it is the
+  largest dialog-profile `num_predict`, default 16384, so the verified sum
+  49152 + 16384 = 65536 is unchanged
+  (`tasks/done/task-generation-num-predict-cap.md`).
 - **Derived history corpus schema, 2026-07-31 (task v1.8.0-5):** the first
   rebuildable history corpus is a separate SQLite database named
   `history_corpus.db`, owned by `HistoryCorpusRepository` under
@@ -1664,7 +1670,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   `[generation]` profiles and passed into every `build_payload/iter_chat/chat`
   call (see "Architecture: generation profiles"); unset options are omitted
   so the current runtime contract stays unchanged unless a config file
-  explicitly sets them.
+  explicitly sets them. The one exception is `num_predict`, which defaults
+  to 16384 so no request is unbounded (2026-09-26, see "Architecture:
+  generation length cap and truncated turns").
 - `audio_utils.py` — shared wav-encoding helper. No project-module
   dependencies, used by both `audio_in.py` and `tts.py` so neither input
   nor output depends on the other for it.
@@ -4913,7 +4921,8 @@ and sampling was global to every request.
 - `[generation]` holds per-request option defaults (`GenerationOptions`):
   `temperature`, `top_p`, `top_k`, `min_p`, `repeat_penalty`, `repeat_last_n`,
   `seed`, `num_predict`, `stop`, `draft_num_predict`, each omitted from the
-  request when unset.
+  request when unset. `num_predict` is the exception: it has a code default
+  (see the length-cap bullet below).
 - One `[generation.<profile>]` table per request kind, from a fixed set:
   `dialog.off`, `dialog.low`, `dialog.medium`, `dialog.high` (the dialog turn
   and its tool loop, selected by the live reasoning level), `spoken_derivative`
@@ -4954,11 +4963,78 @@ and sampling was global to every request.
 - Behavior-preserving: for the owner's config at the time, the payload of every
   request kind before and after the move was compared and is identical
   (`tests/test_generation_payloads.py` pins it).
-- Not moved: `[history].reasoning_generation_reserve_tokens` stays the context
-  budget's generation reserve with its verified default. No `num_predict` value
-  is chosen here; folding the reserve into the dialog profiles' `num_predict`
-  and surfacing `done_reason` is the follow-up card for
-  `tasks/bug_reports/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
+- Length cap (2026-09-26, `tasks/done/task-generation-num-predict-cap.md`):
+  every request carries `num_predict`. `[generation].num_predict` defaults to
+  16384 (`DEFAULT_NUM_PREDICT` in config.py), the only option with a non-unset
+  code default: an unbounded request is what it prevents, and TOML cannot
+  write "unset". 16384 is the former history generation reserve, more than
+  2x the longest legitimate answer on record (7025 tokens, reasoning medium),
+  and at ~87 tok/s caps a runaway turn at about 3 min instead of about
+  22 min. Profiles override it through the same one-level rule. Tighter
+  per-level caps are owner tuning in `config.toml`, not code defaults.
+- The largest `num_predict` across the four dialog profiles is the history
+  budget's generation reserve (`GenerationSettings.dialog_generation_reserve()`
+  feeds `ContextBudgetLimits.reasoning_generation_reserve_tokens`, whose name
+  and `prompt_budget` key stay as they were). It is constant across turns
+  because `prompt_capacity_tokens` does not vary with the reasoning level.
+  Startup validation: `[history].prompt_capacity_tokens` + max dialog
+  `num_predict` <= `[backend].num_ctx`, else a `ConfigError` naming the table
+  where that maximum is written (`[generation.dialog.<level>]`, or
+  `[generation]` when the profile inherits it). Non-dialog profiles are not
+  part of the dialog history budget and are not checked against it.
+  `num_predict <= 0` in any table is a `ConfigError` (Ollama reads -1 as
+  unlimited).
+- `[history].reasoning_generation_reserve_tokens` is a moved key
+  (`MOVED_CONFIG_KEYS`), pointing to `[generation].num_predict` or a dialog
+  profile's `num_predict`.
+
+## Architecture: generation length cap and truncated turns (2026-09-26)
+
+A generation cut at `num_predict` must not read as a finished one, to the user
+or to the model (`tasks/done/task-generation-num-predict-cap.md`).
+
+- `ResponseComplete.done_reason` (required field, `str | None`) carries
+  Ollama's value from the `done: true` chunk as sent, `None` when the stream
+  ended without one. It is not part of `LatencyMetrics`, which is timing
+  only. `ResponseComplete.hit_length_cap` is `done_reason == "length"`, the
+  only value with a meaning here. The tool loop publishes the final request's
+  `done_reason`.
+- `OllamaBackend.iter_chat` logs one warning ("Ollama request stopped at the
+  length cap (num_predict=N)") for every request that ends with `"length"`,
+  whatever its kind. For annotation, transcription, voice intent, and
+  warm-up this warning is the only surfacing: their outputs on record are a
+  few hundred tokens, so hitting the cap there is itself a runaway, and they
+  keep their existing outcomes.
+- A dialog turn whose final response hit the cap is `TurnOutcome.TRUNCATED`
+  (`outcome: truncated` in the assistant journal record). `text` holds
+  everything the model produced, possibly empty when reasoning consumed the
+  whole cap. History gets the assistant text (even when empty) and then the
+  system note `Предыдущий ответ обрезан: достигнут лимит длины генерации.`
+  (`_TRUNCATED_HISTORY_NOTE` in app.py), the same additive shape as
+  interrupted and failed turns, except that the assistant entry is added even
+  when empty, as for any completed turn.
+- Mode 3: a truncated first pass carries its outcome into the deferred
+  journal write, and pass 2 still runs over the partial canvas. When the
+  truncated canvas is empty, pass 2 is skipped and the turn is recorded like
+  a single-pass one; a non-truncated empty canvas still runs pass 2, as
+  before. A pass 2 cut at its own cap sets
+  `metadata.spoken_derivative_truncated = true` and no outcome, for the same
+  reason `spoken_derivative_interrupted` exists: the outcome describes
+  `text`, which is complete.
+- Pass 2 learns its own `done_reason` from the return path, not the bus:
+  `OllamaBackend.chat()` and `ToolAwareDialog.chat()` return the
+  `ResponseComplete` they publish, and `_dispatch_backend_request()` returns
+  it, or `None` when the request was interrupted, cancelled, or failed.
+  `ResponseComplete` carries no request identity, so reading it off the bus
+  could attribute another request's event to pass 2; pass 2's own bus event
+  stays a no-op reentrant call that loses `claim_turn_end()`.
+- Journal UI: `journal_outcome_truncated` renders through the existing
+  `_journalOutcomeDetail`, one label with or without partial text;
+  `journal_spoken_derivative_truncated` renders inside the collapsed spoken
+  block. Both in EN and RU.
+- No audible notice on truncation (owner decision, 2026-09-26): a partial
+  spoken answer ends mid-thought anyway, and the empty case is the runaway,
+  now bounded to about 3 min and labelled in the Journal.
 
 ## Current roadmap
 

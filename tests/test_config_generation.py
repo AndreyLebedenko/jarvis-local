@@ -1,6 +1,7 @@
 """[generation] profiles: one per model-request kind, resolved against
 [generation] defaults (tasks/done/task-config-generation-profiles.md)."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -79,11 +80,129 @@ def test_every_request_kind_has_a_profile():
     }
 
 
-def test_without_config_every_profile_sends_no_generation_options(tmp_path):
+def test_without_config_every_profile_sends_only_the_default_length_cap(tmp_path):
     settings = _load(tmp_path, "")
 
     for name in GENERATION_PROFILE_NAMES:
-        assert settings.generation.options_for(name) == GenerationOptions()
+        assert settings.generation.options_for(name) == GenerationOptions(
+            num_predict=16384
+        )
+
+
+def test_generation_table_without_num_predict_keeps_the_default_cap(tmp_path):
+    settings = _load(tmp_path, "[generation]\ntemperature = 0.5\n")
+
+    for name in GENERATION_PROFILE_NAMES:
+        assert settings.generation.options_for(name).num_predict == 16384
+
+
+def test_dialog_off_num_predict_changes_only_the_dialog_off_cap(tmp_path):
+    settings = _load(tmp_path, "[generation.dialog.off]\nnum_predict = 2048\n")
+
+    assert settings.generation.options_for("dialog.off").num_predict == 2048
+    for name in GENERATION_PROFILE_NAMES:
+        if name != "dialog.off":
+            assert settings.generation.options_for(name).num_predict == 16384
+
+
+@pytest.mark.parametrize("value", [0, -1])
+@pytest.mark.parametrize(
+    "table", ["generation", "generation.dialog.low", "generation.warmup"]
+)
+def test_non_positive_num_predict_is_rejected_naming_its_table(tmp_path, table, value):
+    with pytest.raises(ConfigError, match=rf"\[{re.escape(table)}\]\.num_predict"):
+        _load(tmp_path, f"[{table}]\nnum_predict = {value}\n")
+
+
+def test_default_history_budget_and_dialog_cap_fill_num_ctx_exactly(tmp_path):
+    settings = _load(tmp_path, "")
+
+    assert (
+        settings.history.prompt_capacity_tokens
+        + settings.generation.dialog_generation_reserve().tokens
+        == settings.backend.num_ctx
+        == 49152 + 16384
+    )
+
+
+def test_dialog_cap_beyond_the_history_budget_names_the_dialog_profile(tmp_path):
+    with pytest.raises(
+        ConfigError, match=r"\[generation\.dialog\.high\]\.num_predict.*num_ctx"
+    ):
+        _load(tmp_path, "[generation.dialog.high]\nnum_predict = 16385\n")
+
+
+def test_inherited_cap_beyond_the_history_budget_names_the_generation_table(
+    tmp_path,
+):
+    with pytest.raises(ConfigError) as error:
+        _load(tmp_path, "[generation]\nnum_predict = 16385\n")
+
+    assert "[generation].num_predict (16385)" in str(error.value)
+    assert "[generation.dialog" not in str(error.value)
+
+
+def test_non_dialog_cap_is_not_part_of_the_dialog_history_budget(tmp_path):
+    settings = _load(tmp_path, "[generation.annotation]\nnum_predict = 60000\n")
+
+    assert settings.generation.options_for(ANNOTATION_PROFILE).num_predict == 60000
+
+
+def test_smaller_num_ctx_fits_with_a_matching_dialog_cap(tmp_path):
+    settings = _load(
+        tmp_path,
+        """
+        [backend]
+        num_ctx = 32768
+
+        [history]
+        prompt_capacity_tokens = 24576
+        recent_history_max_tokens = 12288
+
+        [generation]
+        num_predict = 8192
+        """,
+    )
+
+    assert settings.generation.dialog_generation_reserve().tokens == 8192
+
+
+def test_dialog_generation_reserve_is_the_largest_dialog_cap(tmp_path):
+    settings = _load(
+        tmp_path,
+        """
+        [generation]
+        num_predict = 1024
+
+        [generation.dialog.off]
+        num_predict = 2048
+
+        [generation.dialog.medium]
+        num_predict = 12000
+
+        [generation.annotation]
+        num_predict = 15000
+        """,
+    )
+
+    reserve = settings.generation.dialog_generation_reserve()
+
+    assert (reserve.profile, reserve.tokens, reserve.table) == (
+        "dialog.medium",
+        12000,
+        "generation.dialog.medium",
+    )
+
+
+def test_history_generation_reserve_key_moved_to_generation_num_predict(tmp_path):
+    with pytest.raises(
+        ConfigError,
+        match=(
+            r"\[history\]\.reasoning_generation_reserve_tokens .*"
+            r"moved to \[generation\]\.num_predict"
+        ),
+    ):
+        _load(tmp_path, "[history]\nreasoning_generation_reserve_tokens = 16384\n")
 
 
 def test_built_in_profile_prompts_match_the_pre_profile_defaults(tmp_path):
@@ -133,7 +252,7 @@ def test_profile_key_overrides_default_and_unset_key_falls_back(tmp_path):
     )
 
     assert settings.generation.options_for(ANNOTATION_PROFILE) == GenerationOptions(
-        temperature=0.9, top_p=0.9
+        temperature=0.9, top_p=0.9, num_predict=16384
     )
 
 
@@ -364,6 +483,7 @@ def test_every_generation_option_and_moved_prompt_has_a_migration_entry():
         "history.annotation.reasoning",
         "history.annotation.instruction",
         "history.transcription.instruction",
+        "history.reasoning_generation_reserve_tokens",
     } <= set(MOVED_CONFIG_KEYS)
 
 

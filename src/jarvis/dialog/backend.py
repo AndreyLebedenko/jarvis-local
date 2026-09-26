@@ -61,9 +61,17 @@ class LatencyMetrics:
     prompt_eval_count: int = 0
 
 
+LENGTH_CAP_DONE_REASON = "length"
+
+
 @dataclass(frozen=True)
 class ResponseComplete:
     metrics: LatencyMetrics
+    done_reason: str | None
+
+    @property
+    def hit_length_cap(self) -> bool:
+        return self.done_reason == LENGTH_CAP_DONE_REASON
 
 
 class OllamaBackend:
@@ -139,6 +147,15 @@ class OllamaBackend:
                         chunk = json.loads(line)
                         if exchange is not None:
                             exchange.observe(chunk)
+                        if (
+                            chunk.get("done")
+                            and chunk.get("done_reason") == LENGTH_CAP_DONE_REASON
+                        ):
+                            logger.warning(
+                                "Ollama request stopped at the length cap "
+                                "(num_predict=%s)",
+                                payload["options"].get("num_predict"),
+                            )
                         yield chunk
         finally:
             # In the finally, so a call that raises, hangs into
@@ -155,8 +172,11 @@ class OllamaBackend:
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         *,
         options: GenerationOptions,
-    ) -> None:
-        saw_done = False
+    ) -> ResponseComplete:
+        """Publishes the request's ResponseComplete and also returns it: the
+        event carries no request identity, so a caller that needs its own
+        request's outcome must not infer it from the bus."""
+        completion: ResponseComplete | None = None
         async for chunk in self.iter_chat(
             messages, images_b64, reasoning_level, options=options
         ):
@@ -168,12 +188,12 @@ class OllamaBackend:
             if content:
                 await self._bus.publish(ResponseToken, ResponseToken(text=content))
             if chunk.get("done"):
-                saw_done = True
-                await self._bus.publish(
-                    ResponseComplete,
-                    ResponseComplete(metrics=parse_metrics(chunk)),
+                completion = ResponseComplete(
+                    metrics=parse_metrics(chunk),
+                    done_reason=chunk.get("done_reason"),
                 )
-        if not saw_done:
+                await self._bus.publish(ResponseComplete, completion)
+        if completion is None:
             # The stream ended (connection closed / body exhausted) without
             # ever sending a done:true chunk. Orchestrator.finish_turn() only
             # runs off the back of ResponseComplete (see main.py) - without
@@ -182,10 +202,11 @@ class OllamaBackend:
             # Metrics are unavailable in this case, so publish zeros rather
             # than inventing numbers.
             logger.warning("Ollama stream ended without a done:true chunk")
-            await self._bus.publish(
-                ResponseComplete,
-                ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0)),
+            completion = ResponseComplete(
+                metrics=LatencyMetrics(0.0, 0.0, 0.0, 0), done_reason=None
             )
+            await self._bus.publish(ResponseComplete, completion)
+        return completion
 
 
 def parse_metrics(chunk: dict[str, Any]) -> LatencyMetrics:

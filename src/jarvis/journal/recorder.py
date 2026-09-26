@@ -92,6 +92,7 @@ class JournalRecorder:
         outcome: TurnOutcome | None = None,
         spoken_derivative: str | None = None,
         spoken_derivative_interrupted: bool = False,
+        spoken_derivative_truncated: bool = False,
     ) -> None:
         if not self._enabled:
             return
@@ -112,9 +113,12 @@ class JournalRecorder:
         # (the turn's own answer), which is complete here regardless - only
         # the derivative rendering was cut short. Reusing outcome for that
         # would make every consumer that does not know about this narrower
-        # case misreport a complete answer as unfinished.
+        # case misreport a complete answer as unfinished. The same holds
+        # for a derivative cut at its own length cap.
         if spoken_derivative_interrupted:
             metadata["spoken_derivative_interrupted"] = True
+        if spoken_derivative_truncated:
+            metadata["spoken_derivative_truncated"] = True
         self._schedule(
             self._append_event(
                 session_id=session_id,

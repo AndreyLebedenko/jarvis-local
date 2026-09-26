@@ -1,6 +1,9 @@
-"""Payload pin per request kind for a config in the owner's shape
-(tasks/done/task-config-generation-profiles.md): after the move to generation
-profiles, every request kind sends exactly what [backend] sent before."""
+"""Payload pin per request kind for a config in the owner's shape.
+
+The move to generation profiles (tasks/done/task-config-generation-profiles.md)
+kept every request kind sending exactly what [backend] sent before; the
+generation length cap (task-generation-num-predict-cap.md) then added the
+default num_predict = 16384 to every request kind and nothing else."""
 
 import pytest
 
@@ -25,7 +28,7 @@ min_p = 0.05
 repeat_penalty = 1.025
 """
 
-PRE_PROFILE_OPTIONS = {
+OWNER_SHAPED_OPTIONS = {
     "num_ctx": 65536,
     "flash_attention": True,
     "kv_cache_type": "q8_0",
@@ -34,6 +37,7 @@ PRE_PROFILE_OPTIONS = {
     "top_k": 50,
     "min_p": 0.05,
     "repeat_penalty": 1.025,
+    "num_predict": 16384,
 }
 
 
@@ -45,7 +49,9 @@ def settings(tmp_path):
 
 
 @pytest.mark.parametrize("profile_name", GENERATION_PROFILE_NAMES)
-def test_every_request_kind_sends_the_pre_profile_options(settings, profile_name):
+def test_every_request_kind_sends_the_owner_options_and_the_default_cap(
+    settings, profile_name
+):
     backend = OllamaBackend(EventBus(), settings.backend)
     profile = settings.generation.profile(profile_name)
 
@@ -55,7 +61,7 @@ def test_every_request_kind_sends_the_pre_profile_options(settings, profile_name
         options=settings.generation.options_for(profile_name),
     )
 
-    assert payload["options"] == PRE_PROFILE_OPTIONS
+    assert payload["options"] == OWNER_SHAPED_OPTIONS
 
 
 @pytest.mark.parametrize(
