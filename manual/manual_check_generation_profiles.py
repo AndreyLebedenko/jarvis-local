@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Manual handoff for tasks/done/task-config-generation-profiles.md and
-tasks/task-generation-num-predict-cap-handoff.md.
+tasks/done/task-generation-num-predict-cap-handoff.md.
 
 Reads the debug transcript written by `python -m jarvis --status-console
 --debug` and prints, for every model exchange at or after --since, the

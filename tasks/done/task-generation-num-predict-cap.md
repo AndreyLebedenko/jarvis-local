@@ -1,7 +1,9 @@
 # Task: Generation length cap - `num_predict` per profile, visible truncation
 
-**Status:** Approved (owner, 2026-09-26). Open question resolved as recommended:
-no audible truncation notice in this card.
+**Status:** Completed. Owner review passed; the human-run handoff
+(`tasks/done/task-generation-num-predict-cap-handoff.md`) passed on
+2026-09-26. Open question resolved as recommended: no audible truncation
+notice in this card.
 **Origin:** owner planning dialog, 2026-09-26 ("variant 1": the cap depends on
 the request kind; history budget variant (a)). Closes
 `tasks/bug_reports/done/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
@@ -189,7 +191,7 @@ distribution above is too thin to justify them.
 
 ## Human-run handoff
 
-Written: `tasks/task-generation-num-predict-cap-handoff.md`.
+Written: `tasks/done/task-generation-num-predict-cap-handoff.md`.
 
 This needs a live Ollama. Outline:
 

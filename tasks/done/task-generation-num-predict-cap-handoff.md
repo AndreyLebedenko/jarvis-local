@@ -2,7 +2,7 @@
 
 Executable from its own text, per Testing protocol item 4 (`CLAUDE.md`
 "Testing protocol"). Run by a human against live Ollama; the agent prepared it
-and stops. Card: `tasks/task-generation-num-predict-cap.md` (moves to
+and stops. Card: `tasks/done/task-generation-num-predict-cap.md` (moved to
 `tasks/done/` on closure).
 
 What this verifies: every request now carries a `num_predict` cap (default
