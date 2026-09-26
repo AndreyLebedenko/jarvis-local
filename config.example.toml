@@ -260,7 +260,7 @@ enabled = true
 engine = "silero"
 model = "v3_1_ru"
 language = "ru"
-speaker = "baya"
+speaker = "eugene"
 sample_rate = 48000
 # Optional model.apply_tts parameters. Omit them to use the selected model's
 # own defaults; unsupported model/parameter combinations fail on first use.

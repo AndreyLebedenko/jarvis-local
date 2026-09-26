@@ -297,7 +297,7 @@ function _demoConfigValues(bilingual) {
     silero: [
       _demoTtsSpec("model", "string", false, true, "v3_1_ru", true),
       _demoTtsSpec("language", "string", false, false, "ru", true),
-      _demoTtsSpec("speaker", "string", false, false, "baya", true),
+      _demoTtsSpec("speaker", "string", false, false, "eugene", true),
       _demoTtsSpec("sample_rate", "integer", false, false, 48000, false, 0, true),
       _demoTtsSpec("put_accent", "boolean", true, false, null),
       _demoTtsSpec("put_yo", "boolean", true, false, null),
@@ -318,7 +318,7 @@ function _demoConfigValues(bilingual) {
   };
   const routes = {
     ru: {
-      engine: "silero", model: "v3_1_ru", language: "ru", speaker: "baya",
+      engine: "silero", model: "v3_1_ru", language: "ru", speaker: "eugene",
       sample_rate: 48000, put_accent: null, put_yo: null,
     },
   };

@@ -1,6 +1,10 @@
 # Task: Installer 1 - bootstrap installer
 
-**Status:** Approved (owner, 2026-09-26). In progress.
+**Status:** Completed. Owner handoff
+(`task-installer-1-bootstrap-installer-handoff.md`) passed on 2026-09-27.
+Scenario D (optional real winget install of Python) - no separate result
+reported. Follow-up in the same branch (owner, 2026-09-27): the default
+Russian Silero speaker is `eugene` instead of `baya`.
 **Story:** `story-installer-and-workspaces.md` (task 1 after the 2026-09-26
 resequencing).
 **Origin:** owner planning dialog, 2026-09-26: users report installation as
@@ -165,36 +169,37 @@ the installer would make starting Jarvis harder than today.
 
 ## Acceptance criteria
 
-- [ ] From a fresh clone in an arbitrary directory (including a path with
+- [x] From a fresh clone in an arbitrary directory (including a path with
       spaces), `install.cmd` produces an installation that `Jarvis.cmd`
       starts, with no other manual step on a machine that already has Python
       3.11 and Ollama.
-- [ ] On a machine without Ollama, the installer stops before any other
+- [x] On a machine without Ollama, the installer stops before any other
       action with an error naming Ollama as a requirement and the download
       link.
-- [ ] On a machine with Ollama but without Python 3.11 (and without a ready
+- [ ] (Not verified live: handoff scenario D had no reported result.)
+      On a machine with Ollama but without Python 3.11 (and without a ready
       `.venv`), the installer installs Python through winget after one
       consent prompt, without administrator rights, and continues in the same
       run.
-- [ ] Re-running `install.cmd` on a complete installation changes nothing and
+- [x] Re-running `install.cmd` on a complete installation changes nothing and
       reports every step as already done.
-- [ ] After a failure in any stage-2 step, re-running resumes and completes.
-- [ ] `config.toml` and an existing `.venv` are never overwritten or deleted.
-- [ ] No Ollama model is ever pulled. Configured models missing from Ollama,
+- [x] After a failure in any stage-2 step, re-running resumes and completes.
+- [x] `config.toml` and an existing `.venv` are never overwritten or deleted.
+- [x] No Ollama model is ever pulled. Configured models missing from Ollama,
       or all of them when Ollama is not running, are listed in the summary as
       `ollama pull <model>` commands; this never fails the install.
-- [ ] Automated tests cover the stage-2 logic with fakes: step ordering and
+- [x] Automated tests cover the stage-2 logic with fakes: step ordering and
       stop-on-failure reporting, idempotency checks, config copy never
       overwriting, the model inventory from settings (including semantic
       disabled), missing-model notes for reachable and unreachable Ollama,
       and command construction.
       No test runs pip, winget, Ollama, or the network.
-- [ ] README "Installation" leads with `install.cmd` and `Jarvis.cmd`; the
+- [x] README "Installation" leads with `install.cmd` and `Jarvis.cmd`; the
       manual steps remain as a fallback and gain the missing
       `pip install -e .` and embedding-model pull. Ollama is listed as a
       requirement, and the docs say Jarvis is tested with Gemma 4 12B
       (unified multimodal, `gemma4:12b`, official page linked).
-- [ ] Human-run handoff prepared per the Testing protocol (item 4), covering
+- [x] Human-run handoff prepared per the Testing protocol (item 4), covering
       the clean-clone path, the re-run path, and the winget path.
 
 ## Verification notes

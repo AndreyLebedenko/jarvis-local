@@ -189,7 +189,7 @@ class VadSettings:
 class SileroTtsSettings:
     model: str = field(default="v3_1_ru", metadata={"non_empty": True})
     language: str = field(default="ru", metadata={"non_empty": True})
-    speaker: str = field(default="baya", metadata={"non_empty": True})
+    speaker: str = field(default="eugene", metadata={"non_empty": True})
     sample_rate: int = field(
         default=48000, metadata={"minimum": 0, "exclusive_minimum": True}
     )

@@ -2,7 +2,8 @@
 
 **Status:** Approved (owner, 2026-09-26). Active: scheduled ahead of
 `spike-single-pass-tts-block.md` (owner, 2026-09-26: users report installation
-as inconvenient). Task 1 card: `task-installer-1-bootstrap-installer.md`.
+as inconvenient). Task 1 (`task-installer-1-bootstrap-installer.md`)
+completed 2026-09-27; tasks 2-6 not opened yet.
 **Created:** 2026-09-26.
 **Origin:** owner planning dialog, 2026-09-26 ("is there an installer, so
 Jarvis can be deployed into any directory?"), which grew into per-project
