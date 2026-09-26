@@ -19,7 +19,7 @@ import base64
 import time
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import DIALOG_PROFILE_BY_REASONING, load_settings
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
 
 
@@ -57,7 +57,11 @@ async def run(kind: str, path: str) -> None:
     messages = [{"role": "user", "content": prompt}]
 
     t0 = time.time()
-    await backend.chat(messages=messages, images_b64=[b64(path)])
+    await backend.chat(
+        messages=messages,
+        images_b64=[b64(path)],
+        options=settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"]),
+    )
     print(f"\n[wall clock: {time.time() - t0:.1f}s]")
 
 

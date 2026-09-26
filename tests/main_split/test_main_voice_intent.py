@@ -1,9 +1,11 @@
 import asyncio
 import base64
+from dataclasses import replace
 
 from _support_from_test_main import (
     _FakeJournalRecorder,
     _FakeSoundCues,
+    _generation_with,
     _orchestrator,
 )
 
@@ -17,9 +19,7 @@ from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.core.bus import EventBus
-from jarvis.core.config import (
-    PromptSettings,
-)
+from jarvis.core.config import GenerationOptions, GenerationSettings
 from jarvis.dialog.response_mode import (
     ResponseMode,
     ResponseModeChanged,
@@ -34,7 +34,7 @@ from jarvis.journal import (
 
 # --- voice intent probe (story-v1.9.0, task 4) ------------------------------
 #
-# A voice turn with [prompts].voice_intent_directive configured runs a
+# A voice turn with [generation.voice_intent].prompt configured runs a
 # non-dialog probe pass over the same audio - through the backend's
 # streaming iterator directly (iter_chat), never the ResponseToken-
 # publishing chat(), so probe chatter cannot reach TTS or the runtime orb.
@@ -54,6 +54,7 @@ class _FakeVoiceIntentBackend:
         self, probe_reply: str | None = None, probe_error=None, probe_hang=None
     ) -> None:
         self.iter_calls: list[tuple[list[dict], list[str] | None, ReasoningLevel]] = []
+        self.iter_options: list[GenerationOptions] = []
         self._probe_reply = probe_reply
         self._probe_error = probe_error
         self._probe_hang = probe_hang
@@ -64,8 +65,11 @@ class _FakeVoiceIntentBackend:
         images_b64=None,
         reasoning_level=ReasoningLevel.OFF,
         tools=None,
+        *,
+        options,
     ):
         self.iter_calls.append((list(messages), images_b64, reasoning_level))
+        self.iter_options.append(options)
         if self._probe_error is not None:
             raise self._probe_error
         if self._probe_hang is not None:
@@ -76,7 +80,9 @@ class _FakeVoiceIntentBackend:
         else:
             yield {"message": {"content": ""}, "done": True}
 
-    async def chat(self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF):
+    async def chat(
+        self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF, *, options
+    ):
         self.chat_recorded = list(messages)
 
 
@@ -93,14 +99,16 @@ class _ForwardingBackend:
         async for chunk in self._iter_backend.iter_chat(*args, **kwargs):
             yield chunk
 
-    async def chat(self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF):
+    async def chat(
+        self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF, *, options
+    ):
         self.chat_calls.append(list(messages))
 
 
 def _voice_intent_orchestrator(
-    directive: str | None, *, journal_recorder=None, bus=None
+    directive: str | None, *, journal_recorder=None, bus=None, generation=None
 ):
-    prompts = PromptSettings(voice_intent_directive=directive)
+    generation = generation or _generation_with({"voice_intent": directive})
     state = ResponseModeState(bus=EventBus())
     voice_backend = _FakeVoiceIntentBackend()
     forwarding = _ForwardingBackend(voice_backend)
@@ -110,7 +118,7 @@ def _voice_intent_orchestrator(
         ConversationHistory(),
         sound_cues,
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
         bus=bus,
         journal_recorder=journal_recorder,
     )
@@ -119,11 +127,10 @@ def _voice_intent_orchestrator(
 
 
 async def test_voice_turn_with_no_directive_is_byte_identical_to_today():
-    """The feature is off by default (PromptSettings.voice_intent_directive
-    is None): no probe pass, one ordinary dispatch - the card's default-
+    """The feature is off by default (the voice_intent profile has no
+    prompt): no probe pass, one ordinary dispatch - the card's default-
     unchanged boundary."""
-    prompts = PromptSettings()
-    assert prompts.voice_intent_directive is None
+    assert GenerationSettings().profile("voice_intent").prompt is None
 
     orchestrator, backend, _sound_cues = _orchestrator()
     orchestrator._system_prompt = "base prompt"
@@ -139,13 +146,13 @@ async def test_voice_turn_with_no_directive_is_byte_identical_to_today():
 async def test_voice_turn_with_directive_runs_a_probe_pass_over_the_audio():
     backend = _FakeVoiceIntentBackend(probe_reply="not a marker")
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=ResponseModeState(bus=EventBus()),
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt"
 
@@ -163,6 +170,31 @@ async def test_voice_turn_with_directive_runs_a_probe_pass_over_the_audio():
     assert len(forwarding.chat_calls) == 1
 
 
+async def test_probe_uses_the_voice_intent_profiles_options_and_reasoning():
+    backend = _FakeVoiceIntentBackend(probe_reply="not a marker")
+    generation = _generation_with(
+        {"voice_intent": "intent rules"},
+        options={"voice_intent": GenerationOptions(temperature=0.0, num_predict=16)},
+    )
+    generation.profiles["voice_intent"] = replace(
+        generation.profiles["voice_intent"], reasoning="low"
+    )
+    orchestrator = Orchestrator(
+        _ForwardingBackend(backend),
+        ConversationHistory(),
+        _FakeSoundCues(),
+        response_mode=ResponseModeState(bus=EventBus()),
+        generation_settings=generation,
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.iter_options == [GenerationOptions(temperature=0.0, num_predict=16)]
+    assert backend.iter_calls[0][2] is ReasoningLevel.LOW
+
+
 async def test_recognized_marker_switches_mode_with_voice_source_and_skips_the_turn():
     bus = EventBus()
     changed: list[ResponseModeChanged] = []
@@ -174,14 +206,14 @@ async def test_recognized_marker_switches_mode_with_voice_source_and_skips_the_t
     backend = _FakeVoiceIntentBackend(probe_reply="SWITCH_RESPONSE_MODE=voice")
     forwarding = _ForwardingBackend(backend)
     journal_recorder = _FakeJournalRecorder()
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     state = ResponseModeState(bus=bus)
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
         bus=bus,
         journal_recorder=journal_recorder,
     )
@@ -206,13 +238,13 @@ async def test_recognized_marker_switches_mode_with_voice_source_and_skips_the_t
 async def test_suppressed_command_history_keeps_the_mode_switch_note():
     backend = _FakeVoiceIntentBackend(probe_reply="SWITCH_RESPONSE_MODE=text_voice")
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=ResponseModeState(bus=EventBus()),
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt"
 
@@ -229,14 +261,14 @@ async def test_suppressed_command_history_keeps_the_mode_switch_note():
 async def test_probe_failure_fails_safe_to_a_normal_request():
     backend = _FakeVoiceIntentBackend(probe_error=RuntimeError("probe backend down"))
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     state = ResponseModeState(bus=EventBus())
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt"
 
@@ -256,14 +288,14 @@ async def test_non_marker_probe_reply_passes_through_as_a_normal_request():
         probe_reply="Отвечу подробно: это обычный запрос про modes."
     )
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     state = ResponseModeState(bus=EventBus())
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt"
 
@@ -282,14 +314,14 @@ async def test_near_miss_marker_reply_passes_through_as_a_normal_request():
         probe_reply="Готово: SWITCH_RESPONSE_MODE=voice - переключил!"
     )
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     state = ResponseModeState(bus=EventBus())
     orchestrator = Orchestrator(
         forwarding,
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt"
 
@@ -313,7 +345,7 @@ async def test_interrupt_during_the_probe_prevents_a_late_mode_switch():
         probe_reply="SWITCH_RESPONSE_MODE=voice", probe_hang=probe_hang
     )
     forwarding = _ForwardingBackend(backend)
-    prompts = PromptSettings(voice_intent_directive="intent rules")
+    generation = _generation_with({"voice_intent": "intent rules"})
     bus = EventBus()
     state = ResponseModeState(bus=bus)
     orchestrator = Orchestrator(
@@ -321,7 +353,7 @@ async def test_interrupt_during_the_probe_prevents_a_late_mode_switch():
         ConversationHistory(),
         _FakeSoundCues(),
         response_mode=state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
         bus=bus,
     )
     orchestrator._system_prompt = "base prompt"

@@ -23,7 +23,7 @@ unchanged. Ambiguity never lands on "swallow the utterance".
 
 import re
 
-from jarvis.core.config import PromptSettings
+from jarvis.core.config import VOICE_INTENT_PROFILE, GenerationSettings
 from jarvis.dialog.response_mode import ResponseMode
 
 PROBE_USER_INSTRUCTION = "Answer with one marker word only, no other text."
@@ -73,13 +73,9 @@ def parse_mode_switch_marker(text: str) -> ResponseMode | None:
 
 
 def intent_directive_from_settings(
-    settings: PromptSettings,
+    settings: GenerationSettings,
 ) -> str | None:
-    """The effective voice-intent directive, or None when the feature is
-    off (the default). A configured-but-blank directive counts as off on
-    purpose: a blank marker contract would parse nothing, so "off" is the
-    only honest meaning blank can carry."""
-    directive = settings.voice_intent_directive
-    if directive is None or not directive.strip():
-        return None
-    return directive
+    """The voice_intent profile's prompt, or None when the feature is off
+    (the default). Config parsing rejects a blank prompt, so None is the
+    only way to be off."""
+    return settings.profile(VOICE_INTENT_PROFILE).prompt

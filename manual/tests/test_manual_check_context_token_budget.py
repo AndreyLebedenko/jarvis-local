@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import BackendSettings, GenerationOptions
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.history.context_budget import (
     ConservativeUtf8TokenEstimator,
@@ -133,6 +133,7 @@ def test_measurement_cases_cover_language_history_and_both_tool_strategies():
         backend,
         "base prompt\n\n[Jarvis curated memory.md]\nпамять\n"
         "[/Jarvis curated memory.md]",
+        GenerationOptions(),
     )
 
     by_key = {case.key: case for case in cases}

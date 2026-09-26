@@ -1,7 +1,7 @@
 import base64
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import BackendSettings, GenerationOptions
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from manual.manual_check_graded_reasoning import (
@@ -11,6 +11,8 @@ from manual.manual_check_graded_reasoning import (
     content_has_inline_reasoning,
     create_probe_png_b64,
 )
+
+NO_OPTIONS = GenerationOptions()
 
 
 def _backend() -> OllamaBackend:
@@ -28,38 +30,52 @@ def test_all_four_product_levels_are_covered_in_order():
 
 
 def test_build_request_off_sets_think_false():
-    request = build_probe_request(_backend(), "calculation", ReasoningLevel.OFF, 1)
+    request = build_probe_request(
+        _backend(), "calculation", ReasoningLevel.OFF, 1, options=NO_OPTIONS
+    )
 
     assert request.payload["think"] is False
 
 
 def test_build_request_sets_exact_graded_string_think_values():
     for level in (ReasoningLevel.LOW, ReasoningLevel.MEDIUM, ReasoningLevel.HIGH):
-        request = build_probe_request(_backend(), "multi_step", level, 1)
+        request = build_probe_request(
+            _backend(), "multi_step", level, 1, options=NO_OPTIONS
+        )
 
         assert request.payload["think"] == level.value
 
 
-def test_build_request_reuses_backend_model_and_options():
+def test_build_request_reuses_backend_model_and_the_given_options():
     settings = BackendSettings(model="test-model", num_ctx=123)
     backend = OllamaBackend(EventBus(), settings)
 
-    request = build_probe_request(backend, "calculation", ReasoningLevel.OFF, 1)
+    request = build_probe_request(
+        backend,
+        "calculation",
+        ReasoningLevel.OFF,
+        1,
+        options=GenerationOptions(temperature=0.5),
+    )
 
     assert request.payload["model"] == "test-model"
     assert request.payload["stream"] is True
-    assert request.payload["options"] == {"num_ctx": 123}
+    assert request.payload["options"] == {"num_ctx": 123, "temperature": 0.5}
 
 
 def test_build_text_probe_request_has_no_images_field():
-    request = build_probe_request(_backend(), "calculation", ReasoningLevel.OFF, 1)
+    request = build_probe_request(
+        _backend(), "calculation", ReasoningLevel.OFF, 1, options=NO_OPTIONS
+    )
     [message] = request.payload["messages"]
 
     assert "images" not in message
 
 
 def test_build_image_probe_request_uses_images_field():
-    request = build_probe_request(_backend(), "image", ReasoningLevel.HIGH, 1)
+    request = build_probe_request(
+        _backend(), "image", ReasoningLevel.HIGH, 1, options=NO_OPTIONS
+    )
 
     [message] = request.payload["messages"]
     assert "images" in message

@@ -1,7 +1,7 @@
 import base64
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import BackendSettings, GenerationOptions
 from jarvis.dialog.backend import OllamaBackend
 from manual.manual_check_camera_spike import (
     CameraSource,
@@ -108,13 +108,19 @@ def test_format_requested_resolution_reports_default_or_requested_size():
 
 def test_build_probe_request_uses_images_field_and_backend_options():
     frame = base64.b64encode(b"jpg bytes").decode("ascii")
-    request = build_probe_request(_backend(), "c920", frame, "Describe this.")
+    request = build_probe_request(
+        _backend(),
+        "c920",
+        frame,
+        "Describe this.",
+        GenerationOptions(temperature=0.5),
+    )
 
     [message] = request.payload["messages"]
     assert message["content"] == "Describe this."
     assert message["images"] == [frame]
     assert request.payload["model"] == "test-model"
-    assert request.payload["options"] == {"num_ctx": 123}
+    assert request.payload["options"] == {"num_ctx": 123, "temperature": 0.5}
     assert request.payload["think"] is False
 
 

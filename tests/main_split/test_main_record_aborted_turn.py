@@ -15,6 +15,7 @@ from jarvis.app import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    GenerationOptions,
     Settings,
     VadSettings,
 )
@@ -253,6 +254,7 @@ async def test_backend_failure_does_not_double_record_when_interrupt_already_cla
         (),
         None,
         asyncio.Event(),
+        options=GenerationOptions(),
     )
 
     assert orchestrator._history.as_messages() == []

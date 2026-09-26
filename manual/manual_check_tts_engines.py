@@ -52,7 +52,7 @@ from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_silero import normalize_numbers, transliterate_latin
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.bus import EventBus
-from jarvis.core.config import Settings, load_settings
+from jarvis.core.config import DIALOG_PROFILE_BY_REASONING, Settings, load_settings
 from jarvis.dialog.backend import (
     LatencyMetrics,
     OllamaBackend,
@@ -275,7 +275,10 @@ async def run_backend_probe(settings: Settings) -> BackendProbeResult:
     backend = OllamaBackend(bus=bus, settings=settings.backend)
 
     wall_start = time.perf_counter()
-    await backend.chat(messages=_backend_probe_prompt())
+    await backend.chat(
+        messages=_backend_probe_prompt(),
+        options=settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"]),
+    )
     wall_seconds = time.perf_counter() - wall_start
 
     if complete is None:

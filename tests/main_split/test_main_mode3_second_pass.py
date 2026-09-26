@@ -1,8 +1,10 @@
 import asyncio
+from dataclasses import replace
 
 from _support_from_test_main import (
     _complete_event,
     _FakeJournalRecorder,
+    _generation_with,
     _orchestrator,
 )
 
@@ -10,9 +12,7 @@ from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.core.bus import EventBus
-from jarvis.core.config import (
-    PromptSettings,
-)
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.backend import (
     ResponseToken,
 )
@@ -27,15 +27,19 @@ from jarvis.dialog.thinking_mode import (
 # --- mode 3 second pass (story-v1.9.0 task 3) -------------------------------
 
 
-def _text_voice_orchestrator(*, chat_impl, journal_recorder=None, response_mode=None):
-    prompts = PromptSettings(response_text_voice="derivative contract")
+def _text_voice_orchestrator(
+    *, chat_impl, journal_recorder=None, response_mode=None, generation=None
+):
+    generation = generation or _generation_with(
+        {"spoken_derivative": "derivative contract"}
+    )
     mode_state = response_mode or ResponseModeState(
         bus=EventBus(), initial_mode=ResponseMode.TEXT_VOICE
     )
     orchestrator, backend, sound_cues = _orchestrator(
         chat_impl=chat_impl,
         response_mode=mode_state,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
         journal_recorder=journal_recorder,
     )
     orchestrator._system_prompt = "base prompt"
@@ -114,6 +118,38 @@ async def test_derivative_pass_dispatches_reasoning_off_over_the_exact_shown_tex
     assert orchestrator.needs_derivative_pass() is False
 
 
+async def test_derivative_pass_uses_its_own_profiles_options_and_reasoning():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical reply"))
+
+    generation = _generation_with(
+        {"spoken_derivative": "derivative contract"},
+        options={
+            "dialog.off": GenerationOptions(num_predict=4096),
+            "spoken_derivative": GenerationOptions(temperature=0.2, num_predict=512),
+        },
+    )
+    generation.profiles["spoken_derivative"] = replace(
+        generation.profiles["spoken_derivative"], reasoning="medium"
+    )
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, generation=generation
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert backend.options_calls == [
+        GenerationOptions(num_predict=4096),
+        GenerationOptions(temperature=0.2, num_predict=512),
+    ]
+    assert backend.reasoning_level_calls == [ReasoningLevel.OFF, ReasoningLevel.MEDIUM]
+
+
 async def test_derivative_pass_records_both_texts_in_the_same_journal_event():
     """Additive, one event, not a second turn (story-v1.9.0 task 3's own
     append-only requirement)."""
@@ -160,10 +196,10 @@ async def test_derivative_pass_speaks_even_though_the_first_pass_was_muted():
     assert "speaking" in sound_cues.played
 
 
-async def test_derivative_pass_with_no_response_text_voice_uses_an_empty_prompt():
-    """response_text_voice is None means "not configured" (same optional-
-    field shape as response_voice) - the dispatch must not crash, and must
-    still send the exact shown text as the user message."""
+async def test_derivative_pass_with_no_profile_prompt_uses_an_empty_prompt():
+    """A spoken_derivative profile without a prompt must not crash the
+    dispatch, and must still send the exact shown text as the user
+    message."""
 
     async def chat_impl() -> None:
         if len(backend.calls) == 1:
@@ -173,7 +209,7 @@ async def test_derivative_pass_with_no_response_text_voice_uses_an_empty_prompt(
     orchestrator, backend, _sound_cues = _orchestrator(
         chat_impl=chat_impl,
         response_mode=mode_state,
-        reasoning_prompt_settings=PromptSettings(response_text_voice=None),
+        generation_settings=_generation_with({"spoken_derivative": None}),
     )
     orchestrator._system_prompt = "base prompt"
 

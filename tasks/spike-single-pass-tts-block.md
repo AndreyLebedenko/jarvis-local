@@ -7,7 +7,7 @@ output" direction of roadmap v2.1 (`roadmap-v1.9-v2.0.md`, "v2.1 -
 Canvas-guided voice") forward as a measured spike, in its simplest form only.
 **Type:** investigation spike. No change under `src/jarvis`. Model runs are
 human-run (live Ollama); the parser and grader are pure logic and CI-tested.
-**Depends on:** `task-config-generation-profiles.md` landed, so the harness
+**Depends on:** `tasks/done/task-config-generation-profiles.md` landed, so the harness
 reads production prompts from their new locations instead of being written
 twice. Does not depend on the `num_predict` card: the harness carries its own
 cap (see "Runaway guard").

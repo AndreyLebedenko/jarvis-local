@@ -40,7 +40,11 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 
@@ -129,10 +133,11 @@ def build_probe_request(
     source_label: str,
     frame_b64: str,
     question: str,
+    options: GenerationOptions,
 ) -> ProbeRequest:
     message: dict[str, object] = {"role": "user", "content": question}
     payload = backend.build_payload(
-        [message], [frame_b64], reasoning_level=ReasoningLevel.OFF
+        [message], [frame_b64], reasoning_level=ReasoningLevel.OFF, options=options
     )
     return ProbeRequest(source_label=source_label, question=question, payload=payload)
 
@@ -325,7 +330,13 @@ async def run(args: argparse.Namespace) -> None:
         print(f"\nOllama endpoint: {settings.backend.endpoint}")
         print(f"Model: {settings.backend.model}")
         for question in args.probe:
-            request = build_probe_request(backend, source.label, frame_b64, question)
+            request = build_probe_request(
+                backend,
+                source.label,
+                frame_b64,
+                question,
+                settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"]),
+            )
             print(f"\n--- request: {source.label} ---")
             print_request(request)
             print_probe_result(await run_probe(client, request))

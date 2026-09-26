@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.annotation import (
     AnnotationOverlayChanged,
@@ -650,14 +651,18 @@ class _FakeChatStream:
         self._payload = payload
         self._error = error
         self.reasoning_levels: list[ReasoningLevel] = []
+        self.options: list[GenerationOptions] = []
 
     def build_payload(
         self,
         messages: Sequence[Mapping[str, object]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> Mapping[str, JSONValue]:
         self.reasoning_levels.append(reasoning_level)
+        self.options.append(options)
         return self._payload
 
     async def iter_chat(
@@ -665,8 +670,11 @@ class _FakeChatStream:
         messages: Sequence[Mapping[str, object]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[Mapping[str, JSONValue]]:
         self.reasoning_levels.append(reasoning_level)
+        self.options.append(options)
         if self._error is not None:
             raise self._error
         for chunk in self._chunks:
@@ -688,7 +696,7 @@ class TestOllamaAnnotationBackendAdapter:
                 "options": {"num_ctx": 65536},
             },
         )
-        backend = OllamaAnnotationBackend(stream)
+        backend = OllamaAnnotationBackend(stream, options=GenerationOptions())
 
         run = await backend.run_annotation(
             [AnnotationMessage(role="user", content="summarize")]
@@ -701,7 +709,7 @@ class TestOllamaAnnotationBackendAdapter:
 
     async def test_forwards_reasoning_level(self) -> None:
         stream = _FakeChatStream(chunks=[], payload={"model": "m", "think": "high"})
-        backend = OllamaAnnotationBackend(stream)
+        backend = OllamaAnnotationBackend(stream, options=GenerationOptions())
 
         await backend.run_annotation(
             [AnnotationMessage(role="user", content="x")], ReasoningLevel.HIGH
@@ -709,13 +717,22 @@ class TestOllamaAnnotationBackendAdapter:
 
         assert stream.reasoning_levels == [ReasoningLevel.HIGH, ReasoningLevel.HIGH]
 
+    async def test_sends_its_generation_options_on_build_and_stream(self) -> None:
+        stream = _FakeChatStream(chunks=[], payload={"model": "m", "think": False})
+        options = GenerationOptions(temperature=0.9)
+        backend = OllamaAnnotationBackend(stream, options=options)
+
+        await backend.run_annotation([AnnotationMessage(role="user", content="x")])
+
+        assert stream.options == [options, options]
+
     async def test_stream_error_wraps_with_metadata(self) -> None:
         stream = _FakeChatStream(
             chunks=[],
             payload={"model": "m", "think": False},
             error=RuntimeError("stream broke"),
         )
-        backend = OllamaAnnotationBackend(stream)
+        backend = OllamaAnnotationBackend(stream, options=GenerationOptions())
 
         with pytest.raises(AnnotationBackendError) as exc_info:
             await backend.run_annotation([AnnotationMessage(role="user", content="x")])

@@ -39,10 +39,10 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from jarvis.app import _profile_reasoning
 from jarvis.core.bus import EventBus
-from jarvis.core.config import Settings, load_settings
+from jarvis.core.config import ANNOTATION_PROFILE, Settings, load_settings
 from jarvis.dialog.backend import OllamaBackend
-from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.annotation import AnnotationOverlayRepository, AnnotationTarget
 from jarvis.journal.annotation_generator import (
     AnnotationGenerationService,
@@ -78,23 +78,20 @@ async def _generate(
     target: AnnotationTarget,
     instruction: str | None,
 ) -> None:
-    # Build the service from the loaded [history.annotation] config, the same
-    # way build_app() does, so this probe exercises the production limits,
-    # reasoning, and instruction rather than library defaults. --instruction
-    # still overrides.
+    # Build the service from the loaded [history.annotation] limits and the
+    # [generation.annotation] profile, the same way build_app() does, so this
+    # probe exercises the production limits, reasoning, options, and
+    # instruction rather than library defaults. --instruction still overrides.
     annotation_settings = settings.history.annotation
+    profile = settings.generation.profile(ANNOTATION_PROFILE)
     kwargs: dict[str, object] = {
-        "reasoning": ReasoningLevel(annotation_settings.reasoning),
+        "reasoning": _profile_reasoning(profile),
         "max_concurrency": annotation_settings.max_concurrency,
         "max_source_events": annotation_settings.max_source_events,
         "max_source_chars": annotation_settings.max_source_chars,
         "max_annotation_chars": annotation_settings.max_annotation_chars,
     }
-    effective_instruction = instruction or (
-        annotation_settings.instruction
-        if annotation_settings.instruction.strip()
-        else None
-    )
+    effective_instruction = instruction or profile.prompt
     if effective_instruction is not None:
         kwargs["instruction"] = effective_instruction
 
@@ -103,10 +100,15 @@ async def _generate(
         store.root, JournalStoreEventReferenceResolver(store)
     )
     service = AnnotationGenerationService(
-        corpus, OllamaAnnotationBackend(backend), overlays, **kwargs
+        corpus,
+        OllamaAnnotationBackend(
+            backend, options=settings.generation.options_for(ANNOTATION_PROFILE)
+        ),
+        overlays,
+        **kwargs,
     )
     print(
-        f"Config: reasoning={annotation_settings.reasoning}, "
+        f"Config: reasoning={profile.reasoning}, "
         f"max_source_events={annotation_settings.max_source_events}, "
         f"max_source_chars={annotation_settings.max_source_chars}, "
         f"max_annotation_chars={annotation_settings.max_annotation_chars}"

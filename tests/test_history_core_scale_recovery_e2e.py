@@ -214,7 +214,9 @@ class _FakeBackend:
     def __init__(self) -> None:
         self.calls: list[tuple[list[dict], list[str] | None]] = []
 
-    async def chat(self, messages, images_b64=None, reasoning_level=None) -> None:
+    async def chat(
+        self, messages, images_b64=None, reasoning_level=None, *, options
+    ) -> None:
         self.calls.append((messages, images_b64))
 
 

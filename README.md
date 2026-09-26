@@ -203,18 +203,26 @@ copy config.example.toml config.toml
 
 ## Dialog and reasoning prompts
 
-`[prompts].system` is the base dialog prompt and `[prompts].warmup` is the
-one-off startup request. Optional `reasoning_low`, `reasoning_medium`, and
-`reasoning_high` sections add guidance only when the selected reasoning level
-is Low, Medium, or High. Off has no separate section.
+`[prompts].system` is the base dialog prompt and
+`[generation.warmup].prompt` is the one-off startup request. Every kind of
+model request has its own `[generation.<profile>]` table (dialog at each
+reasoning level, the mode-3 spoken pass, the voice-intent probe, warm-up,
+annotation, transcription); it can override any `[generation]` option such as
+`temperature`, and set its own `prompt`. The dialog profiles' prompts add
+guidance only when the selected reasoning level is Low, Medium, or High; Off
+has no section by default.
 
-Each reasoning section can be inline text or an `@file-path` reference:
+Each profile prompt can be inline text or an `@file-path` reference:
 
 ```toml
-[prompts]
-reasoning_low = "Think briefly, then answer directly."
-reasoning_medium = "@/reasoning/medium.md"
-reasoning_high = "@reasoning/high.md"
+[generation.dialog.low]
+prompt = "Think briefly, then answer directly."
+
+[generation.dialog.medium]
+prompt = "@/reasoning/medium.md"
+
+[generation.dialog.high]
+prompt = "@reasoning/high.md"
 ```
 
 `@` is prompt-only syntax: references are always rooted under `./.jarvis/`,
@@ -492,7 +500,7 @@ Switching between modes:
   `config.ui.toml`, seeds the next launch, and does not touch the live
   session.
 - **Voice command** (optional, off by default): with
-  `[prompts].voice_intent_directive` configured, a spoken "switch to voice
+  `[generation.voice_intent].prompt` configured, a spoken "switch to voice
   mode" (or voice/text mode) changes the live mode and is not treated as
   request content. Without the directive, voice commands are never
   recognized and voice turns behave exactly as before.

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.backend import (
     LatencyMetrics,
     ResponseComplete,
@@ -35,6 +36,8 @@ class DialogTransport(Protocol):
         messages: Sequence[Message],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> None: ...
 
     def iter_chat(
@@ -43,6 +46,8 @@ class DialogTransport(Protocol):
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[ToolPayload] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[dict[str, object]]: ...
 
 
@@ -218,23 +223,31 @@ class ToolAwareDialog:
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[ToolPayload] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[dict[str, object]]:
         """Raw streaming passthrough for non-dialog passes (task 4's voice
         intent probe, story-v1.9.0): the tool loop's own bookkeeping -
         presentation prompts, tool-call interception, ResponseToken
         publication - is exactly what a non-dialog classification pass
         must bypass, so this delegates straight to the transport."""
-        return self._backend.iter_chat(messages, images_b64, reasoning_level, tools)
+        return self._backend.iter_chat(
+            messages, images_b64, reasoning_level, tools, options=options
+        )
 
     async def chat(
         self,
         messages: Sequence[Message],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> None:
         tools = tuple(tool for tool in self._registry.all() if tool.enabled)
         if not tools:
-            await self._backend.chat(messages, images_b64, reasoning_level)
+            await self._backend.chat(
+                messages, images_b64, reasoning_level, options=options
+            )
             return
 
         prepared = self._presentation.prepare(tools)
@@ -260,6 +273,7 @@ class ToolAwareDialog:
                 None,
                 reasoning_level,
                 None if force_text else prepared.tools,
+                options,
             )
             calls, final_text, format_error = self._presentation.parse(
                 response.assistant_message, response.content_chunks
@@ -337,6 +351,7 @@ class ToolAwareDialog:
         images_b64: Sequence[str] | None,
         reasoning_level: ReasoningLevel,
         tools: Sequence[ToolPayload] | None,
+        options: GenerationOptions,
     ) -> ParsedResponse:
         content_chunks: list[str] = []
         assistant_message: Message = {"role": "assistant", "content": ""}
@@ -345,7 +360,7 @@ class ToolAwareDialog:
         saw_done = False
         metrics = LatencyMetrics(0.0, 0.0, 0.0, 0)
         async for chunk in self._backend.iter_chat(
-            messages, images_b64, reasoning_level, tools
+            messages, images_b64, reasoning_level, tools, options=options
         ):
             message = chunk.get("message")
             if isinstance(message, dict):

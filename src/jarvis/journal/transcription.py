@@ -45,6 +45,8 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Protocol, TypeVar
 
+from jarvis.core.config import GenerationOptions
+from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.events import JournalEvent, JournalEventRef, JSONValue
 from jarvis.journal.store import JournalStore
 from jarvis.journal.transcript import TranscriptSource, TranscriptUpsertResult
@@ -168,12 +170,18 @@ class TranscriptionChatStream(Protocol):
         self,
         messages: Sequence[Mapping[str, ChatMessageValue]],
         images_b64: Sequence[str] | None = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> Mapping[str, JSONValue]: ...
 
     def iter_chat(
         self,
         messages: Sequence[Mapping[str, ChatMessageValue]],
         images_b64: Sequence[str] | None = None,
+        reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[Mapping[str, JSONValue]]: ...
 
 
@@ -243,15 +251,23 @@ class OllamaTranscriptionBackend:
     """Adapter over the streaming `/api/chat` backend for non-dialog use.
 
     Consumes `iter_chat` (the verified `images` media path) and concatenates
-    only `message.content`. `message.thinking` is never read - transcription
-    runs with reasoning off, and content must stay clean either way per
-    PROJECT.md's reasoning-isolation rule. The effective model and options are
+    only `message.content`. `message.thinking` is never read - content must
+    stay clean at any reasoning level per PROJECT.md's reasoning-isolation
+    rule. The effective model and options are
     read from the backend's own `build_payload` so the reported metadata is the
     request that actually ran.
     """
 
-    def __init__(self, backend: TranscriptionChatStream) -> None:
+    def __init__(
+        self,
+        backend: TranscriptionChatStream,
+        *,
+        options: GenerationOptions,
+        reasoning: ReasoningLevel,
+    ) -> None:
         self._backend = backend
+        self._options = options
+        self._reasoning = reasoning
 
     async def run_transcription(
         self,
@@ -262,12 +278,16 @@ class OllamaTranscriptionBackend:
             {"role": message.role, "content": message.content} for message in messages
         ]
         images = list(images_b64)
-        payload = self._backend.build_payload(chat_messages, images)
+        payload = self._backend.build_payload(
+            chat_messages, images, self._reasoning, options=self._options
+        )
         metadata = _metadata_from_payload(payload)
 
         parts: list[str] = []
         try:
-            async for chunk in self._backend.iter_chat(chat_messages, images):
+            async for chunk in self._backend.iter_chat(
+                chat_messages, images, self._reasoning, options=self._options
+            ):
                 message = chunk.get("message")
                 if isinstance(message, dict):
                     content = message.get("content")

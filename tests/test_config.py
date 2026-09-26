@@ -276,7 +276,6 @@ def test_history_transcription_settings_parse_from_config(tmp_path):
         """
         [history.transcription]
         enabled = false
-        instruction = "Transcribe verbatim."
         max_concurrency = 2
         """,
         encoding="utf-8",
@@ -286,7 +285,6 @@ def test_history_transcription_settings_parse_from_config(tmp_path):
 
     assert settings.history.transcription == HistoryTranscriptionSettings(
         enabled=False,
-        instruction="Transcribe verbatim.",
         max_concurrency=2,
     )
 
@@ -311,8 +309,6 @@ def test_history_annotation_settings_parse_from_config(tmp_path):
         """
         [history.annotation]
         enabled = false
-        instruction = "Summarize the excerpt."
-        reasoning = "medium"
         max_concurrency = 2
         max_source_events = 50
         max_source_chars = 12000
@@ -325,8 +321,6 @@ def test_history_annotation_settings_parse_from_config(tmp_path):
 
     assert settings.history.annotation == HistoryAnnotationSettings(
         enabled=False,
-        instruction="Summarize the excerpt.",
-        reasoning="medium",
         max_concurrency=2,
         max_source_events=50,
         max_source_chars=12000,
@@ -351,8 +345,6 @@ def test_history_annotation_defaults(tmp_path):
         "max_source_chars = 200001",
         "max_annotation_chars = 0",
         "max_annotation_chars = 20001",
-        'reasoning = "sideways"',
-        "reasoning = 3",
     ],
 )
 def test_history_annotation_rejects_out_of_range(tmp_path, body):
@@ -591,69 +583,6 @@ def test_kv_cache_type_wrong_type_raises_config_error(tmp_path):
         """
         [backend]
         kv_cache_type = 123
-        """,
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError):
-        load_settings(config_path)
-
-
-def test_backend_generation_options_parse_from_config(tmp_path):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-        [backend]
-        temperature = 0.2
-        top_p = 0.8
-        top_k = 40
-        min_p = 0.05
-        repeat_penalty = 1.1
-        repeat_last_n = 64
-        seed = 123
-        num_predict = 80
-        stop = ["</speak>", "\\n\\n"]
-        draft_num_predict = 16
-        """,
-        encoding="utf-8",
-    )
-
-    settings = load_settings(config_path)
-
-    assert settings.backend.temperature == 0.2
-    assert settings.backend.top_p == 0.8
-    assert settings.backend.top_k == 40
-    assert settings.backend.min_p == 0.05
-    assert settings.backend.repeat_penalty == 1.1
-    assert settings.backend.repeat_last_n == 64
-    assert settings.backend.seed == 123
-    assert settings.backend.num_predict == 80
-    assert settings.backend.stop == ["</speak>", "\n\n"]
-    assert settings.backend.draft_num_predict == 16
-
-
-@pytest.mark.parametrize(
-    ("field_name", "bad_value"),
-    [
-        ("temperature", '"low"'),
-        ("top_p", '"wide"'),
-        ("top_k", "0.5"),
-        ("min_p", '"small"'),
-        ("repeat_penalty", '"high"'),
-        ("repeat_last_n", "1.5"),
-        ("seed", '"random"'),
-        ("num_predict", "true"),
-        ("draft_num_predict", '"short"'),
-    ],
-)
-def test_backend_generation_option_wrong_type_raises_config_error(
-    tmp_path, field_name, bad_value
-):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f"""
-        [backend]
-        {field_name} = {bad_value}
         """,
         encoding="utf-8",
     )
@@ -1646,10 +1575,6 @@ def test_prompts_default_to_the_russian_dialog_prompts(tmp_path):
     settings = load_settings(tmp_path / "does-not-exist.toml")
 
     assert settings.prompts.system.startswith("Ты - Джарвис")
-    assert settings.prompts.warmup == "Привет"
-    assert settings.prompts.reasoning_low is None
-    assert settings.prompts.reasoning_medium is None
-    assert settings.prompts.reasoning_high is None
     assert settings.prompts.voice_turn_instruction is None
 
 
@@ -1659,7 +1584,6 @@ def test_prompts_parse_from_config(tmp_path):
         """
         [prompts]
         system = "You are Jarvis. Answer in English."
-        warmup = "Hello"
         """,
         encoding="utf-8",
     )
@@ -1667,7 +1591,6 @@ def test_prompts_parse_from_config(tmp_path):
     settings = load_settings(config_path)
 
     assert settings.prompts.system == "You are Jarvis. Answer in English."
-    assert settings.prompts.warmup == "Hello"
 
 
 def test_prompts_allow_partial_override_keeping_other_default(tmp_path):
@@ -1675,147 +1598,15 @@ def test_prompts_allow_partial_override_keeping_other_default(tmp_path):
     config_path.write_text(
         """
         [prompts]
-        warmup = "Hello"
+        voice_turn_instruction = "Listen and answer."
         """,
         encoding="utf-8",
     )
 
     settings = load_settings(config_path)
 
-    assert settings.prompts.warmup == "Hello"
+    assert settings.prompts.voice_turn_instruction == "Listen and answer."
     assert settings.prompts.system.startswith("Ты - Джарвис")
-
-
-@pytest.mark.parametrize(
-    ("field_name", "prompt"),
-    [
-        ("reasoning_low", "Use short internal planning."),
-        ("reasoning_medium", "Compare the likely explanations."),
-        ("reasoning_high", "Check assumptions before answering."),
-    ],
-)
-def test_reasoning_prompts_preserve_literal_text(tmp_path, field_name, prompt):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f"[prompts]\n{field_name} = {prompt!r}\n",
-        encoding="utf-8",
-    )
-
-    settings = load_settings(config_path)
-
-    assert getattr(settings.prompts, field_name) == prompt
-
-
-@pytest.mark.parametrize(
-    ("field_name", "reference", "relative_path", "prompt"),
-    [
-        ("reasoning_low", "@low.md", "low.md", "Plan briefly."),
-        (
-            "reasoning_medium",
-            "@/modes/medium.md",
-            "modes/medium.md",
-            "Consider alternatives.",
-        ),
-        (
-            "reasoning_high",
-            "@C:/modes/high.md",
-            "modes/high.md",
-            "Verify every conclusion.",
-        ),
-    ],
-)
-def test_reasoning_prompt_references_resolve_under_config_local_jarvis_directory(
-    tmp_path, field_name, reference, relative_path, prompt
-):
-    config_path = tmp_path / "config.toml"
-    prompt_path = tmp_path / ".jarvis" / relative_path
-    prompt_path.parent.mkdir(parents=True)
-    prompt_path.write_text(prompt, encoding="utf-8")
-    config_path.write_text(
-        f"[prompts]\n{field_name} = {reference!r}\n",
-        encoding="utf-8",
-    )
-
-    settings = load_settings(config_path)
-
-    assert getattr(settings.prompts, field_name) == prompt
-
-
-@pytest.mark.parametrize(
-    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
-)
-def test_reasoning_prompt_reference_rejects_parent_directory_traversal(
-    tmp_path, field_name
-):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f"[prompts]\n{field_name} = '@nested/../prompt.md'\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
-        load_settings(config_path)
-
-
-@pytest.mark.parametrize(
-    ("reference", "prepare_prompt"),
-    [
-        ("@missing.md", lambda prompt_root: None),
-        ("@directory", lambda prompt_root: (prompt_root / "directory").mkdir()),
-        (
-            "@invalid-utf8.md",
-            lambda prompt_root: (prompt_root / "invalid-utf8.md").write_bytes(b"\x80"),
-        ),
-        (
-            "@blank.md",
-            lambda prompt_root: (prompt_root / "blank.md").write_text(
-                " \n\t", encoding="utf-8"
-            ),
-        ),
-    ],
-)
-def test_invalid_reasoning_prompt_reference_raises_config_error_naming_field(
-    tmp_path, reference, prepare_prompt
-):
-    config_path = tmp_path / "config.toml"
-    prompt_root = tmp_path / ".jarvis"
-    prompt_root.mkdir()
-    prepare_prompt(prompt_root)
-    config_path.write_text(
-        f"[prompts]\nreasoning_low = {reference!r}\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match=r"\[prompts\].reasoning_low"):
-        load_settings(config_path)
-
-
-@pytest.mark.parametrize(
-    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
-)
-def test_reasoning_prompt_of_wrong_type_raises_config_error(tmp_path, field_name):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f"[prompts]\n{field_name} = 5\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
-        load_settings(config_path)
-
-
-@pytest.mark.parametrize(
-    "field_name", ["reasoning_low", "reasoning_medium", "reasoning_high"]
-)
-def test_empty_literal_reasoning_prompt_raises_config_error(tmp_path, field_name):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f'[prompts]\n{field_name} = ""\n',
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
-        load_settings(config_path)
 
 
 def test_voice_turn_instruction_preserves_literal_text(tmp_path):
@@ -1868,7 +1659,7 @@ def test_unknown_prompt_key_still_raises_config_error(tmp_path):
         load_settings(config_path)
 
 
-@pytest.mark.parametrize("field_name", ["system", "warmup"])
+@pytest.mark.parametrize("field_name", ["system", "voice_turn_instruction"])
 def test_empty_prompt_raises_config_error_naming_the_field(tmp_path, field_name):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -1904,12 +1695,12 @@ def test_prompt_of_wrong_type_raises_config_error(tmp_path):
     config_path.write_text(
         """
         [prompts]
-        warmup = 5
+        system = 5
         """,
         encoding="utf-8",
     )
 
-    with pytest.raises(ConfigError, match=r"\[prompts\].warmup"):
+    with pytest.raises(ConfigError, match=r"\[prompts\].system"):
         load_settings(config_path)
 
 
@@ -1955,58 +1746,6 @@ def test_unknown_response_key_raises_config_error(tmp_path):
     config_path.write_text('[response]\nunknown = "x"\n', encoding="utf-8")
 
     with pytest.raises(ConfigError, match=r"Unknown key\(s\) in \[response\].*unknown"):
-        load_settings(config_path)
-
-
-def test_response_prompt_contracts_have_built_in_defaults(tmp_path):
-    """Unlike reasoning_low/medium/high (default None: off adds nothing),
-    the response-mode contracts have working built-in text - mode "voice"
-    is usable with no config change."""
-    settings = load_settings(tmp_path / "does-not-exist.toml")
-
-    assert settings.prompts.response_voice
-    assert settings.prompts.response_text_voice
-
-
-@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
-def test_response_prompt_contract_preserves_literal_text(tmp_path, field_name):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        f'[prompts]\n{field_name} = "Custom contract text."\n',
-        encoding="utf-8",
-    )
-
-    settings = load_settings(config_path)
-
-    assert getattr(settings.prompts, field_name) == "Custom contract text."
-
-
-@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
-def test_response_prompt_contract_reference_resolves_under_jarvis_directory(
-    tmp_path, field_name
-):
-    config_path = tmp_path / "config.toml"
-    prompt_path = tmp_path / ".jarvis" / "contract.md"
-    prompt_path.parent.mkdir(parents=True)
-    prompt_path.write_text("Referenced contract text.", encoding="utf-8")
-    config_path.write_text(
-        f'[prompts]\n{field_name} = "@contract.md"\n',
-        encoding="utf-8",
-    )
-
-    settings = load_settings(config_path)
-
-    assert getattr(settings.prompts, field_name) == "Referenced contract text."
-
-
-@pytest.mark.parametrize("field_name", ["response_voice", "response_text_voice"])
-def test_empty_literal_response_prompt_contract_raises_config_error(
-    tmp_path, field_name
-):
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(f'[prompts]\n{field_name} = ""\n', encoding="utf-8")
-
-    with pytest.raises(ConfigError, match=rf"\[prompts\].{field_name}"):
         load_settings(config_path)
 
 

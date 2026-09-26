@@ -287,7 +287,7 @@ async def test_on_utterance_uses_configured_voice_turn_instruction_override():
     for the first-turn audio-comprehension refusal asks for, so the
     framing can be adjusted against the live model without a code change."""
     orchestrator, backend, _sound_cues = _orchestrator(
-        reasoning_prompt_settings=PromptSettings(
+        prompt_settings=PromptSettings(
             voice_turn_instruction="Listen to the recording and answer it."
         )
     )

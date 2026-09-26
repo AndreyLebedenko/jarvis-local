@@ -47,7 +47,11 @@ import httpx
 
 from jarvis.audio.input import SAMPLE_RATE
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    load_settings,
+)
 from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
@@ -102,6 +106,8 @@ async def ask(
     audio_b64: str,
     voice_turn_text: str,
     history: list | None = None,
+    *,
+    options: GenerationOptions,
 ) -> str:
     """One turn composed exactly as app.py's _start_turn composes it.
 
@@ -114,7 +120,9 @@ async def ask(
     messages.extend(history or [])
     messages.append({"role": "system", "content": format_time_context(time.time())})
     messages.append({"role": "user", "content": voice_turn_text})
-    payload = backend.build_payload(messages, [audio_b64], ReasoningLevel.OFF)
+    payload = backend.build_payload(
+        messages, [audio_b64], ReasoningLevel.OFF, options=options
+    )
     payload["stream"] = False
     response = await client.post("/api/chat", json=payload)
     response.raise_for_status()
@@ -156,6 +164,7 @@ async def main_async(args: argparse.Namespace) -> None:
     print(f"voice turn text: {voice_turn_text!r}\n")
 
     backend = OllamaBackend(EventBus(), settings.backend)
+    options = settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"])
     async with httpx.AsyncClient(
         base_url=settings.backend.endpoint,
         timeout=httpx.Timeout(10.0, read=settings.backend.read_timeout_seconds),
@@ -165,7 +174,12 @@ async def main_async(args: argparse.Namespace) -> None:
             print(f"--- {wav}")
             print(f"    2026-07-17: {july_answer}")
             fresh = await ask(
-                backend, client, settings.prompts.system, audio_b64, voice_turn_text
+                backend,
+                client,
+                settings.prompts.system,
+                audio_b64,
+                voice_turn_text,
+                options=options,
             )
             print(f"RESULT|case=fresh context   |answer={fresh[:300]}")
             poisoned = await ask(
@@ -175,6 +189,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 audio_b64,
                 voice_turn_text,
                 history=refusal_history(voice_turn_text),
+                options=options,
             )
             print(f"RESULT|case=after a refusal |answer={poisoned[:300]}\n")
 
@@ -189,6 +204,7 @@ async def main_async(args: argparse.Namespace) -> None:
                 settings.prompts.system,
                 synthetic_silence(args.silence_seconds),
                 voice_turn_text,
+                options=options,
             )
             print(f"RESULT|case=silence        |answer={answer[:300]}\n")
 
@@ -196,7 +212,12 @@ async def main_async(args: argparse.Namespace) -> None:
             audio_b64 = encoded(Path(args.quiet_wav))
             print(f"--- {args.quiet_wav} (negative control: nothing intelligible)")
             answer = await ask(
-                backend, client, settings.prompts.system, audio_b64, voice_turn_text
+                backend,
+                client,
+                settings.prompts.system,
+                audio_b64,
+                voice_turn_text,
+                options=options,
             )
             print(f"RESULT|case=unintelligible |answer={answer[:300]}\n")
 

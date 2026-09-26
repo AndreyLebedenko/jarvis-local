@@ -97,10 +97,17 @@ class BackendSettings:
     endpoint: str = "http://localhost:11434"
     num_ctx: int = 65536
     read_timeout_seconds: float = 120.0
-    # Optional Ollama tuning knobs. They default to None so the current runtime
-    # contract stays unchanged unless a config file sets them.
     flash_attention: bool | None = None
     kv_cache_type: str | None = None
+
+
+# Sent with every request, but never per-request: Ollama reloads the model
+# when a request carries a different value for any of these.
+BACKEND_LOAD_OPTION_FIELDS = ("num_ctx", "flash_attention", "kv_cache_type")
+
+
+@dataclass(frozen=True)
+class GenerationOptions:
     temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
@@ -111,6 +118,34 @@ class BackendSettings:
     num_predict: int | None = None
     stop: list[str] | None = None
     draft_num_predict: int | None = None
+
+    def overridden_by(self, override: "GenerationOptions") -> "GenerationOptions":
+        return replace(
+            self,
+            **{
+                option.name: value
+                for option in fields(override)
+                if (value := getattr(override, option.name)) is not None
+            },
+        )
+
+    def as_request_options(self) -> dict[str, Any]:
+        return {
+            option.name: value
+            for option in fields(self)
+            if (value := getattr(self, option.name)) is not None
+        }
+
+
+@dataclass(frozen=True)
+class GenerationProfile:
+    """Everything specific to one kind of model request. `reasoning` mirrors
+    dialog.thinking_mode.ReasoningLevel values as plain strings, keeping
+    config free of project imports."""
+
+    options: GenerationOptions = field(default_factory=GenerationOptions)
+    prompt: str | None = None
+    reasoning: str = "off"
 
 
 @dataclass(frozen=True)
@@ -518,15 +553,14 @@ class HistoryTranscriptionSettings:
     """Explicit historical voice transcription (task-v1.8.0-20).
 
     Never runs on its own initiative: it is invoked only through the
-    authenticated transcript generate endpoint. ``instruction`` is the
-    model-facing English framing; an empty value defers to the service's
-    verified default. ``max_concurrency`` bounds how many transcription model
+    authenticated transcript generate endpoint. How the model is called lives
+    in the [generation.transcription] profile. ``max_concurrency`` bounds how
+    many transcription model
     calls run at once so historical transcription competes predictably with a
     live turn.
     """
 
     enabled: bool = True
-    instruction: str = ""
     max_concurrency: int = 1
 
 
@@ -535,14 +569,10 @@ class HistoryAnnotationSettings:
     """Explicit historical annotation generation (task-v1.8.0-22).
 
     Never runs on its own initiative: it is invoked only through an explicit
-    user/UI command. ``instruction`` is the model-facing English framing; an
-    empty value defers to the service's default. ``max_concurrency`` bounds how
-    many generation model calls run at once so it competes predictably with a
-    live turn. ``reasoning`` selects the model reasoning level for generation;
-    it reuses the app's reasoning values ("off", "low", "medium", "high") so
-    plain off/on is available now and graded levels come for free later. Other
-    generation options come from the current backend settings.
-    ``max_source_events`` caps how many events one annotation may
+    user/UI command. How the model is called lives in the
+    [generation.annotation] profile. ``max_concurrency`` bounds how many
+    generation model calls run at once so it competes predictably with a live
+    turn. ``max_source_events`` caps how many events one annotation may
     summarize (kept at or below the history read API's per-range limit of 200),
     ``max_source_chars`` caps the total source text sent to the model so a few
     long events cannot form an unbounded prompt, and ``max_annotation_chars``
@@ -551,8 +581,6 @@ class HistoryAnnotationSettings:
     """
 
     enabled: bool = True
-    instruction: str = ""
-    reasoning: str = "off"
     max_concurrency: int = 1
     max_source_events: int = 100
     max_source_chars: int = 24000
@@ -634,11 +662,9 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 _DEFAULT_WARMUP_PROMPT = "Привет"
 
-# Response-mode output-contract defaults (story-v1.9.0, task 1). Unlike the
-# reasoning-level sections above (default None: off adds nothing), these two
-# have working built-in text, so [response] mode = "voice" is usable with no
-# config change - only reasoning_low/medium/high need config to say anything
-# at all. Kept as two separate directives on purpose (story design decision):
+# Response-mode output-contract defaults (story-v1.9.0, task 1). Both have
+# working built-in text, so every response mode is usable with no config
+# change. Kept as two separate directives on purpose (story design decision):
 # mode 2's contract must be self-contained (nothing shown, so nothing to
 # reference); mode 3's is the opposite (allowed to reference visible text).
 # Collapsing them into one "voice" prompt would blur that distinction.
@@ -664,33 +690,11 @@ _DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT = (
 
 @dataclass(frozen=True)
 class PromptSettings:
-    """The dialog prompts sent to the model: `system` opens every turn's
-    message list, `warmup` is the throwaway request main.warm_up() sends
-    before user input is accepted."""
+    """Dialog text shared by every dialog profile: `system` opens every turn's
+    message list; `voice_turn_instruction`, when set, replaces
+    jarvis.core.lifecycle.VOICE_PLACEHOLDER_TEXT as a voice turn's text."""
 
     system: str = _DEFAULT_SYSTEM_PROMPT
-    warmup: str = _DEFAULT_WARMUP_PROMPT
-    reasoning_low: str | None = None
-    reasoning_medium: str | None = None
-    reasoning_high: str | None = None
-    # response_voice: mode 2 (TTS-Only) self-contained voice contract.
-    # response_text_voice: mode 3 (Text+TTS) spoken-derivative contract - a
-    # task-1 placeholder field only (see response_mode.py and app.py's
-    # _RESPONSE_MODE_PROMPT_FIELD_BY_MODE): task 1's single pass does not
-    # select it yet, task 3's second pass does.
-    response_voice: str | None = _DEFAULT_RESPONSE_VOICE_CONTRACT
-    response_text_voice: str | None = _DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT
-    # Voice-intent marker contract (story-v1.9.0, task 4). None (the
-    # default) means the feature is off: no probe pass runs, voice turns
-    # behave exactly as before task 4. Setting it in [prompts] opts in -
-    # the probe adds a short non-dialog pass over each voice turn's audio
-    # (a latency cost paid on every utterance), so it is deliberately not
-    # a built-in default like the two contracts above.
-    voice_intent_directive: str | None = None
-    # None (the default) means jarvis.core.lifecycle.VOICE_PLACEHOLDER_TEXT
-    # is used as-is; setting this overrides it, the same
-    # tunable-without-a-code-change pattern as
-    # journal.transcription.DEFAULT_TRANSCRIPTION_INSTRUCTION.
     voice_turn_instruction: str | None = None
 
 
@@ -699,9 +703,89 @@ class ResponseSettings:
     """The persisted response-mode selection (story-v1.9.0). `mode` seeds
     ResponseModeState at startup (jarvis.dialog.response_mode); config.py
     keeps it a plain string, not the ResponseMode enum, to stay free of
-    project-module imports (test_config_has_no_project_import_dependencies)."""
+    project-module imports (test_config_has_no_project_import_dependencies).
+    `voice_contract` is appended to the dialog turn's system prompt in mode 2;
+    it modifies a dialog turn at any reasoning level, so it is not a
+    generation profile of its own."""
 
     mode: str = "text"
+    voice_contract: str = _DEFAULT_RESPONSE_VOICE_CONTRACT
+
+
+REASONING_VALUES = ("off", "low", "medium", "high")
+DIALOG_PROFILE_BY_REASONING: dict[str, str] = {
+    level: f"dialog.{level}" for level in REASONING_VALUES
+}
+SPOKEN_DERIVATIVE_PROFILE = "spoken_derivative"
+VOICE_INTENT_PROFILE = "voice_intent"
+WARMUP_PROFILE = "warmup"
+ANNOTATION_PROFILE = "annotation"
+TRANSCRIPTION_PROFILE = "transcription"
+_NON_DIALOG_PROFILES = (
+    SPOKEN_DERIVATIVE_PROFILE,
+    VOICE_INTENT_PROFILE,
+    WARMUP_PROFILE,
+    ANNOTATION_PROFILE,
+    TRANSCRIPTION_PROFILE,
+)
+GENERATION_PROFILE_NAMES = (
+    *DIALOG_PROFILE_BY_REASONING.values(),
+    *_NON_DIALOG_PROFILES,
+)
+
+
+def _default_generation_profiles() -> dict[str, GenerationProfile]:
+    profiles = {
+        name: GenerationProfile(reasoning=level)
+        for level, name in DIALOG_PROFILE_BY_REASONING.items()
+    }
+    profiles |= {name: GenerationProfile() for name in _NON_DIALOG_PROFILES}
+    profiles[SPOKEN_DERIVATIVE_PROFILE] = GenerationProfile(
+        prompt=_DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT
+    )
+    profiles[WARMUP_PROFILE] = GenerationProfile(prompt=_DEFAULT_WARMUP_PROMPT)
+    return profiles
+
+
+@dataclass(frozen=True)
+class GenerationSettings:
+    """Per-request model-call settings, one profile per request kind.
+    A profile key wins over `defaults`; a key unset in both is left out of the
+    request. Profiles never inherit from each other."""
+
+    defaults: GenerationOptions = field(default_factory=GenerationOptions)
+    profiles: dict[str, GenerationProfile] = field(
+        default_factory=_default_generation_profiles
+    )
+
+    def profile(self, name: str) -> GenerationProfile:
+        return self.profiles[name]
+
+    def options_for(self, name: str) -> GenerationOptions:
+        return self.defaults.overridden_by(self.profiles[name].options)
+
+
+# Hard migration: a key that moved raises a ConfigError naming its new home
+# instead of the generic unknown-key error.
+MOVED_CONFIG_KEYS: dict[str, str] = {
+    **{
+        f"backend.{option.name}": f"[generation].{option.name}"
+        for option in fields(GenerationOptions)
+    },
+    **{
+        f"prompts.reasoning_{level}": f"[generation.dialog.{level}].prompt"
+        for level in ("low", "medium", "high")
+    },
+    "prompts.response_text_voice": f"[generation.{SPOKEN_DERIVATIVE_PROFILE}].prompt",
+    "prompts.voice_intent_directive": f"[generation.{VOICE_INTENT_PROFILE}].prompt",
+    "prompts.warmup": f"[generation.{WARMUP_PROFILE}].prompt",
+    "prompts.response_voice": "[response].voice_contract",
+    "history.annotation.reasoning": f"[generation.{ANNOTATION_PROFILE}].reasoning",
+    "history.annotation.instruction": f"[generation.{ANNOTATION_PROFILE}].prompt",
+    "history.transcription.instruction": (
+        f"[generation.{TRANSCRIPTION_PROFILE}].prompt"
+    ),
+}
 
 
 # Windows executable/script extensions the model may not create as a session
@@ -781,6 +865,7 @@ class Settings:
     ui: UiSettings = field(default_factory=UiSettings)
     files: FilesSettings = field(default_factory=FilesSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
+    generation: GenerationSettings = field(default_factory=GenerationSettings)
     response: ResponseSettings = field(default_factory=ResponseSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
@@ -803,6 +888,7 @@ _SECTIONS: dict[str, type] = {
     "ui": UiSettings,
     "files": FilesSettings,
     "prompts": PromptSettings,
+    "generation": GenerationSettings,
     "response": ResponseSettings,
     "mcp": McpSettings,
     "history": HistorySettings,
@@ -853,8 +939,9 @@ def _build_section(
     *,
     prompt_root: Path,
 ) -> Any:
-    if cls is PromptSettings:
-        return _build_prompts_section(section_name, raw, prompt_root)
+    prompt_builder = _PROMPT_SECTION_BUILDERS.get(cls)
+    if prompt_builder is not None:
+        return prompt_builder(section_name, raw, prompt_root)
     builder = _SECTION_BUILDERS.get(cls)
     if builder is not None:
         return builder(section_name, raw)
@@ -1059,7 +1146,7 @@ def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
 
 
 def _build_response_section(
-    section_name: str, raw: dict[str, Any]
+    section_name: str, raw: dict[str, Any], prompt_root: Path
 ) -> "ResponseSettings":
     settings = _build_plain_section(section_name, ResponseSettings, raw)
     if settings.mode not in SUPPORTED_RESPONSE_MODES:
@@ -1067,30 +1154,134 @@ def _build_response_section(
         raise ConfigError(
             f"[{section_name}].mode must be one of: {supported}; got {settings.mode!r}"
         )
-    return settings
+    return replace(
+        settings,
+        voice_contract=_resolve_prompt_field(
+            section_name, "voice_contract", settings.voice_contract, prompt_root
+        ),
+    )
 
 
 def _build_prompts_section(
     section_name: str, raw: dict[str, Any], prompt_root: Path
 ) -> "PromptSettings":
     settings = _build_plain_section(section_name, PromptSettings, raw)
-    for name in ("system", "warmup"):
-        _require_non_empty_prompt(section_name, name, getattr(settings, name))
-    resolved = {
-        name: _resolve_prompt_field(
-            section_name, name, getattr(settings, name), prompt_root
-        )
-        for name in (
-            "reasoning_low",
-            "reasoning_medium",
-            "reasoning_high",
-            "response_voice",
-            "response_text_voice",
-            "voice_intent_directive",
+    _require_non_empty_prompt(section_name, "system", settings.system)
+    return replace(
+        settings,
+        voice_turn_instruction=_resolve_prompt_field(
+            section_name,
             "voice_turn_instruction",
+            settings.voice_turn_instruction,
+            prompt_root,
+        ),
+    )
+
+
+def _build_generation_section(
+    section_name: str, raw: dict[str, Any], prompt_root: Path
+) -> GenerationSettings:
+    option_names = {option.name for option in fields(GenerationOptions)}
+    defaults_raw: dict[str, Any] = {}
+    profile_raws: dict[str, object] = {}
+    for key, value in raw.items():
+        if key in option_names:
+            defaults_raw[key] = value
+        elif key in BACKEND_LOAD_OPTION_FIELDS:
+            raise _model_load_key_error(section_name, key)
+        elif key == "dialog":
+            for level, profile_raw in _require_table(f"{section_name}.dialog", value):
+                if level not in DIALOG_PROFILE_BY_REASONING:
+                    raise ConfigError(
+                        f"Unknown profile [{section_name}.dialog.{level}]; dialog "
+                        f"profiles are {', '.join(REASONING_VALUES)}"
+                    )
+                profile_raws[DIALOG_PROFILE_BY_REASONING[level]] = profile_raw
+        elif key in _NON_DIALOG_PROFILES:
+            profile_raws[key] = value
+        elif isinstance(value, dict):
+            raise ConfigError(f"Unknown profile [{section_name}.{key}]")
+        else:
+            raise ConfigError(f"Unknown key(s) in [{section_name}]: {key}")
+
+    profiles = _default_generation_profiles()
+    for name, profile_raw in profile_raws.items():
+        location = f"{section_name}.{name}"
+        profiles[name] = _build_generation_profile(
+            location,
+            dict(_require_table(location, profile_raw)),
+            profiles[name],
+            allows_reasoning=name in _NON_DIALOG_PROFILES,
+            prompt_root=prompt_root,
         )
-    }
-    return replace(settings, **resolved)
+    return GenerationSettings(
+        defaults=_build_plain_section(section_name, GenerationOptions, defaults_raw),
+        profiles=profiles,
+    )
+
+
+def _build_generation_profile(
+    location: str,
+    raw: dict[str, Any],
+    default: GenerationProfile,
+    *,
+    allows_reasoning: bool,
+    prompt_root: Path,
+) -> GenerationProfile:
+    option_names = {option.name for option in fields(GenerationOptions)}
+    for key in BACKEND_LOAD_OPTION_FIELDS:
+        if key in raw:
+            raise _model_load_key_error(location, key)
+    if "reasoning" in raw and not allows_reasoning:
+        raise ConfigError(
+            f"[{location}].reasoning is not allowed: a dialog profile's "
+            "reasoning level is its name"
+        )
+    unknown_keys = set(raw) - option_names - {"prompt", "reasoning"}
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [{location}]: {', '.join(sorted(unknown_keys))}"
+        )
+
+    prompt = default.prompt
+    if "prompt" in raw:
+        value = raw["prompt"]
+        if not isinstance(value, str):
+            raise ConfigError(
+                f"[{location}].prompt must be str, got {type(value).__name__}: "
+                f"{value!r}"
+            )
+        prompt = _resolve_prompt_field(location, "prompt", value, prompt_root)
+
+    reasoning = raw.get("reasoning", default.reasoning)
+    if reasoning not in REASONING_VALUES:
+        raise ConfigError(
+            f"[{location}].reasoning must be one of {'/'.join(REASONING_VALUES)}, "
+            f"got {reasoning!r}"
+        )
+
+    return GenerationProfile(
+        options=_build_plain_section(
+            location,
+            GenerationOptions,
+            {key: value for key, value in raw.items() if key in option_names},
+        ),
+        prompt=prompt,
+        reasoning=reasoning,
+    )
+
+
+def _require_table(location: str, value: object) -> Any:
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{location}] must be a table")
+    return value.items()
+
+
+def _model_load_key_error(location: str, key: str) -> ConfigError:
+    return ConfigError(
+        f"[{location}].{key} is a model-load setting that lives in [backend]: "
+        "Ollama reloads the model when a request changes it"
+    )
 
 
 def _resolve_prompt_field(
@@ -1241,14 +1432,6 @@ def _build_history_annotation_section(
         raise ConfigError(
             f"[{section_name}].max_concurrency must be at least 1, "
             f"got {settings.max_concurrency!r}"
-        )
-    # Mirrors dialog.thinking_mode.ReasoningLevel values; not imported here to
-    # keep config free of a journal/dialog import cycle. app.py converts the
-    # validated string to a ReasoningLevel when wiring the service.
-    if settings.reasoning not in {"off", "low", "medium", "high"}:
-        raise ConfigError(
-            f"[{section_name}].reasoning must be one of off/low/medium/high, "
-            f"got {settings.reasoning!r}"
         )
     # 200 is the history read API's HISTORY_READ_MAX_EVENTS_PER_RANGE; 20000 is
     # the annotation overlay store's ANNOTATION_MAX_TEXT_LENGTH. Both are
@@ -1717,12 +1900,17 @@ def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
     file's own raw dict before the two are merged - so an unknown key is
     always attributed to the file that actually contains it, not to
     whichever file happened to be merged last."""
+    _reject_moved_keys(raw, source)
     unknown_sections = set(raw) - set(_SECTIONS)
     if unknown_sections:
         raise ConfigError(
             f"Unknown section(s) in {source}: {', '.join(sorted(unknown_sections))}"
         )
     for section_name, cls in _SECTIONS.items():
+        if cls is GenerationSettings:
+            # Its keys are options and nested profile tables, validated by
+            # _build_generation_section() rather than by dataclass fields.
+            continue
         known_fields = {f.name for f in fields(cls)}
         if cls is TtsSettings:
             # Let _build_tts_section() produce the deliberate migration
@@ -1734,6 +1922,18 @@ def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
             raise ConfigError(
                 f"Unknown key(s) in [{section_name}] ({source}): "
                 f"{', '.join(sorted(unknown_keys))}"
+            )
+
+
+def _reject_moved_keys(raw: dict[str, Any], source: Path) -> None:
+    for old_location, new_location in MOVED_CONFIG_KEYS.items():
+        *section_path, key = old_location.split(".")
+        section: object = raw
+        for part in section_path:
+            section = section.get(part) if isinstance(section, dict) else None
+        if isinstance(section, dict) and key in section:
+            raise ConfigError(
+                f"[{'.'.join(section_path)}].{key} ({source}) moved to {new_location}"
             )
 
 
@@ -1762,12 +1962,10 @@ def _merge_raw_section(
     return merged
 
 
-# Sections whose builder needs only (section_name, raw). PromptSettings is the
-# one exception (it also needs prompt_root) and is dispatched separately.
+# Sections whose builder needs only (section_name, raw).
 _SECTION_BUILDERS: dict[type, Any] = {
     TtsSettings: _build_tts_section,
     UiSettings: _build_ui_section,
-    ResponseSettings: _build_response_section,
     FilesSettings: _build_files_section,
     McpSettings: _build_mcp_section,
     MemorySettings: _build_memory_section,
@@ -1775,6 +1973,14 @@ _SECTION_BUILDERS: dict[type, Any] = {
     HistorySettings: _build_history_section,
     CameraSettings: _build_camera_section,
     AttachmentSettings: _build_attachments_section,
+}
+
+# Sections holding prompt text, whose @file references resolve under
+# prompt_root.
+_PROMPT_SECTION_BUILDERS: dict[type, Any] = {
+    PromptSettings: _build_prompts_section,
+    GenerationSettings: _build_generation_section,
+    ResponseSettings: _build_response_section,
 }
 
 

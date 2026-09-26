@@ -9,7 +9,7 @@ import pytest
 import soundfile as sf
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings, Settings
+from jarvis.core.config import BackendSettings, GenerationOptions, Settings
 from jarvis.dialog.backend import OllamaBackend
 from manual import manual_check_audio_request_shape as check
 from manual.manual_check_audio_request_shape import (
@@ -27,18 +27,11 @@ from manual.manual_check_audio_request_shape import (
     summarize_trials,
 )
 
+OPTIONS = GenerationOptions(temperature=0.0, seed=17, num_predict=64)
+
 
 def _backend() -> OllamaBackend:
-    return OllamaBackend(
-        EventBus(),
-        BackendSettings(
-            model="test-model",
-            num_ctx=4096,
-            temperature=0.0,
-            seed=17,
-            num_predict=64,
-        ),
-    )
+    return OllamaBackend(EventBus(), BackendSettings(model="test-model", num_ctx=4096))
 
 
 def _fixture(key: str, reference_text: str | None = "слова") -> AudioFixture:
@@ -300,6 +293,7 @@ def test_payload_builder_uses_images_and_preserves_explicit_empty_system():
         conditions["empty_system_audio"],
         audio_b64,
         num_gpu=99,
+        options=OPTIONS,
     )
 
     assert payload["stream"] is False
@@ -312,14 +306,20 @@ def test_payload_builder_uses_images_and_preserves_explicit_empty_system():
 
 def test_payload_builder_rejects_non_positive_num_gpu_layers():
     with pytest.raises(ValueError, match="num_gpu must be at least 1"):
-        build_payload(_backend(), build_conditions("full")[0], "YQ==", num_gpu=0)
+        build_payload(
+            _backend(), build_conditions("full")[0], "YQ==", num_gpu=0, options=OPTIONS
+        )
 
 
 def test_payload_builder_adds_one_noop_tool_and_negative_control_has_no_media():
     conditions = {item.key: item for item in build_conditions("full prompt")}
 
-    with_tool = build_payload(_backend(), conditions["bare_audio_noop_tool"], "YQ==")
-    no_media = build_payload(_backend(), conditions["no_media_control"], "YQ==")
+    with_tool = build_payload(
+        _backend(), conditions["bare_audio_noop_tool"], "YQ==", options=OPTIONS
+    )
+    no_media = build_payload(
+        _backend(), conditions["no_media_control"], "YQ==", options=OPTIONS
+    )
 
     assert len(with_tool["tools"]) == 1
     assert with_tool["tools"][0]["function"]["name"] == "noop"
@@ -354,6 +354,7 @@ def test_sanitized_payload_replaces_base64_with_hash_and_size():
         _backend(),
         build_conditions("full")[0],
         base64.b64encode(audio).decode("ascii"),
+        options=OPTIONS,
     )
 
     sanitized = sanitize_payload(payload)

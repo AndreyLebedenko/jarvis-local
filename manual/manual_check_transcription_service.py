@@ -27,8 +27,9 @@ Usage:
 
 Both --session/--position and --latest write a GENERATED transcript overlay.
 Re-running overwrites it (idempotent, retryable). `--instruction` overrides the
-default framing - useful because `gemma4:12b-it-qat` will refuse ("provide the
-audio file") for some phrasings even though the audio reaches it, so the exact
+framing (`[generation.transcription].prompt`, else the service default) -
+useful because `gemma4:12b-it-qat` will refuse ("provide the audio file") for
+some phrasings even though the audio reaches it, so the exact
 instruction wording is a live-tuning knob (see the transcription refusal bug
 report).
 """
@@ -39,8 +40,9 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from jarvis.app import _profile_reasoning
 from jarvis.core.bus import EventBus
-from jarvis.core.config import Settings, load_settings
+from jarvis.core.config import TRANSCRIPTION_PROFILE, Settings, load_settings
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.journal.events import JournalEventRef
 from jarvis.journal.lifecycle import JournalStoreEventReferenceResolver
@@ -80,6 +82,7 @@ def _print_candidates(store: JournalStore) -> None:
 
 
 async def _transcribe(
+    settings: Settings,
     store: JournalStore,
     backend: OllamaBackend,
     reference: JournalEventRef,
@@ -88,11 +91,21 @@ async def _transcribe(
     overlays = TranscriptOverlayRepository(
         store.root, JournalStoreEventReferenceResolver(store)
     )
+    profile = settings.generation.profile(TRANSCRIPTION_PROFILE)
+    effective_instruction = instruction or profile.prompt
     service = TranscriptionService(
         JournalStoreTranscriptionSource(store),
-        OllamaTranscriptionBackend(backend),
+        OllamaTranscriptionBackend(
+            backend,
+            options=settings.generation.options_for(TRANSCRIPTION_PROFILE),
+            reasoning=_profile_reasoning(profile),
+        ),
         overlays,
-        **({} if instruction is None else {"instruction": instruction}),
+        **(
+            {}
+            if effective_instruction is None
+            else {"instruction": effective_instruction}
+        ),
     )
     if instruction is not None:
         print(f"Instruction override: {instruction}")
@@ -140,7 +153,7 @@ async def run(args: argparse.Namespace) -> None:
 
     bus = EventBus()
     backend = OllamaBackend(bus=bus, settings=settings.backend)
-    await _transcribe(store, backend, reference, args.instruction)
+    await _transcribe(settings, store, backend, reference, args.instruction)
 
 
 if __name__ == "__main__":

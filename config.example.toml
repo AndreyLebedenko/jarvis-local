@@ -10,6 +10,10 @@
 # are caught, not silently ignored).
 
 [backend]
+# Connection and model-load settings only. These are sent with every
+# request but never vary per request: Ollama reloads the model when a
+# request carries a different num_ctx, flash_attention, or kv_cache_type.
+# Per-request options live in [generation] below.
 model = "gemma4:12b-it-qat"
 endpoint = "http://localhost:11434"
 num_ctx = 65536
@@ -23,8 +27,21 @@ num_ctx = 65536
 # flash_attention = true
 # kv_cache_type = "q8_0"  # Ollama docs also list "f16" (default) and
 # "q4_0"; leave both fields unset to preserve current behavior.
-# Optional generation options. Leave unset to preserve current behavior;
-# no project defaults are chosen here without local measurements.
+# httpx's own default timeout (~5 s) is too short for a genuinely cold
+# Ollama start (verified live - longer than the day-0 "4.2 s cold" figure,
+# which was itself measured on an already-touched model). Only the read
+# timeout is this generous; connect/write/pool stay short (localhost).
+read_timeout_seconds = 120.0
+
+[generation]
+# Per-request generation options, one profile per kind of model request
+# (tasks/done/task-config-generation-profiles.md). This table holds the defaults
+# for every request; a [generation.<profile>] table overrides any of them for
+# that request kind only. A key unset in both is left out of the request, so
+# Ollama's own default applies. Profiles never inherit from each other, and a
+# model-load key (num_ctx, flash_attention, kv_cache_type) inside a profile
+# is a config error. Leave options unset to preserve current behavior; no
+# project defaults are chosen here without local measurements.
 # temperature = 0.2
 # top_p = 0.9
 # top_k = 40
@@ -35,11 +52,62 @@ num_ctx = 65536
 # num_predict = 128
 # stop = ["</speak>"]
 # draft_num_predict = 16
-# httpx's own default timeout (~5 s) is too short for a genuinely cold
-# Ollama start (verified live - longer than the day-0 "4.2 s cold" figure,
-# which was itself measured on an already-touched model). Only the read
-# timeout is this generous; connect/write/pool stay short (localhost).
-read_timeout_seconds = 120.0
+#
+# Profiles, all optional (an absent table means "all defaults"). Each may set
+# any option above plus `prompt`; the non-dialog ones also accept
+# `reasoning` = "off" (default), "low", "medium", or "high".
+#
+# `prompt` is a non-empty literal or a prompt-only @file reference. References
+# always resolve under ./.jarvis/, even when they start with /:
+# @/reasoning/medium.md means ./.jarvis/reasoning/medium.md. Parent traversal
+# (..) is rejected. A literal that begins with @ is not supported because @
+# always denotes a file reference; a missing, unreadable, or blank file stops
+# startup with a config error.
+#
+# The dialog turn, one profile per reasoning level (the live level is set by
+# the thinking toggle hotkey or the Control Center). A dialog profile's
+# `prompt` is appended after the base system prompt and any self.md/memory.md
+# material for that turn; off has no section by default.
+# [generation.dialog.off]
+# [generation.dialog.low]
+# prompt = "Think briefly, then answer directly."
+# [generation.dialog.medium]
+# prompt = "@/reasoning/medium.md"
+# [generation.dialog.high]
+# prompt = "@reasoning/high.md"
+#
+# Mode 3 (text_voice) second pass: its prompt is the spoken-derivative
+# contract, sent as the system message over the exact shown text. Has a
+# working built-in default.
+# [generation.spoken_derivative]
+# prompt = "Restate the shown text aloud; you may refer to it."
+#
+# Optional voice-intent probe. When its prompt is configured, every voice
+# utterance first gets a short non-dialog audio classification pass that may
+# switch the live response mode. Keep this directive in English: Gemma 4 audio
+# recognition was observed to degrade when VAD/probe requests were written in
+# Russian.
+# [generation.voice_intent]
+# prompt = """This is a system instruction for classifying one voice message. If the audio contains a command to switch the response mode, reply with exactly one line: SWITCH_RESPONSE_MODE=<text|voice|text_voice>, where text means text-only mode, voice means voice-only mode, and text_voice means text plus voice mode. If this is ANY other message - an ordinary question, request, conversation about modes without asking to switch - reply with exactly one word: PROCEED. Output no other text before or after."""
+#
+# Historical transcription ([history.transcription]). Omitting `prompt` uses
+# the service's verified default (the wording PROJECT.md's day-0 fidelity
+# check confirmed produces faithful verbatim Russian transcription).
+# [generation.transcription]
+#
+# Historical annotation ([history.annotation]). Omitting `prompt` uses the
+# service's default: a Russian instruction (so a Russian conversation is
+# summarized in Russian) that summarizes only the cited excerpt and requires
+# attribution (assistant claims must not be presented as the user's facts).
+# The reasoning trace never reaches the stored annotation at any level.
+# [generation.annotation]
+# reasoning = "off"
+# temperature = 0.9
+
+# The throwaway request sent once at startup before input is accepted. Dialog
+# data, not UI text: independent of [ui].language.
+[generation.warmup]
+prompt = "Привет"
 
 [history]
 # Prompt input capacity for the bounded working context. This excludes the
@@ -79,10 +147,7 @@ dimension = 1024
 # the generate endpoint is available; disabling it removes that endpoint while
 # read/edit of existing transcript overlays stay available.
 enabled = true
-# Model-facing English framing for the transcription request. Empty defers to
-# the service's verified default (the wording PROJECT.md's day-0 fidelity
-# check confirmed produces faithful verbatim Russian transcription).
-instruction = ""
+# How the model is called lives in [generation.transcription].
 # How many transcription model calls may run at once. Kept low so historical
 # transcription competes predictably with a live dialog turn for VRAM.
 max_concurrency = 1
@@ -93,16 +158,7 @@ max_concurrency = 1
 # user/UI command over a bounded event range, summarizing only that cited
 # source material. Disabling it removes the generator.
 enabled = true
-# Model-facing framing for the annotation request. Empty defers to the
-# service's default: a Russian instruction (so a Russian conversation is
-# summarized in Russian) that summarizes only the cited excerpt and requires
-# attribution (assistant claims must not be presented as the user's facts).
-instruction = ""
-# Model reasoning level for generation: "off", "low", "medium", or "high".
-# "off" plus "low" cover the practical off/on choice; reasoning trace never
-# reaches the stored annotation regardless. Other generation options come from
-# [backend].
-reasoning = "off"
+# How the model is called lives in [generation.annotation].
 # How many generation model calls may run at once. Kept low so historical
 # generation competes predictably with a live dialog turn for VRAM.
 max_concurrency = 1
@@ -417,45 +473,16 @@ max_text_read_bytes = 65536
 max_image_view_bytes = 15728640
 
 [prompts]
-# Dialog prompts sent to the model. `system` opens every turn's message
-# list; `warmup` is the throwaway request sent once at startup before
-# input is accepted. Both must be non-empty. These are dialog data, not
-# UI text: they are independent of [ui].language. To switch the
-# assistant's dialog language, replace them, e.g.:
+# Dialog text shared by every dialog profile. `system` opens every turn's
+# message list and must be non-empty. This is dialog data, not UI text: it
+# is independent of [ui].language. To switch the assistant's dialog
+# language, replace it together with [generation.warmup].prompt, e.g.:
 # system = """You are Jarvis, the user's local voice assistant. Answer in
 # English unless asked otherwise. Keep answers short: one or two
 # sentences unless details are requested - longer answers take longer to
 # speak. Do not use Markdown unless explicitly asked. If a screenshot of
 # the user's screen arrives with a voice message, take it into account."""
-# warmup = "Hello"
 system = """Ты - Джарвис, локальный голосовой ассистент пользователя. Отвечай по-русски, если пользователь явно не попросил другой язык. Отвечай коротко и по существу: одно-два предложения, если не попросили подробностей - чем длиннее ответ, тем дольше пользователь ждёт, пока он прозвучит. Не используй Markdown, если пользователь явно не просит форматирование. Английские термины, API names, identifiers, короткие английские фразы и цитаты можно писать обычным текстом там, где они уместны; языковую разметку добавлять не нужно. Если вместе с голосовым сообщением пришёл скриншот экрана пользователя, отвечай с учётом того, что на нём видно."""
-warmup = "Привет"
-# Optional reasoning-mode prompt sections. Off has no separate section. At
-# low, medium, or high, the selected section follows the base system prompt
-# and any self.md/memory.md material for that turn.
-#
-# Each value is either a non-empty literal or a prompt-only @file reference.
-# References always resolve under ./.jarvis/, even when they start with /:
-# @/reasoning/medium.md means ./.jarvis/reasoning/medium.md. Parent traversal
-# (..) is rejected. A literal that begins with @ is not supported because @
-# always denotes a file reference; a missing, unreadable, or blank file stops
-# startup with a config error.
-# reasoning_low = "Think briefly, then answer directly."
-# reasoning_medium = "@/reasoning/medium.md"
-# reasoning_high = "@reasoning/high.md"
-#
-# Response-mode output contracts for modes 2 and 3 below (story-v1.9.0).
-# Each has a working built-in default already, so voice mode needs no
-# config change; override here to customize what "voice-friendly" means.
-# response_voice = "Speak in plain connected prose, no lists or tables."
-# response_text_voice = "Restate the shown text aloud; you may refer to it."
-#
-# Optional voice-intent probe. When configured, every voice utterance first
-# gets a short non-dialog audio classification pass that may switch the live
-# response mode. Keep this directive in English: Gemma 4 audio recognition was
-# observed to degrade when VAD/probe requests were written in Russian.
-# voice_intent_directive = """This is a system instruction for classifying one voice message. If the audio contains a command to switch the response mode, reply with exactly one line: SWITCH_RESPONSE_MODE=<text|voice|text_voice>, where text means text-only mode, voice means voice-only mode, and text_voice means text plus voice mode. If this is ANY other message - an ordinary question, request, conversation about modes without asking to switch - reply with exactly one word: PROCEED. Output no other text before or after."""
-#
 # A voice turn's current-turn text, sent to the model alongside the audio and
 # recorded in ConversationHistory for later turns (fix card:
 # tasks/done/task-voice-turn-audio-framing.md). Has a working built-in default
@@ -498,13 +525,18 @@ warmup = "Привет"
 #
 # Switching at runtime: the live mode for the running session is changed by
 # the Ctrl+Alt+O cycle hotkey, the Status-tab buttons, or a spoken command
-# ("switch to voice mode", when [prompts].voice_intent_directive is
+# ("switch to voice mode", when [generation.voice_intent].prompt is
 # configured); neither the hotkey nor the buttons persist anything. The
 # value set here (config.toml) seeds the next launch and can be overridden
 # per-key by config.ui.toml, which the Settings tab's drop-down + Apply
 # writes. See tasks/story-v1.9.0-response-modes.md and PROJECT.md's
 # Architecture v1.9.0 section for the full trade-offs.
 mode = "text"
+# Mode 2's output contract, appended to the dialog turn's system prompt at any
+# reasoning level. Has a working built-in default; override (literal or
+# @file reference, as in [generation]) to customize what "voice-friendly"
+# means. Mode 3's contract is [generation.spoken_derivative].prompt.
+# voice_contract = "Speak in plain connected prose, no lists or tables."
 
 [mcp]
 # Off by default (two-tier locality contract, PROJECT.md): with enabled =

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 import pytest
 
 from jarvis.core.bus import EventBus
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.dialog.tool_presentation import (
@@ -14,6 +15,8 @@ from jarvis.dialog.tool_presentation import (
 )
 from jarvis.tools.interception import ToolDispatchResult
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
+
+NO_OPTIONS = GenerationOptions()
 
 
 def _tool(name: str = "search_web", *, enabled: bool = True) -> RegisteredTool:
@@ -47,12 +50,15 @@ class FakeBackend:
         messages: Sequence[dict[str, object]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> None:
         self.legacy_calls.append(
             {
                 "messages": list(messages),
                 "images_b64": images_b64,
                 "reasoning_level": reasoning_level,
+                "options": options,
             }
         )
 
@@ -62,6 +68,8 @@ class FakeBackend:
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[dict[str, object]] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[dict[str, object]]:
         self.raw_calls.append(
             {
@@ -69,6 +77,7 @@ class FakeBackend:
                 "images_b64": images_b64,
                 "reasoning_level": reasoning_level,
                 "tools": tools,
+                "options": options,
             }
         )
         for chunk in self.responses.pop(0):
@@ -86,6 +95,8 @@ class StreamingAssertionBackend(FakeBackend):
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[dict[str, object]] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[dict[str, object]]:
         yield {"message": {"content": "first sentence. "}}
         assert self.observed_tokens == ["first sentence. "]
@@ -201,8 +212,13 @@ async def test_empty_registry_uses_byte_identical_legacy_dialog_path():
     )
     messages = [{"role": "user", "content": "hello"}]
 
+    options = GenerationOptions(num_predict=256)
+
     await dialog.chat(
-        messages, images_b64=["image"], reasoning_level=ReasoningLevel.HIGH
+        messages,
+        images_b64=["image"],
+        reasoning_level=ReasoningLevel.HIGH,
+        options=options,
     )
 
     assert backend.legacy_calls == [
@@ -210,9 +226,35 @@ async def test_empty_registry_uses_byte_identical_legacy_dialog_path():
             "messages": messages,
             "images_b64": ["image"],
             "reasoning_level": ReasoningLevel.HIGH,
+            "options": options,
         }
     ]
     assert backend.raw_calls == []
+
+
+@pytest.mark.asyncio
+async def test_every_pass_of_the_tool_loop_sends_the_turns_options():
+    backend = FakeBackend(
+        [
+            _native_calls(("search_web", {"query": "weather"})),
+            _done("It is sunny."),
+        ]
+    )
+    dialog = ToolAwareDialog(
+        backend,
+        EventBus(),
+        _registry(_tool()),
+        FakeDispatcher(
+            [ToolDispatchResult(ok=True, correlation_id="1", content={"sunny": True})]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+    options = GenerationOptions(temperature=0.3)
+
+    await dialog.chat([{"role": "user", "content": "weather?"}], options=options)
+
+    assert [call["options"] for call in backend.raw_calls] == [options, options]
 
 
 @pytest.mark.asyncio
@@ -227,7 +269,7 @@ async def test_registry_with_only_disabled_tools_uses_legacy_path():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "hello"}])
+    await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert len(backend.legacy_calls) == 1
     assert backend.raw_calls == []
@@ -261,7 +303,7 @@ async def test_tool_result_image_is_available_only_to_the_current_tool_follow_up
         {"role": "user", "content": "look"},
     ]
 
-    await dialog.chat(messages)
+    await dialog.chat(messages, options=NO_OPTIONS)
 
     follow_up_messages = backend.raw_calls[1]["messages"]
     media_message = follow_up_messages[-1]
@@ -297,7 +339,7 @@ async def test_native_tool_artifacts_do_not_reach_response_events():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "weather?"}])
+    await dialog.chat([{"role": "user", "content": "weather?"}], options=NO_OPTIONS)
 
     assert tokens == ["It is sunny."]
     assert len(completions) == 1
@@ -325,7 +367,7 @@ async def test_native_final_answer_tokens_publish_while_stream_is_open():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "hello"}])
+    await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert tokens == ["first sentence. ", "second sentence."]
 
@@ -366,7 +408,7 @@ async def test_native_call_metadata_after_answer_text_is_ignored():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "hello"}])
+    await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert tokens == ["Final answer."]
     assert dispatcher.calls == []
@@ -399,7 +441,7 @@ async def test_multiple_native_calls_run_sequentially_within_shared_budget():
         max_tool_calls_per_turn=2,
     )
 
-    await dialog.chat([{"role": "user", "content": "compare"}])
+    await dialog.chat([{"role": "user", "content": "compare"}], options=NO_OPTIONS)
 
     assert dispatcher.calls == [
         ("search_web", {"query": "one"}),
@@ -463,7 +505,9 @@ async def test_search_then_surrounding_read_then_final_answer_fits_three_call_bu
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "why did the relay fail?"}])
+    await dialog.chat(
+        [{"role": "user", "content": "why did the relay fail?"}], options=NO_OPTIONS
+    )
 
     assert dispatcher.calls == [
         ("search_history", {"query": "relay failure"}),
@@ -509,6 +553,7 @@ async def test_native_tool_followup_retains_media_on_the_original_user_message()
     await dialog.chat(
         messages,
         images_b64=["audio", "screenshot"],
+        options=NO_OPTIONS,
     )
 
     assert len(backend.raw_calls) == 2
@@ -542,7 +587,7 @@ async def test_calls_beyond_budget_are_not_dispatched_and_model_gets_honest_erro
         max_tool_calls_per_turn=1,
     )
 
-    await dialog.chat([{"role": "user", "content": "compare"}])
+    await dialog.chat([{"role": "user", "content": "compare"}], options=NO_OPTIONS)
 
     assert dispatcher.calls == [("search_web", {"query": "one"})]
     final_messages = backend.raw_calls[1]["messages"]
@@ -569,7 +614,9 @@ async def test_malformed_native_arguments_force_a_final_text_request():
     )
 
     await dialog.chat(
-        [{"role": "user", "content": "search"}], images_b64=["current-image"]
+        [{"role": "user", "content": "search"}],
+        images_b64=["current-image"],
+        options=NO_OPTIONS,
     )
 
     assert dispatcher.calls == []
@@ -601,7 +648,7 @@ async def test_native_json_encoded_arguments_are_decoded_before_dispatch():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "search"}])
+    await dialog.chat([{"role": "user", "content": "search"}], options=NO_OPTIONS)
 
     assert dispatcher.calls == [("search_web", {"query": "weather"})]
 
@@ -626,7 +673,7 @@ async def test_tool_failure_forces_final_answer_without_more_tools():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "weather?"}])
+    await dialog.chat([{"role": "user", "content": "weather?"}], options=NO_OPTIONS)
 
     assert len(dispatcher.calls) == 1
     assert backend.raw_calls[1]["tools"] is None
@@ -656,7 +703,7 @@ async def test_tool_failure_skips_later_calls_from_the_same_model_response():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "run both"}])
+    await dialog.chat([{"role": "user", "content": "run both"}], options=NO_OPTIONS)
 
     assert dispatcher.calls == [("search_web", {"query": "first"})]
     final_messages = backend.raw_calls[1]["messages"]
@@ -693,7 +740,7 @@ async def test_prompt_strategy_parses_tool_call_then_only_publishes_final_answer
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "weather?"}])
+    await dialog.chat([{"role": "user", "content": "weather?"}], options=NO_OPTIONS)
 
     assert tokens == ["It is sunny."]
     assert completions[0].metrics.prompt_eval_count == 43
@@ -720,7 +767,7 @@ async def test_malformed_prompt_output_gets_one_forced_final_request():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "search"}])
+    await dialog.chat([{"role": "user", "content": "search"}], options=NO_OPTIONS)
 
     assert len(backend.raw_calls) == 2
     assert "malformed" in backend.raw_calls[1]["messages"][-1]["content"].lower()
@@ -750,7 +797,7 @@ async def test_model_cannot_extend_loop_by_ignoring_forced_final_request():
         max_tool_calls_per_turn=1,
     )
 
-    await dialog.chat([{"role": "user", "content": "search"}])
+    await dialog.chat([{"role": "user", "content": "search"}], options=NO_OPTIONS)
 
     assert len(backend.raw_calls) == 2
     assert len(dispatcher.calls) == 1
@@ -772,7 +819,7 @@ async def test_stream_without_done_still_completes_final_turn_once():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "hello"}])
+    await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert completions == [
         ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
@@ -817,7 +864,9 @@ async def test_two_captures_in_one_turn_each_carry_their_own_source_text():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "look through both"}])
+    await dialog.chat(
+        [{"role": "user", "content": "look through both"}], options=NO_OPTIONS
+    )
 
     follow_up = backend.raw_calls[1]["messages"]
     media = [message for message in follow_up if "images" in message]
@@ -869,7 +918,9 @@ async def test_a_failed_capture_does_not_discard_the_frame_that_arrived():
         max_tool_calls_per_turn=3,
     )
 
-    await dialog.chat([{"role": "user", "content": "look through both"}])
+    await dialog.chat(
+        [{"role": "user", "content": "look through both"}], options=NO_OPTIONS
+    )
 
     follow_up = backend.raw_calls[1]["messages"]
     media = [message for message in follow_up if "images" in message]
@@ -909,6 +960,7 @@ async def test_iter_chat_delegates_straight_to_the_transport():
             [{"role": "user", "content": "probe"}],
             images_b64=["img"],
             reasoning_level=ReasoningLevel.OFF,
+            options=NO_OPTIONS,
         )
     ]
 

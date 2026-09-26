@@ -36,27 +36,15 @@ from typing import Any
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import (
+    BACKEND_LOAD_OPTION_FIELDS,
+    BackendSettings,
+    GenerationOptions,
+)
 from jarvis.core.debug_transcript import begin_exchange
 from jarvis.dialog.thinking_mode import ReasoningLevel
 
 logger = logging.getLogger(__name__)
-
-_OPTION_FIELDS = (
-    "num_ctx",
-    "flash_attention",
-    "kv_cache_type",
-    "temperature",
-    "top_p",
-    "top_k",
-    "min_p",
-    "repeat_penalty",
-    "repeat_last_n",
-    "seed",
-    "num_predict",
-    "stop",
-    "draft_num_predict",
-)
 
 
 @dataclass(frozen=True)
@@ -98,15 +86,17 @@ class OllamaBackend:
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[dict[str, object]] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> dict[str, Any]:
         messages = [dict(message) for message in messages]
         if images_b64:
             messages[-1] = {**messages[-1], "images": list(images_b64)}
-        options = {
+        request_options = {
             name: value
-            for name in _OPTION_FIELDS
+            for name in BACKEND_LOAD_OPTION_FIELDS
             if (value := getattr(self._settings, name)) is not None
-        }
+        } | options.as_request_options()
         think: bool | str = (
             False if reasoning_level is ReasoningLevel.OFF else reasoning_level.value
         )
@@ -115,7 +105,7 @@ class OllamaBackend:
             "messages": messages,
             "stream": True,
             "think": think,
-            "options": options,
+            "options": request_options,
         }
         if tools:
             payload["tools"] = list(tools)
@@ -127,6 +117,8 @@ class OllamaBackend:
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
         tools: Sequence[dict[str, object]] | None = None,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yields raw chunks while carrying only prepared declarations.
 
@@ -134,7 +126,9 @@ class OllamaBackend:
         each pass of the tool loop, the forced-final pass, and the warm-up
         - which is why the debug transcript is taken at this seam and
         nowhere higher up. It costs one level check when debug is off."""
-        payload = self.build_payload(messages, images_b64, reasoning_level, tools)
+        payload = self.build_payload(
+            messages, images_b64, reasoning_level, tools, options=options
+        )
         exchange = begin_exchange(payload)
         try:
             async with self._client.stream(
@@ -159,9 +153,13 @@ class OllamaBackend:
         messages: Sequence[dict[str, Any]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> None:
         saw_done = False
-        async for chunk in self.iter_chat(messages, images_b64, reasoning_level):
+        async for chunk in self.iter_chat(
+            messages, images_b64, reasoning_level, options=options
+        ):
             # message.thinking (reasoning trace, present when think=true) is
             # deliberately never read here - PROJECT.md's isolation rule
             # requires it stay out of ResponseToken/TTS. Only message.content

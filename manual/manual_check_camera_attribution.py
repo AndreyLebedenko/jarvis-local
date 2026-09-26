@@ -30,7 +30,11 @@ import time
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BUILTIN_TOOL_PROVIDER_NAME, load_settings
+from jarvis.core.config import (
+    BUILTIN_TOOL_PROVIDER_NAME,
+    DIALOG_PROFILE_BY_REASONING,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend, ResponseToken
 from jarvis.dialog.thinking_mode import ReasoningLevelState
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
@@ -121,7 +125,8 @@ async def run(args: argparse.Namespace) -> int:
             [
                 {"role": "system", "content": settings.prompts.system},
                 {"role": "user", "content": args.ask},
-            ]
+            ],
+            options=settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"]),
         )
         elapsed = time.perf_counter() - started
 

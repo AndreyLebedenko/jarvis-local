@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from jarvis.core.config import GenerationOptions
+from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.events import JournalEvent, JournalEventRef, JSONValue
 from jarvis.journal.store import JournalStore
 from jarvis.journal.transcript import (
@@ -605,13 +607,18 @@ class TestOllamaBackendAdapter:
         class _Chat:
             def __init__(self) -> None:
                 self.built: list[Sequence[Mapping[str, object]]] = []
+                self.requests: list[tuple[ReasoningLevel, GenerationOptions]] = []
 
             def build_payload(
                 self,
                 messages: Sequence[Mapping[str, object]],
                 images_b64: Sequence[str] | None = None,
+                reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+                *,
+                options: GenerationOptions,
             ) -> Mapping[str, JSONValue]:
                 self.built.append(list(messages))
+                self.requests.append((reasoning_level, options))
                 return {
                     "model": "gemma4:12b-it-qat",
                     "think": False,
@@ -622,12 +629,18 @@ class TestOllamaBackendAdapter:
                 self,
                 messages: Sequence[Mapping[str, object]],
                 images_b64: Sequence[str] | None = None,
+                reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+                *,
+                options: GenerationOptions,
             ) -> AsyncIterator[Mapping[str, JSONValue]]:
                 for chunk in chunks:
                     yield chunk
 
         chat = _Chat()
-        adapter = OllamaTranscriptionBackend(chat)
+        options = GenerationOptions(temperature=0.0)
+        adapter = OllamaTranscriptionBackend(
+            chat, options=options, reasoning=ReasoningLevel.LOW
+        )
         run = await adapter.run_transcription(
             build_transcription_messages("say"), ["b64"]
         )
@@ -640,6 +653,7 @@ class TestOllamaBackendAdapter:
             ("num_ctx", "65536"),
         )
         assert chat.built[0] == [{"role": "user", "content": "say"}]
+        assert chat.requests == [(ReasoningLevel.LOW, options)]
 
     async def test_stream_failure_carries_prepared_metadata(self) -> None:
         class _Chat:
@@ -647,6 +661,9 @@ class TestOllamaBackendAdapter:
                 self,
                 messages: Sequence[Mapping[str, object]],
                 images_b64: Sequence[str] | None = None,
+                reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+                *,
+                options: GenerationOptions,
             ) -> Mapping[str, JSONValue]:
                 return {
                     "model": "gemma4:12b-it-qat",
@@ -658,11 +675,16 @@ class TestOllamaBackendAdapter:
                 self,
                 messages: Sequence[Mapping[str, object]],
                 images_b64: Sequence[str] | None = None,
+                reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+                *,
+                options: GenerationOptions,
             ) -> AsyncIterator[Mapping[str, JSONValue]]:
                 yield {"message": {"content": "partial"}}
                 raise RuntimeError("stream died")
 
-        adapter = OllamaTranscriptionBackend(_Chat())
+        adapter = OllamaTranscriptionBackend(
+            _Chat(), options=GenerationOptions(), reasoning=ReasoningLevel.OFF
+        )
         with pytest.raises(TranscriptionBackendError) as excinfo:
             await adapter.run_transcription(
                 build_transcription_messages("say"), ["b64"]
