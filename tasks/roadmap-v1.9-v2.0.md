@@ -270,6 +270,11 @@ Candidate directions:
 - **Single-pass tagged output.** One backend response contains separate
   `canvas` and `voice` channels. The UI renders only canvas text; TTS speaks
   only voice text; the Journal stores both with clear provenance.
+  Amended 2026-09-26 (owner planning dialog): its simplest form - the canvas
+  first, then one trailing `<tts>` block - is pulled forward as a measured
+  spike, `spike-single-pass-tts-block.md`. Voice-first ordering is rejected.
+  Interleaving (next item) stays here as a possible, questionable later
+  improvement.
 - **Interleaved block protocol.** The model can alternate visible blocks and
   spoken guide blocks, for example a paragraph/table/formula followed by the
   voice explanation tied to that block. This could let speech begin before the
