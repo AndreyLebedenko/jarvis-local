@@ -1,6 +1,6 @@
 # Task: Generation profiles - restructure model-call config around request kinds
 
-**Status:** Draft, awaiting owner review. Not started.
+**Status:** Approved (owner, 2026-09-26). Not started.
 **Origin:** owner planning dialog, 2026-09-26. Design agreed in that dialog;
 this card records it.
 **Depends on:** nothing.

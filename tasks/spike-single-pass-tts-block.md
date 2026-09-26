@@ -1,7 +1,7 @@
 # Spike: mode 3b - single-pass Text + voice with a trailing `<tts>` block
 
-**Status:** Draft; design and decision rule agreed with the owner
-2026-09-26. Not started.
+**Status:** Approved (owner, 2026-09-26), including the decision rule.
+Not started.
 **Origin:** owner planning dialog, 2026-09-26. Pulls the "single-pass tagged
 output" direction of roadmap v2.1 (`roadmap-v1.9-v2.0.md`, "v2.1 -
 Canvas-guided voice") forward as a measured spike, in its simplest form only.
