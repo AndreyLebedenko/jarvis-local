@@ -1,12 +1,13 @@
-# Backlog story: Installer and workspaces
+# Story: Installer and workspaces
 
-**Status:** Backlog. Approved (owner, 2026-09-26), not scheduled. No task
-cards opened yet.
+**Status:** Approved (owner, 2026-09-26). Active: scheduled ahead of
+`spike-single-pass-tts-block.md` (owner, 2026-09-26: users report installation
+as inconvenient). Task 1 card: `task-installer-1-bootstrap-installer.md`.
 **Created:** 2026-09-26.
 **Origin:** owner planning dialog, 2026-09-26 ("is there an installer, so
 Jarvis can be deployed into any directory?"), which grew into per-project
 workspaces.
-**Target:** not assigned.
+**Target:** not assigned a version.
 
 ## User-facing goal
 
@@ -77,7 +78,7 @@ never against the process cwd.
   home. A missing directory fails start-up with a clear error instead of being
   created silently: a typo in a shortcut must not yield an empty workspace
   with a blank history. Creating a workspace is an explicit action (installer
-  command or a dedicated flag; the exact form is task 3's call). No
+  command or a dedicated flag; the exact form is task 4's call). No
   "last used workspace" state and no start-up picker in this story.
 - **App home is derived, not passed:** it is found from the installed package
   location, so the process cwd plays no role at all.
@@ -93,6 +94,10 @@ never against the process cwd.
   frozen executable (PyInstaller) is out of scope: torch, Silero, and
   pywebview package poorly, and the single-user clone workflow does not need
   it.
+- **Installer scope** (owner, 2026-09-26): the reported pain is
+  installation, not launching; the installer starts from an existing clone
+  or unpacked archive (it does not clone); missing Python 3.11 and Ollama are
+  installed through winget rather than only reported.
 
 ## Boundaries
 
@@ -130,22 +135,26 @@ never against the process cwd.
 - [ ] `PROJECT.md` records the two-root path contract; README "Installation"
       describes the bootstrap command and workspaces.
 
-## Proposed task card sequence
+## Task card sequence
 
-Not opened yet; to be split when the story is scheduled.
+Resequenced 2026-09-26 (owner): the installer goes first because the reported
+pain is installation, and it does not depend on the workspace work - until
+workspaces land, the installer's launcher starts Jarvis from the app home.
 
-1. **Path inventory and resolution contract.** List every path-valued setting
+1. **Bootstrap installer.** `task-installer-1-bootstrap-installer.md`.
+   Prerequisites through winget, venv, dependencies, editable package install,
+   configured Ollama models, Silero setup, config copy, launcher; idempotent.
+2. **Path inventory and resolution contract.** List every path-valued setting
    and assign it to app home or workspace. Resolve relative paths against the
    owning root. Pure logic, config tests.
-2. **App home independence from cwd.** Config discovery relative to the app
+3. **App home independence from cwd.** Config discovery relative to the app
    home; the Silero manifest lookup working from any cwd (see open question 4).
-3. **Workspace selection and config layering.** `--workspace <dir>` with
+4. **Workspace selection and config layering.** `--workspace <dir>` with
    fail-on-missing and an explicit way to create a workspace; default
-   workspace equal to the app home; config layering per open question 2.
-4. **Resolved-path visibility.** Start-up log lines and a Status Console
+   workspace equal to the app home; config layering per open question 2;
+   the launcher learns to pass `--workspace`.
+5. **Resolved-path visibility.** Start-up log lines and a Status Console
    surface for the resolved paths.
-5. **Bootstrap installer script.** Python 3.11 and Ollama checks, venv,
-   dependencies, model pull, Silero setup, config copy; idempotent.
 6. **Docs and release verification.** README, `PROJECT.md`, human-run
    handoff (fresh clone in a new directory, launch from a foreign cwd, two
    workspaces with shared and local memory).
@@ -167,7 +176,7 @@ Not opened yet; to be split when the story is scheduled.
    Options: change cwd to the app home at start-up, or load the model through
    an explicit manifest path if the library allows it. Changing cwd is simple
    but makes every remaining cwd-relative path silently app-home-relative,
-   which task 1's inventory must rule out first.
+   which task 2's inventory must rule out first.
 5. **Interaction with v2.0 functional self-model.** The self-model is a
    projection over the journal (`roadmap-v1.9-v2.0.md`, v2.0). With
    per-workspace journals, is `self.md` and its reflection substrate
