@@ -65,7 +65,7 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 
 ## Features
 
-- Local Ollama backend using `gemma4:12b-it-qat`.
+- Local Ollama backend using `gemma4:12b`.
 - Voice input with Silero VAD.
 - Sentence-level streaming TTS with configurable per-language Silero/Piper
   routes for low perceived latency.
@@ -168,23 +168,83 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
 ## Requirements
 
 - Windows 11.
-- Python 3.11.
-- Ollama installed and running.
+- Python 3.11. `install.cmd` installs it through winget when it has to create
+  `.venv` and finds no Python 3.11.
+- Ollama, installed by you from https://ollama.com/download and running when
+  Jarvis starts. The installer never installs it.
+- The Ollama models, pulled by you. Jarvis is tested with
+  [Gemma 4 12B](https://ollama.com/library/gemma4:12b), the unified
+  multimodal model, Ollama tag `gemma4:12b` (the
+  `[backend].model` default in `config.example.toml`). The default semantic
+  history model is `blaifa/multilingual-e5-large-instruct:latest`
+  (`[history.semantic].model`); without it, semantic retrieval silently falls
+  back to exact/prefix search.
+
+  ```bash
+  ollama pull gemma4:12b
+  ollama pull blaifa/multilingual-e5-large-instruct:latest
+  ```
+
 - A GPU with enough VRAM for the selected Ollama model.
 
 ## Installation
 
-Clone this repository, then install Python dependencies:
+Clone or unpack this repository into any directory and run `install.cmd` from
+it, by double-click or from a console:
+
+```cmd
+install.cmd
+```
+
+For an unattended run, which skips the consent prompt and accepts the winget
+agreements for Python:
+
+```cmd
+install.cmd -Yes
+```
+
+The installer, in order:
+
+1. Checks that Ollama is installed (on `PATH` or at the standard per-user
+   location) and stops with the download link if it is not.
+2. Uses the existing `.venv` in the repository (it must be Python 3.11; the
+   installer never modifies or deletes it) or creates one. A base Python 3.11
+   is only needed when `.venv` does not exist yet; if none is found, it is
+   installed through winget (per-user, no administrator rights) after one
+   consent prompt. Without winget the installer stops with the download link.
+3. Installs `requirements.txt` and the package (`pip install -e .`).
+4. Creates `config.toml` from `config.example.toml` only if `config.toml` does
+   not exist.
+5. Compares the Ollama models the effective config needs (`[backend].model`,
+   and `[history.semantic].model` when `[history.semantic].enabled` is true)
+   with the models Ollama has at `[backend].endpoint`. It never downloads them:
+   missing models, or all of them when Ollama is not running, are listed in the
+   final summary as `ollama pull <model>` commands. This never fails the
+   install.
+6. Caches the configured Silero TTS models.
+7. Reports a missing Piper model file as a manual step; Piper models are not
+   downloaded.
+
+The `ollama pull` commands talk to the default Ollama server. With a
+non-default `[backend].endpoint`, point the CLI there first, for example
+`set OLLAMA_HOST=http://192.168.1.10:11434`.
+
+Re-running `install.cmd` is safe and resumes after a failure: a failed step
+prints the command to retry, and results that already exist (config, Silero
+models) are skipped. The installer needs network access once, for setup; the
+Jarvis runtime stays local. Start Jarvis with `Jarvis.cmd` (see [Usage](#usage)).
+
+### Manual installation
+
+Fallback without the installer. From the repository root, in a Python 3.11
+environment, install the dependencies and the package:
 
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
-Pull the Ollama model:
-
-```bash
-ollama pull gemma4:12b-it-qat
-```
+Pull the Ollama models listed in [Requirements](#requirements).
 
 Download and cache the default Silero TTS model once:
 
@@ -247,7 +307,19 @@ only the next turn.
 
 ## Usage
 
-Run from the repository root:
+Start Jarvis with the live Status Console UI:
+
+```cmd
+Jarvis.cmd
+```
+
+`Jarvis.cmd` runs `.venv\Scripts\python.exe -m jarvis --status-console` from
+its own directory and passes extra arguments through, for example
+`Jarvis.cmd --no-touchstrip` to open only the desktop console, without the
+touchstrip window.
+
+After a manual installation, or for development, run from the repository root
+in the Python environment where the package is installed:
 
 ```bash
 python -m jarvis

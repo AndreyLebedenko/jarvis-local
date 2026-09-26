@@ -93,7 +93,7 @@ def widest_data_boundary(*boundaries: DataBoundary | None) -> DataBoundary:
 
 @dataclass(frozen=True)
 class BackendSettings:
-    model: str = "gemma4:12b-it-qat"
+    model: str = "gemma4:12b"
     endpoint: str = "http://localhost:11434"
     num_ctx: int = 65536
     read_timeout_seconds: float = 120.0
@@ -189,7 +189,7 @@ class VadSettings:
 class SileroTtsSettings:
     model: str = field(default="v3_1_ru", metadata={"non_empty": True})
     language: str = field(default="ru", metadata={"non_empty": True})
-    speaker: str = field(default="baya", metadata={"non_empty": True})
+    speaker: str = field(default="eugene", metadata={"non_empty": True})
     sample_rate: int = field(
         default=48000, metadata={"minimum": 0, "exclusive_minimum": True}
     )

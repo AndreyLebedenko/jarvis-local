@@ -2,7 +2,8 @@
 
 **Status:** Approved (owner, 2026-09-26). Active: scheduled ahead of
 `spike-single-pass-tts-block.md` (owner, 2026-09-26: users report installation
-as inconvenient). Task 1 card: `task-installer-1-bootstrap-installer.md`.
+as inconvenient). Task 1 (`task-installer-1-bootstrap-installer.md`)
+completed 2026-09-27; tasks 2-6 not opened yet.
 **Created:** 2026-09-26.
 **Origin:** owner planning dialog, 2026-09-26 ("is there an installer, so
 Jarvis can be deployed into any directory?"), which grew into per-project
@@ -96,8 +97,10 @@ never against the process cwd.
   it.
 - **Installer scope** (owner, 2026-09-26): the reported pain is
   installation, not launching; the installer starts from an existing clone
-  or unpacked archive (it does not clone); missing Python 3.11 and Ollama are
-  installed through winget rather than only reported.
+  or unpacked archive (it does not clone); a missing Python 3.11 is
+  installed through winget. Revised the same day: Ollama is a requirement
+  the installer checks and stops on, never installs; Ollama models are
+  never pulled, only reported as missing.
 
 ## Boundaries
 
@@ -108,7 +111,7 @@ never against the process cwd.
 - No cross-workspace history search or retrieval. A workspace's journal is a
   hard retrieval boundary; that is the point of the feature.
 - No multi-instance support and no instance lock (see decisions).
-- The installer's network steps (`pip`, `ollama pull`, `setup_tts_model.py`)
+- The installer's network steps (winget for Python, `pip`, `setup_tts_model.py`)
   stay one-time setup. The runtime locality contract in `PROJECT.md` is
   unchanged.
 - Installer and workspace behavior touching Ollama, the microphone, TTS
@@ -142,8 +145,9 @@ pain is installation, and it does not depend on the workspace work - until
 workspaces land, the installer's launcher starts Jarvis from the app home.
 
 1. **Bootstrap installer.** `task-installer-1-bootstrap-installer.md`.
-   Prerequisites through winget, venv, dependencies, editable package install,
-   configured Ollama models, Silero setup, config copy, launcher; idempotent.
+   Ollama requirement check, Python through winget, venv, dependencies,
+   editable package install, config copy, missing-model report, Silero setup,
+   launcher; idempotent.
 2. **Path inventory and resolution contract.** List every path-valued setting
    and assign it to app home or workspace. Resolve relative paths against the
    owning root. Pure logic, config tests.

@@ -1325,7 +1325,7 @@ def test_snapshot_contains_config_values_section():
         "engine": "silero",
         "model": "v3_1_ru",
         "language": "ru",
-        "speaker": "baya",
+        "speaker": "eugene",
         "sample_rate": 48000,
         "put_accent": None,
         "put_yo": None,

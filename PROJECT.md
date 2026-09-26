@@ -32,6 +32,12 @@ system is intended to grow.
 
 - Backend: **Ollama**, model **`gemma4:12b-it-qat`** (Gemma 4 12B, encoder-free
   unified multimodal: text + image + audio in one backbone).
+  Default model changed 2026-09-26 (owner): `[backend].model` now defaults to
+  the official Ollama tag `gemma4:12b` (https://ollama.com/library/gemma4:12b);
+  `gemma4:12b-it-qat` was used only because no official quantization was
+  available at the time. The same Gemma 4 12B model; facts in this file that
+  name `gemma4:12b-it-qat` record what was measured on that tag and stay as
+  written.
 - **Audio and images both reach the model via the `images` field** of
   `/api/chat` (base64). A dedicated `audio` field is silently dropped by
   Ollama — never use it.
