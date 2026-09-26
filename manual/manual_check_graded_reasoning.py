@@ -24,7 +24,12 @@ from typing import Literal
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    Settings,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 
@@ -115,16 +120,23 @@ def build_probe_request(
     category: Category,
     level: ReasoningLevel,
     run_index: int,
+    options: GenerationOptions,
 ) -> ProbeRequest:
     """Reuses OllamaBackend.build_payload() for model/messages/options and
     the off/low/medium/high -> think mapping, so the spike sends the exact
     same payload shape production turns send."""
     message: dict[str, object] = {"role": "user", "content": PROMPTS[category]}
     images = [create_probe_png_b64()] if category == "image" else None
-    payload = backend.build_payload([message], images, reasoning_level=level)
+    payload = backend.build_payload(
+        [message], images, reasoning_level=level, options=options
+    )
     return ProbeRequest(
         category=category, level=level, run_index=run_index, payload=payload
     )
+
+
+def _options(settings: Settings, level: ReasoningLevel) -> GenerationOptions:
+    return settings.generation.options_for(DIALOG_PROFILE_BY_REASONING[level.value])
 
 
 def content_has_inline_reasoning(content: str) -> bool:
@@ -243,7 +255,9 @@ async def run() -> None:
         for level in LEVELS:
             for category in TEXT_CATEGORIES:
                 for run_index in range(1, TEXT_RUNS_PER_LEVEL + 1):
-                    request = build_probe_request(backend, category, level, run_index)
+                    request = build_probe_request(
+                        backend, category, level, run_index, _options(settings, level)
+                    )
                     print(
                         f"\n--- request: {request.category} / "
                         f"think={request.level.value!r} / run {run_index} ---"
@@ -251,7 +265,9 @@ async def run() -> None:
                     print_request(request)
                     print_result(await run_probe(client, request))
 
-            image_request = build_probe_request(backend, "image", level, 1)
+            image_request = build_probe_request(
+                backend, "image", level, 1, _options(settings, level)
+            )
             print(f"\n--- request: image / think={level.value!r} / run 1 ---")
             print_request(image_request)
             print_result(await run_probe(client, image_request))

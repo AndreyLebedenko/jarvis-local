@@ -1,11 +1,13 @@
 import asyncio
 import time
+from dataclasses import replace
 
 from _support_from_test_main import (
     _FakeAudioInput,
     _FakeBackend,
     _FakeCaptureInput,
     _FakeStreamingBackend,
+    _generation_with,
     _settings,
 )
 
@@ -17,6 +19,7 @@ from jarvis.audio.sound_cues import SoundCuePlayer
 from jarvis.audio.tts import BilingualTtsEngine, TtsOutput
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    GenerationOptions,
     HistoryAnnotationSettings,
     HistorySettings,
     JournalSettings,
@@ -51,7 +54,7 @@ def test_build_app_wires_the_configured_system_prompt_into_the_orchestrator(tmp_
     """task-v1.2.12: build_app() must bind settings.prompts.system, not the
     built-in default, so a config-file prompt actually reaches every turn."""
     settings = Settings(
-        prompts=PromptSettings(system="You are Jarvis.", warmup="Hi"),
+        prompts=PromptSettings(system="You are Jarvis."),
         memory=MemorySettings(root=str(tmp_path / "memory")),
     )
 
@@ -66,11 +69,8 @@ async def test_build_app_appends_reasoning_section_after_loaded_memory(tmp_path)
     (memory_root / "self.md").write_text("persona", encoding="utf-8")
     (memory_root / "memory.md").write_text("durable facts", encoding="utf-8")
     settings = Settings(
-        prompts=PromptSettings(
-            system="base prompt",
-            warmup="Hi",
-            reasoning_low="reason briefly",
-        ),
+        prompts=PromptSettings(system="base prompt"),
+        generation=_generation_with({"dialog.low": "reason briefly"}),
         memory=MemorySettings(root=str(memory_root)),
         journal=JournalSettings(enabled=False),
     )
@@ -98,12 +98,17 @@ async def test_build_app_appends_reasoning_section_after_loaded_memory(tmp_path)
     ]
 
 
-async def test_warm_up_sends_the_configured_warmup_prompt():
+async def test_warm_up_sends_the_warmup_profiles_prompt_options_and_reasoning():
     backend = _FakeBackend()
+    generation = _generation_with(
+        {"warmup": "Hello"}, options={"warmup": GenerationOptions(num_predict=1)}
+    )
 
-    await warm_up(backend, EventBus(), "en", "Hello")
+    await warm_up(backend, EventBus(), "en", generation)
 
     assert backend.calls[-1][0] == [{"role": "user", "content": "Hello"}]
+    assert backend.options_calls == [GenerationOptions(num_predict=1)]
+    assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
 
 
 def test_build_app_wires_the_configured_microphone_device_into_the_stream_factory():
@@ -196,14 +201,13 @@ def test_build_app_constructs_annotation_generation_service_with_settings():
         journal=JournalSettings(enabled=False),
         history=HistorySettings(
             annotation=HistoryAnnotationSettings(
-                instruction="Summarize only the cited excerpt.",
-                reasoning="high",
                 max_concurrency=2,
                 max_source_events=42,
                 max_source_chars=15000,
                 max_annotation_chars=3000,
             )
         ),
+        generation=_annotation_generation(),
     )
 
     app = build_app(settings, backend=_FakeBackend())
@@ -215,6 +219,18 @@ def test_build_app_constructs_annotation_generation_service_with_settings():
     assert service.max_source_chars == 15000
     assert service._max_annotation_chars == 3000
     assert service._instruction == "Summarize only the cited excerpt."
+    assert service._backend._options == GenerationOptions(temperature=0.9)
+
+
+def _annotation_generation():
+    generation = _generation_with(
+        {"annotation": "Summarize only the cited excerpt."},
+        options={"annotation": GenerationOptions(temperature=0.9)},
+    )
+    generation.profiles["annotation"] = replace(
+        generation.profiles["annotation"], reasoning="high"
+    )
+    return generation
 
 
 def test_build_app_always_constructs_consolidation_planner_and_executor():

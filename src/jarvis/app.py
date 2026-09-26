@@ -33,11 +33,21 @@ from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    ANNOTATION_PROFILE,
     BUILTIN_TOOL_PROVIDER_NAME,
     DEFAULT_UI_CONFIG_PATH,
+    DIALOG_PROFILE_BY_REASONING,
     HISTORY_TOOL_PROVIDER_NAME,
+    SPOKEN_DERIVATIVE_PROFILE,
+    TRANSCRIPTION_PROFILE,
+    VOICE_INTENT_PROFILE,
+    WARMUP_PROFILE,
+    GenerationOptions,
+    GenerationProfile,
+    GenerationSettings,
     HistorySettings,
     PromptSettings,
+    ResponseSettings,
     Settings,
     load_settings,
 )
@@ -235,52 +245,38 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # name for the built-in default.
 SYSTEM_PROMPT = PromptSettings().system
 
-_REASONING_PROMPT_FIELD_BY_LEVEL: dict[ReasoningLevel, str] = {
-    ReasoningLevel.LOW: "reasoning_low",
-    ReasoningLevel.MEDIUM: "reasoning_medium",
-    ReasoningLevel.HIGH: "reasoning_high",
-}
+
+def _dialog_profile_name(reasoning_level: ReasoningLevel) -> str:
+    return DIALOG_PROFILE_BY_REASONING[reasoning_level.value]
+
+
+def _profile_reasoning(profile: GenerationProfile) -> ReasoningLevel:
+    return ReasoningLevel(profile.reasoning)
 
 
 def _compose_effective_system_prompt(
     base_prompt: str,
     reasoning_level: ReasoningLevel,
-    reasoning_prompt_settings: PromptSettings,
+    generation_settings: GenerationSettings,
 ) -> str:
-    field_name = _REASONING_PROMPT_FIELD_BY_LEVEL.get(reasoning_level)
-    if field_name is None:
-        return base_prompt
-    section = getattr(reasoning_prompt_settings, field_name)
+    section = generation_settings.profile(_dialog_profile_name(reasoning_level)).prompt
     if section is None:
         return base_prompt
     return f"{base_prompt}\n\n{section}"
 
 
-# Mode 1 (text) and mode 3's first pass both select no field: mode 3's rich
-# first pass is the canonical text, composed exactly like mode 1's - task
-# 3 (story-v1.9.0) moved TEXT_VOICE out of this table for that reason, now
-# that its second pass exists and is what "response_text_voice" is for
-# (see run_derivative_pass() below, which reads that field directly rather
-# than through this table - the derivative pass has no reasoning section
-# and no history to compose against, so _compose_effective_system_prompt()
-# does not apply to it).
-_RESPONSE_MODE_PROMPT_FIELD_BY_MODE: dict[ResponseMode, str] = {
-    ResponseMode.VOICE: "response_voice",
-}
-
-
+# Only mode 2 (voice) modifies the dialog turn. Mode 1 (text) and mode 3's
+# first pass are the canonical text, composed alike; mode 3's spoken
+# derivative is a request of its own (the spoken_derivative generation
+# profile, see run_derivative_pass()), not a modifier of this one.
 def _compose_response_mode_contract(
     base_prompt: str,
     response_mode: ResponseMode,
-    response_prompt_settings: PromptSettings,
+    response_settings: ResponseSettings,
 ) -> str:
-    field_name = _RESPONSE_MODE_PROMPT_FIELD_BY_MODE.get(response_mode)
-    if field_name is None:
+    if response_mode is not ResponseMode.VOICE:
         return base_prompt
-    section = getattr(response_prompt_settings, field_name)
-    if section is None:
-        return base_prompt
-    return f"{base_prompt}\n\n{section}"
+    return f"{base_prompt}\n\n{response_settings.voice_contract}"
 
 
 def _history_limits_from_settings(
@@ -422,7 +418,9 @@ class Orchestrator:
         clock: Callable[[], float] | None = None,
         text_input_max_chars: int = DEFAULT_TEXT_INPUT_MAX_CHARS,
         system_prompt_provider: Callable[[bool], str] | None = None,
-        reasoning_prompt_settings: PromptSettings | None = None,
+        prompt_settings: PromptSettings | None = None,
+        generation_settings: GenerationSettings | None = None,
+        response_settings: ResponseSettings | None = None,
         history_limits: ContextBudgetLimits | None = None,
         max_audio_attachment_clips: int = MAX_CLIPS_PER_FILE,
         solo_session_state: SoloSessionState | None = None,
@@ -448,7 +446,9 @@ class Orchestrator:
             lambda _solo: system_prompt
         )
         self._system_prompt = self._system_prompt_provider(self._is_solo_active())
-        self._reasoning_prompt_settings = reasoning_prompt_settings or PromptSettings()
+        self._prompt_settings = prompt_settings or PromptSettings()
+        self._generation_settings = generation_settings or GenerationSettings()
+        self._response_settings = response_settings or ResponseSettings()
         self._history_limits = (
             history_limits
             if history_limits is not None
@@ -623,8 +623,7 @@ class Orchestrator:
         # (_current_turn_history_text, set from it in _start_turn), so a
         # session never mixes wordings across its own voice turns.
         voice_turn_text = (
-            self._reasoning_prompt_settings.voice_turn_instruction
-            or VOICE_PLACEHOLDER_TEXT
+            self._prompt_settings.voice_turn_instruction or VOICE_PLACEHOLDER_TEXT
         )
         await self._start_turn(
             voice_turn_text,
@@ -1024,7 +1023,7 @@ class Orchestrator:
         await self._sound_cues.play("thinking")
 
         # Voice intent probe (story-v1.9.0, task 4): with the opt-in
-        # [prompts].voice_intent_directive configured, a voice utterance is
+        # [generation.voice_intent].prompt configured, a voice utterance is
         # first classified as mode-switch command vs. ordinary request by a
         # short non-dialog pass over the same audio, *before* any ordinary
         # dispatch. A recognized marker changes the mode - through the same
@@ -1041,7 +1040,7 @@ class Orchestrator:
         effective_system_prompt = _compose_effective_system_prompt(
             self._system_prompt,
             reasoning_level,
-            self._reasoning_prompt_settings,
+            self._generation_settings,
         )
         response_mode = (
             self._response_mode.mode if self._response_mode else ResponseMode.TEXT
@@ -1058,7 +1057,7 @@ class Orchestrator:
         effective_system_prompt = _compose_response_mode_contract(
             effective_system_prompt,
             response_mode,
-            self._reasoning_prompt_settings,
+            self._response_settings,
         )
         (
             retrieved_passages,
@@ -1088,6 +1087,9 @@ class Orchestrator:
             audio_duration_seconds,
             interrupt_requested,
             prompt_budget,
+            options=self._generation_settings.options_for(
+                _dialog_profile_name(reasoning_level)
+            ),
             speak_streaming=speak_streaming,
         )
 
@@ -1114,12 +1116,12 @@ class Orchestrator:
         been fully handled (mode changed, journal written, busy cleared).
         False means the caller continues with the ordinary request -
         including every non-voice turn, every dispatch without the opt-in
-        [prompts].voice_intent_directive, and every unrecognized probe
+        [generation.voice_intent].prompt, and every unrecognized probe
         reply (fail safe to "it was a request").
         """
         if source is not TurnSource.VOICE:
             return False
-        directive = intent_directive_from_settings(self._reasoning_prompt_settings)
+        directive = intent_directive_from_settings(self._generation_settings)
         if directive is None:
             return False
         recognized_mode = await self._run_voice_intent_probe(
@@ -1175,6 +1177,7 @@ class Orchestrator:
         probe must never turn a transient backend error into a swallowed
         utterance."""
         probe_messages = build_probe_messages(directive)
+        probe_profile = self._generation_settings.profile(VOICE_INTENT_PROFILE)
         parts: list[str] = []
         try:
             if interrupt_requested.is_set():
@@ -1182,8 +1185,9 @@ class Orchestrator:
             async for chunk in self._backend.iter_chat(
                 probe_messages,
                 images_b64=images_b64,
-                reasoning_level=ReasoningLevel.OFF,
+                reasoning_level=_profile_reasoning(probe_profile),
                 tools=None,
+                options=self._generation_settings.options_for(VOICE_INTENT_PROFILE),
             ):
                 message = chunk.get("message")
                 if isinstance(message, dict):
@@ -1276,6 +1280,7 @@ class Orchestrator:
         interrupt_requested: asyncio.Event,
         prompt_budget: dict[str, int | bool | str] | None = None,
         *,
+        options: GenerationOptions,
         speak_streaming: bool = True,
         pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY,
     ) -> None:
@@ -1351,7 +1356,10 @@ class Orchestrator:
                     return
             own_chat_task = asyncio.create_task(
                 self._backend.chat(
-                    messages, images_b64=media_b64, reasoning_level=reasoning_level
+                    messages,
+                    images_b64=media_b64,
+                    reasoning_level=reasoning_level,
+                    options=options,
                 )
             )
             self._active_chat_task = own_chat_task
@@ -1443,18 +1451,21 @@ class Orchestrator:
         canonical_text = self._pending_canonical_text
         assert canonical_text is not None
         self._response_tokens = []
-        derivative_contract = self._reasoning_prompt_settings.response_text_voice or ""
+        derivative_profile = self._generation_settings.profile(
+            SPOKEN_DERIVATIVE_PROFILE
+        )
         messages: list[dict[str, object]] = [
-            {"role": "system", "content": derivative_contract},
+            {"role": "system", "content": derivative_profile.prompt or ""},
             {"role": "user", "content": canonical_text},
         ]
         await self._dispatch_backend_request(
             messages,
             None,
-            ReasoningLevel.OFF,
+            _profile_reasoning(derivative_profile),
             (),
             None,
             self._interrupt_requested,
+            options=self._generation_settings.options_for(SPOKEN_DERIVATIVE_PROFILE),
             speak_streaming=True,
             pass_kind=ModelRequestPassKind.DERIVATIVE,
         )
@@ -1654,15 +1665,19 @@ def _build_transcription_service(
     backend: OllamaBackend,
     transcripts: TranscriptOverlayRepository,
 ) -> TranscriptionService:
-    transcription_settings = settings.history.transcription
+    profile = settings.generation.profile(TRANSCRIPTION_PROFILE)
     kwargs: dict[str, object] = {
-        "max_concurrency": transcription_settings.max_concurrency,
+        "max_concurrency": settings.history.transcription.max_concurrency,
     }
-    if transcription_settings.instruction.strip():
-        kwargs["instruction"] = transcription_settings.instruction
+    if profile.prompt is not None:
+        kwargs["instruction"] = profile.prompt
     return TranscriptionService(
         JournalStoreTranscriptionSource(journal_store),
-        OllamaTranscriptionBackend(backend),
+        OllamaTranscriptionBackend(
+            backend,
+            options=settings.generation.options_for(TRANSCRIPTION_PROFILE),
+            reasoning=_profile_reasoning(profile),
+        ),
         transcripts,
         **kwargs,
     )
@@ -1676,18 +1691,21 @@ def _build_annotation_generation_service(
     bus: EventBus,
 ) -> AnnotationGenerationService:
     annotation_settings = settings.history.annotation
+    profile = settings.generation.profile(ANNOTATION_PROFILE)
     kwargs: dict[str, object] = {
-        "reasoning": ReasoningLevel(annotation_settings.reasoning),
+        "reasoning": _profile_reasoning(profile),
         "max_concurrency": annotation_settings.max_concurrency,
         "max_source_events": annotation_settings.max_source_events,
         "max_source_chars": annotation_settings.max_source_chars,
         "max_annotation_chars": annotation_settings.max_annotation_chars,
     }
-    if annotation_settings.instruction.strip():
-        kwargs["instruction"] = annotation_settings.instruction
+    if profile.prompt is not None:
+        kwargs["instruction"] = profile.prompt
     return AnnotationGenerationService(
         corpus,
-        OllamaAnnotationBackend(backend),
+        OllamaAnnotationBackend(
+            backend, options=settings.generation.options_for(ANNOTATION_PROFILE)
+        ),
         annotations,
         publish_changed=lambda event: bus.publish(AnnotationOverlayChanged, event),
         **kwargs,
@@ -1963,7 +1981,9 @@ def build_app(
                 settings.prompts.system, include_memory=not solo
             )
         ),
-        reasoning_prompt_settings=settings.prompts,
+        prompt_settings=settings.prompts,
+        generation_settings=settings.generation,
+        response_settings=settings.response,
         history_limits=_history_limits_from_settings(settings.history),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
         solo_session_state=solo_session_state,
@@ -2621,16 +2641,22 @@ async def warm_up(
     backend: OllamaBackend,
     bus: EventBus,
     ui_language: str = "en",
-    warmup_prompt: str = PromptSettings().warmup,
+    generation_settings: GenerationSettings | None = None,
 ) -> None:
     """Runs a throwaway backend request before user input is accepted.
 
-    The warm-up prompt is dialog data configured via [prompts].warmup,
+    The request is the warmup generation profile: its prompt is dialog data,
     independent of ui_language, which governs UI text only."""
+    generation_settings = generation_settings or GenerationSettings()
+    profile = generation_settings.profile(WARMUP_PROFILE)
     await bus.publish(WarmupStarted, WarmupStarted())
     succeeded = False
     try:
-        await backend.chat([{"role": "user", "content": warmup_prompt}])
+        await backend.chat(
+            [{"role": "user", "content": profile.prompt or ""}],
+            reasoning_level=_profile_reasoning(profile),
+            options=generation_settings.options_for(WARMUP_PROFILE),
+        )
         succeeded = True
     except Exception:
         logger.exception("Warm-up request failed; continuing anyway")
@@ -2767,7 +2793,7 @@ async def run(
         )
     else:
         status_console_subscriptions = []
-    await warm_up(app.backend, app.bus, settings.ui.language, settings.prompts.warmup)
+    await warm_up(app.backend, app.bus, settings.ui.language, settings.generation)
 
     loop = asyncio.get_running_loop()
 

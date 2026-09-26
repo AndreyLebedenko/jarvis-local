@@ -154,8 +154,10 @@ system is intended to grow.
     audio via `images`), and both publish `TranscriptOverlayChanged` on success.
     The Journal UI shows a transcript panel (status, editable text, Save,
     Transcribe) only on past voice events; there is no automatic background
-    transcription. Config: `[history.transcription]` (`enabled`, `instruction`,
-    `max_concurrency`). Live transcription quality remains a human-run manual
+    transcription. Config: `[history.transcription]` (`enabled`,
+    `max_concurrency`); the instruction (formerly `instruction` here) is
+    `[generation.transcription].prompt` since the 2026-09-26 generation
+    profiles. Live transcription quality remains a human-run manual
     handoff (`manual/manual_check_transcription_service.py`).
 - **Annotation overlay store, 2026-08-06 (task v1.8.0-21).** Bounded,
   source-grounded session annotations are a derived overlay in a separate
@@ -187,7 +189,9 @@ system is intended to grow.
   `max_source_chars` (default 24000, ~12000 tokens - rejects oversize *before*
   the model, since raw event text has no per-event cap), `max_annotation_chars`.
   Config `[history.annotation]`; `reasoning` reuses `ReasoningLevel`
-  (off/low/medium/high). Owner-approved defaults (2026-08-07): `reasoning=off`
+  (off/low/medium/high). Since the 2026-09-26 generation profiles, `reasoning`
+  and the instruction (formerly `instruction`) live in `[generation.annotation]`
+  (`reasoning`, `prompt`). Owner-approved defaults (2026-08-07): `reasoning=off`
   and a Russian default instruction with an attribution clause. Both defaults
   were chosen from a live A/B on `gemma4:12b-it-qat` (agent-run under the
   owner's supervision, harness in scratchpad), not from taste:
@@ -1652,10 +1656,13 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   silently ended without `done: true` would otherwise wedge the process
   busy forever (v1.2.3, see
   `tasks/done/story-v1.2.3-task-1-backend-stream-completion.md`).
-  `BackendSettings` also carries optional `flash_attention`,
-  `kv_cache_type`, and generation request knobs (`temperature`, `top_p`,
-  `top_k`, `min_p`, `repeat_penalty`, `repeat_last_n`, `seed`,
-  `num_predict`, `stop`, `draft_num_predict`); they default to omission
+  `BackendSettings` also carries optional model-load knobs
+  `flash_attention` and `kv_cache_type`, sent with every request. Per-request
+  generation options (`temperature`, `top_p`, `top_k`, `min_p`,
+  `repeat_penalty`, `repeat_last_n`, `seed`, `num_predict`, `stop`,
+  `draft_num_predict`) are `GenerationOptions`, chosen per request kind from
+  `[generation]` profiles and passed into every `build_payload/iter_chat/chat`
+  call (see "Architecture: generation profiles"); unset options are omitted
   so the current runtime contract stays unchanged unless a config file
   explicitly sets them.
 - `audio_utils.py` — shared wav-encoding helper. No project-module
@@ -2678,7 +2685,9 @@ default UI language.
 The system prompt and the warm-up request text are configuration, not
 source literals:
 
-- `[prompts].system` and `[prompts].warmup` in config.py's PromptSettings;
+- `[prompts].system` and `[prompts].warmup` in config.py's PromptSettings
+  (since the 2026-09-26 generation profiles the warm-up text is
+  `[generation.warmup].prompt`);
   defaults are the previous main.py literals verbatim (Russian prompt,
   "Привет"), so a missing config keeps v1.2.11 behavior byte-identical.
 - Both must be non-empty strings; empty values are a ConfigError.
@@ -2933,7 +2942,9 @@ logs/cues/transport, task 4 replaced the UI and completed live handoff.
 
 Optional `[prompts].reasoning_low`, `reasoning_medium`, and `reasoning_high`
 provide level-specific system-prompt material. `off` intentionally has no
-matching field and uses the base prompt only.
+matching field and uses the base prompt only. Since the 2026-09-26 generation
+profiles these are `[generation.dialog.low|medium|high].prompt`; the `@file`
+grammar below applies to every profile `prompt`.
 
 - Each optional field is either non-empty literal text or a prompt-only
   `@file-path` reference. References are always resolved under the base
@@ -4863,7 +4874,8 @@ and refuted the same day it was authorized. Closure record and numbers:
 `tasks/done/story-v1.9.2-local-generation-critique-integration.md`; raw study in
 `docs/experiments/v1.9.2-rethink-probe/`.
 
-Verified facts from that study, with the production `[backend]` options and the
+Verified facts from that study, with the production `[backend]` options (now
+`[generation]`) and the
 production-composed system prompt on `gemma4:12b-it-q8_0`:
 
 - Reasoning level 2 already performs the second look. `.jarvis/prompts/think-level-2.md`
@@ -4885,6 +4897,68 @@ production-composed system prompt on `gemma4:12b-it-q8_0`:
 
 No runtime cloud capability was added and no cloud adapter was introduced. The
 GLM-as-rubric-checker permission lapses with the story.
+
+## Architecture: generation profiles (2026-09-26)
+
+Every key that shapes one model request is grouped by request kind
+(`tasks/done/task-config-generation-profiles.md`). Before this, prompts, reasoning
+levels, and sampling lived wherever the feature that introduced them put them,
+and sampling was global to every request.
+
+- `[backend]` holds connection and model-load settings only: `model`,
+  `endpoint`, `num_ctx`, `flash_attention`, `kv_cache_type`,
+  `read_timeout_seconds`. The three load keys are sent with every request but
+  never vary per request: Ollama reloads the model when a request carries a
+  different value (`BACKEND_LOAD_OPTION_FIELDS` in config.py).
+- `[generation]` holds per-request option defaults (`GenerationOptions`):
+  `temperature`, `top_p`, `top_k`, `min_p`, `repeat_penalty`, `repeat_last_n`,
+  `seed`, `num_predict`, `stop`, `draft_num_predict`, each omitted from the
+  request when unset.
+- One `[generation.<profile>]` table per request kind, from a fixed set:
+  `dialog.off`, `dialog.low`, `dialog.medium`, `dialog.high` (the dialog turn
+  and its tool loop, selected by the live reasoning level), `spoken_derivative`
+  (mode-3 pass 2), `voice_intent`, `warmup`, `annotation`, `transcription`. A
+  profile may set any `[generation]` key, `prompt` (inline text or an `@file`
+  reference under `./.jarvis/`, same grammar as v1.7.3), and, for non-dialog
+  profiles only, `reasoning` (off/low/medium/high, default off). A dialog
+  profile's level is its name. Where `prompt` goes is defined by the consumer
+  and did not change: dialog profiles append it to the system prompt,
+  `spoken_derivative` sends it as the system message, `voice_intent` is the
+  probe directive (absent = feature off), `annotation`/`transcription` use it
+  as the service instruction (absent = service default), `warmup` is the user
+  message.
+- Resolution is one level and identical for every profile: profile key, else
+  `[generation]` key, else omitted. Profiles never reference each other.
+  Unknown profile names, unknown keys, empty prompts, and load keys inside a
+  profile are `ConfigError`s.
+- Every model call chooses its profile at the call site and passes the
+  resolved `GenerationOptions` to `OllamaBackend.build_payload/iter_chat/chat`,
+  where `options` is a required keyword argument, so no request can be sent
+  without a profile.
+- Service policy stays with the service: `[history.annotation]` and
+  `[history.transcription]` keep `enabled`, concurrency, and source/output
+  bounds; only how the model is called moved.
+- `[prompts]` keeps the dialog text shared by all dialog profiles (`system`,
+  `voice_turn_instruction`). `[response]` keeps `mode` and gains
+  `voice_contract`, the mode-2 contract, because it modifies a dialog turn at
+  any reasoning level rather than being a request kind of its own.
+- Hard migration: every moved key raises a `ConfigError` naming its new
+  location (`MOVED_CONFIG_KEYS` in config.py): `[backend]` sampling keys ->
+  `[generation]`; `[prompts].reasoning_low|medium|high` ->
+  `[generation.dialog.<level>].prompt`; `[prompts].response_text_voice` ->
+  `[generation.spoken_derivative].prompt`; `[prompts].voice_intent_directive`
+  -> `[generation.voice_intent].prompt`; `[prompts].warmup` ->
+  `[generation.warmup].prompt`; `[prompts].response_voice` ->
+  `[response].voice_contract`; `[history.annotation].reasoning|instruction`
+  and `[history.transcription].instruction` -> their profiles.
+- Behavior-preserving: for the owner's config at the time, the payload of every
+  request kind before and after the move was compared and is identical
+  (`tests/test_generation_payloads.py` pins it).
+- Not moved: `[history].reasoning_generation_reserve_tokens` stays the context
+  budget's generation reserve with its verified default. No `num_predict` value
+  is chosen here; folding the reserve into the dialog profiles' `num_predict`
+  and surfacing `done_reason` is the follow-up card for
+  `tasks/bug_reports/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
 
 ## Current roadmap
 

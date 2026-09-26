@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from _support_from_test_main import _complete_event, _orchestrator
+from _support_from_test_main import _complete_event, _generation_with, _orchestrator
 
 from jarvis.app import (
     SYSTEM_PROMPT,
@@ -10,9 +10,7 @@ from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.core.bus import EventBus
-from jarvis.core.config import (
-    PromptSettings,
-)
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelState,
@@ -51,22 +49,21 @@ async def test_start_turn_passes_the_sampled_level_after_a_cycle():
 
 
 @pytest.mark.parametrize(
-    ("level", "field_name", "section"),
+    ("level", "profile_name", "section"),
     [
-        (ReasoningLevel.LOW, "reasoning_low", "reason briefly"),
-        (ReasoningLevel.MEDIUM, "reasoning_medium", "compare alternatives"),
-        (ReasoningLevel.HIGH, "reasoning_high", "verify conclusions"),
+        (ReasoningLevel.LOW, "dialog.low", "reason briefly"),
+        (ReasoningLevel.MEDIUM, "dialog.medium", "compare alternatives"),
+        (ReasoningLevel.HIGH, "dialog.high", "verify conclusions"),
     ],
 )
 async def test_reasoning_turn_appends_the_active_section_after_memory_material(
-    level, field_name, section
+    level, profile_name, section
 ):
     thinking_mode = ReasoningLevelState(bus=EventBus())
     await thinking_mode.set_level(level, source="TEST")
-    prompts = PromptSettings(**{field_name: section})
     orchestrator, backend, _sound_cues = _orchestrator(
         thinking_mode=thinking_mode,
-        reasoning_prompt_settings=prompts,
+        generation_settings=_generation_with({profile_name: section}),
     )
     orchestrator._system_prompt = "base prompt\n\nmemory material"
 
@@ -82,15 +79,17 @@ async def test_reasoning_turn_appends_the_active_section_after_memory_material(
 
 
 async def test_off_turn_does_not_append_any_reasoning_prompt_section():
-    prompts = PromptSettings(
-        reasoning_low="low section",
-        reasoning_medium="medium section",
-        reasoning_high="high section",
+    generation = _generation_with(
+        {
+            "dialog.low": "low section",
+            "dialog.medium": "medium section",
+            "dialog.high": "high section",
+        }
     )
     thinking_mode = ReasoningLevelState(bus=EventBus())
     orchestrator, backend, _sound_cues = _orchestrator(
         thinking_mode=thinking_mode,
-        reasoning_prompt_settings=prompts,
+        generation_settings=generation,
     )
     orchestrator._system_prompt = "base prompt\n\nmemory material"
 
@@ -109,7 +108,7 @@ async def test_level_with_no_configured_section_uses_base_and_memory_only():
     await thinking_mode.set_level(ReasoningLevel.MEDIUM, source="TEST")
     orchestrator, backend, _sound_cues = _orchestrator(
         thinking_mode=thinking_mode,
-        reasoning_prompt_settings=PromptSettings(reasoning_low="low section"),
+        generation_settings=_generation_with({"dialog.low": "low section"}),
     )
     orchestrator._system_prompt = "base prompt\n\nmemory material"
 
@@ -139,7 +138,7 @@ async def test_level_change_while_busy_does_not_affect_the_in_flight_turn():
     orchestrator, backend, _sound_cues = _orchestrator(
         chat_impl=slow_chat,
         thinking_mode=thinking_mode,
-        reasoning_prompt_settings=PromptSettings(reasoning_low="low section"),
+        generation_settings=_generation_with({"dialog.low": "low section"}),
     )
 
     first = asyncio.create_task(
@@ -185,3 +184,26 @@ async def test_start_turn_with_no_thinking_mode_defaults_to_off():
     )
 
     assert backend.reasoning_level_calls == [ReasoningLevel.OFF]
+
+
+@pytest.mark.parametrize("level", list(ReasoningLevel))
+async def test_dialog_turn_sends_the_options_of_its_levels_profile(level):
+    thinking_mode = ReasoningLevelState(bus=EventBus())
+    await thinking_mode.set_level(level, source="TEST")
+    generation = _generation_with(
+        options={
+            f"dialog.{candidate.value}": GenerationOptions(num_predict=100 + index)
+            for index, candidate in enumerate(ReasoningLevel)
+        },
+        defaults=GenerationOptions(temperature=0.618),
+    )
+    orchestrator, backend, _sound_cues = _orchestrator(
+        thinking_mode=thinking_mode, generation_settings=generation
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+
+    assert backend.options_calls == [generation.options_for(f"dialog.{level.value}")]
+    assert backend.options_calls[0].temperature == 0.618

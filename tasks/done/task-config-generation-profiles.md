@@ -1,6 +1,8 @@
 # Task: Generation profiles - restructure model-call config around request kinds
 
-**Status:** Approved (owner, 2026-09-26). Not started.
+**Status:** Completed. Owner review passed; the human-run handoff
+(`tasks/done/task-config-generation-profiles-handoff.md`) passed on
+2026-09-26, including the `[generation.annotation]` temperature override.
 **Origin:** owner planning dialog, 2026-09-26. Design agreed in that dialog;
 this card records it.
 **Depends on:** nothing.
@@ -273,3 +275,34 @@ otherwise look for a key that no longer exists.
   request kind uses.
 - The single-pass `<tts>` contract: it is a spike, and if it lands later it
   gets its own profile or `[response]` key through this structure.
+
+## Implementation notes (2026-09-26)
+
+- Rule 3 made `reasoning` configurable for every non-dialog profile, so the
+  call sites that hardcoded reasoning OFF (spoken derivative, voice-intent
+  probe, warm-up, transcription) now read their profile's `reasoning`, whose
+  default is `off`. Unchanged behavior by default; the mode-3b spike's
+  equalized block can set `[generation.spoken_derivative].reasoning` without
+  code.
+- Payload identity was checked beyond the tests: the pre-change code on `main`
+  (temporary worktree) with the owner's `config.toml`, and this branch with the
+  migrated copy, produced identical payloads for all twelve compared request
+  kinds and prompt fields. `tests/test_generation_payloads.py` pins the result.
+- `manual/manual_check_generation_profiles.py` prints `think` and `options`
+  per exchange from the debug transcript for the handoff; its parsing is
+  CI-tested.
+- The required `options` argument and the moved `[history.*]` keys also
+  reached live-only manual scripts the boundary did not name; their CI tests
+  cover pure helpers only, so the breakage was invisible to pytest (caught in
+  review). Migrated to the profile the production path uses: `dialog.off` for
+  `manual_check_backend.py`, `manual_check_tts_engines.py`,
+  `manual_check_audio_comprehension.py`, `manual_check_camera_attribution.py`
+  (and the named `manual_check_tool_calling.py`); `annotation` and
+  `transcription` for `manual_check_annotation_generator.py` and
+  `manual_check_transcription_service.py`, which now also take the
+  instruction from the profile's `prompt`, as `build_app()` does. A pyright
+  pass over `manual/` and `src/` shows no remaining call into the changed
+  signatures; its other findings match `main`.
+- `intent_directive_from_settings` no longer treats a blank directive as off:
+  config parsing rejects a blank profile prompt, so that branch was dead. The
+  invariant moved to a config test.

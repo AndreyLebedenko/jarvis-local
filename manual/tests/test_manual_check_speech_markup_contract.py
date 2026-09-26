@@ -1,5 +1,5 @@
 from jarvis.app import SYSTEM_PROMPT
-from jarvis.core.config import BackendSettings
+from jarvis.core.config import BackendSettings, GenerationOptions
 from manual.manual_check_speech_markup_contract import (
     PROMPTS,
     SYSTEM_PROMPT_UNDER_TEST,
@@ -24,7 +24,7 @@ def test_prompt_catalog_covers_required_markup_handoff_cases():
 
 
 def test_generation_options_report_all_backend_knobs():
-    settings = BackendSettings(
+    options = GenerationOptions(
         temperature=0.2,
         top_p=0.9,
         top_k=40,
@@ -37,9 +37,9 @@ def test_generation_options_report_all_backend_knobs():
         draft_num_predict=8,
     )
 
-    options = generation_options(settings)
+    reported = generation_options(BackendSettings(), options)
 
-    assert options == {
+    assert reported == {
         "num_ctx": 65536,
         "flash_attention": None,
         "kv_cache_type": None,
@@ -61,9 +61,11 @@ def test_default_prompt_under_test_starts_as_runtime_system_prompt():
 
 
 def test_build_payload_uses_prompt_under_test_and_thinking_disabled():
-    settings = BackendSettings(temperature=0.0, top_p=0.8)
+    settings = BackendSettings()
 
-    payload = build_payload(settings, "Проверка.")
+    payload = build_payload(
+        settings, GenerationOptions(temperature=0.0, top_p=0.8), "Проверка."
+    )
 
     assert payload["model"] == settings.model
     assert payload["stream"] is True

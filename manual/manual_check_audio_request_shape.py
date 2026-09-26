@@ -43,7 +43,11 @@ import soundfile as sf
 
 from jarvis.app import _compose_effective_system_prompt
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings, load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.transcription import DEFAULT_TRANSCRIPTION_INSTRUCTION
@@ -380,6 +384,7 @@ def build_payload(
     condition: RequestCondition,
     audio_b64: str,
     *,
+    options: GenerationOptions,
     num_gpu: int = DEFAULT_NUM_GPU_LAYERS,
 ) -> dict[str, object]:
     if num_gpu < 1:
@@ -395,6 +400,7 @@ def build_payload(
         media,
         reasoning_level=ReasoningLevel.OFF,
         tools=tools,
+        options=options,
     )
     payload["options"]["num_gpu"] = num_gpu
     payload["stream"] = False
@@ -813,20 +819,18 @@ class OllamaGateway:
         return await self._request("POST", "/api/chat", payload)
 
 
-def _backend_settings(
-    base: BackendSettings,
-    model: str,
+def _generation_options(
+    base: GenerationOptions,
     profile: str,
     generation_seed: int,
     temperature: float,
-) -> BackendSettings:
+) -> GenerationOptions:
     if profile == "configured":
-        return replace(base, model=model)
+        return base
     if profile != "deterministic":
         raise ValueError(f"unknown profile: {profile}")
     return replace(
         base,
-        model=model,
         temperature=temperature,
         seed=generation_seed,
         num_predict=DEFAULT_NUM_PREDICT,
@@ -857,7 +861,13 @@ async def run_experiment(
     configured_system_prompt = _compose_effective_system_prompt(
         base_prompt,
         ReasoningLevel.OFF,
-        settings.prompts,
+        settings.generation,
+    )
+    options = _generation_options(
+        settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"]),
+        profile,
+        generation_seed,
+        temperature,
     )
     fixtures = default_fixture_specs(journal_root)
     prepared = {
@@ -900,16 +910,7 @@ async def run_experiment(
             )
         model_show = {model: await gateway.show(model) for model in models}
         backends = {
-            model: OllamaBackend(
-                EventBus(),
-                _backend_settings(
-                    settings.backend,
-                    model,
-                    profile,
-                    generation_seed,
-                    temperature,
-                ),
-            )
+            model: OllamaBackend(EventBus(), replace(settings.backend, model=model))
             for model in models
         }
         metadata_record: dict[str, object] = {
@@ -930,6 +931,7 @@ async def run_experiment(
                         backends[model],
                         conditions[0],
                         prepared[fixtures[0].key].audio_b64,
+                        options=options,
                         num_gpu=num_gpu,
                     )["options"],
                 }
@@ -975,6 +977,7 @@ async def run_experiment(
                 backends[trial.model],
                 trial.condition,
                 item.audio_b64,
+                options=options,
                 num_gpu=num_gpu,
             )
             started = time.perf_counter()

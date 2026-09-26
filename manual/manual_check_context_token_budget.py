@@ -29,7 +29,11 @@ import httpx
 
 from jarvis.app import _compose_effective_system_prompt
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.dialog.tool_presentation import (
@@ -188,7 +192,9 @@ def summarize_candidate(
 
 
 def build_measurement_cases(
-    backend: OllamaBackend, effective_system_prompt: str
+    backend: OllamaBackend,
+    effective_system_prompt: str,
+    options: GenerationOptions,
 ) -> tuple[MeasurementCase, ...]:
     time_message = {
         "role": "system",
@@ -299,12 +305,13 @@ def build_measurement_cases(
     ]
 
     return (
-        _case(backend, "russian_short_initial", "initial", russian_short),
-        _case(backend, "english_code_initial", "initial", english_code),
-        _case(backend, "system_memory_initial", "initial", system_memory),
-        _case(backend, "mixed_long_initial", "initial", mixed_long),
+        _case(backend, options, "russian_short_initial", "initial", russian_short),
+        _case(backend, options, "english_code_initial", "initial", english_code),
+        _case(backend, options, "system_memory_initial", "initial", system_memory),
+        _case(backend, options, "mixed_long_initial", "initial", mixed_long),
         _case(
             backend,
+            options,
             "native_tool_initial",
             "initial",
             native_initial,
@@ -312,18 +319,20 @@ def build_measurement_cases(
         ),
         _case(
             backend,
+            options,
             "native_tool_followup",
             "followup",
             native_followup,
             native_prepared.tools,
         ),
-        _case(backend, "prompt_tool_initial", "initial", prompt_initial),
-        _case(backend, "prompt_tool_followup", "followup", prompt_followup),
+        _case(backend, options, "prompt_tool_initial", "initial", prompt_initial),
+        _case(backend, options, "prompt_tool_followup", "followup", prompt_followup),
     )
 
 
 def _case(
     backend: OllamaBackend,
+    options: GenerationOptions,
     key: str,
     phase: str,
     messages: Sequence[dict[str, object]],
@@ -333,9 +342,10 @@ def _case(
         messages,
         reasoning_level=ReasoningLevel.HIGH,
         tools=tools,
+        options=options,
     )
-    options = payload.get("options")
-    bounded_options = dict(options) if isinstance(options, dict) else {}
+    sent_options = payload.get("options")
+    bounded_options = dict(sent_options) if isinstance(sent_options, dict) else {}
     bounded_options.update({"temperature": 0, "seed": 1, "num_predict": 1})
     payload["options"] = bounded_options
     return MeasurementCase(key=key, phase=phase, payload=payload)
@@ -410,7 +420,7 @@ async def run(output_path: Path, tokenizer_model: Path | None) -> None:
     effective_prompt = _compose_effective_system_prompt(
         base_prompt,
         ReasoningLevel.HIGH,
-        settings.prompts,
+        settings.generation,
     )
     compatible_counter = (
         _sentencepiece_counter(tokenizer_model) if tokenizer_model is not None else None
@@ -422,7 +432,11 @@ async def run(output_path: Path, tokenizer_model: Path | None) -> None:
         timeout=timeout,
     ) as client:
         backend = OllamaBackend(EventBus(), settings.backend, client=client)
-        cases = build_measurement_cases(backend, effective_prompt)
+        cases = build_measurement_cases(
+            backend,
+            effective_prompt,
+            settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["high"]),
+        )
         all_measurements: list[LiveMeasurement] = []
         case_reports: list[dict[str, object]] = []
         for case in cases:

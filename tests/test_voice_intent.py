@@ -6,7 +6,9 @@ only the one exact marker switches; ambiguous/near-miss input always
 resolves to "it was a request".
 """
 
-from jarvis.core.config import PromptSettings
+from dataclasses import replace
+
+from jarvis.core.config import GenerationSettings
 from jarvis.dialog.response_mode import ResponseMode
 from jarvis.dialog.voice_intent import (
     build_probe_messages,
@@ -106,23 +108,24 @@ def test_probe_messages_pair_the_directive_with_the_marker_instruction():
 # --- settings gate (feature off by default) ---------------------------------
 
 
-def test_default_settings_have_no_voice_intent_directive():
-    settings = PromptSettings()
+def _with_directive(directive: str) -> GenerationSettings:
+    settings = GenerationSettings()
+    profiles = dict(settings.profiles)
+    profiles["voice_intent"] = replace(profiles["voice_intent"], prompt=directive)
+    return replace(settings, profiles=profiles)
 
-    assert settings.voice_intent_directive is None
+
+def test_default_settings_have_no_voice_intent_directive():
+    settings = GenerationSettings()
+
+    assert settings.profile("voice_intent").prompt is None
 
 
 def test_directive_resolution_is_none_by_default():
-    assert intent_directive_from_settings(PromptSettings()) is None
+    assert intent_directive_from_settings(GenerationSettings()) is None
 
 
 def test_directive_resolution_passes_a_configured_directive_through():
-    settings = PromptSettings(voice_intent_directive="marker contract")
+    settings = _with_directive("marker contract")
 
     assert intent_directive_from_settings(settings) == "marker contract"
-
-
-def test_blank_configured_directive_counts_as_off():
-    settings = PromptSettings(voice_intent_directive="   \n  ")
-
-    assert intent_directive_from_settings(settings) is None

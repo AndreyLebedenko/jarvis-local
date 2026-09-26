@@ -525,7 +525,7 @@ async def test_configured_voice_turn_instruction_override_flows_into_history():
     ConversationHistory records for later turns, not the built-in
     VOICE_PLACEHOLDER_TEXT."""
     orchestrator, _backend, _sound_cues = _orchestrator(
-        reasoning_prompt_settings=PromptSettings(
+        prompt_settings=PromptSettings(
             voice_turn_instruction="Listen to the recording and answer it."
         )
     )

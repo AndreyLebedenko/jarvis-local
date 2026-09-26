@@ -4,6 +4,7 @@ import httpx
 from _support_from_test_main import (
     _FakeAudioInput,
     _FakeCaptureInput,
+    _generation_with,
     _settings,
 )
 
@@ -18,8 +19,8 @@ from jarvis.audio.tts import TtsOutput
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BackendSettings,
+    GenerationOptions,
     JournalSettings,
-    PromptSettings,
     ResponseSettings,
     Settings,
     TtsSettings,
@@ -98,6 +99,7 @@ async def test_thinking_chunks_never_reach_tts_through_real_bus_wiring():
     await backend.chat(
         messages=[{"role": "user", "content": "hi"}],
         reasoning_level=ReasoningLevel.HIGH,
+        options=GenerationOptions(),
     )
 
     assert tts_output.received_texts == ["Hello"]
@@ -204,7 +206,7 @@ async def test_mode_3_derivative_reaches_tts_while_first_pass_stays_silent(tmp_p
     settings = Settings(
         journal=JournalSettings(root=str(tmp_path)),
         response=ResponseSettings(mode="text_voice"),
-        prompts=PromptSettings(response_text_voice="derivative contract"),
+        generation=_generation_with({"spoken_derivative": "derivative contract"}),
     )
 
     app = build_app(

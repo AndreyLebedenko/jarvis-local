@@ -17,7 +17,12 @@ import httpx
 
 from jarvis.app import SYSTEM_PROMPT
 from jarvis.audio.language_segments import LanguageSegment, segment_by_charset
-from jarvis.core.config import BackendSettings, load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    BackendSettings,
+    GenerationOptions,
+    load_settings,
+)
 
 SYSTEM_PROMPT_UNDER_TEST = SYSTEM_PROMPT
 
@@ -89,28 +94,23 @@ PROMPTS = [
 ]
 
 
-def generation_options(settings: BackendSettings) -> dict[str, object]:
+def generation_options(
+    settings: BackendSettings, options: GenerationOptions
+) -> dict[str, object]:
     return {
         "num_ctx": settings.num_ctx,
         "flash_attention": settings.flash_attention,
         "kv_cache_type": settings.kv_cache_type,
-        "temperature": settings.temperature,
-        "top_p": settings.top_p,
-        "top_k": settings.top_k,
-        "min_p": settings.min_p,
-        "repeat_penalty": settings.repeat_penalty,
-        "repeat_last_n": settings.repeat_last_n,
-        "seed": settings.seed,
-        "num_predict": settings.num_predict,
-        "stop": settings.stop,
-        "draft_num_predict": settings.draft_num_predict,
+        **asdict(options),
     }
 
 
-def build_payload(settings: BackendSettings, prompt: str) -> dict[str, object]:
-    options = {
+def build_payload(
+    settings: BackendSettings, options: GenerationOptions, prompt: str
+) -> dict[str, object]:
+    request_options = {
         key: value
-        for key, value in generation_options(settings).items()
+        for key, value in generation_options(settings, options).items()
         if value is not None
     }
     return {
@@ -121,7 +121,7 @@ def build_payload(settings: BackendSettings, prompt: str) -> dict[str, object]:
         ],
         "stream": True,
         "think": False,
-        "options": options,
+        "options": request_options,
     }
 
 
@@ -148,9 +148,12 @@ async def ollama_version(client: httpx.AsyncClient) -> str:
 
 
 async def run_case(
-    client: httpx.AsyncClient, settings: BackendSettings, case: PromptCase
+    client: httpx.AsyncClient,
+    settings: BackendSettings,
+    options: GenerationOptions,
+    case: PromptCase,
 ) -> str:
-    payload = build_payload(settings, case.prompt)
+    payload = build_payload(settings, options, case.prompt)
     text = ""
     start = time.perf_counter()
     async with client.stream("POST", "/api/chat", json=payload) as response:
@@ -181,6 +184,7 @@ async def run_case(
 
 async def main() -> None:
     settings = load_settings()
+    options = settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"])
     timeout = httpx.Timeout(10.0, read=settings.backend.read_timeout_seconds)
     async with httpx.AsyncClient(
         base_url=settings.backend.endpoint,
@@ -191,13 +195,13 @@ async def main() -> None:
         print(f"Model: {settings.backend.model}")
         print("Thinking: false")
         print("Generation options:")
-        for key, value in generation_options(settings.backend).items():
+        for key, value in generation_options(settings.backend, options).items():
             print(f"  {key}: {value}")
         print("\nSystem prompt under test:")
         print(SYSTEM_PROMPT_UNDER_TEST)
 
         for case in PROMPTS:
-            await run_case(client, settings.backend, case)
+            await run_case(client, settings.backend, options, case)
 
     print("\nRecord pass/fail in the task card and PROJECT.md:")
     print("  - model emits plain speakable text, not language tags")

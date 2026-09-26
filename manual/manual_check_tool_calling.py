@@ -34,7 +34,11 @@ from typing import Literal
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import load_settings
+from jarvis.core.config import (
+    DIALOG_PROFILE_BY_REASONING,
+    GenerationOptions,
+    load_settings,
+)
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 
@@ -467,11 +471,14 @@ async def call_ollama(
 async def run_native_scenario(
     client: httpx.AsyncClient,
     backend: OllamaBackend,
+    options: GenerationOptions,
     scenario: Scenario,
     run_index: int,
 ) -> ScenarioOutcome:
     messages: list[dict[str, object]] = [{"role": "user", "content": scenario.prompt}]
-    payload = backend.build_payload(messages, reasoning_level=ReasoningLevel.OFF)
+    payload = backend.build_payload(
+        messages, reasoning_level=ReasoningLevel.OFF, options=options
+    )
     payload["tools"] = NATIVE_TOOLS
     payload["stream"] = False
 
@@ -512,7 +519,7 @@ async def run_native_scenario(
     )
     if scenario.two_step and transport_error is None:
         outcome.second_hop = await run_native_second_hop(
-            client, backend, messages, message, calls
+            client, backend, options, messages, message, calls
         )
     return outcome
 
@@ -520,6 +527,7 @@ async def run_native_scenario(
 async def run_native_second_hop(
     client: httpx.AsyncClient,
     backend: OllamaBackend,
+    options: GenerationOptions,
     prior_messages: list[dict[str, object]],
     assistant_message: dict[str, object],
     calls: list[ParsedCall],
@@ -537,7 +545,9 @@ async def run_native_second_hop(
         assistant_message,
         {"role": "tool", "content": json.dumps(tool_result)},
     ]
-    payload = backend.build_payload(messages, reasoning_level=ReasoningLevel.OFF)
+    payload = backend.build_payload(
+        messages, reasoning_level=ReasoningLevel.OFF, options=options
+    )
     payload["tools"] = NATIVE_TOOLS
     payload["stream"] = False
     try:
@@ -566,6 +576,7 @@ async def run_native_second_hop(
 async def run_prompt_scenario(
     client: httpx.AsyncClient,
     backend: OllamaBackend,
+    options: GenerationOptions,
     scenario: Scenario,
     run_index: int,
 ) -> ScenarioOutcome:
@@ -573,7 +584,9 @@ async def run_prompt_scenario(
         {"role": "system", "content": PROMPT_STRATEGY_SYSTEM_PROMPT},
         {"role": "user", "content": scenario.prompt},
     ]
-    payload = backend.build_payload(messages, reasoning_level=ReasoningLevel.OFF)
+    payload = backend.build_payload(
+        messages, reasoning_level=ReasoningLevel.OFF, options=options
+    )
     payload["stream"] = False
 
     t0 = time.perf_counter()
@@ -611,7 +624,7 @@ async def run_prompt_scenario(
     )
     if scenario.two_step and transport_error is None and reply is not None:
         outcome.second_hop = await run_prompt_second_hop(
-            client, backend, messages, content, reply
+            client, backend, options, messages, content, reply
         )
     return outcome
 
@@ -619,6 +632,7 @@ async def run_prompt_scenario(
 async def run_prompt_second_hop(
     client: httpx.AsyncClient,
     backend: OllamaBackend,
+    options: GenerationOptions,
     prior_messages: list[dict[str, object]],
     assistant_raw_text: str,
     reply: PromptReply,
@@ -643,7 +657,9 @@ async def run_prompt_second_hop(
             ),
         },
     ]
-    payload = backend.build_payload(messages, reasoning_level=ReasoningLevel.OFF)
+    payload = backend.build_payload(
+        messages, reasoning_level=ReasoningLevel.OFF, options=options
+    )
     payload["stream"] = False
     try:
         data = await call_ollama(client, payload)
@@ -726,6 +742,7 @@ async def run() -> None:
         base_url=settings.backend.endpoint, timeout=timeout
     ) as client:
         backend = OllamaBackend(EventBus(), settings.backend, client=client)
+        options = settings.generation.options_for(DIALOG_PROFILE_BY_REASONING["off"])
         print(f"Ollama endpoint: {settings.backend.endpoint}")
         print(f"Ollama version: {await ollama_version(client)}")
         print(f"Model: {settings.backend.model}")
@@ -737,7 +754,9 @@ async def run() -> None:
             )
             for scenario in SCENARIOS:
                 for run_index in range(1, RUNS_PER_SCENARIO + 1):
-                    outcome = await runner(client, backend, scenario, run_index)
+                    outcome = await runner(
+                        client, backend, options, scenario, run_index
+                    )
                     print_outcome(outcome)
                     outcomes.append(outcome)
 

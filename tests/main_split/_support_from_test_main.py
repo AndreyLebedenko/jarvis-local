@@ -6,6 +6,7 @@ Content moved verbatim from the original import block; every split test
 module imports from here."""
 
 from collections.abc import Callable
+from dataclasses import replace
 
 import jarvis.app as main_module
 from jarvis.app import (
@@ -16,6 +17,8 @@ from jarvis.app import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    GenerationOptions,
+    GenerationSettings,
     JournalSettings,
     Settings,
     VadSettings,
@@ -47,17 +50,35 @@ from jarvis.ui.contract import (
 )
 
 
+def _generation_with(
+    prompts: dict[str, str | None] | None = None,
+    options: dict[str, GenerationOptions] | None = None,
+    defaults: GenerationOptions | None = None,
+) -> GenerationSettings:
+    """GenerationSettings with the given per-profile prompt and option
+    overrides on top of the built-in profiles."""
+    generation = GenerationSettings(defaults=defaults or GenerationOptions())
+    profiles = dict(generation.profiles)
+    for name, prompt in (prompts or {}).items():
+        profiles[name] = replace(profiles[name], prompt=prompt)
+    for name, profile_options in (options or {}).items():
+        profiles[name] = replace(profiles[name], options=profile_options)
+    return replace(generation, profiles=profiles)
+
+
 class _FakeBackend:
     def __init__(self, chat_impl=None) -> None:
         self.calls: list[tuple[list[dict], list[str] | None]] = []
         self.reasoning_level_calls: list[ReasoningLevel] = []
+        self.options_calls: list[GenerationOptions] = []
         self._chat_impl = chat_impl
 
     async def chat(
-        self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF
+        self, messages, images_b64=None, reasoning_level=ReasoningLevel.OFF, *, options
     ) -> None:
         self.calls.append((messages, images_b64))
         self.reasoning_level_calls.append(reasoning_level)
+        self.options_calls.append(options)
         if self._chat_impl is not None:
             await self._chat_impl()
 
@@ -65,6 +86,7 @@ class _FakeBackend:
 class _FakeStreamingBackend:
     def __init__(self) -> None:
         self.calls: list[tuple[list[dict], ReasoningLevel]] = []
+        self.options_calls: list[GenerationOptions] = []
 
     async def iter_chat(
         self,
@@ -72,8 +94,11 @@ class _FakeStreamingBackend:
         images_b64=None,
         reasoning_level=ReasoningLevel.OFF,
         tools=None,
+        *,
+        options,
     ):
         self.calls.append((list(messages), reasoning_level))
+        self.options_calls.append(options)
         yield {"message": {"content": ""}, "done": True}
 
 
@@ -124,7 +149,9 @@ def _orchestrator(
     audio_input=None,
     thinking_mode=None,
     response_mode=None,
-    reasoning_prompt_settings=None,
+    prompt_settings=None,
+    generation_settings=None,
+    response_settings=None,
     bus=None,
     clock=None,
     journal_recorder=None,
@@ -145,7 +172,9 @@ def _orchestrator(
         audio_input=audio_input,
         thinking_mode=thinking_mode,
         response_mode=response_mode,
-        reasoning_prompt_settings=reasoning_prompt_settings,
+        prompt_settings=prompt_settings,
+        generation_settings=generation_settings,
+        response_settings=response_settings,
         bus=bus,
         journal_recorder=journal_recorder,
         history_retrieval_service=history_retrieval_service,

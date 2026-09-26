@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, TypeVar
 
+from jarvis.core.config import GenerationOptions
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.annotation import (
     ANNOTATION_MAX_TEXT_LENGTH,
@@ -202,6 +203,8 @@ class AnnotationChatStream(Protocol):
         messages: Sequence[Mapping[str, ChatMessageValue]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> Mapping[str, JSONValue]: ...
 
     def iter_chat(
@@ -209,6 +212,8 @@ class AnnotationChatStream(Protocol):
         messages: Sequence[Mapping[str, ChatMessageValue]],
         images_b64: Sequence[str] | None = None,
         reasoning_level: ReasoningLevel = ReasoningLevel.OFF,
+        *,
+        options: GenerationOptions,
     ) -> AsyncIterator[Mapping[str, JSONValue]]: ...
 
 
@@ -270,8 +275,11 @@ class OllamaAnnotationBackend:
     request that actually ran.
     """
 
-    def __init__(self, backend: AnnotationChatStream) -> None:
+    def __init__(
+        self, backend: AnnotationChatStream, *, options: GenerationOptions
+    ) -> None:
         self._backend = backend
+        self._options = options
 
     async def run_annotation(
         self,
@@ -281,13 +289,15 @@ class OllamaAnnotationBackend:
         chat_messages: list[dict[str, ChatMessageValue]] = [
             {"role": message.role, "content": message.content} for message in messages
         ]
-        payload = self._backend.build_payload(chat_messages, reasoning_level=reasoning)
+        payload = self._backend.build_payload(
+            chat_messages, reasoning_level=reasoning, options=self._options
+        )
         metadata = _metadata_from_payload(payload)
 
         parts: list[str] = []
         try:
             async for chunk in self._backend.iter_chat(
-                chat_messages, reasoning_level=reasoning
+                chat_messages, reasoning_level=reasoning, options=self._options
             ):
                 message = chunk.get("message")
                 if isinstance(message, dict):

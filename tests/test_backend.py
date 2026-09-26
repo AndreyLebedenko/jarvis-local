@@ -1,4 +1,5 @@
 import base64
+import inspect
 import io
 import json
 import logging
@@ -9,7 +10,7 @@ import pytest
 import soundfile as sf
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings, LoggingSettings
+from jarvis.core.config import BackendSettings, GenerationOptions, LoggingSettings
 from jarvis.core.debug_transcript import configure_debug_transcript
 from jarvis.core.debug_transcript import logger as transcript_logger
 from jarvis.dialog.backend import (
@@ -31,6 +32,8 @@ from jarvis.inputs.attachments import (
     plan_attachments,
 )
 
+NO_OPTIONS = GenerationOptions()
+
 
 def _fake_audio_b64() -> str:
     return base64.b64encode(b"not-really-a-wav").decode()
@@ -43,6 +46,7 @@ def test_payload_places_media_under_images_never_under_audio():
     payload = backend.build_payload(
         messages=[{"role": "user", "content": "what did I say?"}],
         images_b64=media,
+        options=NO_OPTIONS,
     )
 
     assert payload["messages"][-1]["images"] == media
@@ -71,6 +75,7 @@ def test_payload_places_image_attachments_under_images_of_the_last_message():
             {"role": "user", "content": "describe this image"},
         ],
         images_b64=images,
+        options=NO_OPTIONS,
     )
 
     assert payload["messages"][-1]["images"] == [base64.b64encode(upload.data).decode()]
@@ -102,6 +107,7 @@ def test_payload_places_normalized_audio_clips_under_images_of_the_last_message(
     payload = backend.build_payload(
         messages=[{"role": "user", "content": "what is said in this recording?"}],
         images_b64=media,
+        options=NO_OPTIONS,
     )
 
     assert payload["messages"][-1]["images"] == list(media)
@@ -114,7 +120,9 @@ def test_payload_places_normalized_audio_clips_under_images_of_the_last_message(
 def test_payload_without_media_has_no_images_key():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert "images" not in payload["messages"][-1]
 
@@ -123,8 +131,8 @@ def test_payload_without_tool_declarations_is_byte_identical_to_legacy_shape():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
     messages = [{"role": "user", "content": "hi"}]
 
-    legacy_payload = backend.build_payload(messages)
-    tool_aware_payload = backend.build_payload(messages, tools=None)
+    legacy_payload = backend.build_payload(messages, options=NO_OPTIONS)
+    tool_aware_payload = backend.build_payload(messages, tools=None, options=NO_OPTIONS)
 
     assert tool_aware_payload == legacy_payload
     assert "tools" not in tool_aware_payload
@@ -144,7 +152,9 @@ def test_payload_carries_prepared_tool_declarations_without_interpreting_them():
     ]
 
     payload = backend.build_payload(
-        [{"role": "user", "content": "latest news"}], tools=tools
+        [{"role": "user", "content": "latest news"}],
+        tools=tools,
+        options=NO_OPTIONS,
     )
 
     assert payload["tools"] == tools
@@ -153,7 +163,9 @@ def test_payload_carries_prepared_tool_declarations_without_interpreting_them():
 def test_payload_defaults_to_thinking_disabled():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert payload["think"] is False
 
@@ -168,7 +180,9 @@ def test_payload_maps_each_graded_level_to_its_exact_think_value():
         (ReasoningLevel.HIGH, "high"),
     ):
         payload = backend.build_payload(
-            messages=[{"role": "user", "content": "hi"}], reasoning_level=level
+            messages=[{"role": "user", "content": "hi"}],
+            reasoning_level=level,
+            options=NO_OPTIONS,
         )
 
         assert payload["think"] == expected_think
@@ -178,7 +192,9 @@ def test_payload_uses_model_and_num_ctx_from_settings():
     settings = BackendSettings(model="custom-model", num_ctx=1234)
     backend = OllamaBackend(bus=EventBus(), settings=settings)
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert payload["model"] == "custom-model"
     assert payload["options"]["num_ctx"] == 1234
@@ -193,7 +209,9 @@ def test_payload_includes_configured_flash_attention_and_kv_cache_type():
     )
     backend = OllamaBackend(bus=EventBus(), settings=settings)
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert payload["options"] == {
         "num_ctx": 1234,
@@ -206,7 +224,9 @@ def test_payload_preserves_an_explicit_false_flash_attention_value():
     settings = BackendSettings(flash_attention=False)
     backend = OllamaBackend(bus=EventBus(), settings=settings)
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert payload["options"]["flash_attention"] is False
 
@@ -214,14 +234,16 @@ def test_payload_preserves_an_explicit_false_flash_attention_value():
 def test_payload_omits_unset_generation_options():
     backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+    )
 
     assert "temperature" not in payload["options"]
     assert "stop" not in payload["options"]
 
 
-def test_payload_includes_configured_generation_options():
-    settings = BackendSettings(
+def test_payload_includes_the_requests_generation_options_after_load_options():
+    options = GenerationOptions(
         temperature=0.2,
         top_p=0.8,
         top_k=40,
@@ -233,9 +255,11 @@ def test_payload_includes_configured_generation_options():
         stop=["</speak>", "\n\n"],
         draft_num_predict=16,
     )
-    backend = OllamaBackend(bus=EventBus(), settings=settings)
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}], options=options
+    )
 
     assert payload["options"] == {
         "num_ctx": 65536,
@@ -253,14 +277,34 @@ def test_payload_includes_configured_generation_options():
 
 
 def test_payload_preserves_explicit_zero_generation_values():
-    settings = BackendSettings(temperature=0.0, seed=0, num_predict=0)
-    backend = OllamaBackend(bus=EventBus(), settings=settings)
+    backend = OllamaBackend(bus=EventBus(), settings=BackendSettings())
 
-    payload = backend.build_payload(messages=[{"role": "user", "content": "hi"}])
+    payload = backend.build_payload(
+        messages=[{"role": "user", "content": "hi"}],
+        options=GenerationOptions(temperature=0.0, seed=0, num_predict=0),
+    )
 
     assert payload["options"]["temperature"] == 0.0
     assert payload["options"]["seed"] == 0
     assert payload["options"]["num_predict"] == 0
+
+
+def test_two_requests_differ_only_in_their_generation_options():
+    backend = OllamaBackend(
+        bus=EventBus(),
+        settings=BackendSettings(num_ctx=4096, kv_cache_type="q8_0"),
+    )
+    messages = [{"role": "user", "content": "hi"}]
+
+    cold = backend.build_payload(messages, options=GenerationOptions(temperature=0.2))
+    warm = backend.build_payload(messages, options=GenerationOptions(temperature=0.9))
+
+    assert cold["options"] == {
+        "num_ctx": 4096,
+        "kv_cache_type": "q8_0",
+        "temperature": 0.2,
+    }
+    assert warm["options"] == {**cold["options"], "temperature": 0.9}
 
 
 def test_default_client_uses_configured_read_timeout():
@@ -312,7 +356,7 @@ async def test_streamed_tokens_are_republished_in_order():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_fixture_response()
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == ["Hello", " world"]
 
@@ -329,7 +373,7 @@ async def test_latency_metrics_parsed_and_published_on_completion():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_fixture_response()
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == [
         ResponseComplete(
@@ -387,6 +431,7 @@ async def test_thinking_chunks_never_published_as_response_token():
     await backend.chat(
         messages=[{"role": "user", "content": "hi"}],
         reasoning_level=ReasoningLevel.HIGH,
+        options=NO_OPTIONS,
     )
 
     assert received == ["Hello"]
@@ -411,6 +456,7 @@ async def test_thinking_only_stream_publishes_no_response_token():
     await backend.chat(
         messages=[{"role": "user", "content": "hi"}],
         reasoning_level=ReasoningLevel.HIGH,
+        options=NO_OPTIONS,
     )
 
     assert received == []
@@ -438,7 +484,7 @@ async def test_stream_ending_without_done_still_publishes_response_complete():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == [
         ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
@@ -458,7 +504,7 @@ async def test_stream_ending_without_done_still_republishes_seen_tokens():
     backend = OllamaBackend(
         bus=bus, settings=BackendSettings(), client=_client_with_ndjson_body(lines)
     )
-    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert received == ["Hello"]
 
@@ -485,6 +531,7 @@ async def test_every_request_is_recorded_when_the_transcript_is_installed(tmp_pa
         await backend.chat(
             messages=[{"role": "user", "content": "[голосовое сообщение]"}],
             images_b64=[base64.b64encode(b"RIFF____WAVEfmt ").decode()],
+            options=NO_OPTIONS,
         )
         record = json.loads(path.read_text(encoding="utf-8").strip())
     finally:
@@ -504,7 +551,7 @@ async def test_a_request_records_nothing_without_the_transcript(tmp_path):
         client=_client_with_ndjson_body([{"message": {"content": "hi"}, "done": True}]),
     )
 
-    await backend.chat(messages=[{"role": "user", "content": "hi"}])
+    await backend.chat(messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS)
 
     assert list(tmp_path.iterdir()) == []
 
@@ -527,10 +574,20 @@ async def test_a_failed_request_still_leaves_a_record(tmp_path):
 
     try:
         with pytest.raises(httpx.ConnectError):
-            await backend.chat(messages=[{"role": "user", "content": "hi"}])
+            await backend.chat(
+                messages=[{"role": "user", "content": "hi"}], options=NO_OPTIONS
+            )
         record = json.loads(path.read_text(encoding="utf-8").strip())
     finally:
         _close_transcript()
 
     assert record["request"]["messages"][0]["content"] == "hi"
     assert record["response"]["completed"] is False
+
+
+@pytest.mark.parametrize("method", ["build_payload", "iter_chat", "chat"])
+def test_every_request_entry_point_requires_generation_options(method):
+    parameter = inspect.signature(getattr(OllamaBackend, method)).parameters["options"]
+
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
