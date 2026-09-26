@@ -1,6 +1,7 @@
 # Task: Generation length cap - `num_predict` per profile, visible truncation
 
-**Status:** Draft, awaiting owner approval.
+**Status:** Approved (owner, 2026-09-26). Open question resolved as recommended:
+no audible truncation notice in this card.
 **Origin:** owner planning dialog, 2026-09-26 ("variant 1": the cap depends on
 the request kind; history budget variant (a)). Closes
 `tasks/bug_reports/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
