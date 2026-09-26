@@ -76,6 +76,7 @@ class ParsedResponse:
     content_chunks: tuple[str, ...]
     metrics: LatencyMetrics
     content_published: bool
+    done_reason: str | None
 
 
 class ToolPresentation(Protocol):
@@ -359,6 +360,7 @@ class ToolAwareDialog:
         content_published = False
         saw_done = False
         metrics = LatencyMetrics(0.0, 0.0, 0.0, 0)
+        done_reason: str | None = None
         async for chunk in self._backend.iter_chat(
             messages, images_b64, reasoning_level, tools, options=options
         ):
@@ -375,11 +377,17 @@ class ToolAwareDialog:
             if chunk.get("done") is True:
                 saw_done = True
                 metrics = parse_metrics(chunk)
+                raw_reason = chunk.get("done_reason")
+                done_reason = raw_reason if isinstance(raw_reason, str) else None
         assistant_message["content"] = "".join(content_chunks)
         if not saw_done:
             logger.warning("Ollama stream ended without a done:true chunk")
         return ParsedResponse(
-            assistant_message, tuple(content_chunks), metrics, content_published
+            assistant_message,
+            tuple(content_chunks),
+            metrics,
+            content_published,
+            done_reason,
         )
 
     async def _publish_final(
@@ -395,7 +403,10 @@ class ToolAwareDialog:
             for chunk in chunks:
                 await self._bus.publish(ResponseToken, ResponseToken(text=chunk))
         await self._bus.publish(
-            ResponseComplete, ResponseComplete(metrics=response.metrics)
+            ResponseComplete,
+            ResponseComplete(
+                metrics=response.metrics, done_reason=response.done_reason
+            ),
         )
 
 

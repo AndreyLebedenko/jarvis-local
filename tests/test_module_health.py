@@ -32,7 +32,9 @@ def _tracked_bus() -> tuple[EventBus, _Recorder]:
 
 
 def _response_complete() -> ResponseComplete:
-    return ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
+    return ResponseComplete(
+        metrics=LatencyMetrics(0.0, 0.0, 0.0, 1), done_reason="stop"
+    )
 
 
 async def test_successful_warmup_reports_backend_ok():

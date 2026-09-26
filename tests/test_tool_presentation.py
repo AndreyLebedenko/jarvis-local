@@ -822,8 +822,40 @@ async def test_stream_without_done_still_completes_final_turn_once():
     await dialog.chat([{"role": "user", "content": "hello"}], options=NO_OPTIONS)
 
     assert completions == [
-        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0))
+        ResponseComplete(
+            metrics=LatencyMetrics(0.0, 0.0, 0.0, 0, prompt_eval_count=0),
+            done_reason=None,
+        )
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_final_requests_done_reason_is_the_one_published():
+    """task-generation-num-predict-cap.md: a tool loop turn is
+    truncated when its final request hit the length cap, whatever the
+    earlier requests ended with."""
+    bus = EventBus()
+    completions: list[ResponseComplete] = []
+    bus.subscribe(ResponseComplete, _append_completion(completions))
+    tool_call_request = _native_calls(("search_web", {"query": "weather"}))
+    tool_call_request[-1]["done_reason"] = "stop"
+    final_request = _done("It is sun")
+    final_request[-1]["done_reason"] = "length"
+    backend = FakeBackend([tool_call_request, final_request])
+    dialog = ToolAwareDialog(
+        backend,
+        bus,
+        _registry(_tool()),
+        FakeDispatcher(
+            [ToolDispatchResult(ok=True, correlation_id="1", content={"sunny": True})]
+        ),
+        NativeToolPresentation(),
+        max_tool_calls_per_turn=3,
+    )
+
+    await dialog.chat([{"role": "user", "content": "weather?"}], options=NO_OPTIONS)
+
+    assert [event.done_reason for event in completions] == ["length"]
 
 
 @pytest.mark.asyncio

@@ -879,7 +879,8 @@ async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -924,7 +925,8 @@ async def test_on_response_complete_schedules_no_synthesis_while_muted():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -976,7 +978,8 @@ async def test_on_response_complete_schedules_none_when_directive_says_do_not_sp
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -1072,7 +1075,8 @@ async def test_on_response_complete_pads_the_final_default_playback_unit():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -1359,7 +1363,8 @@ async def _speak_tokens(engine, *tokens: str) -> None:
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -1465,7 +1470,8 @@ async def test_connectives_stay_in_their_own_language_when_engines_differ():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()
@@ -1486,7 +1492,8 @@ async def test_second_turn_starts_fresh_after_english_text():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.on_token(ResponseToken(text="Снова по-русски."))
@@ -1497,7 +1504,8 @@ async def test_second_turn_starts_fresh_after_english_text():
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()

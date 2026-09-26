@@ -67,7 +67,8 @@ async def main() -> None:
                 prompt_eval_seconds=0.0,
                 eval_seconds=0.0,
                 eval_count=0,
-            )
+            ),
+            done_reason="stop",
         )
     )
     await tts.wait_for_pending()

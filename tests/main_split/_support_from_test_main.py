@@ -114,7 +114,8 @@ def _complete_event() -> ResponseComplete:
     return ResponseComplete(
         metrics=LatencyMetrics(
             load_seconds=0, prompt_eval_seconds=0, eval_seconds=0, eval_count=0
-        )
+        ),
+        done_reason="stop",
     )
 
 

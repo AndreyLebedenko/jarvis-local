@@ -64,6 +64,7 @@ class LatencyMetrics:
 @dataclass(frozen=True)
 class ResponseComplete:
     metrics: LatencyMetrics
+    done_reason: str | None
 
 
 class OllamaBackend:
@@ -139,6 +140,12 @@ class OllamaBackend:
                         chunk = json.loads(line)
                         if exchange is not None:
                             exchange.observe(chunk)
+                        if chunk.get("done") and chunk.get("done_reason") == "length":
+                            logger.warning(
+                                "Ollama request stopped at the length cap "
+                                "(num_predict=%s)",
+                                payload["options"].get("num_predict"),
+                            )
                         yield chunk
         finally:
             # In the finally, so a call that raises, hangs into
@@ -171,7 +178,10 @@ class OllamaBackend:
                 saw_done = True
                 await self._bus.publish(
                     ResponseComplete,
-                    ResponseComplete(metrics=parse_metrics(chunk)),
+                    ResponseComplete(
+                        metrics=parse_metrics(chunk),
+                        done_reason=chunk.get("done_reason"),
+                    ),
                 )
         if not saw_done:
             # The stream ended (connection closed / body exhausted) without
@@ -184,7 +194,9 @@ class OllamaBackend:
             logger.warning("Ollama stream ended without a done:true chunk")
             await self._bus.publish(
                 ResponseComplete,
-                ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0)),
+                ResponseComplete(
+                    metrics=LatencyMetrics(0.0, 0.0, 0.0, 0), done_reason=None
+                ),
             )
 
 

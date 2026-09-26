@@ -513,7 +513,7 @@ async def probe_prompt(
         await tts.on_token(ResponseToken(text=chunk))
         await asyncio.sleep(TOKEN_DELAY_SECONDS)
     await tts.on_response_complete(
-        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0))
+        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 0), done_reason="stop")
     )
     await tts.wait_for_pending()
     end = time.perf_counter()

@@ -456,7 +456,8 @@ async def test_wire_pushes_listening_state_after_response_complete():
     # ToolAwareDialog, which needs it), so a real turn would just fail.
     app.orchestrator._busy = True
     await app.bus.publish(
-        ResponseComplete, ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1))
+        ResponseComplete,
+        ResponseComplete(metrics=LatencyMetrics(0.0, 0.0, 0.0, 1), done_reason="stop"),
     )
 
     assert transport.calls[-1] == (
