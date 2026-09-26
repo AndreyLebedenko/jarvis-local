@@ -1,6 +1,6 @@
 # v1.9.2 Rethink probe - raw study
 
-Archived evidence for closing `tasks/story-v1.9.2-local-generation-critique-integration.md`
+Archived evidence for closing `tasks/done/story-v1.9.2-local-generation-critique-integration.md`
 as unrealistic (2026-09-12). The story card carries the conclusion and the
 summary table; this directory holds what produced them.
 
