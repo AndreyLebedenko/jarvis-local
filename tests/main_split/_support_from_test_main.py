@@ -110,12 +110,12 @@ class _FakeSoundCues:
         self.played.append(cue)
 
 
-def _complete_event() -> ResponseComplete:
+def _complete_event(done_reason: str | None = "stop") -> ResponseComplete:
     return ResponseComplete(
         metrics=LatencyMetrics(
             load_seconds=0, prompt_eval_seconds=0, eval_seconds=0, eval_count=0
         ),
-        done_reason="stop",
+        done_reason=done_reason,
     )
 
 
@@ -219,6 +219,7 @@ class _FakeJournalRecorder:
         self.assistant_outcomes: list[TurnOutcome | None] = []
         self.assistant_spoken_derivatives: list[str | None] = []
         self.assistant_spoken_derivative_interrupted: list[bool] = []
+        self.assistant_spoken_derivative_truncated: list[bool] = []
         self.forks: list[tuple[str, str]] = []
         # Records every write call in the exact order the real recorder
         # would see it - separate from the per-kind lists above, which lose
@@ -248,6 +249,7 @@ class _FakeJournalRecorder:
         outcome: TurnOutcome | None = None,
         spoken_derivative: str | None = None,
         spoken_derivative_interrupted: bool = False,
+        spoken_derivative_truncated: bool = False,
     ) -> None:
         self.assistant_texts.append(text)
         self.assistant_outcomes.append(outcome)
@@ -255,11 +257,14 @@ class _FakeJournalRecorder:
         self.assistant_spoken_derivative_interrupted.append(
             spoken_derivative_interrupted
         )
+        self.assistant_spoken_derivative_truncated.append(spoken_derivative_truncated)
         derivative_suffix = (
             f":{spoken_derivative!r}" if spoken_derivative is not None else ""
         )
         if spoken_derivative_interrupted:
             derivative_suffix += ":interrupted"
+        if spoken_derivative_truncated:
+            derivative_suffix += ":truncated"
         self.call_order.append(f"assistant:{text!r}:{outcome}{derivative_suffix}")
 
     async def wait_for_pending(self) -> None:

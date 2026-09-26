@@ -61,10 +61,17 @@ class LatencyMetrics:
     prompt_eval_count: int = 0
 
 
+LENGTH_CAP_DONE_REASON = "length"
+
+
 @dataclass(frozen=True)
 class ResponseComplete:
     metrics: LatencyMetrics
     done_reason: str | None
+
+    @property
+    def hit_length_cap(self) -> bool:
+        return self.done_reason == LENGTH_CAP_DONE_REASON
 
 
 class OllamaBackend:
@@ -140,7 +147,10 @@ class OllamaBackend:
                         chunk = json.loads(line)
                         if exchange is not None:
                             exchange.observe(chunk)
-                        if chunk.get("done") and chunk.get("done_reason") == "length":
+                        if (
+                            chunk.get("done")
+                            and chunk.get("done_reason") == LENGTH_CAP_DONE_REASON
+                        ):
                             logger.warning(
                                 "Ollama request stopped at the length cap "
                                 "(num_predict=%s)",

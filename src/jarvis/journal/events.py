@@ -36,7 +36,8 @@ class TurnOutcome(Enum):
     """How a turn ended without a normal completed answer (task-v1.7.0-3).
     Stored as ``metadata["outcome"]`` on an assistant JournalEvent, and used
     to pick the ConversationHistory system note - see
-    Orchestrator.record_aborted_turn() in app.py.
+    Orchestrator.record_aborted_turn() and Orchestrator.on_response_complete()
+    in app.py.
 
     FAILED specifically means no response was ever produced (the
     backend/dispatch call itself failed) - deliberately not a generic
@@ -61,6 +62,16 @@ class TurnOutcome(Enum):
     # short; the journal UI renders it through the same
     # journal_outcome_* i18n mechanism.
     MODE_SWITCHED = "mode_switched"
+    # The model stopped at the generation length cap (Ollama done_reason
+    # "length"). Unlike INTERRUPTED and FAILED, generation ended on its
+    # own: `text` holds everything the model produced - possibly empty,
+    # when reasoning consumed the whole cap. A distinct member rather than
+    # no outcome keeps every journal consumer from reading a cut answer as
+    # a finished one; not INTERRUPTED, because nobody interrupted it.
+    # Rendered through the same journal_outcome_* i18n mechanism. A mode-3
+    # spoken derivative cut at its own cap is not this outcome - see
+    # JournalRecorder.record_assistant()'s spoken_derivative_truncated.
+    TRUNCATED = "truncated"
 
 
 @dataclass(frozen=True)

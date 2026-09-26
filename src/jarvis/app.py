@@ -386,6 +386,9 @@ _MODE_SWITCH_HISTORY_NOTE = (
     "Это была команда переключения режима ответа; "
     "режим переключён, ответ не требовался."
 )
+# Follows the assistant text of a turn that stopped at the generation length
+# cap, so a later turn's model does not read the cut answer as finished.
+_TRUNCATED_HISTORY_NOTE = "Предыдущий ответ обрезан: достигнут лимит длины генерации."
 
 
 def _compose_session_file_cue(storage_names: Sequence[str]) -> str:
@@ -486,8 +489,8 @@ class Orchestrator:
         # the ModelRequestStarted that call publishes. False for mode 3's
         # muted first pass so neither fires before any audio is actually
         # about to play, then True again for the derivative pass.
-        # _pending_derivative_pass and
-        # _pending_canonical_text carry on_response_complete()'s decision
+        # _pending_derivative_pass, _pending_canonical_text and
+        # _pending_canonical_outcome carry on_response_complete()'s decision
         # (mode 3: defer the journal write, do not finish the turn yet) to
         # _on_full_response_complete(), which owns running the second
         # dispatch and only then finishing the turn - see
@@ -495,6 +498,10 @@ class Orchestrator:
         self._current_pass_speaks = True
         self._pending_derivative_pass = False
         self._pending_canonical_text: str | None = None
+        self._pending_canonical_outcome: TurnOutcome | None = None
+        # See observe_response_complete(): how run_derivative_pass() learns
+        # whether its own dispatch stopped at the length cap.
+        self._last_response_hit_length_cap = False
         self._current_turn_response_mode: ResponseMode = ResponseMode.TEXT
         # Set once record_voice_user()/record_text_user() actually returns
         # (task-v1.7.0-3 review) - see record_aborted_turn(). Replaced with
@@ -1419,17 +1426,38 @@ class Orchestrator:
         dispatch that has not run. Setting _pending_derivative_pass tells
         _on_full_response_complete() (app.py) to run that dispatch - via
         run_derivative_pass() - before finishing the turn; that method is
-        what actually calls record_assistant(), once, with both fields."""
+        what actually calls record_assistant(), once, with both fields.
+
+        A turn that stopped at the length cap is TurnOutcome.TRUNCATED and
+        gets _TRUNCATED_HISTORY_NOTE after its text. In mode 3, a truncated
+        first pass with no text leaves nothing to render, so the derivative
+        pass is skipped and the turn is recorded here like a single-pass
+        one."""
         full_text = "".join(self._response_tokens)
+        outcome = TurnOutcome.TRUNCATED if event.hit_length_cap else None
         self._history.add("user", self._current_turn_history_text)
         self._history.add("assistant", full_text)
-        if self._current_turn_response_mode is ResponseMode.TEXT_VOICE:
+        if outcome is TurnOutcome.TRUNCATED:
+            self._history.add("system", _TRUNCATED_HISTORY_NOTE)
+        nothing_to_render = outcome is TurnOutcome.TRUNCATED and not full_text.strip()
+        if (
+            self._current_turn_response_mode is ResponseMode.TEXT_VOICE
+            and not nothing_to_render
+        ):
             self._pending_derivative_pass = True
             self._pending_canonical_text = full_text
+            self._pending_canonical_outcome = outcome
             return
         if self._journal_recorder is not None and self._journal_turn_started:
-            await self._journal_recorder.record_assistant(full_text)
+            await self._journal_recorder.record_assistant(full_text, outcome=outcome)
             self._journal_turn_started = False
+
+    def observe_response_complete(self, event: ResponseComplete) -> None:
+        """Called for every ResponseComplete, including the derivative
+        pass's own, which reaches _on_full_response_complete() (app.py)
+        only as a claim-losing reentrant call that never gets to
+        on_response_complete() above."""
+        self._last_response_hit_length_cap = event.hit_length_cap
 
     def needs_derivative_pass(self) -> bool:
         return self._pending_derivative_pass
@@ -1454,6 +1482,7 @@ class Orchestrator:
         canonical_text = self._pending_canonical_text
         assert canonical_text is not None
         self._response_tokens = []
+        self._last_response_hit_length_cap = False
         derivative_profile = self._generation_settings.profile(
             SPOKEN_DERIVATIVE_PROFILE
         )
@@ -1476,12 +1505,15 @@ class Orchestrator:
         if self._journal_recorder is not None and self._journal_turn_started:
             await self._journal_recorder.record_assistant(
                 canonical_text,
+                outcome=self._pending_canonical_outcome,
                 spoken_derivative=derivative_text,
                 spoken_derivative_interrupted=self._interrupt_requested.is_set(),
+                spoken_derivative_truncated=self._last_response_hit_length_cap,
             )
             self._journal_turn_started = False
         self._pending_derivative_pass = False
         self._pending_canonical_text = None
+        self._pending_canonical_outcome = None
 
     async def record_aborted_turn(self, *, outcome: TurnOutcome) -> None:
         """Records a turn that ends without its answer being recorded
@@ -2219,7 +2251,12 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
     may already have ended the turn by the time this runs. Recording
     history or scheduling more speech for an already-ended turn would be
     wrong, so a lost claim means this whole handler is a no-op, not just
-    its finish sequence."""
+    its finish sequence.
+
+    The one exception is observe_response_complete(), which runs before the
+    claim: it is how run_derivative_pass() sees its own dispatch's
+    done_reason, delivered by exactly that claim-losing reentrant call."""
+    app.orchestrator.observe_response_complete(event)
     if not app.orchestrator.claim_turn_end():
         return
     try:
@@ -2233,9 +2270,9 @@ async def _on_full_response_complete(app: App, event: ResponseComplete) -> None:
             # derivative's own ResponseComplete (published inside this
             # call, from OllamaBackend.chat()) re-enters this very
             # function recursively, but claim_turn_end() is already spent
-            # for this turn, so that reentrant call is a no-op by
-            # construction - this call is the only one that ever finishes
-            # a mode-3 turn.
+            # for this turn, so that reentrant call does nothing past
+            # observe_response_complete() by construction - this call is
+            # the only one that ever finishes a mode-3 turn.
             await app.orchestrator.run_derivative_pass()
             # flushes the derivative pass's own trailing sentence
             await app.tts_output.on_response_complete(event)

@@ -3640,6 +3640,12 @@ function _journalSpokenDerivativeDetail(event) {
     note.textContent = uiString("journal_spoken_derivative_interrupted");
     detail.appendChild(note);
   }
+  if (event.metadata.spoken_derivative_truncated) {
+    const note = document.createElement("div");
+    note.className = "journal-provenance-detail";
+    note.textContent = uiString("journal_spoken_derivative_truncated");
+    detail.appendChild(note);
+  }
   return detail;
 }
 

@@ -312,8 +312,10 @@ const UI_STRINGS = {
     journal_outcome_failed: "No response - a backend error occurred.",
     journal_outcome_mode_switched:
         "Mode-switch command - obeyed, no answer was needed.",
+    journal_outcome_truncated: "Cut off at the generation length limit.",
     journal_spoken_derivative_label: "spoken aloud",
     journal_spoken_derivative_interrupted: "Cut short by an interrupt.",
+    journal_spoken_derivative_truncated: "Cut off at the generation length limit.",
     transport_no_connection: "No connection to engine",
     transport_no_token: "No UI transport token in URL",
     transport_data_error: "UI transport data error",
@@ -637,8 +639,10 @@ const UI_STRINGS = {
     journal_outcome_failed: "Ответ не получен - ошибка бэкенда.",
     journal_outcome_mode_switched:
         "Команда переключения режима - выполнена, ответ не требовался.",
+    journal_outcome_truncated: "Обрезано: достигнут лимит длины генерации.",
     journal_spoken_derivative_label: "озвучено",
     journal_spoken_derivative_interrupted: "Прервано хоткеем, не закончено.",
+    journal_spoken_derivative_truncated: "Обрезано: достигнут лимит длины генерации.",
     transport_no_connection: "Нет связи с engine",
     transport_no_token: "Нет токена UI transport в URL",
     transport_data_error: "Ошибка данных UI transport",

@@ -590,6 +590,50 @@ async def test_record_assistant_without_spoken_derivative_keeps_metadata_empty(
     assert event.metadata == {}
 
 
+async def test_record_assistant_with_truncated_outcome_stores_truncated(
+    tmp_path: Path,
+) -> None:
+    """task-generation-num-predict-cap.md: a turn stopped at the length cap
+    is labelled as such, whether or not any answer text was produced."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_assistant("", outcome=TurnOutcome.TRUNCATED)
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert event.metadata == {"outcome": "truncated"}
+
+
+async def test_record_assistant_flags_a_truncated_spoken_derivative_additively(
+    tmp_path: Path,
+) -> None:
+    """task-generation-num-predict-cap.md: only the derivative hit its cap,
+    so the flag sits next to spoken_derivative and `outcome` stays absent -
+    the canonical text is complete."""
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+
+    await recorder.record_assistant(
+        "canonical rich text",
+        spoken_derivative="spoken der",
+        spoken_derivative_truncated=True,
+    )
+    await recorder.wait_for_pending()
+
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    assert event.metadata == {
+        "spoken_derivative": "spoken der",
+        "spoken_derivative_truncated": True,
+    }
+
+
 async def test_recorder_writes_voice_event_with_screenshot_media(
     tmp_path: Path,
 ) -> None:

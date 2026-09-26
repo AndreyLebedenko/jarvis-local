@@ -1,19 +1,26 @@
 import asyncio
 from dataclasses import replace
 
+import pytest
 from _support_from_test_main import (
+    _collecting_subscriber,
     _complete_event,
     _FakeJournalRecorder,
+    _FakeTtsOutput,
     _generation_with,
     _orchestrator,
 )
 
+import jarvis.app as main_module
+from jarvis.app import App, _on_full_response_complete
 from jarvis.audio.input import (
     UtteranceChunk,
 )
 from jarvis.core.bus import EventBus
-from jarvis.core.config import GenerationOptions
+from jarvis.core.config import GenerationOptions, Settings, VadSettings
+from jarvis.core.lifecycle import TurnCompleted
 from jarvis.dialog.backend import (
+    ResponseComplete,
     ResponseToken,
 )
 from jarvis.dialog.response_mode import (
@@ -23,6 +30,8 @@ from jarvis.dialog.response_mode import (
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
 )
+from jarvis.inputs.clipboard import ClipboardSubmitted
+from jarvis.journal import TurnOutcome
 
 # --- mode 3 second pass (story-v1.9.0 task 3) -------------------------------
 
@@ -328,3 +337,254 @@ async def test_derivative_pass_backend_failure_does_not_clear_busy_early():
 
     assert orchestrator.is_busy is True
     assert sound_cues.played[-1] == "error"
+
+
+# --- length cap in mode 3 (task-generation-num-predict-cap.md) ---------------
+
+
+async def test_truncated_first_pass_journals_the_turn_as_truncated_after_pass_2():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="cut canonical"))
+        else:
+            await orchestrator.on_response_token(ResponseToken(text="derivative"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event(done_reason="length"))
+    await orchestrator.run_derivative_pass()
+
+    assert len(backend.calls) == 2
+    assert journal_recorder.assistant_texts == ["cut canonical"]
+    assert journal_recorder.assistant_outcomes == [TurnOutcome.TRUNCATED]
+    assert journal_recorder.assistant_spoken_derivatives == ["derivative"]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [False]
+    assert orchestrator._history.as_messages()[-2:] == [
+        {"role": "assistant", "content": "cut canonical"},
+        {"role": "system", "content": main_module._TRUNCATED_HISTORY_NOTE},
+    ]
+
+
+async def test_truncated_first_pass_with_blank_text_skips_the_derivative_pass():
+    """Nothing to render aloud: the turn is journaled right away, like a
+    single-pass one, with no spoken derivative."""
+
+    async def chat_impl() -> None:
+        await orchestrator.on_response_token(ResponseToken(text=" \n"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event(done_reason="length"))
+
+    assert orchestrator.needs_derivative_pass() is False
+    assert len(backend.calls) == 1
+    assert journal_recorder.assistant_outcomes == [TurnOutcome.TRUNCATED]
+    assert journal_recorder.assistant_spoken_derivatives == [None]
+
+
+async def test_truncated_derivative_pass_flags_only_the_derivative_as_truncated():
+    """The canonical text is complete, so the outcome stays empty and the
+    history gets no truncation note - same reasoning as an interrupted
+    derivative pass."""
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+            return
+        await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
+        orchestrator.observe_response_complete(_complete_event(done_reason="length"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert journal_recorder.assistant_outcomes == [None]
+    assert journal_recorder.assistant_spoken_derivatives == ["cut deriv"]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [True]
+    assert journal_recorder.assistant_spoken_derivative_interrupted == [False]
+    assert main_module._TRUNCATED_HISTORY_NOTE not in [
+        message["content"] for message in orchestrator._history.as_messages()
+    ]
+
+
+async def test_both_passes_truncated_record_both_markers():
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="cut canonical"))
+            return
+        await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
+        orchestrator.observe_response_complete(_complete_event(done_reason="length"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event(done_reason="length"))
+    await orchestrator.run_derivative_pass()
+
+    assert journal_recorder.assistant_outcomes == [TurnOutcome.TRUNCATED]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [True]
+
+
+@pytest.mark.parametrize("done_reason", ["stop", None])
+async def test_derivative_pass_not_stopped_by_the_length_cap_is_not_flagged(
+    done_reason,
+):
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+            return
+        await orchestrator.on_response_token(ResponseToken(text="derivative"))
+        orchestrator.observe_response_complete(_complete_event(done_reason=done_reason))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    await orchestrator.on_response_complete(_complete_event())
+    await orchestrator.run_derivative_pass()
+
+    assert journal_recorder.assistant_outcomes == [None]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [False]
+
+
+async def test_first_pass_cap_is_not_attributed_to_a_derivative_that_never_completed():
+    """The first pass's own ResponseComplete is observed too; a derivative
+    pass that publishes none (here: interrupted) must not inherit it."""
+    still_busy = asyncio.Event()
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="cut canonical"))
+            return
+        await still_busy.wait()
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, _sound_cues = _text_voice_orchestrator(
+        chat_impl=chat_impl, journal_recorder=journal_recorder
+    )
+
+    await orchestrator.on_utterance(
+        UtteranceChunk(wav_bytes=b"a", start_seconds=0, end_seconds=1)
+    )
+    first_pass_complete = _complete_event(done_reason="length")
+    orchestrator.observe_response_complete(first_pass_complete)
+    await orchestrator.on_response_complete(first_pass_complete)
+    derivative_task = asyncio.create_task(orchestrator.run_derivative_pass())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # let the derivative pass's own chat() start
+    orchestrator.cancel_active_turn()
+    await derivative_task
+
+    assert journal_recorder.assistant_spoken_derivative_interrupted == [True]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [False]
+
+
+def _text_voice_app(orchestrator, backend, sound_cues, bus: EventBus) -> App:
+    app = App(
+        bus=bus,
+        backend=backend,
+        audio_input=None,
+        tts_output=_FakeTtsOutput(),
+        capture_input=None,
+        orchestrator=orchestrator,
+        sound_cues=sound_cues,
+        thinking_mode=None,
+        response_mode=None,
+        settings=Settings(vad=VadSettings(resume_cooldown_seconds=0.001)),
+    )
+
+    async def on_response_complete(event: ResponseComplete) -> None:
+        await _on_full_response_complete(app, event)
+
+    bus.subscribe(ResponseComplete, on_response_complete)
+    return app
+
+
+async def test_derivative_cap_reaches_the_journal_through_the_reentrant_bus_event():
+    """The derivative's ResponseComplete re-enters _on_full_response_complete()
+    after the turn's one claim is spent; that call must still hand its
+    done_reason to run_derivative_pass()."""
+    bus = EventBus()
+
+    async def chat_impl() -> None:
+        if len(backend.calls) == 1:
+            await orchestrator.on_response_token(ResponseToken(text="canonical"))
+            await bus.publish(ResponseComplete, _complete_event())
+            return
+        await orchestrator.on_response_token(ResponseToken(text="cut deriv"))
+        await bus.publish(ResponseComplete, _complete_event(done_reason="length"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        response_mode=ResponseModeState(bus=bus, initial_mode=ResponseMode.TEXT_VOICE),
+        generation_settings=_generation_with({"spoken_derivative": "contract"}),
+        journal_recorder=journal_recorder,
+        bus=bus,
+    )
+    _text_voice_app(orchestrator, backend, sound_cues, bus)
+
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="question", truncated=False, is_empty=False)
+    )
+
+    assert journal_recorder.assistant_outcomes == [None]
+    assert journal_recorder.assistant_spoken_derivative_truncated == [True]
+
+
+async def test_blank_truncated_first_pass_still_ends_the_turn_without_pass_2():
+    bus = EventBus()
+    turns_completed: list[TurnCompleted] = []
+    bus.subscribe(TurnCompleted, _collecting_subscriber(turns_completed))
+
+    async def chat_impl() -> None:
+        await bus.publish(ResponseComplete, _complete_event(done_reason="length"))
+
+    journal_recorder = _FakeJournalRecorder()
+    orchestrator, backend, sound_cues = _orchestrator(
+        chat_impl=chat_impl,
+        response_mode=ResponseModeState(bus=bus, initial_mode=ResponseMode.TEXT_VOICE),
+        generation_settings=_generation_with({"spoken_derivative": "contract"}),
+        journal_recorder=journal_recorder,
+        bus=bus,
+    )
+    _text_voice_app(orchestrator, backend, sound_cues, bus)
+
+    await orchestrator.on_clipboard(
+        ClipboardSubmitted(text="write a sonnet", truncated=False, is_empty=False)
+    )
+
+    assert len(backend.calls) == 1
+    assert orchestrator.is_busy is False
+    assert len(turns_completed) == 1
+    assert sound_cues.played[-1] == "listening"
+    assert journal_recorder.assistant_outcomes == [TurnOutcome.TRUNCATED]
+    assert journal_recorder.assistant_spoken_derivatives == [None]
