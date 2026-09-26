@@ -281,6 +281,7 @@ def _compose_response_mode_contract(
 
 def _history_limits_from_settings(
     history_settings: HistorySettings,
+    generation_settings: GenerationSettings,
 ) -> ContextBudgetLimits:
     return ContextBudgetLimits(
         prompt_capacity_tokens=history_settings.prompt_capacity_tokens,
@@ -288,7 +289,7 @@ def _history_limits_from_settings(
         automatic_retrieval_max_tokens=history_settings.automatic_retrieval_max_tokens,
         tool_result_reserve_tokens=history_settings.tool_result_reserve_tokens,
         reasoning_generation_reserve_tokens=(
-            history_settings.reasoning_generation_reserve_tokens
+            generation_settings.dialog_generation_reserve().tokens
         ),
         estimator_safety_margin_tokens=history_settings.estimator_safety_margin_tokens,
         minimum_recent_exchanges=history_settings.minimum_recent_exchanges,
@@ -452,7 +453,9 @@ class Orchestrator:
         self._history_limits = (
             history_limits
             if history_limits is not None
-            else _history_limits_from_settings(Settings().history)
+            else _history_limits_from_settings(
+                HistorySettings(), self._generation_settings
+            )
         )
         self._audio_input = audio_input
         self._thinking_mode = thinking_mode
@@ -1984,7 +1987,9 @@ def build_app(
         prompt_settings=settings.prompts,
         generation_settings=settings.generation,
         response_settings=settings.response,
-        history_limits=_history_limits_from_settings(settings.history),
+        history_limits=_history_limits_from_settings(
+            settings.history, settings.generation
+        ),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
         solo_session_state=solo_session_state,
         session_file_repository=session_file_repository,

@@ -5,6 +5,7 @@ import logging
 from _support_from_test_main import (
     _assert_model_request_started,
     _complete_event,
+    _generation_with,
     _orchestrator,
     _RequestRecorder,
 )
@@ -19,6 +20,7 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    GenerationOptions,
     HistorySettings,
     PromptSettings,
 )
@@ -35,16 +37,27 @@ from jarvis.inputs.clipboard import ClipboardSubmitted
 
 
 def test_history_settings_are_explicitly_converted_to_context_budget_limits():
+    """The generation reserve is the largest dialog-profile num_predict
+    (task-generation-num-predict-cap.md); non-dialog caps do not count."""
+    generation = _generation_with(
+        options={
+            "dialog.off": GenerationOptions(num_predict=256),
+            "dialog.medium": GenerationOptions(num_predict=512),
+            "annotation": GenerationOptions(num_predict=1024),
+        },
+        defaults=GenerationOptions(num_predict=128),
+    )
+
     limits = main_module._history_limits_from_settings(
         HistorySettings(
             prompt_capacity_tokens=1536,
             recent_history_max_tokens=512,
             automatic_retrieval_max_tokens=256,
             tool_result_reserve_tokens=128,
-            reasoning_generation_reserve_tokens=512,
             estimator_safety_margin_tokens=64,
             minimum_recent_exchanges=2,
-        )
+        ),
+        generation,
     )
 
     assert limits == ContextBudgetLimits(

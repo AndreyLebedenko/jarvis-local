@@ -57,7 +57,7 @@ def _generation_with(
 ) -> GenerationSettings:
     """GenerationSettings with the given per-profile prompt and option
     overrides on top of the built-in profiles."""
-    generation = GenerationSettings(defaults=defaults or GenerationOptions())
+    generation = GenerationSettings(defaults=defaults or GenerationSettings().defaults)
     profiles = dict(generation.profiles)
     for name, prompt in (prompts or {}).items():
         profiles[name] = replace(profiles[name], prompt=prompt)

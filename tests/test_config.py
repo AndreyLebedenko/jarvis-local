@@ -219,9 +219,11 @@ def test_history_settings_parse_from_config(tmp_path):
         recent_history_max_tokens = 512
         automatic_retrieval_max_tokens = 256
         tool_result_reserve_tokens = 128
-        reasoning_generation_reserve_tokens = 512
         estimator_safety_margin_tokens = 64
         minimum_recent_exchanges = 2
+
+        [generation]
+        num_predict = 512
         """,
         encoding="utf-8",
     )
@@ -233,7 +235,6 @@ def test_history_settings_parse_from_config(tmp_path):
         recent_history_max_tokens=512,
         automatic_retrieval_max_tokens=256,
         tool_result_reserve_tokens=128,
-        reasoning_generation_reserve_tokens=512,
         estimator_safety_margin_tokens=64,
         minimum_recent_exchanges=2,
     )
@@ -363,7 +364,6 @@ def test_history_settings_default_to_approved_task3_values(tmp_path):
         recent_history_max_tokens=24576,
         automatic_retrieval_max_tokens=8192,
         tool_result_reserve_tokens=8192,
-        reasoning_generation_reserve_tokens=16384,
         estimator_safety_margin_tokens=1024,
         minimum_recent_exchanges=1,
     )
@@ -376,7 +376,6 @@ def test_history_settings_default_to_approved_task3_values(tmp_path):
         "recent_history_max_tokens",
         "automatic_retrieval_max_tokens",
         "tool_result_reserve_tokens",
-        "reasoning_generation_reserve_tokens",
         "estimator_safety_margin_tokens",
         "minimum_recent_exchanges",
     ],
@@ -430,8 +429,10 @@ def test_history_settings_reject_prompt_capacity_beyond_backend_context(tmp_path
         recent_history_max_tokens = 512
         automatic_retrieval_max_tokens = 256
         tool_result_reserve_tokens = 1
-        reasoning_generation_reserve_tokens = 1
         estimator_safety_margin_tokens = 1
+
+        [generation]
+        num_predict = 1
         """,
         encoding="utf-8",
     )
