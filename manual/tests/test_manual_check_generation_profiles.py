@@ -6,7 +6,13 @@ from manual.manual_check_generation_profiles import (
 )
 
 
-def _exchange(timestamp: str, think: object, options: dict, content: str) -> str:
+def _exchange(
+    timestamp: str,
+    think: object,
+    options: dict,
+    content: str,
+    response: dict | None = None,
+) -> str:
     return json.dumps(
         {
             "kind": "exchange",
@@ -16,7 +22,7 @@ def _exchange(timestamp: str, think: object, options: dict, content: str) -> str
                 "options": options,
                 "messages": [{"role": "system", "content": content}],
             },
-            "response": {},
+            "response": response if response is not None else {},
         },
         ensure_ascii=False,
     )
@@ -36,8 +42,25 @@ def test_summarizes_only_exchanges_at_or_after_since():
             think="medium",
             options={"temperature": 0.6},
             first_message="system: new",
+            done_reason=None,
         )
     ]
+
+
+def test_reports_the_done_reason_the_response_ended_with():
+    lines = [
+        _exchange(
+            "2026-09-26T21:00:00",
+            False,
+            {"num_predict": 30},
+            "cut",
+            response={"completed": True, "done_reason": "length"},
+        )
+    ]
+
+    [summary] = summarize_exchanges(lines, "2026-09-26T21:00:00")
+
+    assert summary.done_reason == "length"
 
 
 def test_first_message_preview_is_single_line_and_bounded():

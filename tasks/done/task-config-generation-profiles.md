@@ -28,7 +28,7 @@ option override. Migration is a hard break: every moved key raises a
 ## Why this exists
 
 The trigger was the missing generation cap
-(`tasks/bug_reports/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`).
+(`tasks/bug_reports/done/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`).
 A single `[backend].num_predict` is wrong because the right bound depends on
 the request kind, and adding per-kind caps into today's layout would scatter
 one more family of keys. Today's layout, for the requests Jarvis makes:

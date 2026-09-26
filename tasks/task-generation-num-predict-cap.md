@@ -4,7 +4,7 @@
 no audible truncation notice in this card.
 **Origin:** owner planning dialog, 2026-09-26 ("variant 1": the cap depends on
 the request kind; history budget variant (a)). Closes
-`tasks/bug_reports/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
+`tasks/bug_reports/done/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
 **Depends on:** `tasks/done/task-config-generation-profiles.md` (landed
 2026-09-26, merge `97e318a`).
 **Blocks:** the mode-3b spike (`tasks/spike-single-pass-tts-block.md`). Its
@@ -187,7 +187,9 @@ distribution above is too thin to justify them.
     pyright pass over `manual/` and `src/` shows no new call-signature or
     attribute errors compared with `main`.
 
-## Human-run handoff (to be written with the implementation)
+## Human-run handoff
+
+Written: `tasks/task-generation-num-predict-cap-handoff.md`.
 
 This needs a live Ollama. Outline:
 
@@ -228,3 +230,42 @@ Recommendation: not in this card. A partial spoken answer ends audibly
 mid-thought anyway. The empty case is the runaway, which after this card
 lasts about 3 min at most and is labelled in the Journal. If it proves
 confusing in use, add it separately.
+
+## Implementation notes (2026-09-26)
+
+Commits `cca2cd8` (cap and budget), `4b14316` (`done_reason`), `5df519c`
+(truncated turns), plus the documentation and handoff step. Choices and
+deviations from the design text above:
+
+- The budget `ConfigError` names the table where the maximum is written, not
+  only the profile: `GenerationSettings.dialog_generation_reserve()` returns a
+  `DialogGenerationReserve(profile, tokens, table)`, and `table` is
+  `generation.dialog.<level>` when the profile sets `num_predict` itself, or
+  `generation` when it inherits. Naming a profile that does not contain the
+  value would send the owner to the wrong table. With equal caps the first
+  dialog profile in `DIALOG_PROFILE_BY_REASONING` order wins, which only
+  matters for the message.
+- `ResponseComplete.done_reason` is a required field with no default, so every
+  constructor, including the fakes and the `manual/` scripts, had to state it;
+  a default of `None` would have let a forgotten call site pass silently as
+  "not truncated". `hit_length_cap` is a property on `ResponseComplete`.
+- The length-cap warning lives in `OllamaBackend.iter_chat`, which both
+  `chat()` and the tool loop (and every service) go through, so each request
+  cut at the cap logs exactly once whatever its kind.
+- `Orchestrator.observe_response_complete()` runs in
+  `_on_full_response_complete()` before `claim_turn_end()`. Mode 3's pass-2
+  `ResponseComplete` reaches that handler only as a reentrant call that loses
+  the claim; recording its `done_reason` before the claim is the only way
+  `run_derivative_pass()` learns its own dispatch hit the cap. Nothing else
+  moved in front of the claim.
+- Pass 2 is skipped only for a truncated empty canvas. A non-truncated empty
+  canvas still runs pass 2, as before this card.
+- A truncated empty answer still adds an empty assistant entry to the history,
+  followed by the note. `on_response_complete()` already added the assistant
+  entry unconditionally for a completed turn, and the truncation path keeps
+  that. This differs from `record_aborted_turn()` (interrupted, failed,
+  mode-switched), which adds the assistant entry only when text was
+  streamed.
+- `manual/manual_check_generation_profiles.py` now also prints each
+  exchange's `done_reason` for the handoff.
+

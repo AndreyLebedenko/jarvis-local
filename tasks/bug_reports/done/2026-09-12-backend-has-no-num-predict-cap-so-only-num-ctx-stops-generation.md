@@ -4,10 +4,11 @@ Commit: `6431b97` (v1.9.2 closure). Noticed while running the Rethink probe
 archived in `docs/experiments/v1.9.2-rethink-probe/`. Config observation, not
 a code change.
 
-**Status:** Open. This is a missing safety bound, not a malfunction: nothing
-is behaving contrary to its contract. Filed because a runaway generation
+**Status:** Closed 2026-09-26 by
+`tasks/done/task-generation-num-predict-cap.md`; see "Resolution". Originally
+filed as a missing safety bound, not a malfunction: a runaway generation
 observed separately
-(`2026-09-12-reasoning-level-2-returns-empty-answer-on-creative-form-constraints.md`)
+(`tasks/bug_reports/2026-09-12-reasoning-level-2-returns-empty-answer-on-creative-form-constraints.md`)
 was allowed to run for 22 minutes precisely because no bound existed.
 
 ## Symptoms
@@ -73,3 +74,27 @@ every turn in the product.
 - This report is only about the missing bound. The reason a runaway happened
   in the first place is the separate report named above and should not be
   closed by capping.
+
+## Resolution (2026-09-26)
+
+Fixed by `tasks/done/task-generation-num-predict-cap.md` (the owner chose the
+number from the observed distribution recorded in that card):
+
+- Every request carries `num_predict`. `[generation].num_predict` defaults to
+  16384, the former `[history].reasoning_generation_reserve_tokens` value;
+  profiles may override it. At ~87 tok/s the worst-case turn falls from about
+  22 min to about 3 min. `num_predict <= 0` is a config error.
+- The largest dialog-profile `num_predict` is now the history budget's
+  generation reserve, validated against `[backend].num_ctx` together with
+  `[history].prompt_capacity_tokens`, so raising `num_ctx` no longer silently
+  raises the worst-case turn. The history reserve key is a moved key.
+- Hitting the cap is a distinct, visible outcome: `ResponseComplete` carries
+  `done_reason`, the backend logs a warning for any request cut at the cap,
+  and a dialog turn cut at the cap is journaled as `outcome: truncated`,
+  labelled in the Journal UI, and followed by a history note so the model
+  does not read it as finished.
+
+The wall-clock budget considered above was not added: tokens are what Ollama
+enforces, and seconds vary with prefill. The runaway itself stays open in its
+own report, named above; this fix bounds it and makes it visible, as this
+report asked.
