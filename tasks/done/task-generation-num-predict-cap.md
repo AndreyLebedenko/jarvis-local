@@ -9,7 +9,7 @@ the request kind; history budget variant (a)). Closes
 `tasks/bug_reports/done/2026-09-12-backend-has-no-num-predict-cap-so-only-num-ctx-stops-generation.md`.
 **Depends on:** `tasks/done/task-config-generation-profiles.md` (landed
 2026-09-26, merge `97e318a`).
-**Blocks:** the mode-3b spike (`tasks/spike-single-pass-tts-block.md`). Its
+**Blocks:** the mode-3b spike (`tasks/done/spike-single-pass-tts-block.md`). Its
 runaway criterion and its tag-failure analysis need a bounded generation and
 a recorded `done_reason`.
 **Kind:** behavior change. Every request gains a length cap, and a turn that

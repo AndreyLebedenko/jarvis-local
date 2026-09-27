@@ -276,8 +276,13 @@ Candidate directions:
   "3b" beside two-pass mode 3, not its replacement: faster, but the voice
   inherits the canvas's generation parameters. Voice-first ordering is
   rejected.
+  Closed 2026-09-27 by that spike's frozen decision rule (speed): the median
+  first-sentence gain was 0.61 s at reasoning off. At medium the single pass
+  was 9.0 s slower, because the contract inflates the thinking phase by about
+  1.8x. See `PROJECT.md`, "Mode 3b ... closed".
   Interleaving (next item) stays here as a possible, questionable later
-  improvement.
+  improvement. Its latency case must be measured at the reasoning levels
+  actually used, not inferred from the voice text's token count.
 - **Interleaved block protocol.** The model can alternate visible blocks and
   spoken guide blocks, for example a paragraph/table/formula followed by the
   voice explanation tied to that block. This could let speech begin before the

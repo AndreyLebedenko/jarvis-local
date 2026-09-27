@@ -5042,6 +5042,57 @@ or to the model (`tasks/done/task-generation-num-predict-cap.md`).
   spoken answer ends mid-thought anyway, and the empty case is the runaway,
   now bounded to about 3 min and labelled in the Journal.
 
+## Mode 3b (single pass with a trailing `<tts>` block) closed (2026-09-27) - do not re-litigate
+
+A single generation that writes the canvas first and then one trailing
+`<tts>...</tts>` block was measured as a candidate additional mode "3b" beside
+two-pass mode 3. It was closed by the decision rule frozen before the run
+("speed: the median gain is below 1.0 s at both levels"). Mode 3 stays as it
+is. Card: `tasks/done/spike-single-pass-tts-block.md`; raw study:
+`docs/experiments/single-pass-tts-block-spike/`.
+
+Setup: `gemma4:12b`, `kv_cache_type` q8_0, `num_ctx` 65536, production
+`[generation]` sampling, 16 frozen Russian prompts x 2 seeds x reasoning
+off/medium. The pass-1 turn was composed the production way with a frozen
+time context, no history, no retrieval and no tools. Each arm started from a
+cold prompt-prefix cache after an unrecorded GPU warm-up.
+
+Verified facts:
+
+- Time to first spoken sentence is not the gain the mechanism suggests.
+  - At reasoning off, the median gain of the single pass over two passes is
+    0.61 s. B was faster in 21 of 32 pairs. This is only what B saves: pass
+    2's prefill of the canvas and the start of a second request.
+  - At reasoning medium, B is 9.0 s slower in the median and faster in only 6
+    of 32 pairs.
+- The trailing-block contract inflates reasoning. At medium, B's thinking
+  phase is about 1.8x that of a plain pass 1: median 10 990 vs 6 204 thinking
+  characters, 3 202 vs 1 832 generated tokens. Across both arms the extra
+  planning costs more than the whole pass 2 it replaces, which at production
+  settings runs with reasoning off (median 3.0 s).
+- Tag compliance itself is not the problem. The block was well-formed in 63
+  of 64 generations. The one failure was a medium-level run that hit the
+  8192-token cap inside the canvas (`calc_kv_cache`): B had 1 runaway against
+  0 for two passes.
+- The single-pass voice is worse even at identical parameters. At reasoning
+  off, where pass 2 already shares pass 1's sampling and reasoning, the blind
+  reviewer judged B's voice worse in 10 of 16 pairs (7 of 16 at medium). This
+  shows that a dedicated pass over a finished canvas renders better speech,
+  not that pass 2's parameters differ. Neither arm had a voice flagged for
+  invented claims.
+- Canvas damage from the voice instruction was moderate: B lost 3 of 16
+  canvas pairs at off and 6 of 16 at medium. This was below the Close
+  threshold of 7, but above Go's 4 at medium.
+- The review was not guessable: the reviewer abstained on most pairs and
+  never reached the 13-of-16 bias flag.
+
+Consequence for v2.1 ("canvas-guided voice"): any single-generation variant
+that asks a reasoning model to plan speech alongside the answer must assume
+that the planning is paid inside the thinking phase. The latency case for
+interleaved blocks therefore needs its own measurement at the reasoning
+levels actually used. It cannot be inferred from the token count of the voice
+text.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old

@@ -1,0 +1,447 @@
+# Blind review answers, production sitting.
+# Fill every value; an empty "" is an error.
+# verdict: "X" (X is better), "Y" (Y is better) or "=" (equal).
+# guess_b: "X" or "Y", the side you think is B.
+# invented: "yes" if the voice states any claim not present in its own
+# canvas, otherwise "no".
+
+[P01]
+verdict = "="
+guess_b = ""
+
+[P02]
+verdict = "y"
+guess_b = "y"
+
+[P03]
+verdict = "y"
+guess_b = "y"
+
+[P04]
+verdict = "y"
+guess_b = "x"
+
+[P05]
+verdict = "y"
+guess_b = "y"
+
+[P06]
+verdict = "="
+guess_b = ""
+
+[P07]
+verdict = "="
+guess_b = ""
+
+[P08]
+verdict = "y"
+guess_b = "x"
+
+[P09]
+verdict = "x"
+guess_b = "x"
+
+[P10]
+verdict = "x"
+guess_b = ""
+
+[P11]
+verdict = "y"
+guess_b = ""
+
+[P12]
+verdict = "="
+guess_b = ""
+
+[P13]
+verdict = "y"
+guess_b = "y"
+
+[P14]
+verdict = "x"
+guess_b = "x"
+
+[P15]
+verdict = "x"
+guess_b = "x"
+
+[P16]
+verdict = "y"
+guess_b = "y"
+
+[P17]
+verdict = "y"
+guess_b = "y"
+
+[P18]
+verdict = "x"
+guess_b = "x"
+
+[P19]
+verdict = "="
+guess_b = ""
+
+[P20]
+verdict = "y"
+guess_b = ""
+
+[P21]
+verdict = "y"
+guess_b = ""
+
+[P22]
+verdict = "y"
+guess_b = "y"
+
+[P23]
+verdict = "x"
+guess_b = "x"
+
+[P24]
+verdict = "y"
+guess_b = "y"
+
+[P25]
+verdict = "="
+guess_b = ""
+
+[P26]
+verdict = "="
+guess_b = ""
+
+[P27]
+verdict = "x"
+guess_b = "x"
+
+[P28]
+verdict = "x"
+guess_b = "y"
+
+[P29]
+verdict = "x"
+guess_b = ""
+
+[P30]
+verdict = "y"
+guess_b = "y"
+
+[P31]
+verdict = "y"
+guess_b = ""
+
+[P32]
+verdict = "="
+guess_b = ""
+
+[P33]
+verdict = "y"
+guess_b = ""
+
+[P34]
+verdict = "x"
+guess_b = ""
+
+[P35]
+verdict = "y"
+guess_b = "y"
+
+[P36]
+verdict = "="
+guess_b = ""
+
+[P37]
+verdict = "="
+guess_b = ""
+
+[P38]
+verdict = "y"
+guess_b = "y"
+
+[P39]
+verdict = "x"
+guess_b = "x"
+
+[P40]
+verdict = "="
+guess_b = ""
+
+[P41]
+verdict = "x"
+guess_b = "y"
+
+[P42]
+verdict = "y"
+guess_b = "y"
+
+[P43]
+verdict = "x"
+guess_b = "x"
+
+[P44]
+verdict = "y"
+guess_b = "y"
+
+[P45]
+verdict = "y"
+guess_b = "y"
+
+[P46]
+verdict = "y"
+guess_b = "y"
+
+[P47]
+verdict = "="
+guess_b = ""
+
+[P48]
+verdict = "x"
+guess_b = "x"
+
+[P49]
+verdict = "="
+guess_b = ""
+
+[P50]
+verdict = "="
+guess_b = ""
+
+[P51]
+verdict = "="
+guess_b = "x"
+
+[P52]
+verdict = "="
+guess_b = "y"
+
+[P53]
+verdict = "="
+guess_b = "x"
+
+[P54]
+verdict = "="
+guess_b = ""
+
+[P55]
+verdict = "x"
+guess_b = "x"
+
+[P56]
+verdict = "x"
+guess_b = ""
+
+[P57]
+verdict = "="
+guess_b = ""
+
+[P58]
+verdict = "="
+guess_b = ""
+
+[P59]
+verdict = "="
+guess_b = ""
+
+[P60]
+verdict = "y"
+guess_b = "y"
+
+[P62]
+verdict = "="
+guess_b = ""
+
+[P63]
+verdict = "="
+guess_b = ""
+
+[P64]
+verdict = "y"
+guess_b = "y"
+
+[V01]
+invented = "no"
+
+[V02]
+invented = "no"
+
+[V03]
+invented = "no"
+
+[V04]
+invented = "no"
+
+[V05]
+invented = "no"
+
+[V06]
+invented = "no"
+
+[V07]
+invented = "no"
+
+[V08]
+invented = "no"
+
+[V09]
+invented = "no"
+
+[V10]
+invented = "no"
+
+[V11]
+invented = "no"
+
+[V12]
+invented = "no"
+
+[V13]
+invented = "no"
+
+[V14]
+invented = "no"
+
+[V15]
+invented = "no"
+
+[V16]
+invented = "no"
+
+[V17]
+invented = "no"
+
+[V18]
+invented = "no"
+
+[V19]
+invented = "no"
+
+[V20]
+invented = "no"
+
+[V21]
+invented = "no"
+
+[V22]
+invented = "no"
+
+[V23]
+invented = "no"
+
+[V24]
+invented = "no"
+
+[V25]
+invented = "no"
+
+[V26]
+invented = "no"
+
+[V27]
+invented = "no"
+
+[V28]
+invented = "no"
+
+[V29]
+invented = "no"
+
+[V30]
+invented = "no"
+
+[V31]
+invented = "no"
+
+[V32]
+invented = "no"
+
+[V33]
+invented = "no"
+
+[V34]
+invented = "no"
+
+[V35]
+invented = "no"
+
+[V36]
+invented = "no"
+
+[V37]
+invented = "no"
+
+[V38]
+invented = "no"
+
+[V39]
+invented = "no"
+
+[V40]
+invented = "no"
+
+[V41]
+invented = "no"
+
+[V42]
+invented = "no"
+
+[V43]
+invented = "no"
+
+[V44]
+invented = "no"
+
+[V45]
+invented = "no"
+
+[V46]
+invented = "no"
+
+[V47]
+invented = "no"
+
+[V48]
+invented = "no"
+
+[V49]
+invented = "no"
+
+[V50]
+invented = "no"
+
+[V51]
+invented = "no"
+
+[V52]
+invented = "no"
+
+[V53]
+invented = "no"
+
+[V54]
+invented = "no"
+
+[V55]
+invented = "no"
+
+[V56]
+invented = "no"
+
+[V57]
+invented = "no"
+
+[V58]
+invented = "no"
+
+[V59]
+invented = "no"
+
+[V60]
+invented = "no"
+
+[V61]
+invented = "no"
+
+[V62]
+invented = "no"
+
+[V63]
+invented = "no"
