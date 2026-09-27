@@ -1,7 +1,11 @@
 # Spike: mode 3b - single-pass Text + voice with a trailing `<tts>` block
 
 **Status:** Approved (owner, 2026-09-26), including the decision rule.
-Not started.
+In progress: harness, grader, and review tooling built; corpus and B contract
+frozen by the owner 2026-09-27 (`manual/single_pass_tts_corpus.py`). Waiting
+for the human-run handoff `tasks/spike-single-pass-tts-block-handoff.md`.
+The blind review runs in two sittings: B vs A-eq pairs repeat B's text at
+medium and would unblind the production pairs if shown together.
 **Origin:** owner planning dialog, 2026-09-26. Pulls the "single-pass tagged
 output" direction of roadmap v2.1 (`roadmap-v1.9-v2.0.md`, "v2.1 -
 Canvas-guided voice") forward as a measured spike, in its simplest form only.
