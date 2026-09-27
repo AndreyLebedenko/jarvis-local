@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Human-run harness for tasks/spike-single-pass-tts-block.md (mode 3b).
+"""Human-run harness for tasks/done/spike-single-pass-tts-block.md (mode 3b).
 
 Needs a live local Ollama; run it from the repository root so config.toml and
 the memory files resolve. The handoff is
-tasks/spike-single-pass-tts-block-handoff.md.
+tasks/done/spike-single-pass-tts-block-handoff.md.
 
   python -m manual.manual_check_single_pass_tts run
 """

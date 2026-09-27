@@ -1,4 +1,4 @@
-"""Deterministic grader for tasks/spike-single-pass-tts-block.md (mode 3b spike).
+"""Deterministic grader for tasks/done/spike-single-pass-tts-block.md (mode 3b spike).
 
 Reads CallRecords only. Arm B is one generation: the canvas, then one trailing
 `<tts>...</tts>` block. Arms A-prod and A-eq are two requests sharing the same

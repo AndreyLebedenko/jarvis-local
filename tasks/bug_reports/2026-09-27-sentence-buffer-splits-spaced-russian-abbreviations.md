@@ -1,7 +1,7 @@
 # SentenceBuffer splits spaced Russian abbreviations mid-abbreviation
 
 **Detected at:** f9a4764 (main), while writing the grader for
-`tasks/spike-single-pass-tts-block.md`, which reuses the production splitter.
+`tasks/done/spike-single-pass-tts-block.md`, which reuses the production splitter.
 
 ## Symptoms
 

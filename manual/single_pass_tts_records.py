@@ -1,4 +1,4 @@
-"""Artifact schema for tasks/spike-single-pass-tts-block.md (mode 3b spike).
+"""Artifact schema for tasks/done/spike-single-pass-tts-block.md (mode 3b spike).
 
 One CallRecord per model request the harness makes. The grader, the review
 sheet generator, and the scorer read only these records, never Ollama.

@@ -1,4 +1,4 @@
-"""File steps after the live run of tasks/spike-single-pass-tts-block.md:
+"""File steps after the live run of tasks/done/spike-single-pass-tts-block.md:
 the two blind-review sittings and the report. No model access."""
 
 from __future__ import annotations

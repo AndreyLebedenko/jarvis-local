@@ -1,4 +1,4 @@
-"""Frozen inputs of tasks/spike-single-pass-tts-block.md: the 16-prompt corpus
+"""Frozen inputs of tasks/done/spike-single-pass-tts-block.md: the 16-prompt corpus
 and arm B's contract. Frozen after owner review; any edit after the run starts
 invalidates the run (the harness records a hash of both in run_meta.json)."""
 

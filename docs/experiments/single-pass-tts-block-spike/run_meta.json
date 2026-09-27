@@ -1,0 +1,57 @@
+{
+ "model": "gemma4:12b",
+ "endpoint": "http://localhost:11434",
+ "num_ctx": 65536,
+ "flash_attention": true,
+ "kv_cache_type": "q8_0",
+ "profile_options": {
+  "dialog.off": {
+   "temperature": 0.618,
+   "top_p": 0.9,
+   "top_k": 50,
+   "min_p": 0.05,
+   "repeat_penalty": 1.025,
+   "repeat_last_n": null,
+   "seed": null,
+   "num_predict": 16384,
+   "stop": null,
+   "draft_num_predict": null
+  },
+  "dialog.medium": {
+   "temperature": 0.618,
+   "top_p": 0.9,
+   "top_k": 50,
+   "min_p": 0.05,
+   "repeat_penalty": 1.025,
+   "repeat_last_n": null,
+   "seed": null,
+   "num_predict": 16384,
+   "stop": null,
+   "draft_num_predict": null
+  },
+  "spoken_derivative": {
+   "temperature": 0.618,
+   "top_p": 0.9,
+   "top_k": 50,
+   "min_p": 0.05,
+   "repeat_penalty": 1.025,
+   "repeat_last_n": null,
+   "seed": null,
+   "num_predict": 16384,
+   "stop": null,
+   "draft_num_predict": null
+  }
+ },
+ "spoken_derivative_prompt_sha256": "4deeaead719818870fcf6c67863a05328c26f7f62715a8b3bbbbeef530db9e06",
+ "pass1_system_prompt_sha256": {
+  "off": "bf8eba2a51c9c0f66865920250306e42590f9d544f4b6d510cc8b2fde150b0ea",
+  "medium": "fec4686d1638301c178370a5eec4133d40c4c7c7b13a7df66f371770b51100c2"
+ },
+ "corpus_sha256": "cb2167f817c093202bf321d3ba1be48b8f5bc2456e204d3713eded83f878f5df",
+ "time_context": "воскресенье, 2026-09-27T12:00+01:00",
+ "num_predict": 8192,
+ "seeds": [
+  19200,
+  4242
+ ]
+}

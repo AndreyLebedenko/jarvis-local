@@ -2,7 +2,7 @@
 
 Executable from its own text, per Testing protocol item 4 (`CLAUDE.md`
 "Testing protocol"). Run by a human against live Ollama; the agent prepared it
-and stops. Card: `tasks/spike-single-pass-tts-block.md`.
+and stops. Card: `tasks/done/spike-single-pass-tts-block.md`.
 
 What this produces: raw generations for every arm of the card, two blind
 review sheets that you fill in by hand, and a report that applies the card's

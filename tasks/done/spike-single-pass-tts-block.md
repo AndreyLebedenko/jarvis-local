@@ -1,11 +1,11 @@
 # Spike: mode 3b - single-pass Text + voice with a trailing `<tts>` block
 
-**Status:** Approved (owner, 2026-09-26), including the decision rule.
-In progress: harness, grader, and review tooling built; corpus and B contract
-frozen by the owner 2026-09-27 (`manual/single_pass_tts_corpus.py`). Waiting
-for the human-run handoff `tasks/spike-single-pass-tts-block-handoff.md`.
-The blind review runs in two sittings: B vs A-eq pairs repeat B's text at
-medium and would unblind the production pairs if shown together.
+**Status:** Completed. Result: CLOSE (2026-09-27), by the frozen decision
+rule's speed condition; closure reviewed by the owner. Corpus and B contract were
+frozen by the owner 2026-09-27 (`manual/single_pass_tts_corpus.py`). The blind
+review ran in two sittings, because B vs A-eq pairs repeat B's text at medium
+and would unblind the production pairs if shown together; the equalized
+sitting was not needed (see Results).
 **Origin:** owner planning dialog, 2026-09-26. Pulls the "single-pass tagged
 output" direction of roadmap v2.1 (`roadmap-v1.9-v2.0.md`, "v2.1 -
 Canvas-guided voice") forward as a measured spike, in its simplest form only.
@@ -221,3 +221,35 @@ large enough that a truncation means a runaway rather than a long answer.
 - The v1.9.x first-pass canvas prompt experiments. Arm B's contract is itself
   one "pass 1 knows a voice follows" variant, so this spike answers part of
   that question for B's framing only; the v1.9.x item stays as written.
+
+## Results (2026-09-27)
+
+Decision: **CLOSE**. Median gain in time to first spoken sentence (A-prod
+minus B) was 0.61 s at reasoning off and -8.99 s at medium: below 1.0 s at
+both levels. The verified facts are in `PROJECT.md`, "Mode 3b (single pass
+with a trailing `<tts>` block) closed"; the raw study and the scorer's report
+are in `docs/experiments/single-pass-tts-block-spike/`.
+
+| criterion (Go threshold) | off | medium |
+|---|---|---|
+| 1. tag failures (<= 1 of 32) | 0 | 1 (truncated at cap) |
+| 2. canvas pairs B lost (<= 4 of 16) | 3 | 6 |
+| 3. voice pairs B lost vs A-prod (<= 6 of 16) | 10 | 7 |
+| 4. invented claims, B vs A-prod | 0 vs 0 | 0 vs 0 |
+| 5. runaways, B vs A-prod (of 32) | 0 vs 0 | 1 vs 0 |
+| 6. median first-sentence gain (>= 1.0 s) | 0.61 s | -8.99 s |
+
+The agent's pre-run estimate ("well under a second") held at reasoning off.
+At medium the mechanism is the one the card did not anticipate: the contract
+inflates B's thinking phase about 1.8x, and that costs more than the whole
+reasoning-off pass 2 it replaces.
+
+The equalized sitting was not reviewed. Its purpose was to tell a pass-2
+parameter effect apart from a single-generation effect on voice quality. At
+reasoning off the two arms already share every parameter, and B still lost 10
+of 16 voice pairs, so the single-generation effect is shown without it. The
+decision was never going to depend on it.
+
+Model: `gemma4:12b` (`[backend].model` at run time), not the q8_0 tag used by
+v1.9.2.
+

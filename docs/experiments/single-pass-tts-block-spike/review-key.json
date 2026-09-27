@@ -1,0 +1,1360 @@
+{
+ "review_seed": 19200,
+ "pairs": [
+  {
+   "id": "P01",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "mixed_async",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P02",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "table_storage",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P03",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "code_powershell",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P04",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "mixed_async",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P05",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P06",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P07",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P08",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "refs_transformers",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P09",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P10",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "table_timezones",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P11",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "fact_capital",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P12",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P13",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "chat_rainy_sunday",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P14",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "list_windows_update",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P15",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P16",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P17",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "calc_kv_cache",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P18",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P19",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P20",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P21",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "calc_kv_cache",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P22",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "calc_loan",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P23",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P24",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "refs_ollama_api",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P25",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "list_windows_update",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P26",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "calc_loan",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P27",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P28",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "refs_ollama_api",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P29",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P30",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "code_palindrome",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P31",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "chat_language",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P32",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "list_vram",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P33",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P34",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P35",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P36",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "fact_capital",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P37",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "mixed_speculative",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P38",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "chat_language",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P39",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P40",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "table_storage",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P41",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "code_powershell",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P42",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "chat_rainy_sunday",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P43",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "mixed_speculative",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P44",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P45",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P46",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P47",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P48",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "table_timezones",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P49",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P50",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "list_vram",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P51",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P52",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "refs_transformers",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P53",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "fact_seconds",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P54",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "calc_kv_cache",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P55",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P56",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P57",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P58",
+   "kind": "canvas",
+   "level": "off",
+   "prompt_id": "code_palindrome",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P59",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P60",
+   "kind": "voice",
+   "level": "off",
+   "prompt_id": "fact_seconds",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P61",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "calc_kv_cache",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": "b_lost",
+   "auto_reason": "b: no usable voice"
+  },
+  {
+   "id": "P62",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P63",
+   "kind": "canvas",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "x": "b",
+   "y": "a_prod",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "P64",
+   "kind": "voice",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "x": "a_prod",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E01",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E02",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E03",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "calc_kv_cache",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": "b_lost",
+   "auto_reason": "b: no usable voice"
+  },
+  {
+   "id": "E04",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E05",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E06",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E07",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E08",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E09",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E10",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E11",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E12",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E13",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E14",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "x": "b",
+   "y": "a_eq",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E15",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  },
+  {
+   "id": "E16",
+   "kind": "equalized_voice",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "x": "a_eq",
+   "y": "b",
+   "auto_result": null,
+   "auto_reason": null
+  }
+ ],
+ "voices": [
+  {
+   "id": "V01",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "fact_capital",
+   "seed": 19200
+  },
+  {
+   "id": "V02",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "mixed_async",
+   "seed": 19200
+  },
+  {
+   "id": "V03",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "refs_transformers",
+   "seed": 19200
+  },
+  {
+   "id": "V04",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "calc_kv_cache",
+   "seed": 19200
+  },
+  {
+   "id": "V05",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "refs_ollama_api",
+   "seed": 19200
+  },
+  {
+   "id": "V06",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "table_timezones",
+   "seed": 19200
+  },
+  {
+   "id": "V07",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "seed": 19200
+  },
+  {
+   "id": "V08",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "seed": 19200
+  },
+  {
+   "id": "V09",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "fact_capital",
+   "seed": 19200
+  },
+  {
+   "id": "V10",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "seed": 19200
+  },
+  {
+   "id": "V11",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "mixed_speculative",
+   "seed": 19200
+  },
+  {
+   "id": "V12",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "seed": 19200
+  },
+  {
+   "id": "V13",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "seed": 19200
+  },
+  {
+   "id": "V14",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "seed": 19200
+  },
+  {
+   "id": "V15",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "list_windows_update",
+   "seed": 19200
+  },
+  {
+   "id": "V16",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "calc_loan",
+   "seed": 19200
+  },
+  {
+   "id": "V17",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "refs_ollama_api",
+   "seed": 19200
+  },
+  {
+   "id": "V18",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "seed": 19200
+  },
+  {
+   "id": "V19",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "chat_rainy_sunday",
+   "seed": 19200
+  },
+  {
+   "id": "V20",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "seed": 19200
+  },
+  {
+   "id": "V21",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "calc_loan",
+   "seed": 19200
+  },
+  {
+   "id": "V22",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "code_palindrome",
+   "seed": 19200
+  },
+  {
+   "id": "V23",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "code_palindrome",
+   "seed": 19200
+  },
+  {
+   "id": "V24",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "chat_language",
+   "seed": 19200
+  },
+  {
+   "id": "V25",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "seed": 19200
+  },
+  {
+   "id": "V26",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "seed": 19200
+  },
+  {
+   "id": "V27",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "seed": 19200
+  },
+  {
+   "id": "V28",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "seed": 19200
+  },
+  {
+   "id": "V29",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "calc_kv_cache",
+   "seed": 19200
+  },
+  {
+   "id": "V30",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "code_powershell",
+   "seed": 19200
+  },
+  {
+   "id": "V31",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "table_storage",
+   "seed": 19200
+  },
+  {
+   "id": "V32",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "list_vram",
+   "seed": 19200
+  },
+  {
+   "id": "V33",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "seed": 19200
+  },
+  {
+   "id": "V34",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "seed": 19200
+  },
+  {
+   "id": "V35",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "seed": 19200
+  },
+  {
+   "id": "V36",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "refs_transformers",
+   "seed": 19200
+  },
+  {
+   "id": "V37",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "seed": 19200
+  },
+  {
+   "id": "V38",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "chat_language",
+   "seed": 19200
+  },
+  {
+   "id": "V39",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "list_vram",
+   "seed": 19200
+  },
+  {
+   "id": "V40",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "fact_seconds",
+   "seed": 19200
+  },
+  {
+   "id": "V41",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "seed": 19200
+  },
+  {
+   "id": "V42",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "chat_rainy_sunday",
+   "seed": 19200
+  },
+  {
+   "id": "V43",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "seed": 19200
+  },
+  {
+   "id": "V44",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "fact_seconds",
+   "seed": 19200
+  },
+  {
+   "id": "V45",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "seed": 19200
+  },
+  {
+   "id": "V46",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "seed": 19200
+  },
+  {
+   "id": "V47",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "seed": 19200
+  },
+  {
+   "id": "V48",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "seed": 19200
+  },
+  {
+   "id": "V49",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "mixed_async",
+   "seed": 19200
+  },
+  {
+   "id": "V50",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "seed": 19200
+  },
+  {
+   "id": "V51",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "code_powershell",
+   "seed": 19200
+  },
+  {
+   "id": "V52",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "mixed_speculative",
+   "seed": 19200
+  },
+  {
+   "id": "V53",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "seed": 19200
+  },
+  {
+   "id": "V54",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "seed": 19200
+  },
+  {
+   "id": "V55",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "list_windows_update",
+   "seed": 19200
+  },
+  {
+   "id": "V56",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "calc_kv_cache",
+   "seed": 19200
+  },
+  {
+   "id": "V57",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "seed": 19200
+  },
+  {
+   "id": "V58",
+   "arm": "a_prod",
+   "level": "off",
+   "prompt_id": "table_timezones",
+   "seed": 19200
+  },
+  {
+   "id": "V59",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "seed": 19200
+  },
+  {
+   "id": "V60",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "seed": 19200
+  },
+  {
+   "id": "V61",
+   "arm": "b",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "seed": 19200
+  },
+  {
+   "id": "V62",
+   "arm": "a_prod",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "seed": 19200
+  },
+  {
+   "id": "V63",
+   "arm": "b",
+   "level": "off",
+   "prompt_id": "table_storage",
+   "seed": 19200
+  },
+  {
+   "id": "W01",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "chat_language",
+   "seed": 19200
+  },
+  {
+   "id": "W02",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "refs_transformers",
+   "seed": 19200
+  },
+  {
+   "id": "W03",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "calc_loan",
+   "seed": 19200
+  },
+  {
+   "id": "W04",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "list_vram",
+   "seed": 19200
+  },
+  {
+   "id": "W05",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "code_palindrome",
+   "seed": 19200
+  },
+  {
+   "id": "W06",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "mixed_async",
+   "seed": 19200
+  },
+  {
+   "id": "W07",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "fact_seconds",
+   "seed": 19200
+  },
+  {
+   "id": "W08",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "chat_rainy_sunday",
+   "seed": 19200
+  },
+  {
+   "id": "W09",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "table_timezones",
+   "seed": 19200
+  },
+  {
+   "id": "W10",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "calc_kv_cache",
+   "seed": 19200
+  },
+  {
+   "id": "W11",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "code_powershell",
+   "seed": 19200
+  },
+  {
+   "id": "W12",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "mixed_speculative",
+   "seed": 19200
+  },
+  {
+   "id": "W13",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "fact_capital",
+   "seed": 19200
+  },
+  {
+   "id": "W14",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "refs_ollama_api",
+   "seed": 19200
+  },
+  {
+   "id": "W15",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "list_windows_update",
+   "seed": 19200
+  },
+  {
+   "id": "W16",
+   "arm": "a_eq",
+   "level": "medium",
+   "prompt_id": "table_storage",
+   "seed": 19200
+  }
+ ]
+}
