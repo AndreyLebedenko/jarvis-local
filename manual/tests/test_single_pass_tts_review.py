@@ -479,8 +479,8 @@ def test_unfilled_answer_template_reports_every_entry_at_once():
 
     message = str(error.value)
     assert "E01.verdict" in message
-    assert "E16.guess_b" in message
     assert "W16.invented" in message
+    assert "guess_b" not in message
 
 
 def test_answer_errors_are_aggregated_across_kinds_of_mistake():
@@ -499,6 +499,47 @@ def test_answer_errors_are_aggregated_across_kinds_of_mistake():
     message = str(error.value)
     for expected in ("P03.verdict", "P04.guess_b", "V05.invented", "P06", "P99"):
         assert expected in message
+
+
+def test_answer_values_are_accepted_in_any_case_and_with_spaces():
+    plan = build_review(_metrics(), review_seed=REVIEW_SEED, rng_seed=RNG_SEED)
+    text = _filled_template(plan, Sitting.PRODUCTION, " y", "x ", "YES")
+
+    answers = parse_answers(text, plan.key, Sitting.PRODUCTION)
+
+    assert set(answers.judgements.values()) == {Judgement.Y}
+    assert set(answers.guesses.values()) == {Side.X}
+    assert set(answers.invented.values()) == {True}
+
+
+def test_empty_guess_is_an_abstention_but_an_empty_verdict_is_an_error():
+    plan = build_review(_metrics(), review_seed=REVIEW_SEED, rng_seed=RNG_SEED)
+    abstaining = _filled_template(plan, Sitting.PRODUCTION, guess="")
+
+    answers = parse_answers(abstaining, plan.key, Sitting.PRODUCTION)
+    assert set(answers.guesses.values()) == {None}
+
+    with pytest.raises(ValueError, match=r"P01\.verdict"):
+        parse_answers(
+            _filled_template(plan, Sitting.PRODUCTION, verdict=""),
+            plan.key,
+            Sitting.PRODUCTION,
+        )
+
+
+def test_abstentions_count_as_not_correct_and_are_reported_as_not_guessed():
+    plan = build_review(_metrics(), review_seed=REVIEW_SEED, rng_seed=RNG_SEED)
+    answers = parse_answers(
+        _filled_template(plan, Sitting.PRODUCTION, verdict="=", guess=""),
+        plan.key,
+        Sitting.PRODUCTION,
+    )
+
+    report = score(_metrics(), plan.key, answers)
+
+    assert all((g.correct, g.guessed) == (0, 0) for g in report.guesses)
+    assert not any(g.possible_bias for g in report.guesses)
+    assert "| guessed |" in render_report_markdown(report)
 
 
 def test_answers_that_are_not_toml_raise_value_error():

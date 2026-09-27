@@ -1,4 +1,4 @@
-"""Blind review and decision rule for tasks/spike-single-pass-tts-block.md.
+"""Blind review and decision rule for tasks/done/spike-single-pass-tts-block.md.
 
 Consumes GenerationMetrics only. Every render function returns text; the
 caller decides where it is written.
@@ -412,7 +412,7 @@ def render_sheet_markdown(plan: ReviewPlan, sitting: Sitting) -> str:
 
 _TEMPLATE_INTRO = """# Fill every value; an empty "" is an error.
 # verdict: "X" (X is better), "Y" (Y is better) or "=" (equal).
-# guess_b: "X" or "Y", the side you think is B.
+# guess_b: "X" or "Y", the side you think is B; "" if you cannot tell.
 # invented: "yes" if the voice states any claim not present in its own
 # canvas, otherwise "no".
 """
@@ -498,17 +498,21 @@ def load_key_json(text: str) -> ReviewKey:
 @dataclass(frozen=True)
 class ReviewAnswers:
     judgements: Mapping[str, Judgement]
-    guesses: Mapping[str, Side]
+    guesses: Mapping[str, Side | None]
     invented: Mapping[str, bool]
 
 
 _JUDGEMENT_VALUES = {judgement.value: judgement for judgement in Judgement}
-_GUESS_VALUES = {side.value: side for side in Side}
+_GUESS_VALUES: dict[str, Side | None] = {side.value: side for side in Side} | {"": None}
 _INVENTED_VALUES = {"yes": True, "no": False}
 _PAIR_FIELDS = {"verdict": _JUDGEMENT_VALUES, "guess_b": _GUESS_VALUES}
 _VOICE_FIELDS = {"invented": _INVENTED_VALUES}
 
 _FieldSpec = Mapping[str, Mapping[str, Any]]
+
+
+def _normalized_choices(allowed: Mapping[str, Any]) -> dict[str, Any]:
+    return {option.lower(): result for option, result in allowed.items()}
 
 
 def _read_entry(
@@ -520,10 +524,11 @@ def _read_entry(
     values = {}
     for name, allowed in spec.items():
         value = section.get(name)
-        if isinstance(value, str) and value in allowed:
-            values[name] = allowed[value]
+        normalized = _normalized_choices(allowed)
+        if isinstance(value, str) and value.strip().lower() in normalized:
+            values[name] = normalized[value.strip().lower()]
         else:
-            expected = ", ".join(f'"{option}"' for option in allowed)
+            expected = ", ".join(f'"{option}"' for option in allowed if option)
             errors.append(
                 f"{entry_id}.{name}: expected one of {expected}; got {value!r}"
             )
@@ -673,6 +678,7 @@ class GuessAccuracy:
     level: Level
     kind: PairKind
     correct: int
+    guessed: int
     shown: int
 
     @property
@@ -836,6 +842,10 @@ def _correct_guesses(pairs: Iterable[PairEntry], answers: ReviewAnswers) -> int:
     return sum(answers.guesses[pair.pair_id] is pair.b_side for pair in pairs)
 
 
+def _given_guesses(pairs: Iterable[PairEntry], answers: ReviewAnswers) -> int:
+    return sum(answers.guesses[pair.pair_id] is not None for pair in pairs)
+
+
 def _guess_accuracy(
     key: ReviewKey, answers: ReviewAnswers
 ) -> tuple[GuessAccuracy, ...]:
@@ -844,8 +854,15 @@ def _guess_accuracy(
     for kind, _, levels in _BLOCKS:
         for level in levels if kind.sitting is Sitting.PRODUCTION else ():
             shown = [p for p in shown_pairs if (p.level, p.kind) == (level, kind)]
-            correct = _correct_guesses(shown, answers)
-            accuracy.append(GuessAccuracy(level, kind, correct, len(shown)))
+            accuracy.append(
+                GuessAccuracy(
+                    level,
+                    kind,
+                    correct=_correct_guesses(shown, answers),
+                    guessed=_given_guesses(shown, answers),
+                    shown=len(shown),
+                )
+            )
     return tuple(accuracy)
 
 
@@ -962,14 +979,24 @@ def _level_markdown(result: LevelResult) -> str:
 
 def _guesses_markdown(report: SpikeReport) -> str:
     rows = (
-        (g.level, g.kind, g.correct, g.shown, "yes" if g.possible_bias else "no")
+        (
+            g.level,
+            g.kind,
+            g.correct,
+            g.guessed,
+            g.shown,
+            "yes" if g.possible_bias else "no",
+        )
         for g in report.guesses
     )
     return (
         "## Reviewer guess of B (reported, does not decide)\n\n"
         f"Possible bias when correct/shown >= {BIAS_CORRECT_GUESSES}/"
-        f"{BIAS_GUESS_PAIRS}.\n\n"
-        + _table(("level", "pairs", "correct", "shown", "possible bias"), rows)
+        f"{BIAS_GUESS_PAIRS}; an empty guess is an abstention and counts as not"
+        " correct.\n\n"
+        + _table(
+            ("level", "pairs", "correct", "guessed", "shown", "possible bias"), rows
+        )
     )
 
 
