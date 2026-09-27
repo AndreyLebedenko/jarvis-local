@@ -137,6 +137,8 @@ _ABBREVIATIONS = {
     "т.е",
     "т.д",
     "т.п",
+    "т.к",
+    "т.ч",
     "др",
     "пр",
     "см",
@@ -160,8 +162,13 @@ _ABBREVIATIONS = {
     "г-жа",
 }
 
+# One-letter pronouns end sentences far more often than they abbreviate
+# anything, so the single-letter rule in SentenceBuffer skips them.
+_SENTENCE_FINAL_PRONOUNS = {"я", "i"}
+
 _BOUNDARY_RE = re.compile(r"[.!?]+(?=\s)")
 _TRAILING_WORD_RE = re.compile(r"\S+$")
+_LEADING_NON_WORD_RE = re.compile(r"^\W+")
 
 
 class SentenceBuffer:
@@ -176,7 +183,7 @@ class SentenceBuffer:
             match = _BOUNDARY_RE.search(self._buffer, search_start)
             if match is None:
                 break
-            if self._is_abbreviation(match.start()):
+            if self._is_abbreviation(match):
                 search_start = match.end()
                 continue
             sentences.append(self._buffer[: match.end()].strip())
@@ -189,12 +196,25 @@ class SentenceBuffer:
         self._buffer = ""
         return sentence or None
 
-    def _is_abbreviation(self, punctuation_start: int) -> bool:
+    def _is_abbreviation(self, punctuation: re.Match[str]) -> bool:
+        word = self._word_before(punctuation.start())
+        if word in _ABBREVIATIONS:
+            return True
+        # No lookahead: merging a sentence that really ends in "Option B." with
+        # the next one is the accepted under-splitting cost (see _ABBREVIATIONS).
+        return (
+            punctuation.group() == "."
+            and len(word) == 1
+            and word.isalpha()
+            and word not in _SENTENCE_FINAL_PRONOUNS
+        )
+
+    def _word_before(self, punctuation_start: int) -> str:
         word_match = _TRAILING_WORD_RE.search(self._buffer[:punctuation_start])
         if word_match is None:
-            return False
-        word = word_match.group().strip(".").lower()
-        return word in _ABBREVIATIONS
+            return ""
+        word = _LEADING_NON_WORD_RE.sub("", word_match.group())
+        return word.strip(".").lower()
 
 
 _WORD_CHAR_RE = re.compile(r"\w")

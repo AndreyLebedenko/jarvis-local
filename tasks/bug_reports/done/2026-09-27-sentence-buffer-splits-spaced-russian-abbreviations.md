@@ -3,6 +3,9 @@
 **Detected at:** f9a4764 (main), while writing the grader for
 `tasks/done/spike-single-pass-tts-block.md`, which reuses the production splitter.
 
+**Status:** Closed 2026-09-27 on branch `fix/sentence-buffer-spaced-abbreviations`;
+see "Resolution".
+
 ## Symptoms
 
 `jarvis.audio.tts.SentenceBuffer` cuts a spaced two-letter abbreviation into
@@ -42,3 +45,34 @@ tests use unspaced abbreviations, so they do not depend on this behavior.
 - Add `т.ч` and `т.к` to the unspaced set.
 - The splitter is shared by every mode that speaks, so the fix needs a
   regression test in `tests/` for both spaced and unspaced forms.
+
+## Resolution (2026-09-27)
+
+Fixed in `SentenceBuffer` (`src/jarvis/audio/tts.py`) with a rule instead of
+the lookahead proposed above:
+
+- A single "." right after a one-letter alphabetic word, in any script, is
+  never a sentence boundary. This needs no lookahead: the word before the
+  period has fully arrived by the time the boundary is checked, so streaming
+  and chunking cannot change the result (tested char by char). It covers
+  "т. е.", "т. д.", "т. п.", "т. ч." and "т. к.", a non-breaking space
+  between the parts, and initials such as "А. С. Пушкин" and
+  "J. R. R. Tolkien", which also used to split.
+- The one-letter pronouns "я" and "I" are excluded. They end sentences far
+  more often than they abbreviate anything, so "Это я. Потом ушёл." still
+  splits after "я.".
+- "!", "?" and runs such as "..." after a single letter still end a sentence.
+- Leading opening punctuation is stripped before the check, so "(т. е.",
+  «А. Б. Иванов» and "(т.е." no longer split behind a bracket or quote. This
+  gap applied to the old abbreviation set too.
+- "т.к" and "т.ч" were added to the unspaced abbreviation set.
+
+The accepted cost follows the module's documented under-splitting bias:
+"Вариант Б. Далее" and "и т. д. Потом" become one utterance, and such a
+sentence at the very end of an answer is spoken at `flush()`. That delays
+speech slightly but never breaks it. Regression tests are in
+`tests/test_tts.py` next to the other `SentenceBuffer` tests.
+
+Still out of scope, as before this fix: "1." at the start of a numbered line
+is spoken as its own unit, and unspaced initials "А.Б." still split after
+"А.Б.".

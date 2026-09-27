@@ -11,6 +11,7 @@ from jarvis.audio.tts import (
     LazyAsyncLoad,
     OrderedPlayback,
     SentenceBuffer,
+    SpeechUnitBuffer,
     TtsEngine,
     TtsEngineLoadError,
     TtsEngineLoadFailed,
@@ -715,6 +716,180 @@ def test_flush_returns_none_for_empty_buffer():
 
     # the complete sentence was already returned by feed(); nothing left
     assert buffer.flush() is None
+
+
+def _sentences_fed_at_once(text: str) -> list[str | None]:
+    buffer = SentenceBuffer()
+    return [*buffer.feed(text), buffer.flush()]
+
+
+def _sentences_fed_in_chunks(chunks: list[str]) -> list[str | None]:
+    buffer = SentenceBuffer()
+    sentences: list[str | None] = []
+    for chunk in chunks:
+        sentences.extend(buffer.feed(chunk))
+    return [*sentences, buffer.flush()]
+
+
+# Regression for tasks/bug_reports/done/
+# 2026-09-27-sentence-buffer-splits-spaced-russian-abbreviations.md:
+# a spaced abbreviation or initials must stay inside one sentence.
+_ABBREVIATION_CASES = [
+    pytest.param(
+        "Это так, т. е. нужно помнить. Дальше",
+        ["Это так, т. е. нужно помнить.", "Дальше"],
+        id="t-e",
+    ),
+    pytest.param(
+        "Книги, тетради и т. д. лежат тут. Дальше",
+        ["Книги, тетради и т. д. лежат тут.", "Дальше"],
+        id="t-d",
+    ),
+    pytest.param(
+        "Ручки, карандаши и т. п. нужны всем. Дальше",
+        ["Ручки, карандаши и т. п. нужны всем.", "Дальше"],
+        id="t-p",
+    ),
+    pytest.param(
+        "Как в т. ч. и тут. Дальше",
+        ["Как в т. ч. и тут.", "Дальше"],
+        id="t-ch",
+    ),
+    pytest.param(
+        "Он ушёл, т. к. устал. Дальше",
+        ["Он ушёл, т. к. устал.", "Дальше"],
+        id="t-k",
+    ),
+    pytest.param(
+        "Это так, т. е. нужно помнить. Дальше",
+        ["Это так, т. е. нужно помнить.", "Дальше"],
+        id="non-breaking-space",
+    ),
+    pytest.param(
+        "А. С. Пушкин родился. Он поэт. Дальше",
+        ["А. С. Пушкин родился.", "Он поэт.", "Дальше"],
+        id="russian-initials",
+    ),
+    pytest.param(
+        "J. R. R. Tolkien wrote it. Then he rested. Next",
+        ["J. R. R. Tolkien wrote it.", "Then he rested.", "Next"],
+        id="latin-initials",
+    ),
+    pytest.param(
+        "Это (т. е. так) верно. Далее",
+        ["Это (т. е. так) верно.", "Далее"],
+        id="parenthesized-spaced-t-e",
+    ),
+    pytest.param(
+        "Это (т.е. так) верно. Далее",
+        ["Это (т.е. так) верно.", "Далее"],
+        id="parenthesized-unspaced-t-e",
+    ),
+    pytest.param(
+        "Автор «А. Б. Иванов» пишет. Далее",
+        ["Автор «А. Б. Иванов» пишет.", "Далее"],
+        id="guillemet-quoted-initials",
+    ),
+    pytest.param(
+        'Сказал: "А. Б. Иванов" пришёл. Далее',
+        ['Сказал: "А. Б. Иванов" пришёл.', "Далее"],
+        id="double-quoted-initials",
+    ),
+]
+
+
+@pytest.mark.parametrize(("text", "expected"), _ABBREVIATION_CASES)
+def test_feed_keeps_abbreviations_and_initials_inside_one_sentence(text, expected):
+    assert _sentences_fed_at_once(text) == expected
+
+
+@pytest.mark.parametrize(("text", "expected"), _ABBREVIATION_CASES)
+def test_feeding_char_by_char_yields_the_same_sentences_as_feeding_at_once(
+    text, expected
+):
+    assert _sentences_fed_in_chunks(list(text)) == expected
+
+
+def test_arbitrary_token_splits_keep_a_spaced_abbreviation_whole():
+    sentences = _sentences_fed_in_chunks(["Это так, т", ". е", ". нужно", " помнить. "])
+
+    assert sentences == ["Это так, т. е. нужно помнить.", None]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Он ушёл, т.к. устал. Дальше", ["Он ушёл, т.к. устал.", "Дальше"]),
+        ("Как в т.ч. и тут. Дальше", ["Как в т.ч. и тут.", "Дальше"]),
+    ],
+    ids=["t.k", "t.ch"],
+)
+def test_feed_does_not_split_on_unspaced_t_k_and_t_ch(text, expected):
+    assert _sentences_fed_at_once(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Вариант Б? Да. ", ["Вариант Б?", "Да.", None]),
+        ("Вариант Б! Да. ", ["Вариант Б!", "Да.", None]),
+        ("Вариант Б... Да. ", ["Вариант Б...", "Да.", None]),
+    ],
+    ids=["question", "exclamation", "ellipsis"],
+)
+def test_feed_still_splits_after_single_letter_before_other_punctuation(text, expected):
+    assert _sentences_fed_at_once(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "Кто это? Это я. Потом ушёл. ",
+            ["Кто это?", "Это я.", "Потом ушёл.", None],
+        ),
+        (
+            "Neither am I. Then we left. ",
+            ["Neither am I.", "Then we left.", None],
+        ),
+    ],
+    ids=["russian-ya", "english-i"],
+)
+def test_feed_still_splits_after_a_one_letter_pronoun(text, expected):
+    assert _sentences_fed_at_once(text) == expected
+
+
+def test_feed_still_splits_after_a_digit_followed_by_a_period():
+    assert _sentences_fed_at_once("1. Первый пункт. ") == [
+        "1.",
+        "Первый пункт.",
+        None,
+    ]
+
+
+def test_feed_still_splits_after_multi_letter_words():
+    assert _sentences_fed_at_once("Это дом. Там сад. ") == [
+        "Это дом.",
+        "Там сад.",
+        None,
+    ]
+
+
+def test_flush_returns_a_single_letter_with_period_at_the_end_of_the_stream():
+    buffer = SentenceBuffer()
+
+    assert buffer.feed("Правильный ответ Б. ") == []
+    assert buffer.flush() == "Правильный ответ Б."
+
+
+def test_speech_unit_buffer_keeps_a_spaced_abbreviation_in_one_unit():
+    # Regression for tasks/bug_reports/done/
+    # 2026-09-27-sentence-buffer-splits-spaced-russian-abbreviations.md
+    buffer = SpeechUnitBuffer()
+
+    units = buffer.feed("Это так, т. е. нужно помнить. Дальше. ") + buffer.flush()
+
+    assert units == [("Это так, т. е. нужно помнить.", "ru"), ("Дальше.", "ru")]
 
 
 # --- OrderedPlayback -----------------------------------------------------
