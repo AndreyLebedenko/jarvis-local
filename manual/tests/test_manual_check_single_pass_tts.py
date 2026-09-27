@@ -14,8 +14,12 @@ from jarvis.dialog.thinking_mode import ReasoningLevel
 from manual.manual_check_single_pass_tts import (
     CACHE_RESET_NUM_PREDICT,
     CACHE_RESET_SYSTEM,
+    LEVELS,
     NUM_PREDICT,
+    WARMUP_NUM_PREDICT,
+    WARMUP_PROMPT,
     LiveRunner,
+    OllamaCallError,
     RequestFactory,
     RunMetaMismatchError,
     arm_order,
@@ -341,3 +345,51 @@ def test_live_runner_skips_pass2_after_an_empty_truncated_pass1():
 
     assert "pass2" not in stages
     assert {r.stage for r in records} == {Stage.A_PASS1, Stage.B}
+
+
+class _ErrorBackend(_FakeBackend):
+    def __init__(self, chunks):
+        super().__init__(_reply_canvas)
+        self._chunks = chunks
+
+    async def iter_chat(self, messages, images, reasoning, *, options):
+        self.calls.append((messages[0]["content"], reasoning))
+        for chunk in self._chunks:
+            yield chunk
+
+
+def test_ollama_error_body_stops_the_run_with_its_message():
+    key = GenerationKey(Level.OFF, CORPUS[0].prompt_id, SEEDS[0])
+    backend = _ErrorBackend([{"error": "model 'x' not found"}])
+
+    with pytest.raises(OllamaCallError, match="model 'x' not found"):
+        _run_generation(backend, key)
+    assert len(backend.calls) == 1
+
+
+def test_stream_without_a_done_chunk_stops_the_run():
+    key = GenerationKey(Level.OFF, CORPUS[0].prompt_id, SEEDS[0])
+    backend = _ErrorBackend([{"message": {"content": "обрыв"}, "done": False}])
+
+    with pytest.raises(OllamaCallError, match="without a done chunk"):
+        _run_generation(backend, key)
+
+
+def test_warm_up_generates_on_every_level_without_recording_anything():
+    backend = _FakeBackend(_reply_canvas)
+    runner = LiveRunner(backend, _factory())
+
+    result = asyncio.run(runner.warm_up())
+
+    assert result is None
+    assert [reasoning for _, reasoning in backend.calls] == [
+        ReasoningLevel(level.value) for level in LEVELS
+    ]
+    assert all(not system.endswith(B_CONTRACT) for system, _ in backend.calls)
+
+
+def test_warm_up_is_a_short_real_generation_not_a_one_token_probe():
+    request = _factory().warm_up(Level.MEDIUM)
+
+    assert request.options.num_predict == WARMUP_NUM_PREDICT > CACHE_RESET_NUM_PREDICT
+    assert request.messages[-1] == {"role": "user", "content": WARMUP_PROMPT}

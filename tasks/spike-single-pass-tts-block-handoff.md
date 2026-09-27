@@ -69,11 +69,31 @@ Documentation debt: none. This handoff depends on no undocumented default.
 python -m manual.manual_check_single_pass_tts --out manual_check_single_pass_tts_out/smoke run --levels off --prompts fact_capital
 ```
 
+If `manual_check_single_pass_tts_out/smoke` already exists from an earlier
+attempt, delete it first. Otherwise the harness treats its generations as
+finished and skips them.
+
 Expected output:
+- `Warming up the model (not recorded)` first. Each run starts with two short
+  unrecorded generations, one per level, so that the first measured call does
+  not pay the GPU cold start.
 - For each generation, one line per measured call: `a_pass1`, `a_prod_pass2`
   and `b`, in either order of arm.
 - Each call line shows `eval=`, `prompt_eval=` and `done=stop`.
+- Lines `Ollama request stopped at the length cap (num_predict=1)` or
+  `(num_predict=64)` are expected. They come from the unrecorded cache-reset
+  and warm-up requests (`CACHE_RESET_NUM_PREDICT`, `WARMUP_NUM_PREDICT` in
+  `manual/manual_check_single_pass_tts.py`). A measured call that hits its cap
+  shows `done=length` on its own line instead.
+- If a request fails, the run stops with `ERROR: Ollama returned an error: ...`
+  and records nothing for that generation. Report the message.
 - The run ends with a `Done in ... min.` line.
+
+**The warm-up check:** the first generation's `a_pass1` time must be of the
+same order as the second generation's `a_pass1` (for `fact_capital` at off,
+well under two seconds each). If the first is several times slower, the
+warm-up did not take effect and every run start would bias timing against the
+two-pass arm. In that case stop and report both lines.
 
 **The cache check (important):** within one level, `a_pass1` and `b` must show
 a `prompt_eval=` of about the same size, in the hundreds of tokens or more.
@@ -92,7 +112,8 @@ python -m manual.manual_check_single_pass_tts run
 ```
 
 What the run does:
-- 64 generations: 2 levels x 16 prompts x 2 seeds.
+- 64 generations: 2 levels x 16 prompts x 2 seeds, after the warm-up. A
+  resumed run warms up again.
 - Before each arm it sends a one-token cache-reset request, which is not
   recorded.
 - Records land in `manual_check_single_pass_tts_out/calls/`, written once a

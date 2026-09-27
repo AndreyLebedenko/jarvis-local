@@ -66,6 +66,8 @@ from manual.single_pass_tts_records import (
 
 NUM_PREDICT = 8192
 CACHE_RESET_NUM_PREDICT = 1
+WARMUP_NUM_PREDICT = 64
+WARMUP_PROMPT = "Расскажи коротко, как прошёл твой день."
 LEVELS = (Level.OFF, Level.MEDIUM)
 FIXED_TURN_EPOCH = datetime(2026, 9, 27, 11, 0, tzinfo=UTC).timestamp()
 DEFAULT_OUT = Path("manual_check_single_pass_tts_out")
@@ -86,6 +88,10 @@ class PlannedRequest:
 
 
 class RunMetaMismatchError(RuntimeError):
+    pass
+
+
+class OllamaCallError(RuntimeError):
     pass
 
 
@@ -141,6 +147,16 @@ class RequestFactory:
             ),
             reasoning=reasoning,
             options=self._options(SPOKEN_DERIVATIVE_PROFILE, key.seed),
+        )
+
+    def warm_up(self, level: Level) -> PlannedRequest:
+        key = GenerationKey(level, "warm_up", 0)
+        request = self.pass1(key, WARMUP_PROMPT)
+        return dataclasses.replace(
+            request,
+            options=dataclasses.replace(
+                request.options, num_predict=WARMUP_NUM_PREDICT
+            ),
         )
 
     def cache_reset(self) -> PlannedRequest:
@@ -281,6 +297,10 @@ class LiveRunner:
         self._backend = backend
         self._factory = factory
 
+    async def warm_up(self) -> None:
+        for level in LEVELS:
+            await self._call(self._factory.warm_up(level))
+
     async def run_generation(
         self, key: GenerationKey, prompt_text: str
     ) -> list[CallRecord]:
@@ -339,6 +359,8 @@ class LiveRunner:
         async for chunk in self._backend.iter_chat(
             list(request.messages), None, request.reasoning, options=request.options
         ):
+            if "error" in chunk:
+                raise OllamaCallError(f"Ollama returned an error: {chunk['error']}")
             message = chunk.get("message") or {}
             chunks.append(
                 StreamChunk(
@@ -349,6 +371,8 @@ class LiveRunner:
             )
             if chunk.get("done"):
                 done = chunk
+        if not done:
+            raise OllamaCallError("Ollama stream ended without a done chunk")
         return started_at, chunks, done
 
     def _payload(self, request: PlannedRequest) -> dict[str, Any]:
@@ -391,6 +415,8 @@ async def run(args: argparse.Namespace) -> int:
     runner = LiveRunner(OllamaBackend(EventBus(), settings.backend), factory)
     keys = list(_selected_keys(args.levels, args.prompts))
     started = time.perf_counter()
+    print("Warming up the model (not recorded)", flush=True)
+    await runner.warm_up()
     for index, (key, prompt_text) in enumerate(keys, start=1):
         if is_generation_complete(calls_dir, key):
             continue
@@ -431,7 +457,11 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "run":
-        return asyncio.run(run(args))
+        try:
+            return asyncio.run(run(args))
+        except (OllamaCallError, RunMetaMismatchError) as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
     try:
         written = _FILE_STEPS[args.command](args.out)
     except ReviewStepError as error:
