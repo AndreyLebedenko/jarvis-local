@@ -2530,12 +2530,21 @@ function _reanchorJournalFeedAfterGrowth(growthPixels) {
   }
 }
 
+function _journalForkSourceId(event) {
+  if (event.source !== "fork") return "";
+  return typeof event.metadata?.continued_from === "string"
+    ? event.metadata.continued_from
+    : "";
+}
+
 function _journalEventElement(event, position = null) {
   const message = document.createElement("div");
   message.className = "journal-msg";
   message.dataset.role = event.role;
   message.dataset.source = event.source;
   if (position !== null) message.dataset.eventPosition = String(position);
+  const forkSourceId = _journalForkSourceId(event);
+  if (forkSourceId) message.dataset.continuedFrom = forkSourceId;
 
   const meta = document.createElement("div");
   meta.className = "journal-msg-meta";
@@ -2834,6 +2843,7 @@ function _journalMessageMenuEntries(row) {
   const replayButton = row.querySelector(".journal-replay");
   const pauseButton = row.querySelector(".journal-replay-pause");
   const position = row.dataset.eventPosition;
+  const sourceId = row.dataset.continuedFrom;
   return [
     copyButton && {
       label: uiString("journal_copy_answer"),
@@ -2864,11 +2874,28 @@ function _journalMessageMenuEntries(row) {
       run: () => transcriptGenerate.click(),
       disabled: transcriptGenerate.disabled,
     },
+    sourceId && {
+      label: uiString("journal_fork_open_source"),
+      run: () => _openJournalForkSource(sourceId),
+      disabled: !_journalSessions.some((session) => session.id === sourceId),
+    },
     position !== undefined && {
       label: uiString("journal_annotation_generate_message"),
       run: () => _generateJournalAnnotationForMessage(Number(position)),
     },
   ];
+}
+
+async function _openJournalForkSource(sessionId) {
+  const selecting = selectJournalSession(sessionId);
+  const list = document.getElementById("journalSessionList");
+  for (const row of list.querySelectorAll(".journal-session")) {
+    if (row.dataset.sessionId === sessionId) {
+      row.scrollIntoView({ block: "nearest" });
+      break;
+    }
+  }
+  await selecting;
 }
 
 // Composes two already-existing actions (open the panel, generate for an
