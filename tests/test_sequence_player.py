@@ -11,8 +11,9 @@ from jarvis.audio.replay import (
     TextReply,
     VoiceReply,
 )
+from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.core.config import TtsSettings
-from jarvis.journal.events import JournalEvent, JournalEventRef
+from jarvis.journal.events import JournalEvent, JournalEventRef, JSONValue
 from jarvis.journal.store import JournalStore
 
 _SESSION = "20260826-101500-abc"
@@ -54,7 +55,9 @@ class _RecordingPlay:
         self.played.append(audio)
 
 
-def _event(role: str, text: str) -> JournalEvent:
+def _event(
+    role: str, text: str, metadata: dict[str, JSONValue] | None = None
+) -> JournalEvent:
     return JournalEvent(
         session_id=_SESSION,
         timestamp="2026-08-26T10:15:00+00:00",
@@ -63,6 +66,7 @@ def _event(role: str, text: str) -> JournalEvent:
         text=text,
         media=(),
         transcript=None,
+        metadata=metadata or {},
     )
 
 
@@ -84,56 +88,125 @@ def _mixed_store(tmp_path) -> JournalStore:
     )
 
 
-def _sequence(store: JournalStore) -> SequencePlayer:
+def _sequence(
+    store: JournalStore, language_mode: TtsLanguageMode = TtsLanguageMode.DYNAMIC
+) -> SequencePlayer:
     player = ReplayPlayer(TtsSettings(), _FakeEngine(), play=_RecordingPlay())
-    return SequencePlayer(store, player)
+    return SequencePlayer(store, player, language_mode)
+
+
+def _spoken_from(
+    store: JournalStore,
+    start: JournalEventRef,
+    language_mode: TtsLanguageMode = TtsLanguageMode.DYNAMIC,
+) -> list[tuple[str, str]]:
+    engine = _FakeEngine()
+    player = ReplayPlayer(TtsSettings(), engine, play=_RecordingPlay())
+    sequence = SequencePlayer(store, player, language_mode)
+
+    async def scenario() -> None:
+        await sequence.play_from(start)
+        await player.wait_for_pending()
+
+    asyncio.run(scenario())
+    return engine.seen
 
 
 def test_walk_selects_assistant_texts_in_order_skipping_others(tmp_path):
-    sequence = _sequence(_mixed_store(tmp_path))
+    spoken = _spoken_from(_mixed_store(tmp_path), JournalEventRef(_SESSION, 0))
 
-    texts = sequence.texts_from(JournalEventRef(_SESSION, 0))
-
-    assert texts == ["first answer", "second answer"]
+    assert spoken == [("first answer", "en"), ("second answer", "en")]
 
 
 def test_walk_starts_at_the_given_position_not_earlier(tmp_path):
-    sequence = _sequence(_mixed_store(tmp_path))
+    spoken = _spoken_from(_mixed_store(tmp_path), JournalEventRef(_SESSION, 2))
 
-    texts = sequence.texts_from(JournalEventRef(_SESSION, 2))
-
-    assert texts == ["second answer"]
+    assert spoken == [("second answer", "en")]
 
 
 def test_walk_from_a_user_turn_collects_following_assistant_replies(tmp_path):
-    sequence = _sequence(_mixed_store(tmp_path))
+    spoken = _spoken_from(_mixed_store(tmp_path), JournalEventRef(_SESSION, 3))
 
-    texts = sequence.texts_from(JournalEventRef(_SESSION, 3))
-
-    assert texts == ["second answer"]
+    assert spoken == [("second answer", "en")]
 
 
 def test_walk_is_empty_when_no_assistant_at_or_after_start(tmp_path):
     sequence = _sequence(_mixed_store(tmp_path))
 
-    texts = sequence.texts_from(JournalEventRef(_SESSION, 4 + 1))
+    outcome = asyncio.run(sequence.play_from(JournalEventRef(_SESSION, 4 + 1)))
 
-    assert texts == []
+    assert outcome is ReplayOutcome.EMPTY
 
 
 def test_walk_is_empty_for_a_missing_session(tmp_path):
     sequence = _sequence(JournalStore(tmp_path))
 
-    texts = sequence.texts_from(JournalEventRef(_SESSION, 0))
+    outcome = asyncio.run(sequence.play_from(JournalEventRef(_SESSION, 0)))
 
-    assert texts == []
+    assert outcome is ReplayOutcome.EMPTY
+
+
+def test_play_from_speaks_each_reply_derivative_else_its_canvas(tmp_path):
+    store = _store_with(
+        tmp_path,
+        _event("assistant", "# Canvas one", {"spoken_derivative": "Spoken one."}),
+        _event("assistant", "Plain two."),
+        _event(
+            "assistant",
+            "# Canvas three",
+            {"spoken_derivative": "Cut sho", "spoken_derivative_truncated": True},
+        ),
+    )
+
+    spoken = _spoken_from(store, JournalEventRef(_SESSION, 0))
+
+    assert spoken == [("Spoken one.", "en"), ("Plain two.", "en"), ("Cut sho", "en")]
+
+
+def test_play_from_applies_the_language_mode_to_every_assistant_reply(tmp_path):
+    store = _store_with(
+        tmp_path,
+        _event("assistant", "42. Привет, это WebSocket."),
+        _event("user", "a question"),
+        _event(
+            "assistant",
+            "An English canvas.",
+            {"spoken_derivative": "7. Это WebSocket."},
+        ),
+    )
+
+    spoken = _spoken_from(store, JournalEventRef(_SESSION, 0), TtsLanguageMode.REQUEST)
+
+    assert spoken == [
+        ("42.", "ru"),
+        ("Привет, это WebSocket.", "ru"),
+        ("7.", "en"),
+        ("Это WebSocket.", "ru"),
+    ]
+
+
+def test_play_from_charset_routes_every_assistant_reply_in_dynamic_mode(tmp_path):
+    store = _store_with(
+        tmp_path,
+        _event("assistant", "Привет, это WebSocket."),
+        _event("assistant", "Canvas.", {"spoken_derivative": "Снова WebSocket."}),
+    )
+
+    spoken = _spoken_from(store, JournalEventRef(_SESSION, 0))
+
+    assert spoken == [
+        ("Привет, это", "ru"),
+        ("WebSocket.", "en"),
+        ("Снова", "ru"),
+        ("WebSocket.", "en"),
+    ]
 
 
 def test_play_from_synthesizes_every_assistant_reply_in_order(tmp_path):
     engine = _FakeEngine()
     play = _RecordingPlay()
     player = ReplayPlayer(TtsSettings(), engine, play=play)
-    sequence = SequencePlayer(_mixed_store(tmp_path), player)
+    sequence = SequencePlayer(_mixed_store(tmp_path), player, TtsLanguageMode.DYNAMIC)
 
     async def scenario() -> ReplayOutcome:
         outcome = await sequence.play_from(JournalEventRef(_SESSION, 0))
@@ -150,7 +223,7 @@ def test_play_from_synthesizes_every_assistant_reply_in_order(tmp_path):
 def test_play_from_emits_progress_ref_as_each_reply_begins(tmp_path):
     engine = _FakeEngine()
     player = ReplayPlayer(TtsSettings(), engine, play=_RecordingPlay())
-    sequence = SequencePlayer(_mixed_store(tmp_path), player)
+    sequence = SequencePlayer(_mixed_store(tmp_path), player, TtsLanguageMode.DYNAMIC)
     seen: list[JournalEventRef] = []
 
     async def on_segment(reference: JournalEventRef) -> None:
@@ -169,7 +242,7 @@ def test_play_from_progress_ref_precedes_that_reply_audio(tmp_path):
     engine = _FakeEngine()
     play = _RecordingPlay()
     player = ReplayPlayer(TtsSettings(), engine, play=play)
-    sequence = SequencePlayer(_mixed_store(tmp_path), player)
+    sequence = SequencePlayer(_mixed_store(tmp_path), player, TtsLanguageMode.DYNAMIC)
     trace: list[str] = []
 
     async def on_segment(reference: JournalEventRef) -> None:
@@ -197,7 +270,9 @@ def test_play_from_progress_ref_precedes_that_reply_audio(tmp_path):
 
 def test_play_from_reports_empty_when_nothing_speakable(tmp_path):
     player = ReplayPlayer(TtsSettings(), _FakeEngine(), play=_RecordingPlay())
-    sequence = SequencePlayer(_store_with(tmp_path, _event("user", "q")), player)
+    sequence = SequencePlayer(
+        _store_with(tmp_path, _event("user", "q")), player, TtsLanguageMode.DYNAMIC
+    )
 
     outcome = asyncio.run(sequence.play_from(JournalEventRef(_SESSION, 0)))
 
@@ -209,6 +284,9 @@ def test_play_item_maps_each_source_kind(tmp_path):
     sequence = _sequence(store)
 
     assert sequence._play_item(_event("assistant", "hi")) == TextReply("hi")
+    assert sequence._play_item(
+        _event("assistant", "canvas", {"spoken_derivative": "speech"})
+    ) == TextReply("speech")
     assert sequence._play_item(_voice_event("q.wav")) == VoiceReply(
         store.media_path(_SESSION, "q.wav")
     )
@@ -234,7 +312,7 @@ def test_play_from_interleaves_voice_wav_and_assistant_synthesis(tmp_path):
     engine = _FakeEngine()
     play = _RecordingPlay()
     player = ReplayPlayer(TtsSettings(), engine, play=play)
-    sequence = SequencePlayer(store, player)
+    sequence = SequencePlayer(store, player, TtsLanguageMode.DYNAMIC)
 
     async def scenario() -> None:
         await sequence.play_from(JournalEventRef(_SESSION, 0))
@@ -249,7 +327,7 @@ def test_play_from_interleaves_voice_wav_and_assistant_synthesis(tmp_path):
 def test_play_from_progress_covers_voice_and_assistant_in_order(tmp_path):
     store, _ = _voice_store(tmp_path)
     player = ReplayPlayer(TtsSettings(), _FakeEngine(), play=_RecordingPlay())
-    sequence = SequencePlayer(store, player)
+    sequence = SequencePlayer(store, player, TtsLanguageMode.DYNAMIC)
     positions: list[int] = []
 
     async def on_segment(reference: JournalEventRef) -> None:
@@ -271,7 +349,7 @@ def test_play_from_skips_a_voice_turn_whose_wav_is_missing(tmp_path):
     engine = _FakeEngine()
     play = _RecordingPlay()
     player = ReplayPlayer(TtsSettings(), engine, play=play)
-    sequence = SequencePlayer(store, player)
+    sequence = SequencePlayer(store, player, TtsLanguageMode.DYNAMIC)
     positions: list[int] = []
 
     async def on_segment(reference: JournalEventRef) -> None:

@@ -394,6 +394,18 @@ def _routes_share_one_engine(settings: TtsSettings) -> bool:
     return len({route.engine for route in settings.languages.values()}) == 1
 
 
+def new_speech_units(
+    speech_language: SpeechLanguage, settings: TtsSettings
+) -> SpeechUnits:
+    if isinstance(speech_language, SingleLanguageSpeech):
+        return SingleLanguageUnitBuffer(speech_language.language)
+    # Carrying a short language-switch remainder into the next unit is
+    # only safe when one engine voices everything; with per-language
+    # engines it would hand text to an engine that cannot pronounce it
+    # (see _CONNECTIVE_MAX_WORD_CHARS).
+    return SpeechUnitBuffer(carry_connectives=_routes_share_one_engine(settings))
+
+
 class TtsOutput:
     def __init__(
         self,
@@ -513,15 +525,7 @@ class TtsOutput:
             sd.stop()
 
     def _new_units(self) -> SpeechUnits:
-        if isinstance(self._speech_language, SingleLanguageSpeech):
-            return SingleLanguageUnitBuffer(self._speech_language.language)
-        # Carrying a short language-switch remainder into the next unit is
-        # only safe when one engine voices everything; with per-language
-        # engines it would hand text to an engine that cannot pronounce it
-        # (see _CONNECTIVE_MAX_WORD_CHARS).
-        return SpeechUnitBuffer(
-            carry_connectives=_routes_share_one_engine(self._settings)
-        )
+        return new_speech_units(self._speech_language, self._settings)
 
     def _schedule(self, text: str, language: str) -> None:
         index = self._next_index

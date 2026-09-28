@@ -26,7 +26,7 @@ from jarvis.audio.replay import (
     ReplayPlayer,
     ReplayProgress,
     SequencePlayer,
-    reply_speech_text,
+    reply_speech,
 )
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
 from jarvis.audio.speech_language import (
@@ -556,6 +556,10 @@ class Orchestrator:
     @property
     def is_busy(self) -> bool:
         return self._busy
+
+    @property
+    def tts_language_mode(self) -> TtsLanguageMode:
+        return self._tts_language_mode
 
     def claim_turn_end(self) -> bool:
         """Returns True exactly once per turn, to whichever caller (the
@@ -2432,11 +2436,13 @@ async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | 
     if app.orchestrator.is_busy:
         await _reject_replay(app, "replay_busy")
         return ReplayOutcome.BUSY
-    text = reply_speech_text(app.journal_store, reference)
-    if text is None:
+    reply = reply_speech(
+        app.journal_store, reference, app.orchestrator.tts_language_mode
+    )
+    if reply is None:
         await _reject_replay(app, "replay_unavailable")
         return None
-    outcome = await app.replay_player.replay(text)
+    outcome = await app.replay_player.replay(reply)
     if outcome is ReplayOutcome.BUSY:
         await _reject_replay(app, "replay_busy")
     elif outcome is ReplayOutcome.DISABLED:
@@ -2458,7 +2464,9 @@ async def replay_sequence(app: App, start: JournalEventRef) -> ReplayOutcome | N
     if app.orchestrator.is_busy:
         await _reject_replay(app, "replay_busy")
         return ReplayOutcome.BUSY
-    sequence = SequencePlayer(app.journal_store, app.replay_player)
+    sequence = SequencePlayer(
+        app.journal_store, app.replay_player, app.orchestrator.tts_language_mode
+    )
 
     async def on_segment(reference: JournalEventRef) -> None:
         await app.bus.publish(ReplayProgress, ReplayProgress(reference))
