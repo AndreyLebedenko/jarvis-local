@@ -1175,6 +1175,33 @@ def test_tts_enabled_rejects_non_bool(tmp_path):
         load_settings(config_path)
 
 
+def test_tts_language_mode_defaults_to_dynamic(tmp_path):
+    settings = load_settings(tmp_path / "does-not-exist.toml")
+
+    assert settings.tts.language_mode == "dynamic"
+
+
+@pytest.mark.parametrize("mode", ["dynamic", "request", "ru", "en"])
+def test_tts_language_mode_parses_from_config(tmp_path, mode):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(f'[tts]\nlanguage_mode = "{mode}"\n', encoding="utf-8")
+
+    settings = load_settings(config_path)
+
+    assert settings.tts.language_mode == mode
+
+
+def test_unknown_tts_language_mode_raises_config_error_naming_the_values(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[tts]\nlanguage_mode = "de"\n', encoding="utf-8")
+
+    with pytest.raises(
+        ConfigError,
+        match=r"\[tts\]\.language_mode must be one of: dynamic, request, ru, en",
+    ):
+        load_settings(config_path)
+
+
 def test_tts_language_routes_reject_unknown_language(tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(
@@ -1899,6 +1926,38 @@ def test_write_ui_config_tts_enabled_round_trips_alone(tmp_path):
 
     assert settings.tts.enabled is True
     assert settings.tts.languages == {"ru": SileroTtsSettings()}
+
+
+def test_write_ui_config_tts_language_mode_round_trips_with_enabled_and_routes(
+    tmp_path,
+):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path,
+        model="m",
+        microphone_device="d",
+        tts_enabled=False,
+        tts_language_mode="request",
+        tts_routes={"ru": SileroTtsSettings(), "en": PiperTtsSettings(model="en.onnx")},
+    )
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.tts.enabled is False
+    assert settings.tts.language_mode == "request"
+    assert settings.tts.languages["en"] == PiperTtsSettings(model="en.onnx")
+
+
+def test_write_ui_config_tts_language_mode_round_trips_alone(tmp_path):
+    ui_config_path = tmp_path / "config.ui.toml"
+
+    write_ui_config(
+        ui_config_path, model="m", microphone_device="d", tts_language_mode="en"
+    )
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+
+    assert settings.tts.language_mode == "en"
+    assert settings.tts.enabled is True
 
 
 def test_write_ui_config_omits_sections_left_as_none(tmp_path):

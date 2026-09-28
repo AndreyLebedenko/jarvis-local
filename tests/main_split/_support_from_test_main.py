@@ -15,6 +15,7 @@ from jarvis.app import (
     Orchestrator,
     build_app,
 )
+from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     GenerationOptions,
@@ -164,6 +165,7 @@ def _orchestrator(
     session_file_repository=None,
     session_file_scope=None,
     on_turn_start=None,
+    tts_language_mode=TtsLanguageMode.DYNAMIC,
 ) -> tuple[Orchestrator, _FakeBackend, _FakeSoundCues]:
     backend = _FakeBackend(chat_impl)
     sound_cues = _FakeSoundCues()
@@ -187,6 +189,7 @@ def _orchestrator(
         session_file_repository=session_file_repository,
         session_file_scope=session_file_scope,
         on_turn_start=on_turn_start,
+        tts_language_mode=tts_language_mode,
     )
     return orchestrator, backend, sound_cues
 

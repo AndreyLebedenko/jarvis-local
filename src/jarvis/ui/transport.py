@@ -281,6 +281,15 @@ def _parse_tts_enabled(raw: JSONValue) -> bool | None:
     return raw
 
 
+def _parse_tts_language_mode(raw: JSONValue) -> str | None:
+    """Shape/type checks only; value semantics belong to validate_selection()."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ProtocolError("tts_language_mode must be a string")
+    return raw
+
+
 def _parse_tts_routes(raw: JSONValue) -> dict[str, TtsLanguageSettings] | None:
     if raw is None:
         return None
@@ -424,6 +433,7 @@ class ControlApi(Protocol):
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
         tts_enabled: bool | None = None,
+        tts_language_mode: str | None = None,
     ) -> None: ...
 
 
@@ -2557,6 +2567,9 @@ class UiTransportServer:
             vad=_parse_vad(arguments.get("vad")),
             tts_routes=_parse_tts_routes(arguments.get("tts_routes")),
             tts_enabled=_parse_tts_enabled(arguments.get("tts_enabled")),
+            tts_language_mode=_parse_tts_language_mode(
+                arguments.get("tts_language_mode")
+            ),
         )
 
     @staticmethod

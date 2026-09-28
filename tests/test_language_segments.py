@@ -1,7 +1,10 @@
+import pytest
+
 from jarvis.audio.language_segments import (
     CharsetLanguageStream,
     LanguageSegment,
     segment_by_charset,
+    text_language,
 )
 
 
@@ -48,3 +51,43 @@ def test_language_switch_survives_token_boundaries():
         LanguageSegment("en", "parse_user_id"),
         LanguageSegment("ru", "готова."),
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Что такое WebSocket?",
+        "Объясни docker-compose.yml",
+        "PostgreSQL - это СУБД.",
+        "Kubernetes использует etcd.",
+        "Используйте git rebase --interactive.",
+    ],
+)
+def test_russian_text_heavy_with_english_terms_is_russian(text):
+    assert text_language(text) == "ru"
+
+
+def test_latin_only_text_is_english():
+    assert text_language("What is a WebSocket?") == "en"
+
+
+def test_any_cyrillic_word_makes_the_text_russian():
+    """The accepted cost of the Cyrillic-first rule: English prose quoting a
+    Russian word reads as Russian. Russian prose with English terms is far
+    more common for this assistant."""
+    assert text_language("What does слово mean?") == "ru"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Run `git rebase --interactive` first.",
+        "Example:\n```\nprint('привет')\n```\nThat prints a greeting.",
+    ],
+)
+def test_code_spans_do_not_decide_the_language(text):
+    assert text_language(text) == "en"
+
+
+def test_text_without_letters_has_no_language():
+    assert text_language("2 + 2 = ?") is None

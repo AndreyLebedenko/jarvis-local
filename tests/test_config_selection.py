@@ -190,3 +190,27 @@ def test_full_selection_with_a_response_mode_is_valid():
     )
 
     assert validate_selection(selection) == []
+
+
+# --- tts_language_mode as a UiConfigSelection batch field ------------------
+
+
+def test_every_supported_tts_language_mode_is_accepted():
+    for mode in ("dynamic", "request", "ru", "en"):
+        selection = UiConfigSelection(
+            model="m", microphone_device="", tts_language_mode=mode
+        )
+
+        assert validate_selection(selection) == []
+
+
+def test_unknown_tts_language_mode_is_rejected_naming_the_values():
+    selection = UiConfigSelection(
+        model="m", microphone_device="", tts_language_mode="de"
+    )
+
+    problems = validate_selection(selection)
+
+    assert len(problems) == 1
+    assert "dynamic, request, ru, en" in problems[0]
+    assert "'de'" in problems[0]

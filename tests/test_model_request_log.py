@@ -5,12 +5,18 @@ one event. These tests pin what the line may say - and, more importantly,
 what it may never say.
 """
 
+import pytest
+
 from jarvis.core.lifecycle import (
+    CharsetSpeechRouting,
     ModelRequestInput,
     ModelRequestPassKind,
     ModelRequestStarted,
+    SingleLanguageSpeech,
 )
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
+
+_CHARSET_ROUTING = CharsetSpeechRouting()
 
 
 def _event(
@@ -18,6 +24,7 @@ def _event(
     audio_duration_seconds=None,
     prompt_budget=None,
     pass_kind=ModelRequestPassKind.PRIMARY,
+    speech_language=_CHARSET_ROUTING,
 ):
     return ModelRequestStarted(
         timestamp=1700000000.0,
@@ -25,7 +32,31 @@ def _event(
         audio_duration_seconds=audio_duration_seconds,
         prompt_budget=prompt_budget,
         pass_kind=pass_kind,
+        speech_language=speech_language,
     )
+
+
+def test_charset_speech_routing_carries_no_speech_tag():
+    message = model_request_log_message(_event((ModelRequestInput.AUDIO,)))
+
+    assert "speech=" not in message
+
+
+@pytest.mark.parametrize(
+    ("expected_language", "tag"),
+    [("ru", "speech=ru"), ("en", "speech=en"), (None, "speech=from-answer")],
+)
+def test_a_single_language_pass_names_the_language_asked_of_the_model(
+    expected_language, tag
+):
+    message = model_request_log_message(
+        _event(
+            (ModelRequestInput.AUDIO,),
+            speech_language=SingleLanguageSpeech(expected_language),
+        )
+    )
+
+    assert tag in message
 
 
 def test_a_primary_pass_carries_no_pass_tag():

@@ -885,6 +885,15 @@ function applyConfigValues(payload) {
   document.getElementById("vadEndPause").value = payload.vad.request_end_pause_seconds;
   document.getElementById("vadCooldown").value = payload.vad.resume_cooldown_seconds;
   document.getElementById("ttsEnabled").checked = payload.tts.enabled;
+  const languageModeSelect = document.getElementById("ttsLanguageModeSelect");
+  languageModeSelect.innerHTML = "";
+  for (const mode of payload.tts.language_mode_options) {
+    const el = document.createElement("option");
+    el.value = mode;
+    el.textContent = uiString("tts_language_mode_" + mode + "_option");
+    if (mode === payload.tts.language_mode) el.selected = true;
+    languageModeSelect.appendChild(el);
+  }
   document.getElementById("ttsCustomRoutes").disabled = !payload.tts.enabled;
   const custom = payload.tts.languages.every((lang) => lang in payload.tts.routes);
   document.getElementById("ttsCustomRoutes").checked = custom;
@@ -1086,6 +1095,7 @@ function applyConfigSelection() {
     },
     tts_routes: _collectTtsRoutes(),
     tts_enabled: document.getElementById("ttsEnabled").checked,
+    tts_language_mode: document.getElementById("ttsLanguageModeSelect").value,
   });
 }
 

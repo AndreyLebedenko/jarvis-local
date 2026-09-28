@@ -375,6 +375,20 @@ def test_config_values_payload_response_mode_is_the_persisted_default():
     assert payload["response_mode"] == settings.response.mode
 
 
+def test_config_values_payload_carries_the_tts_language_mode_and_options():
+    settings = replace(Settings(), tts=replace(Settings().tts, language_mode="request"))
+
+    payload = config_values_payload(settings)
+
+    assert payload["tts"]["language_mode"] == "request"
+    assert payload["tts"]["language_mode_options"] == [
+        "dynamic",
+        "request",
+        "ru",
+        "en",
+    ]
+
+
 def _settings_with_response_mode(mode: str) -> Settings:
     return replace(Settings(), response=replace(Settings().response, mode=mode))
 
@@ -1203,6 +1217,36 @@ def test_apply_config_values_populates_the_response_mode_select_from_the_payload
     assert "payload.response_mode" in body
 
 
+def test_tts_language_mode_control_is_a_select_in_the_settings_form():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    select_start = html.index('<select id="ttsLanguageModeSelect"')
+    select_html = html[select_start : html.index("</select>", select_start)]
+    assert 'onchange="onConfigInputChanged()"' in select_html
+    for mode in ("dynamic", "request", "ru", "en"):
+        assert f'value="{mode}"' in select_html
+
+
+def test_apply_config_selection_sends_the_form_tts_language_mode():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = app_js.index("function applyConfigSelection()")
+    body = app_js[start : app_js.index("\n}", start)]
+
+    assert (
+        'tts_language_mode: document.getElementById("ttsLanguageModeSelect").value'
+        in body
+    )
+
+
+def test_apply_config_values_populates_the_tts_language_mode_select():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    start = app_js.index("function applyConfigValues(payload)")
+    body = app_js[start : app_js.index("\n}\n", start)]
+
+    assert "payload.tts.language_mode_options" in body
+    assert "payload.tts.language_mode" in body
+
+
 def test_apply_response_mode_drives_the_status_tab_buttons_not_the_select():
     """The confirmed ResponseModeChanged push may only ever highlight the
     live Status-tab button group - touching the Settings drop-down from the
@@ -1448,6 +1492,13 @@ def test_demo_config_values_mirror_the_real_payload_contract():
 
     assert 'response_mode: "text"' in demo_js
     assert 'response_mode_options: ["text", "voice", "text_voice"]' in demo_js
+
+
+def test_demo_config_values_carry_the_tts_language_mode_contract():
+    demo_js = (UI_DIR / "demo.js").read_text(encoding="utf-8")
+
+    assert 'language_mode: "dynamic"' in demo_js
+    assert 'language_mode_options: ["dynamic", "request", "ru", "en"]' in demo_js
 
 
 def test_index_html_status_view_does_not_render_duplicate_context_reset():
@@ -2327,6 +2378,29 @@ async def test_save_config_selection_writes_tts_enabled(tmp_path):
 
     settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
     assert settings.tts.enabled is False
+
+
+async def test_save_config_selection_writes_tts_language_mode(tmp_path):
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection("new-model", "USB Headset", tts_language_mode="ru")
+    await asyncio.sleep(0.05)
+
+    settings = load_settings(tmp_path / "does-not-exist.toml", ui_path=ui_config_path)
+    assert settings.tts.language_mode == "ru"
+
+
+async def test_save_config_selection_rejects_an_unknown_tts_language_mode(tmp_path):
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = _iteration_2_api(bus, ui_config_path)
+
+    api.save_config_selection("new-model", "USB Headset", tts_language_mode="de")
+    await asyncio.sleep(0.05)
+
+    assert not ui_config_path.exists()
 
 
 async def test_set_tts_enabled_schedules_the_mute_state_transition():

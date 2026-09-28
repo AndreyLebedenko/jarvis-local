@@ -508,6 +508,42 @@ def test_empty_response_voice_contract_is_rejected(tmp_path):
         _load(tmp_path, '[response]\nvoice_contract = ""\n')
 
 
+@pytest.mark.parametrize(
+    ("field", "language_instruction", "user_override"),
+    [
+        ("speech_language_ru", "Пиши весь ответ по-русски", "прямо не попросил"),
+        (
+            "speech_language_en",
+            "Write the whole answer in English",
+            "unless the user explicitly asked",
+        ),
+        ("speech_language_request", "Отвечай на языке вопроса", "прямо не попросил"),
+    ],
+)
+def test_speech_language_defaults_yield_to_an_explicit_user_request(
+    tmp_path, field, language_instruction, user_override
+):
+    directive = getattr(_load(tmp_path, "").response, field)
+
+    assert language_instruction in directive
+    assert user_override in directive
+
+
+def test_speech_language_directive_reference_resolves(tmp_path):
+    prompt_path = tmp_path / ".jarvis" / "english.md"
+    prompt_path.parent.mkdir(parents=True)
+    prompt_path.write_text("English only.", encoding="utf-8")
+
+    settings = _load(tmp_path, '[response]\nspeech_language_en = "@english.md"\n')
+
+    assert settings.response.speech_language_en == "English only."
+
+
+def test_empty_speech_language_directive_is_rejected(tmp_path):
+    with pytest.raises(ConfigError, match=r"\[response\]\.speech_language_ru"):
+        _load(tmp_path, '[response]\nspeech_language_ru = ""\n')
+
+
 def test_todays_status_console_ui_layer_still_loads(tmp_path):
     ui_path = tmp_path / "config.ui.toml"
     ui_path.write_text(

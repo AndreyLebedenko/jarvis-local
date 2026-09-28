@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from jarvis.core.config import (
     SUPPORTED_RESPONSE_MODES,
+    SUPPORTED_TTS_LANGUAGE_MODES,
     SUPPORTED_TTS_LANGUAGES,
     SUPPORTED_UI_LANGUAGES,
     ConfigError,
@@ -53,6 +54,8 @@ class UiConfigSelection:
     # Restart-to-apply master default (task-ui-ux-3), independent of
     # tts_routes; None keeps whatever config.toml/the built-in default says.
     tts_enabled: bool | None = None
+    # Restart-to-apply [tts].language_mode; None keeps the layered default.
+    tts_language_mode: str | None = None
 
 
 def validate_selection(selection: UiConfigSelection) -> list[str]:
@@ -80,6 +83,15 @@ def validate_selection(selection: UiConfigSelection) -> list[str]:
         problems.extend(_validate_vad(selection.vad))
     if selection.tts_routes is not None:
         problems.extend(_validate_tts_routes(selection.tts_routes))
+    if (
+        selection.tts_language_mode is not None
+        and selection.tts_language_mode not in SUPPORTED_TTS_LANGUAGE_MODES
+    ):
+        supported = ", ".join(SUPPORTED_TTS_LANGUAGE_MODES)
+        problems.append(
+            f"tts_language_mode must be one of: {supported}; "
+            f"got {selection.tts_language_mode!r}"
+        )
     return problems
 
 

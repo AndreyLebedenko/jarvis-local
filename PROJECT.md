@@ -1752,7 +1752,9 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   from silently stalling all later speech in the session. The
   Silero-specific model loading, Russian number normalization, Latin
   transliteration, and `apply_tts` call live in `SileroEngine`. Since the
-  v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`:
+  v1.2.8 pivot, `TtsOutput` streams tokens through `SpeechUnitBuffer`
+  (under `[tts].language_mode = "dynamic"`, the default - see "Architecture:
+  TTS language mode" for the single-language modes):
   charset language segmentation happens BEFORE sentence buffering
   (`CharsetLanguageStream`, incremental), so language routing no longer
   depends on the model emitting XML-like control tags. A language switch is an
@@ -4152,7 +4154,9 @@ second pass creates a spoken commentary/log over that canvas.
   (`speak_streaming`, threaded through `ModelRequestStarted` from the same
   seam that snapshots `reasoning_level`); `TtsOutput` honors the latched
   directive and learns nothing about modes, and the sentence-buffering
-  contract shared with modes 1 and 2 is untouched. Mode 3 is therefore two
+  contract shared with modes 1 and 2 is untouched (a later per-pass
+  `speech_language` directive can select single-language buffering; see
+  "Architecture: TTS language mode"). Mode 3 is therefore two
   ordinary dispatches - a silent first pass, then a derivative dispatch that
   speaks through the unchanged path - not a mode branch inside `TtsOutput`.
 - **Persisted mode, live toggles.** The mode is a three-valued persistent
@@ -5041,6 +5045,60 @@ or to the model (`tasks/done/task-generation-num-predict-cap.md`).
 - No audible notice on truncation (owner decision, 2026-09-26): a partial
   spoken answer ends mid-thought anyway, and the empty case is the runaway,
   now bounded to about 3 min and labelled in the Journal.
+
+## Architecture: TTS language mode (2026-09-28)
+
+`[tts].language_mode` chooses how speech picks its language in response modes
+`voice` and `text_voice`. Card: `tasks/done/task-tts-language-mode.md`.
+
+- `dynamic` (default) is the v1.2.8 behavior: each Cyrillic/Latin run is its
+  own unit, voiced by its own language route. Response mode `text` always
+  uses it, whatever the setting (owner decision): its answer is written for
+  the screen, not for one voice.
+- `request` and `ru`/`en` voice a whole answer in one language: TTS never
+  splits a sentence at a language switch (`SingleLanguageUnitBuffer`).
+- The per-pass directive is `ModelRequestStarted.speech_language`
+  (`CharsetSpeechRouting` | `SingleLanguageSpeech(language)`), latched by
+  `TtsOutput` exactly like `speak_streaming`. `TtsOutput` also starts a
+  fresh unit buffer on every `ModelRequestStarted`, in every mode. That is
+  the one change to `dynamic`: a partial sentence left unflushed by a pass
+  that never reached `ResponseComplete` (a mid-stream backend failure) is
+  now dropped instead of being prepended to the next turn's first unit.
+- The model is told the language only where its text is written for speech:
+  mode 2's turn (after `voice_contract`) and mode 3's spoken-derivative pass
+  (after the `spoken_derivative` prompt), using
+  `[response].speech_language_ru|en|request`. Mode 3's first pass gets no
+  directive; the canvas stays untouched.
+- The directive is a default, weaker than an explicit user request ("answer
+  in English"); the built-in texts say so (owner decision). TTS therefore
+  voices an answer in the language of its first sentence with letters; the
+  requested language only voices sentences before that.
+- Language of a text: `language_segments.text_language()` - Russian if any
+  Cyrillic letter appears outside code spans, else English if any Latin
+  letter does (owner decision). Cyrillic-first because Russian prose
+  routinely carries long English terms (`Что такое WebSocket?`), while
+  English prose rarely carries Cyrillic; counting letters or words sent such
+  Russian requests to English.
+- `request` is hybrid (owner decision). A typed request (text input,
+  clipboard, or an attachment's typed text - never the attached file's
+  content) gets `text_language()` of that text, told to the model
+  explicitly. A voice request has no transcript before dispatch: the model
+  gets `speech_language_request` ("answer in the question's language").
+  Mode 3's second pass gets `text_language()` of the canvas.
+  `resolve_speech_language()` takes an already detected language, so another
+  source (the owner's candidate: the language of the previous answer, i.e.
+  the dialog language) only has to supply a different value.
+- Fixed `ru`/`en` means the spoken text is written in that language unless
+  the user explicitly asks otherwise; foreign terms go into that language's
+  script. Known gap: mode 3's second pass sees only the canvas, not the
+  user's request, so it cannot notice such an explicit request.
+- Restart-to-apply from the Settings tab (`write_ui_config`
+  `tts_language_mode`). The orchestrator stores the mode from its
+  constructor and reads it per turn; a live toggle replaces that value with
+  a runtime state owner, the way `ResponseModeState` is injected. Journal
+  reply replay stays charset-routed.
+- The system log's model-request line names the language asked of the
+  model: `speech=ru|en|from-answer` (absent for charset routing).
 
 ## Mode 3b (single pass with a trailing `<tts>` block) closed (2026-09-27) - do not re-litigate
 
