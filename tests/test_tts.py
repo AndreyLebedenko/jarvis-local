@@ -17,6 +17,7 @@ from jarvis.audio.tts import (
     TtsEngineLoadFailed,
     TtsOutput,
     _append_wav_tail_silence,
+    new_speech_units,
 )
 from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.audio.tts_mute import TtsMuteState
@@ -1288,6 +1289,50 @@ async def test_a_first_sentence_without_letters_is_voiced_in_the_expected_langua
     )
 
     assert units == [("42.", fallback), ("The answer.", "en")]
+
+
+def _units_of(units, text: str) -> list[tuple[str, str]]:
+    return units.feed(text) + units.flush()
+
+
+def test_new_speech_units_for_charset_routing_split_at_each_language_switch():
+    units = new_speech_units(CharsetSpeechRouting(), TtsSettings())
+
+    assert _units_of(units, "Привет, это WebSocket.") == [
+        ("Привет, это", "ru"),
+        ("WebSocket.", "en"),
+    ]
+
+
+def test_new_speech_units_keep_connectives_apart_when_engines_differ():
+    bilingual_settings = TtsSettings(
+        languages={
+            "ru": SileroTtsSettings(),
+            "en": PiperTtsSettings(model="en.onnx"),
+        }
+    )
+    units = new_speech_units(CharsetSpeechRouting(), bilingual_settings)
+
+    assert _units_of(units, "Для APIClient важны latency.") == [
+        ("Для", "ru"),
+        ("APIClient", "en"),
+        ("важны", "ru"),
+        ("latency.", "en"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("expected_language", "fallback"), [("en", "en"), ("ru", "ru")]
+)
+def test_new_speech_units_for_a_single_language_voice_the_reply_in_one_language(
+    expected_language, fallback
+):
+    units = new_speech_units(SingleLanguageSpeech(expected_language), TtsSettings())
+
+    assert _units_of(units, "42. Привет, это WebSocket.") == [
+        ("42.", fallback),
+        ("Привет, это WebSocket.", "ru"),
+    ]
 
 
 async def test_the_answer_language_is_decided_again_for_the_next_answer():

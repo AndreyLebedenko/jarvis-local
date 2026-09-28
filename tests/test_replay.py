@@ -3,6 +3,7 @@ import io
 from collections.abc import Callable
 
 import numpy as np
+import pytest
 import sounddevice as sd
 import soundfile as sf
 
@@ -11,12 +12,15 @@ from jarvis.audio.replay import (
     ReplayPlayer,
     TextReply,
     VoiceReply,
-    reply_speech_text,
+    assistant_reply_speech,
+    reply_speech,
 )
+from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
-from jarvis.journal.events import JournalEvent, JournalEventRef
+from jarvis.core.lifecycle import CharsetSpeechRouting, SingleLanguageSpeech
+from jarvis.journal.events import JournalEvent, JournalEventRef, JSONValue
 from jarvis.journal.store import JournalStore
 
 _SESSION = "20260826-101500-abc"
@@ -46,7 +50,9 @@ class _RecordingPlay:
         self.played.append(audio)
 
 
-def _event(role: str, text: str) -> JournalEvent:
+def _event(
+    role: str, text: str, metadata: dict[str, JSONValue] | None = None
+) -> JournalEvent:
     return JournalEvent(
         session_id=_SESSION,
         timestamp="2026-08-26T10:15:00+00:00",
@@ -55,6 +61,7 @@ def _event(role: str, text: str) -> JournalEvent:
         text=text,
         media=(),
         transcript=None,
+        metadata=metadata or {},
     )
 
 
@@ -65,7 +72,7 @@ def _store_with(tmp_path, *events: JournalEvent) -> JournalStore:
     return store
 
 
-def test_reply_speech_text_returns_assistant_reply_for_arbitrary_turn(tmp_path):
+def test_reply_speech_returns_assistant_reply_for_arbitrary_turn(tmp_path):
     store = _store_with(
         tmp_path,
         _event("user", "first question"),
@@ -75,19 +82,160 @@ def test_reply_speech_text_returns_assistant_reply_for_arbitrary_turn(tmp_path):
     )
 
     older = JournalEventRef(_SESSION, 1)
-    assert reply_speech_text(store, older) == "first answer"
+    reply = reply_speech(store, older, TtsLanguageMode.DYNAMIC)
+    assert reply == TextReply("first answer")
 
 
-def test_reply_speech_text_returns_none_for_non_assistant_turn(tmp_path):
+def test_reply_speech_returns_the_stored_derivative_in_the_given_mode(tmp_path):
+    store = _store_with(
+        tmp_path,
+        _event("assistant", "A canvas.", {"spoken_derivative": "Спокойно."}),
+    )
+
+    reply = reply_speech(store, JournalEventRef(_SESSION, 0), TtsLanguageMode.RUSSIAN)
+
+    assert reply == TextReply("Спокойно.", SingleLanguageSpeech("ru"))
+
+
+def test_reply_speech_returns_none_for_non_assistant_turn(tmp_path):
     store = _store_with(tmp_path, _event("user", "a question"))
 
-    assert reply_speech_text(store, JournalEventRef(_SESSION, 0)) is None
+    reference = JournalEventRef(_SESSION, 0)
+    assert reply_speech(store, reference, TtsLanguageMode.DYNAMIC) is None
 
 
-def test_reply_speech_text_returns_none_for_missing_session(tmp_path):
+def test_reply_speech_returns_none_for_missing_session(tmp_path):
     store = JournalStore(tmp_path)
 
-    assert reply_speech_text(store, JournalEventRef(_SESSION, 0)) is None
+    reference = JournalEventRef(_SESSION, 0)
+    assert reply_speech(store, reference, TtsLanguageMode.DYNAMIC) is None
+
+
+def test_assistant_reply_speech_speaks_the_stored_spoken_derivative():
+    event = _event(
+        "assistant", "# Canvas\n\n- a table", {"spoken_derivative": "Short speech."}
+    )
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.DYNAMIC)
+
+    assert reply.text == "Short speech."
+
+
+def test_assistant_reply_speech_speaks_the_canvas_without_a_derivative():
+    event = _event("assistant", "The only text.")
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.DYNAMIC)
+
+    assert reply.text == "The only text."
+
+
+@pytest.mark.parametrize(
+    "partial_flag", ["spoken_derivative_interrupted", "spoken_derivative_truncated"]
+)
+def test_assistant_reply_speech_speaks_a_partial_derivative_as_stored(partial_flag):
+    event = _event(
+        "assistant",
+        "The full canvas.",
+        {"spoken_derivative": "Cut in the mid", partial_flag: True},
+    )
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.DYNAMIC)
+
+    assert reply.text == "Cut in the mid"
+
+
+def test_assistant_reply_speech_speaks_an_empty_derivative_as_stored():
+    event = _event("assistant", "The full canvas.", {"spoken_derivative": ""})
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.DYNAMIC)
+
+    assert reply.text == ""
+
+
+def test_assistant_reply_speech_ignores_a_derivative_that_is_not_text():
+    event = _event("assistant", "The full canvas.", {"spoken_derivative": 42})
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.DYNAMIC)
+
+    assert reply.text == "The full canvas."
+
+
+@pytest.mark.parametrize(
+    ("mode", "speech_language"),
+    [
+        (TtsLanguageMode.DYNAMIC, CharsetSpeechRouting()),
+        (TtsLanguageMode.RUSSIAN, SingleLanguageSpeech("ru")),
+        (TtsLanguageMode.ENGLISH, SingleLanguageSpeech("en")),
+        (TtsLanguageMode.REQUEST, SingleLanguageSpeech("ru")),
+    ],
+)
+def test_assistant_reply_speech_applies_the_given_language_mode(mode, speech_language):
+    event = _event("assistant", "Привет, это WebSocket.")
+
+    reply = assistant_reply_speech(event, mode)
+
+    assert reply.speech_language == speech_language
+
+
+def test_assistant_reply_speech_expects_the_canvas_language_not_the_derivative():
+    event = _event(
+        "assistant", "An English canvas.", {"spoken_derivative": "Русская речь."}
+    )
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.REQUEST)
+
+    assert reply.speech_language == SingleLanguageSpeech("en")
+
+
+def test_replay_charset_routes_a_mixed_sentence_by_script():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+
+    asyncio.run(
+        _replay_and_wait(
+            player, TextReply("Привет, это WebSocket.", CharsetSpeechRouting())
+        )
+    )
+
+    assert engine.seen == [("Привет, это", "ru"), ("WebSocket.", "en")]
+
+
+@pytest.mark.parametrize(
+    ("mode", "leading_language"),
+    [
+        (TtsLanguageMode.RUSSIAN, "ru"),
+        (TtsLanguageMode.ENGLISH, "en"),
+        (TtsLanguageMode.REQUEST, "ru"),
+    ],
+)
+def test_replay_voices_a_mixed_reply_in_one_language_outside_dynamic_mode(
+    mode, leading_language
+):
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+    event = _event("assistant", "42. Привет, это WebSocket.")
+
+    asyncio.run(_replay_and_wait(player, assistant_reply_speech(event, mode)))
+
+    assert engine.seen == [
+        ("42.", leading_language),
+        ("Привет, это WebSocket.", "ru"),
+    ]
+
+
+def test_replay_voices_the_derivative_with_the_canvas_as_expected_language():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+    event = _event(
+        "assistant",
+        "An English canvas.",
+        {"spoken_derivative": "42. Привет, это WebSocket."},
+    )
+
+    reply = assistant_reply_speech(event, TtsLanguageMode.REQUEST)
+    asyncio.run(_replay_and_wait(player, reply))
+
+    assert engine.seen == [("42.", "en"), ("Привет, это WebSocket.", "ru")]
 
 
 def test_replay_synthesizes_and_plays_when_channel_free():
@@ -95,7 +243,7 @@ def test_replay_synthesizes_and_plays_when_channel_free():
     play = _RecordingPlay()
     player = ReplayPlayer(_tts_settings(), engine, play=play)
 
-    outcome = asyncio.run(_replay_and_wait(player, "Hello there."))
+    outcome = asyncio.run(_replay_and_wait(player, TextReply("Hello there.")))
 
     assert outcome is ReplayOutcome.STARTED
     assert engine.seen == [("Hello there.", "en")]
@@ -110,7 +258,7 @@ def test_replay_is_rejected_while_disabled():
         _tts_settings(), engine, play=_RecordingPlay(), mute_state=mute
     )
 
-    outcome = asyncio.run(player.replay("Hello there."))
+    outcome = asyncio.run(player.replay(TextReply("Hello there.")))
 
     assert outcome is ReplayOutcome.DISABLED
     assert engine.seen == []
@@ -126,9 +274,9 @@ def test_replay_is_rejected_while_another_replay_is_active():
 
         play = _BlockingPlay(release)
         player = ReplayPlayer(_tts_settings(), engine, play=play)
-        first = await player.replay("First one.")
+        first = await player.replay(TextReply("First one."))
         await play.started.wait()
-        second = await player.replay("Second one.")
+        second = await player.replay(TextReply("Second one."))
         release.set()
         await player.wait_for_pending()
         return first, second
@@ -162,7 +310,7 @@ def test_replay_many_is_one_active_task_spanning_the_whole_sequence():
         player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
         started = await player.replay_many(["First one.", "Second one."])
         await play.started.wait()
-        external = await player.replay("An external single reply.")
+        external = await player.replay(TextReply("An external single reply."))
         release.set()
         await player.wait_for_pending()
         return started, external
@@ -203,7 +351,7 @@ def test_replay_reports_empty_when_nothing_speakable():
     engine = _FakeEngine()
     player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
 
-    outcome = asyncio.run(player.replay("   "))
+    outcome = asyncio.run(player.replay(TextReply("   ")))
 
     assert outcome is ReplayOutcome.EMPTY
     assert engine.seen == []
@@ -214,7 +362,7 @@ def test_cancel_stops_an_active_replay():
         release = asyncio.Event()
         play = _BlockingPlay(release)
         player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
-        await player.replay("A sentence. Another sentence.")
+        await player.replay(TextReply("A sentence. Another sentence."))
         await play.started.wait()
         cancelled = player.cancel()
         await player.wait_for_pending()
@@ -249,7 +397,7 @@ def test_pause_resume_suspend_and_continue_the_default_playback():
         player = ReplayPlayer(
             _tts_settings(), _WavEngine(_wav_bytes(120)), stream_factory=factory
         )
-        await player.replay("One sentence.")
+        await player.replay(TextReply("One sentence."))
         while not created or not player.is_active:
             await asyncio.sleep(0)
         stream = created[0]
@@ -284,7 +432,7 @@ def test_playback_completes_when_the_device_stops_before_the_end():
         player = ReplayPlayer(
             _tts_settings(), _WavEngine(_wav_bytes(200)), stream_factory=factory
         )
-        await player.replay("One sentence.")
+        await player.replay(TextReply("One sentence."))
         while not created or not player.is_active:
             await asyncio.sleep(0)
         created[0].pump(50)  # partial playback: pos < len, never paused
@@ -393,7 +541,7 @@ class _BlockingPlay:
         self.played.append(audio)
 
 
-async def _replay_and_wait(player: ReplayPlayer, text: str) -> ReplayOutcome:
-    outcome = await player.replay(text)
+async def _replay_and_wait(player: ReplayPlayer, reply: TextReply) -> ReplayOutcome:
+    outcome = await player.replay(reply)
     await player.wait_for_pending()
     return outcome

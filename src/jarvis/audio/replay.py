@@ -21,7 +21,7 @@ import contextlib
 import io
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
@@ -30,14 +30,14 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from jarvis.audio.tts import (
-    SpeechUnitBuffer,
-    TtsEngine,
-    _routes_share_one_engine,
-)
+from jarvis.audio.language_segments import text_language
+from jarvis.audio.speech_language import TtsLanguageMode, resolve_speech_language
+from jarvis.audio.tts import TtsEngine, new_speech_units
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.config import TtsSettings
-from jarvis.journal.events import JournalEvent, JournalEventRecord, JournalEventRef
+from jarvis.core.lifecycle import CharsetSpeechRouting, SpeechLanguage
+from jarvis.journal.corpus import SPOKEN_DERIVATIVE_METADATA_KEY
+from jarvis.journal.events import JournalEvent, JournalEventRef
 from jarvis.journal.store import JournalStore
 
 logger = logging.getLogger(__name__)
@@ -46,9 +46,10 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class TextReply:
     """A playable segment synthesized from stored text (an assistant reply,
-    story-v1.8.3)."""
+    story-v1.8.3), segmented for the speech language it is voiced in."""
 
     text: str
+    speech_language: SpeechLanguage = field(default_factory=CharsetSpeechRouting)
 
 
 @dataclass(frozen=True)
@@ -78,18 +79,32 @@ class ReplayOutcome(Enum):
     EMPTY = "empty"
 
 
-def reply_speech_text(store: JournalStore, reference: JournalEventRef) -> str | None:
-    """The single 'text to speak for this turn' accessor (story-v1.8.2
-    forward seam): returns a past assistant reply's stored text for an
-    arbitrary turn, or None when the reference is not an assistant reply or
-    its session does not exist. v1.9.0's mode-3 spoken derivative will later
-    retarget this accessor without touching the replay/playback path."""
+def assistant_reply_speech(
+    event: JournalEvent, language_mode: TtsLanguageMode
+) -> TextReply:
+    """What replay speaks for an assistant reply: the stored mode-3 spoken
+    derivative when there is one (a partial derivative as stored), else the
+    reply text. The expected language comes from the reply text, as in the
+    live derivative pass, and the given mode decides the speech language."""
+    derivative = event.metadata.get(SPOKEN_DERIVATIVE_METADATA_KEY)
+    text = derivative if isinstance(derivative, str) else event.text
+    speech_language = resolve_speech_language(language_mode, text_language(event.text))
+    return TextReply(text, speech_language)
+
+
+def reply_speech(
+    store: JournalStore, reference: JournalEventRef, language_mode: TtsLanguageMode
+) -> TextReply | None:
+    """The single 'speech for this turn' accessor (story-v1.8.2 forward
+    seam): a past assistant reply's speech for an arbitrary turn, or None
+    when the reference is not an assistant reply or its session does not
+    exist."""
     replay = store.read_session(reference.session_id)
     for record in replay.records:
         if record.reference == reference:
             if record.event.role != "assistant":
                 return None
-            return record.event.text
+            return assistant_reply_speech(record.event, language_mode)
     return None
 
 
@@ -244,8 +259,8 @@ class ReplayPlayer:
     def is_active(self) -> bool:
         return self._task is not None and not self._task.done()
 
-    async def replay(self, text: str) -> ReplayOutcome:
-        return await self.replay_items([TextReply(text)])
+    async def replay(self, reply: TextReply) -> ReplayOutcome:
+        return await self.replay_items([reply])
 
     async def replay_many(
         self,
@@ -277,7 +292,7 @@ class ReplayPlayer:
         groups: list[tuple[int, PlayItem, list[tuple[str, str]]]] = []
         for index, item in enumerate(items):
             if isinstance(item, TextReply):
-                units = self._segment(item.text)
+                units = self._segment(item)
                 if units:
                     groups.append((index, item, units))
             else:
@@ -357,11 +372,9 @@ class ReplayPlayer:
             return None
         return data
 
-    def _segment(self, text: str) -> list[tuple[str, str]]:
-        buffer = SpeechUnitBuffer(
-            carry_connectives=_routes_share_one_engine(self._settings)
-        )
-        units = buffer.feed(text)
+    def _segment(self, reply: TextReply) -> list[tuple[str, str]]:
+        buffer = new_speech_units(reply.speech_language, self._settings)
+        units = buffer.feed(reply.text)
         units.extend(buffer.flush())
         return units
 
@@ -385,30 +398,23 @@ class SequencePlayer:
     pause/resume/cancel and busy rejection keep their v1.8.2 semantics at the
     grain of the whole sequence."""
 
-    def __init__(self, store: JournalStore, player: ReplayPlayer) -> None:
+    def __init__(
+        self,
+        store: JournalStore,
+        player: ReplayPlayer,
+        language_mode: TtsLanguageMode,
+    ) -> None:
         self._store = store
         self._player = player
-
-    def _assistant_records(self, start: JournalEventRef) -> list[JournalEventRecord]:
-        replay = self._store.read_session(start.session_id)
-        return [
-            record
-            for record in replay.records
-            if record.reference.event_position >= start.event_position
-            and record.event.role == "assistant"
-        ]
-
-    def texts_from(self, start: JournalEventRef) -> list[str]:
-        return [record.event.text for record in self._assistant_records(start)]
+        self._language_mode = language_mode
 
     def _play_item(self, event: JournalEvent) -> PlayItem | None:
         """The playable source for one event (story-v1.8.3 task 3 accessor):
-        an assistant reply's text to synthesize, a voice user turn's stored
-        wav to play directly, or None for a typed-user or system event. The
-        v1.9.0 seam stays: the assistant branch still returns text and later
-        retargets to the mode-3 derivative."""
+        an assistant reply's speech to synthesize (see
+        assistant_reply_speech), a voice user turn's stored wav to play
+        directly, or None for a typed-user or system event."""
         if event.role == "assistant":
-            return TextReply(event.text)
+            return assistant_reply_speech(event, self._language_mode)
         if event.role == "user" and event.source == "voice":
             wav = next(
                 (name for name in event.media if name.lower().endswith(".wav")), None

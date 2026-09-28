@@ -207,3 +207,11 @@ async def test_text_voice_second_pass_in_dynamic_mode_is_unchanged():
 
     assert _system_prompt(backend, 1) == "derivative contract"
     assert requests.events[1].speech_language == CharsetSpeechRouting()
+
+
+def test_orchestrator_exposes_the_tts_language_mode_replay_reads():
+    orchestrator, _backend, _cues = _orchestrator(
+        tts_language_mode=TtsLanguageMode.REQUEST
+    )
+
+    assert orchestrator.tts_language_mode is TtsLanguageMode.REQUEST

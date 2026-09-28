@@ -4319,7 +4319,7 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
 
 - **Re-synthesis, not stored audio (do not re-litigate without new evidence).**
   Replay calls the existing TTS engine on the stored reply text at press time
-  (`reply_speech_text()` + `ReplayPlayer` in `src/jarvis/audio/replay.py`); no
+  (`reply_speech()` + `ReplayPlayer` in `src/jarvis/audio/replay.py`); no
   waveform is ever stored. Chosen over persisting audio deliberately: exact
   acoustic reproduction is not worth the storage weight or the lock-in to the
   TTS settings that were active when the turn first played, and re-synthesis
@@ -4365,12 +4365,14 @@ See `tasks/story-v1.8.2-replay-tts.md` and its task cards.
   fetch promise carries the whole lifecycle, and is deliberately relaxed once
   the now-playing marker must move across rows the fetch promise cannot name.)
 
-- **Forward seam to v1.9.0.** `reply_speech_text()` is the single "text to
-  speak for this turn" accessor; it returns the canonical reply text today.
-  When v1.9.0's Text+TTS mode adds a per-turn spoken derivative, that accessor
-  retargets to the derivative and replay gains the nicer source with no change
-  to the Play control or playback path. See
-  `tasks/story-v1.9.0-response-modes.md`.
+- **Forward seam to v1.9.0 (retarget done 2026-09-29).**
+  `assistant_reply_speech()` is the single "speech for this turn" rule, used
+  by single-reply replay (`reply_speech()`) and play-from-here
+  (`SequencePlayer`) alike: a mode-3 reply speaks its stored
+  `spoken_derivative` (a partial derivative as stored, owner decision), any
+  other reply its canonical text. The speech language follows the current
+  `[tts].language_mode` - see "Architecture: TTS language mode". Card:
+  `tasks/done/task-journal-replay-speaks-mode3-derivative.md`.
 
 - **Deferred (not built here).** Pause/resume of a replay (a single global
   playback-position marker, resume-from-position) was explicitly deferred by
@@ -5095,8 +5097,15 @@ or to the model (`tasks/done/task-generation-num-predict-cap.md`).
 - Restart-to-apply from the Settings tab (`write_ui_config`
   `tts_language_mode`). The orchestrator stores the mode from its
   constructor and reads it per turn; a live toggle replaces that value with
-  a runtime state owner, the way `ResponseModeState` is injected. Journal
-  reply replay stays charset-routed.
+  a runtime state owner, the way `ResponseModeState` is injected.
+- Journal reply replay applies the current mode, read from the same owner
+  (`Orchestrator.tts_language_mode`), not a per-turn record (owner decision,
+  2026-09-29, consistent with replay's "current settings, not a snapshot"
+  rule). Expected language: `text_language()` of the canonical reply text, as
+  in mode 3's second pass. Accepted consequences: the journal does not record
+  the response mode, so with a non-`dynamic` setting a mode-1 reply is
+  replayed in one language although it was charset-routed live; and a
+  setting change also changes how older replies sound.
 - The system log's model-request line names the language asked of the
   model: `speech=ru|en|from-answer` (absent for charset routing).
 

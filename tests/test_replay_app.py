@@ -14,11 +14,12 @@ from jarvis.app import (
     replay_sequence,
 )
 from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, ReplayProgress
+from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings, TtsSettings
 from jarvis.inputs.interrupt import InterruptRequested
-from jarvis.journal.events import JournalEvent, JournalEventRef
+from jarvis.journal.events import JournalEvent, JournalEventRef, JSONValue
 from jarvis.journal.store import JournalStore
 from jarvis.ui.contract import SystemEvent
 
@@ -58,7 +59,9 @@ class _FakeTts:
         self.cancel_calls += 1
 
 
-def _assistant_event(text: str) -> JournalEvent:
+def _assistant_event(
+    text: str, metadata: dict[str, JSONValue] | None = None
+) -> JournalEvent:
     return JournalEvent(
         session_id=_SESSION,
         timestamp="2026-08-26T10:15:00+00:00",
@@ -67,6 +70,7 @@ def _assistant_event(text: str) -> JournalEvent:
         text=text,
         media=(),
         transcript=None,
+        metadata=metadata or {},
     )
 
 
@@ -79,6 +83,7 @@ def _app(
     is_busy: bool = False,
     mute_state: TtsMuteState | None = None,
     bus: EventBus | None = None,
+    tts_language_mode: TtsLanguageMode = TtsLanguageMode.DYNAMIC,
 ) -> App:
     bus = bus or EventBus()
     player = ReplayPlayer(TtsSettings(), engine, play=play, mute_state=mute_state)
@@ -88,7 +93,9 @@ def _app(
         audio_input=None,
         tts_output=_FakeTts(),
         capture_input=None,
-        orchestrator=types.SimpleNamespace(is_busy=is_busy),
+        orchestrator=types.SimpleNamespace(
+            is_busy=is_busy, tts_language_mode=tts_language_mode
+        ),
         sound_cues=cues,
         thinking_mode=None,
         response_mode=None,
@@ -144,6 +151,34 @@ def test_replay_reply_plays_a_past_reply_when_free(tmp_path):
     assert engine.seen == [("Hello there.", "en")]
     assert play.played == [b"Hello there."]
     assert cues.played == []
+
+
+def test_replay_reply_speaks_the_derivative_in_the_orchestrators_language_mode(
+    tmp_path,
+):
+    async def scenario():
+        engine = _FakeEngine()
+        store = _store(
+            tmp_path,
+            _assistant_event(
+                "An English canvas.",
+                {"spoken_derivative": "42. Привет, это WebSocket."},
+            ),
+        )
+        app = _app(
+            store=store,
+            engine=engine,
+            play=_RecordingPlay(),
+            cues=_RecordingCues(),
+            tts_language_mode=TtsLanguageMode.RUSSIAN,
+        )
+
+        await replay_reply(app, JournalEventRef(_SESSION, 0))
+        await app.replay_player.wait_for_pending()
+        return engine
+
+    engine = asyncio.run(scenario())
+    assert engine.seen == [("42.", "ru"), ("Привет, это WebSocket.", "ru")]
 
 
 def test_replay_reply_rejected_when_a_turn_is_speaking(tmp_path):
@@ -244,6 +279,34 @@ def test_replay_sequence_plays_every_assistant_reply_and_resolves(tmp_path):
     assert active_after is False
     assert engine.seen == [("first answer", "en"), ("second answer", "en")]
     assert play.played == [b"first answer", b"second answer"]
+
+
+def test_replay_sequence_applies_the_orchestrators_language_mode(tmp_path):
+    async def scenario():
+        engine = _FakeEngine()
+        store = _store(
+            tmp_path,
+            _assistant_event("42. Привет, это WebSocket."),
+            _assistant_event("Canvas.", {"spoken_derivative": "7. Это WebSocket."}),
+        )
+        app = _app(
+            store=store,
+            engine=engine,
+            play=_RecordingPlay(),
+            cues=_RecordingCues(),
+            tts_language_mode=TtsLanguageMode.ENGLISH,
+        )
+
+        await _run_reply_sequence(app, JournalEventRef(_SESSION, 0))
+        return engine
+
+    engine = asyncio.run(scenario())
+    assert engine.seen == [
+        ("42.", "en"),
+        ("Привет, это WebSocket.", "ru"),
+        ("7.", "en"),
+        ("Это WebSocket.", "ru"),
+    ]
 
 
 def _wav_bytes(frames: int = 64, sample_rate: int = 16000) -> bytes:
