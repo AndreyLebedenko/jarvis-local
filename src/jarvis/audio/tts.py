@@ -14,11 +14,17 @@ import soundfile as sf
 from jarvis.audio.language_segments import (
     DEFAULT_LANGUAGE,
     CharsetLanguageStream,
+    text_language,
 )
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
-from jarvis.core.lifecycle import ModelRequestStarted
+from jarvis.core.lifecycle import (
+    CharsetSpeechRouting,
+    ModelRequestStarted,
+    SingleLanguageSpeech,
+    SpeechLanguage,
+)
 from jarvis.dialog.backend import ResponseComplete, ResponseToken
 
 logger = logging.getLogger(__name__)
@@ -291,6 +297,43 @@ class SpeechUnitBuffer:
         )
 
 
+class SingleLanguageUnitBuffer:
+    """Streams response tokens into sentence units all voiced in one language.
+
+    No language-switch boundaries: a Latin term inside a Russian sentence
+    stays in that sentence. The answer's first sentence with letters decides
+    the language for the rest of the answer; the expected language only
+    voices sentences before that. The model was told the expected language,
+    but an explicit user request for another one outranks that directive,
+    and the voice must match the text actually written."""
+
+    def __init__(self, expected_language: str | None) -> None:
+        self._fallback_language = expected_language or DEFAULT_LANGUAGE
+        self._answer_language: str | None = None
+        self._sentences = SentenceBuffer()
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        return [self._unit(sentence) for sentence in self._sentences.feed(text)]
+
+    def flush(self) -> list[tuple[str, str]]:
+        remainder = self._sentences.flush()
+        units = (
+            [self._unit(remainder)]
+            if remainder and _WORD_CHAR_RE.search(remainder)
+            else []
+        )
+        self._answer_language = None
+        return units
+
+    def _unit(self, sentence: str) -> tuple[str, str]:
+        if self._answer_language is None:
+            self._answer_language = text_language(sentence)
+        return sentence, self._answer_language or self._fallback_language
+
+
+SpeechUnits = SpeechUnitBuffer | SingleLanguageUnitBuffer
+
+
 class OrderedPlayback:
     """Plays (index, audio) results in strict index order, regardless of
     the order they are submitted in - so concurrent synthesis of several
@@ -367,13 +410,8 @@ class TtsOutput:
         # tts_mute.py's docstring. None (no state owner injected) means
         # always-enabled, matching every test/caller that predates muting.
         self._mute_state = mute_state
-        # Carrying a short language-switch remainder into the next unit is
-        # only safe when one engine voices everything; with per-language
-        # engines it would hand text to an engine that cannot pronounce it
-        # (see _CONNECTIVE_MAX_WORD_CHARS).
-        self._units = SpeechUnitBuffer(
-            carry_connectives=_routes_share_one_engine(settings)
-        )
+        self._speech_language: SpeechLanguage = CharsetSpeechRouting()
+        self._units = self._new_units()
         self._engine = engine
         # Shared with SoundCuePlayer (see main.py's build_app()) so a sound
         # cue can never physically overlap a spoken sentence on the
@@ -401,6 +439,8 @@ class TtsOutput:
 
     async def on_request_started(self, event: ModelRequestStarted) -> None:
         self._speak_streaming = event.speak_streaming
+        self._speech_language = event.speech_language
+        self._units = self._new_units()
 
     async def on_token(self, event: ResponseToken) -> None:
         if self._mute_state is not None and not self._mute_state.enabled:
@@ -458,9 +498,7 @@ class TtsOutput:
         self._playback.cancel()
         self._playback = OrderedPlayback(self._play_unit)
         self._next_index = 0
-        self._units = SpeechUnitBuffer(
-            carry_connectives=_routes_share_one_engine(self._settings)
-        )
+        self._units = self._new_units()
         for task in self._pending_tasks:
             task.cancel()
         # Replaced wholesale, not just cancelled-and-left-in-place: a
@@ -473,6 +511,17 @@ class TtsOutput:
         self._pending_tasks = set()
         if self._uses_default_play:
             sd.stop()
+
+    def _new_units(self) -> SpeechUnits:
+        if isinstance(self._speech_language, SingleLanguageSpeech):
+            return SingleLanguageUnitBuffer(self._speech_language.language)
+        # Carrying a short language-switch remainder into the next unit is
+        # only safe when one engine voices everything; with per-language
+        # engines it would hand text to an engine that cannot pronounce it
+        # (see _CONNECTIVE_MAX_WORD_CHARS).
+        return SpeechUnitBuffer(
+            carry_connectives=_routes_share_one_engine(self._settings)
+        )
 
     def _schedule(self, text: str, language: str) -> None:
         index = self._next_index

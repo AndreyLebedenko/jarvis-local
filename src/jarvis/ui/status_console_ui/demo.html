@@ -170,6 +170,10 @@
       <label for="ttsEnabled">Speak responses</label>
       <input type="checkbox" id="ttsEnabled" onchange="onTtsEnabledChanged()">
     </div>
+    <div class="config-field">
+      <label for="ttsLanguageModeSelect">Speech language</label>
+      <select id="ttsLanguageModeSelect" onchange="onConfigInputChanged()"></select>
+    </div>
     <div class="config-field config-field-checkbox">
       <label for="ttsCustomRoutes">Configure per-language voices</label>
       <input type="checkbox" id="ttsCustomRoutes" onchange="onTtsRoutingModeChanged()">

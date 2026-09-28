@@ -18,7 +18,7 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import GenerationOptions, Settings, VadSettings
-from jarvis.core.lifecycle import TurnCompleted
+from jarvis.core.lifecycle import CharsetSpeechRouting, TurnCompleted
 from jarvis.dialog.backend import (
     ResponseComplete,
     ResponseToken,
@@ -517,6 +517,7 @@ async def _dispatch(orchestrator, interrupt_requested: asyncio.Event):
         None,
         interrupt_requested,
         options=GenerationOptions(),
+        speech_language=CharsetSpeechRouting(),
     )
 
 

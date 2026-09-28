@@ -335,6 +335,10 @@ class TtsSettings:
     # this stays a restart-to-apply default, mirroring how visibility mode
     # is runtime-only while its config analogues persist explicitly.
     enabled: bool = True
+    # How speech picks its language (SUPPORTED_TTS_LANGUAGE_MODES): "dynamic"
+    # routes each Cyrillic/Latin run to its own route; "request" voices the
+    # whole answer in the request's language; "ru"/"en" fix it.
+    language_mode: str = "dynamic"
     languages: dict[str, TtsLanguageSettings] = field(
         default_factory=_default_tts_languages
     )
@@ -676,6 +680,30 @@ _DEFAULT_RESPONSE_VOICE_CONTRACT = (
     "произнесённом ответе - у пользователя нет экрана с этим текстом перед "
     "глазами."
 )
+# Speech-language directives: appended to the voice-mode turn and to mode 3's
+# spoken-derivative pass when [tts].language_mode voices the whole answer in
+# one language, so the model writes text that one voice can pronounce. Each is
+# a default, weaker than the user explicitly asking for another language.
+_DEFAULT_SPEECH_LANGUAGE_RU = (
+    "Ответ будет целиком озвучен голосом одного языка. Пиши весь ответ "
+    "по-русски, на каком бы языке ни был запрос или исходный текст, если "
+    "только пользователь прямо не попросил ответить на другом языке. Не "
+    "смешивай языки: иностранные имена, термины и идентификаторы переводи "
+    "или записывай письменностью языка ответа так, как они произносятся."
+)
+_DEFAULT_SPEECH_LANGUAGE_EN = (
+    "The answer will be spoken entirely by a voice of one language. Write the "
+    "whole answer in English, whatever the language of the request or the "
+    "source text, unless the user explicitly asked for another language. Do "
+    "not mix languages: translate foreign names and terms or transliterate "
+    "them into the script of the answer language."
+)
+_DEFAULT_SPEECH_LANGUAGE_REQUEST = (
+    "Ответ будет целиком озвучен голосом одного языка. Отвечай на языке "
+    "вопроса, если только пользователь прямо не попросил ответить на другом "
+    "языке. Не смешивай языки: иностранные имена и термины переводи или "
+    "записывай письменностью языка ответа."
+)
 _DEFAULT_RESPONSE_TEXT_VOICE_CONTRACT = (
     "Тебе передан точный текст, уже показанный пользователю на экране. "
     "Перескажи его вслух как связную речь: убери Markdown, списки и "
@@ -705,10 +733,16 @@ class ResponseSettings:
     project-module imports (test_config_has_no_project_import_dependencies).
     `voice_contract` is appended to the dialog turn's system prompt in mode 2;
     it modifies a dialog turn at any reasoning level, so it is not a
-    generation profile of its own."""
+    generation profile of its own. The `speech_language_*` directives tell
+    the model which single language its spoken text will be voiced in
+    ([tts].language_mode); `speech_language_request` is for a request whose
+    language is not known before the answer."""
 
     mode: str = "text"
     voice_contract: str = _DEFAULT_RESPONSE_VOICE_CONTRACT
+    speech_language_ru: str = _DEFAULT_SPEECH_LANGUAGE_RU
+    speech_language_en: str = _DEFAULT_SPEECH_LANGUAGE_EN
+    speech_language_request: str = _DEFAULT_SPEECH_LANGUAGE_REQUEST
 
 
 REASONING_VALUES = ("off", "low", "medium", "high")
@@ -947,6 +981,7 @@ _SECTIONS: dict[str, type] = {
 SUPPORTED_UI_LANGUAGES = ("en", "ru")
 SUPPORTED_RESPONSE_MODES = ("text", "voice", "text_voice")
 SUPPORTED_TTS_LANGUAGES = frozenset({"ru", "en"})
+SUPPORTED_TTS_LANGUAGE_MODES = ("dynamic", "request", "ru", "en")
 SUPPORTED_TTS_ENGINES = frozenset(TTS_ROUTE_TYPES)
 
 
@@ -1201,11 +1236,20 @@ def _build_response_section(
         raise ConfigError(
             f"[{section_name}].mode must be one of: {supported}; got {settings.mode!r}"
         )
+    prompt_fields = (
+        "voice_contract",
+        "speech_language_ru",
+        "speech_language_en",
+        "speech_language_request",
+    )
     return replace(
         settings,
-        voice_contract=_resolve_prompt_field(
-            section_name, "voice_contract", settings.voice_contract, prompt_root
-        ),
+        **{
+            name: _resolve_prompt_field(
+                section_name, name, getattr(settings, name), prompt_root
+            )
+            for name in prompt_fields
+        },
     )
 
 
@@ -1833,7 +1877,14 @@ def _build_tts_section(section_name: str, raw: dict[str, Any]) -> TtsSettings:
                 f"got {type(value).__name__}: {value!r}"
             )
         kwargs[name] = value
-    return TtsSettings(**kwargs)  # type: ignore[arg-type]
+    settings = TtsSettings(**kwargs)  # type: ignore[arg-type]
+    if settings.language_mode not in SUPPORTED_TTS_LANGUAGE_MODES:
+        supported = ", ".join(SUPPORTED_TTS_LANGUAGE_MODES)
+        raise ConfigError(
+            f"[{section_name}].language_mode must be one of: {supported}; "
+            f"got {settings.language_mode!r}"
+        )
+    return settings
 
 
 def _build_tts_languages(
@@ -2119,6 +2170,7 @@ def write_ui_config(
     vad: VadSettings | None = None,
     tts_routes: dict[str, TtsLanguageSettings] | None = None,
     tts_enabled: bool | None = None,
+    tts_language_mode: str | None = None,
     mcp_enabled: bool | None = None,
     response_mode: str | None = None,
 ) -> None:
@@ -2147,10 +2199,11 @@ def write_ui_config(
     tts_enabled is independent of tts_routes (task-ui-ux-3): it is the
     Settings form's restart-to-apply TTS default, plumbed through like every
     other selection field here - unlike the live runtime mute toggle, which
-    deliberately does not persist (see tts_mute.py). Written as an explicit
-    [tts] header before any [tts.languages.*] section, so a parent table is
-    never opened after TOML has already implicitly created it via a child
-    table header."""
+    deliberately does not persist (see tts_mute.py). tts_language_mode is
+    the same kind of restart-to-apply [tts] field. Both are written under an
+    explicit [tts] header before any [tts.languages.*] section, so a parent
+    table is never opened after TOML has already implicitly created it via a
+    child table header."""
     lines = [
         "# Auto-generated by the Jarvis Status Console. Do not edit by",
         "# hand - saving from the config menu overwrites this file.",
@@ -2174,8 +2227,13 @@ def write_ui_config(
             f"request_end_pause_seconds = {vad.request_end_pause_seconds}",
             f"resume_cooldown_seconds = {vad.resume_cooldown_seconds}",
         ]
+    tts_lines = []
     if tts_enabled is not None:
-        lines += ["", "[tts]", f"enabled = {str(tts_enabled).lower()}"]
+        tts_lines.append(f"enabled = {str(tts_enabled).lower()}")
+    if tts_language_mode is not None:
+        tts_lines.append(f"language_mode = {json.dumps(tts_language_mode)}")
+    if tts_lines:
+        lines += ["", "[tts]", *tts_lines]
     if tts_routes is not None:
         for language in sorted(tts_routes):
             route = tts_routes[language]

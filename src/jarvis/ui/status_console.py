@@ -15,6 +15,7 @@ from jarvis.core.config import (
     DEFAULT_UI_CONFIG_PATH,
     SUPPORTED_RESPONSE_MODES,
     SUPPORTED_TTS_ENGINES,
+    SUPPORTED_TTS_LANGUAGE_MODES,
     SUPPORTED_TTS_LANGUAGES,
     SUPPORTED_UI_LANGUAGES,
     Settings,
@@ -387,6 +388,8 @@ def config_values_payload(settings: Settings) -> dict:
         },
         "tts": {
             "enabled": settings.tts.enabled,
+            "language_mode": settings.tts.language_mode,
+            "language_mode_options": list(SUPPORTED_TTS_LANGUAGE_MODES),
             "languages": sorted(SUPPORTED_TTS_LANGUAGES),
             "engines": sorted(SUPPORTED_TTS_ENGINES),
             "schemas": {
@@ -948,6 +951,7 @@ class StatusConsoleApi:
         vad: VadSettings | None = None,
         tts_routes: dict[str, TtsLanguageSettings] | None = None,
         tts_enabled: bool | None = None,
+        tts_language_mode: str | None = None,
     ) -> None:
         selection = UiConfigSelection(
             model=model,
@@ -963,6 +967,7 @@ class StatusConsoleApi:
             vad=vad,
             tts_routes=tts_routes,
             tts_enabled=tts_enabled,
+            tts_language_mode=tts_language_mode,
         )
         self._schedule(self._save_config_selection_async(selection))
 
@@ -997,6 +1002,7 @@ class StatusConsoleApi:
             vad=selection.vad,
             tts_routes=selection.tts_routes,
             tts_enabled=selection.tts_enabled,
+            tts_language_mode=selection.tts_language_mode,
             mcp_enabled=(
                 self._mcp_host.enabled
                 if self._mcp_host is not None
@@ -1021,7 +1027,8 @@ class StatusConsoleApi:
                 f"ui_language={selection.ui_language!r}, "
                 f"vad={'set' if selection.vad else 'default'}, "
                 f"tts_routes={'set' if selection.tts_routes else 'default'}, "
-                f"tts_enabled={selection.tts_enabled!r}); "
+                f"tts_enabled={selection.tts_enabled!r}, "
+                f"tts_language_mode={selection.tts_language_mode!r}); "
                 "restart to apply"
             ),
             ui_message=ui_text("config_saved_restart_to_apply", self._language),

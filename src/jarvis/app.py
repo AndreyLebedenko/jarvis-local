@@ -20,6 +20,7 @@ from jarvis.audio.input import (
     stream_factory_for_device,
 )
 from jarvis.audio.input import run_hotkey_listener as run_mic_sleep_hotkey_listener
+from jarvis.audio.language_segments import text_language
 from jarvis.audio.replay import (
     ReplayOutcome,
     ReplayPlayer,
@@ -28,6 +29,11 @@ from jarvis.audio.replay import (
     reply_speech_text,
 )
 from jarvis.audio.sound_cues import SoundCuePlayer, ensure_generated
+from jarvis.audio.speech_language import (
+    TtsLanguageMode,
+    resolve_speech_language,
+    speech_language_contract,
+)
 from jarvis.audio.tts import TtsOutput
 from jarvis.audio.tts_factory import build_tts_engine
 from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
@@ -60,12 +66,14 @@ from jarvis.core.lifecycle import (
     AttachmentSubmissionReason,
     AttachmentSubmissionResult,
     BackendRequestFailed,
+    CharsetSpeechRouting,
     ModelRequestInput,
     ModelRequestPassKind,
     ModelRequestStarted,
     NewContextReason,
     NewContextResult,
     PersistedFileOutcome,
+    SpeechLanguage,
     TextSubmissionReason,
     TextSubmissionResult,
     TurnAccepted,
@@ -265,6 +273,10 @@ def _compose_effective_system_prompt(
     return f"{base_prompt}\n\n{section}"
 
 
+def _join_prompt_sections(*sections: str | None) -> str:
+    return "\n\n".join(section for section in sections if section)
+
+
 # Only mode 2 (voice) modifies the dialog turn. Mode 1 (text) and mode 3's
 # first pass are the canonical text, composed alike; mode 3's spoken
 # derivative is a request of its own (the spoken_derivative generation
@@ -273,10 +285,15 @@ def _compose_response_mode_contract(
     base_prompt: str,
     response_mode: ResponseMode,
     response_settings: ResponseSettings,
+    speech_language: SpeechLanguage,
 ) -> str:
     if response_mode is not ResponseMode.VOICE:
         return base_prompt
-    return f"{base_prompt}\n\n{response_settings.voice_contract}"
+    return _join_prompt_sections(
+        base_prompt,
+        response_settings.voice_contract,
+        speech_language_contract(speech_language, response_settings),
+    )
 
 
 def _history_limits_from_settings(
@@ -431,6 +448,7 @@ class Orchestrator:
         session_file_repository: SessionFileRepository | None = None,
         session_file_scope: Callable[[], SessionFileScope] | None = None,
         on_turn_start: Callable[[], object] | None = None,
+        tts_language_mode: TtsLanguageMode = TtsLanguageMode.DYNAMIC,
     ) -> None:
         self._backend = backend
         # Called the instant a turn is accepted, before any speech: a live
@@ -453,6 +471,7 @@ class Orchestrator:
         self._prompt_settings = prompt_settings or PromptSettings()
         self._generation_settings = generation_settings or GenerationSettings()
         self._response_settings = response_settings or ResponseSettings()
+        self._tts_language_mode = tts_language_mode
         self._history_limits = (
             history_limits
             if history_limits is not None
@@ -640,6 +659,7 @@ class Orchestrator:
             audio_duration_seconds=event.end_seconds - event.start_seconds,
             voice_wav_bytes=event.wav_bytes,
             screenshot_png_bytes=screenshot_png,
+            request_language_text=None,
         )
 
     async def on_clipboard(self, event: ClipboardSubmitted) -> None:
@@ -665,6 +685,7 @@ class Orchestrator:
             audio_duration_seconds=None,
             voice_wav_bytes=None,
             screenshot_png_bytes=None,
+            request_language_text=event.text,
         )
 
     async def submit_text_input(self, text: str) -> TextSubmissionResult:
@@ -692,6 +713,7 @@ class Orchestrator:
             voice_wav_bytes=None,
             screenshot_png_bytes=None,
             journal_source="dock",
+            request_language_text=text,
         )
         return TextSubmissionResult(
             TextSubmissionReason.ACCEPTED, self._text_input_max_chars
@@ -836,6 +858,7 @@ class Orchestrator:
             voice_wav_bytes=None,
             screenshot_png_bytes=None,
             post_journal_hook=persist_hook if persistent_uploads else None,
+            request_language_text=typed_text,
         )
         return AttachmentSubmissionResult(
             AttachmentSubmissionReason.ACCEPTED, persisted_files=tuple(persisted)
@@ -945,9 +968,13 @@ class Orchestrator:
         audio_duration_seconds: float | None,
         voice_wav_bytes: bytes | None,
         screenshot_png_bytes: bytes | None,
+        request_language_text: str | None,
         journal_source: str | None = None,
         post_journal_hook: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
+        """`request_language_text` is what the user typed - the text whose
+        language [tts].language_mode "request" follows; None for a voice
+        request, whose language is unknown before the answer."""
         # Defensive re-check: on_utterance()/on_clipboard() already gate on
         # busy before doing their own turn-specific setup above, with no
         # `await` in between - so this can only fire for a caller that
@@ -1061,10 +1088,14 @@ class Orchestrator:
         # mic-auto-pause (self._current_pass_speaks), so neither fires before
         # any audio is actually about to play.
         speak_streaming = response_mode is not ResponseMode.TEXT_VOICE
+        speech_language = self._turn_speech_language(
+            response_mode, request_language_text
+        )
         effective_system_prompt = _compose_response_mode_contract(
             effective_system_prompt,
             response_mode,
             self._response_settings,
+            speech_language,
         )
         (
             retrieved_passages,
@@ -1098,7 +1129,22 @@ class Orchestrator:
                 _dialog_profile_name(reasoning_level)
             ),
             speak_streaming=speak_streaming,
+            speech_language=speech_language,
         )
+
+    def _turn_speech_language(
+        self, response_mode: ResponseMode, request_language_text: str | None
+    ) -> SpeechLanguage:
+        # Text mode's answer is written for the screen, not for one voice, so
+        # [tts].language_mode does not apply to it (owner decision).
+        if response_mode is ResponseMode.TEXT:
+            return CharsetSpeechRouting()
+        request_language = (
+            text_language(request_language_text)
+            if request_language_text is not None
+            else None
+        )
+        return resolve_speech_language(self._tts_language_mode, request_language)
 
     async def _prepare_automatic_retrieval(
         self,
@@ -1290,6 +1336,7 @@ class Orchestrator:
         options: GenerationOptions,
         speak_streaming: bool = True,
         pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY,
+        speech_language: SpeechLanguage,
     ) -> ResponseComplete | None:
         """Runs the backend call as a cancellable task and handles its
         three outcomes: normal completion (ResponseComplete drives the rest;
@@ -1340,6 +1387,7 @@ class Orchestrator:
                     prompt_budget=prompt_budget,
                     speak_streaming=speak_streaming,
                     pass_kind=pass_kind,
+                    speech_language=speech_language,
                 )
                 # Not publish_system_event(): the events panel already has
                 # this turn as a typed, localized entry (task-v1.6.4-2), so
@@ -1479,8 +1527,15 @@ class Orchestrator:
         derivative_profile = self._generation_settings.profile(
             SPOKEN_DERIVATIVE_PROFILE
         )
+        speech_language = resolve_speech_language(
+            self._tts_language_mode, text_language(canonical_text)
+        )
+        system_prompt = _join_prompt_sections(
+            derivative_profile.prompt,
+            speech_language_contract(speech_language, self._response_settings),
+        )
         messages: list[dict[str, object]] = [
-            {"role": "system", "content": derivative_profile.prompt or ""},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": canonical_text},
         ]
         derivative_completion = await self._dispatch_backend_request(
@@ -1493,6 +1548,7 @@ class Orchestrator:
             options=self._generation_settings.options_for(SPOKEN_DERIVATIVE_PROFILE),
             speak_streaming=True,
             pass_kind=ModelRequestPassKind.DERIVATIVE,
+            speech_language=speech_language,
         )
         derivative_text = "".join(self._response_tokens)
         if self._journal_recorder is not None and self._journal_turn_started:
@@ -2015,6 +2071,7 @@ def build_app(
         prompt_settings=settings.prompts,
         generation_settings=settings.generation,
         response_settings=settings.response,
+        tts_language_mode=TtsLanguageMode(settings.tts.language_mode),
         history_limits=_history_limits_from_settings(
             settings.history, settings.generation
         ),

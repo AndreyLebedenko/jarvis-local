@@ -6,10 +6,13 @@ overlap: Cyrillic means Russian, Latin means English. Digits, whitespace, and
 punctuation are neutral and are attached to the nearest surrounding text.
 """
 
+import re
 from dataclasses import dataclass
 
 DEFAULT_LANGUAGE = "ru"
 ENGLISH = "en"
+
+_CODE_SPAN_RE = re.compile(r"```.*?(?:```|$)|`[^`\n]*`", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,20 @@ class CharsetLanguageStream:
 def segment_by_charset(text: str) -> list[LanguageSegment]:
     stream = CharsetLanguageStream()
     return _merge_adjacent([*stream.feed(text), *stream.close()])
+
+
+def text_language(text: str) -> str | None:
+    """The language a whole text is written in: Russian if any Cyrillic
+    letter appears outside code, else English if any Latin letter does,
+    else None. Cyrillic-first because Russian prose routinely carries long
+    English terms, while English prose rarely carries Cyrillic."""
+    prose = _CODE_SPAN_RE.sub(" ", text)
+    languages = {_char_language(char) for char in prose}
+    if DEFAULT_LANGUAGE in languages:
+        return DEFAULT_LANGUAGE
+    if ENGLISH in languages:
+        return ENGLISH
+    return None
 
 
 def _merge_adjacent(segments: list[LanguageSegment]) -> list[LanguageSegment]:

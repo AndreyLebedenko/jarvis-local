@@ -128,6 +128,25 @@ class TurnAccepted:
 
 
 @dataclass(frozen=True)
+class CharsetSpeechRouting:
+    """Each Cyrillic/Latin run of the answer is voiced by its own language
+    route - the default, unchanged since v1.2.8."""
+
+
+@dataclass(frozen=True)
+class SingleLanguageSpeech:
+    """The whole answer is voiced in one language: the one its first sentence
+    is written in. `language` is the language the model was asked for, used
+    until that sentence arrives; None when it is not known before the
+    answer."""
+
+    language: str | None = None
+
+
+SpeechLanguage = CharsetSpeechRouting | SingleLanguageSpeech
+
+
+@dataclass(frozen=True)
 class ModelRequestStarted:
     """Metadata-only statement that an accepted backend call is beginning.
 
@@ -145,6 +164,9 @@ class ModelRequestStarted:
     first-pass text. Purely descriptive (logging/events-panel tagging via
     model_request_log_message()) - TtsOutput and the dispatch pipeline
     never branch on it, only on speak_streaming.
+
+    speech_language: which language(s) TtsOutput voices this dispatch's
+    answer in, latched the same way as speak_streaming.
     """
 
     timestamp: float
@@ -153,6 +175,7 @@ class ModelRequestStarted:
     prompt_budget: dict[str, int | bool | str] | None = None
     speak_streaming: bool = True
     pass_kind: ModelRequestPassKind = ModelRequestPassKind.PRIMARY
+    speech_language: SpeechLanguage = CharsetSpeechRouting()
 
 
 @dataclass(frozen=True)

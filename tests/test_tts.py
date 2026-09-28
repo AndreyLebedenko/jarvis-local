@@ -43,7 +43,11 @@ from jarvis.audio.tts_silero import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import PiperTtsSettings, SileroTtsSettings, TtsSettings
-from jarvis.core.lifecycle import ModelRequestStarted
+from jarvis.core.lifecycle import (
+    CharsetSpeechRouting,
+    ModelRequestStarted,
+    SingleLanguageSpeech,
+)
 from jarvis.dialog.backend import LatencyMetrics, ResponseComplete, ResponseToken
 
 
@@ -1201,6 +1205,130 @@ async def test_on_token_speaks_again_once_unmuted():
     await tts.wait_for_pending()
 
     assert played == ["Услышано."]
+
+
+async def _discard_play(_audio: bytes) -> None:
+    return None
+
+
+def _speech_started(speech_language) -> ModelRequestStarted:
+    return ModelRequestStarted(
+        timestamp=0.0,
+        inputs=(),
+        audio_duration_seconds=None,
+        speech_language=speech_language,
+    )
+
+
+def _response_complete() -> ResponseComplete:
+    return ResponseComplete(
+        metrics=LatencyMetrics(
+            load_seconds=0.0,
+            prompt_eval_seconds=0.0,
+            eval_seconds=0.0,
+            eval_count=0,
+        ),
+        done_reason="stop",
+    )
+
+
+async def _voiced_units(speech_language, *tokens: str) -> list[tuple[str, str]]:
+    engine = _FakeEngine()
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_discard_play)
+    await tts.on_request_started(_speech_started(speech_language))
+    for token in tokens:
+        await tts.on_token(ResponseToken(text=token))
+    await tts.on_response_complete(_response_complete())
+    await tts.wait_for_pending()
+    return engine.seen
+
+
+async def test_charset_routing_splits_a_sentence_at_each_language_switch():
+    units = await _voiced_units(
+        CharsetSpeechRouting(), "Функция parse_user_id готова. "
+    )
+
+    assert [language for _text, language in units] == ["ru", "en", "ru"]
+
+
+@pytest.mark.parametrize("expected_language", ["ru", "en", None])
+async def test_a_single_language_pass_voices_a_mixed_sentence_whole(
+    expected_language,
+):
+    units = await _voiced_units(
+        SingleLanguageSpeech(expected_language), "Функция parse_user_id готова. "
+    )
+
+    assert units == [("Функция parse_user_id готова.", "ru")]
+
+
+async def test_the_answers_first_sentence_decides_the_language_for_the_whole_answer():
+    """The expected language is only what the model was told: a user asking
+    for another language outranks that directive, and the voice must follow
+    the answer the model actually wrote."""
+    units = await _voiced_units(
+        SingleLanguageSpeech("ru"), "Sure, in English. ", "Потом по-русски. И хвост"
+    )
+
+    assert units == [
+        ("Sure, in English.", "en"),
+        ("Потом по-русски.", "en"),
+        ("И хвост", "en"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("expected_language", "fallback"), [("en", "en"), ("ru", "ru"), (None, "ru")]
+)
+async def test_a_first_sentence_without_letters_is_voiced_in_the_expected_language(
+    expected_language, fallback
+):
+    units = await _voiced_units(
+        SingleLanguageSpeech(expected_language), "42. The answer. "
+    )
+
+    assert units == [("42.", fallback), ("The answer.", "en")]
+
+
+async def test_the_answer_language_is_decided_again_for_the_next_answer():
+    engine = _FakeEngine()
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_discard_play)
+
+    await tts.on_request_started(_speech_started(SingleLanguageSpeech()))
+    await tts.on_token(ResponseToken(text="In English. "))
+    await tts.on_response_complete(_response_complete())
+    await tts.on_request_started(_speech_started(SingleLanguageSpeech()))
+    await tts.on_token(ResponseToken(text="По-русски. "))
+    await tts.wait_for_pending()
+
+    assert engine.seen == [("In English.", "en"), ("По-русски.", "ru")]
+
+
+async def test_a_later_charset_directive_routes_by_charset_again():
+    engine = _FakeEngine()
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_discard_play)
+
+    await tts.on_request_started(_speech_started(SingleLanguageSpeech("ru")))
+    await tts.on_request_started(_speech_started(CharsetSpeechRouting()))
+    await tts.on_token(ResponseToken(text="Функция parse_user_id готова. "))
+    await tts.wait_for_pending()
+
+    assert [language for _text, language in engine.seen] == ["ru", "en", "ru"]
+
+
+async def test_an_unflushed_partial_sentence_does_not_leak_into_the_next_pass():
+    """A pass that never reached ResponseComplete (a backend failure mid-
+    stream) leaves text in the unit buffer; the next pass starts clean."""
+    engine = _FakeEngine()
+    tts = TtsOutput(TtsSettings(), engine=engine, play=_discard_play)
+
+    await tts.on_request_started(_speech_started(CharsetSpeechRouting()))
+    await tts.on_token(ResponseToken(text="Недосказанное"))
+    await tts.on_request_started(_speech_started(CharsetSpeechRouting()))
+    await tts.on_token(ResponseToken(text="Новый ответ. "))
+    await tts.wait_for_pending()
+
+    assert engine.seen == [("Новый ответ.", "ru")]
 
 
 def test_append_wav_tail_silence_extends_audio_duration():

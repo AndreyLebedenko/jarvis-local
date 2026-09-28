@@ -155,6 +155,7 @@ class _FakeControlApi:
         vad=None,
         tts_routes=None,
         tts_enabled=None,
+        tts_language_mode=None,
     ) -> None:
         self.calls.append(("save_config_selection", f"{model}|{microphone_device}"))
         self.config_kwargs = {
@@ -164,6 +165,7 @@ class _FakeControlApi:
             "vad": vad,
             "tts_routes": tts_routes,
             "tts_enabled": tts_enabled,
+            "tts_language_mode": tts_language_mode,
         }
 
 
@@ -1212,6 +1214,31 @@ def test_save_config_selection_without_response_mode_passes_none():
     assert control_api.config_kwargs["response_mode"] is None
 
 
+def test_save_config_selection_parses_the_tts_language_mode_argument():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    server._dispatch_control(
+        "save_config_selection",
+        {"model": "demo", "microphone": "mic-1", "tts_language_mode": "request"},
+    )
+
+    assert control_api.config_kwargs["tts_language_mode"] == "request"
+
+
+def test_save_config_selection_rejects_a_non_string_tts_language_mode():
+    control_api = _FakeControlApi()
+    server = UiTransportServer(EventBus(), control_api)
+
+    with pytest.raises(ProtocolError, match="tts_language_mode"):
+        server._dispatch_control(
+            "save_config_selection",
+            {"model": "demo", "microphone": "mic-1", "tts_language_mode": 1},
+        )
+
+    assert control_api.calls == []
+
+
 def test_save_config_selection_rejects_non_boolean_tts_enabled():
     control_api = _FakeControlApi()
     server = UiTransportServer(EventBus(), control_api)
@@ -1268,6 +1295,7 @@ def test_save_config_selection_without_new_fields_passes_none():
         "vad": None,
         "tts_routes": None,
         "tts_enabled": None,
+        "tts_language_mode": None,
         "response_mode": None,
     }
 

@@ -20,6 +20,7 @@ from jarvis.core.config import (
     VadSettings,
 )
 from jarvis.core.lifecycle import (
+    CharsetSpeechRouting,
     ModelRequestStarted,
 )
 from jarvis.dialog.backend import (
@@ -255,6 +256,7 @@ async def test_backend_failure_does_not_double_record_when_interrupt_already_cla
         None,
         asyncio.Event(),
         options=GenerationOptions(),
+        speech_language=CharsetSpeechRouting(),
     )
 
     assert orchestrator._history.as_messages() == []

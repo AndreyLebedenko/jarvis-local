@@ -13,6 +13,7 @@ import pytest
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     SUPPORTED_RESPONSE_MODES,
+    SUPPORTED_TTS_LANGUAGE_MODES,
     TTS_ROUTE_TYPES,
     MemorySettings,
 )
@@ -101,6 +102,7 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
             "mcp_",
             "response_mode_",
             "think_status_",
+            "tts_language_mode_",
         }
     )
     assert used <= keys
@@ -131,6 +133,19 @@ def test_every_supported_response_mode_has_a_settings_option_label():
     UI language with the Settings tab open throws inside uiString()."""
     keys = _strings_js_keys()
     expected = {f"response_mode_{mode}_option" for mode in SUPPORTED_RESPONSE_MODES}
+
+    for language, language_keys in keys.items():
+        assert expected <= language_keys, language
+
+
+def test_every_supported_tts_language_mode_has_a_settings_option_label():
+    """Same dynamic-key gap as the response-mode drop-down above:
+    applyConfigValues() labels each [tts].language_mode option through
+    uiString("tts_language_mode_" + mode + "_option")."""
+    keys = _strings_js_keys()
+    expected = {
+        f"tts_language_mode_{mode}_option" for mode in SUPPORTED_TTS_LANGUAGE_MODES
+    }
 
     for language, language_keys in keys.items():
         assert expected <= language_keys, language

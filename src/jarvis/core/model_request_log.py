@@ -11,13 +11,18 @@ would render every turn twice - once localized, once as a raw English
 diagnostic. The panel half and the file half are produced separately and
 on purpose.
 
-The line carries modality kinds, their count, the audio duration, and the
-budget/retrieval telemetry exposed through prompt_budget - nothing else.
+The line carries modality kinds, their count, the audio duration, the
+single speech language asked of the model, and the budget/retrieval
+telemetry exposed through prompt_budget - nothing else.
 The story's content rule binds this module: no transcript, no clipboard
 text, no attachment file names, no media bytes or sizes.
 """
 
-from jarvis.core.lifecycle import ModelRequestPassKind, ModelRequestStarted
+from jarvis.core.lifecycle import (
+    ModelRequestPassKind,
+    ModelRequestStarted,
+    SingleLanguageSpeech,
+)
 
 LOG_SOURCE = "LLM"
 
@@ -28,6 +33,8 @@ def model_request_log_message(event: ModelRequestStarted) -> str:
     parts = [f"Model request: inputs={kinds}", f"count={len(event.inputs)}"]
     if event.pass_kind is not ModelRequestPassKind.PRIMARY:
         parts.append(f"pass={event.pass_kind.value}")
+    if isinstance(event.speech_language, SingleLanguageSpeech):
+        parts.append(f"speech={event.speech_language.language or 'from-answer'}")
     if event.audio_duration_seconds is not None:
         parts.append(f"audio_duration={event.audio_duration_seconds:.1f}s")
     if event.prompt_budget is not None:

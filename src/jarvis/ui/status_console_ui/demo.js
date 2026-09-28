@@ -353,6 +353,8 @@ function _demoConfigValues(bilingual) {
     },
     tts: {
       enabled: true,
+      language_mode: "dynamic",
+      language_mode_options: ["dynamic", "request", "ru", "en"],
       languages: ["en", "ru"],
       engines: ["piper", "silero"],
       schemas,

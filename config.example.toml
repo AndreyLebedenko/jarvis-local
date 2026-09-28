@@ -255,6 +255,16 @@ resume_cooldown_seconds = 1.0
 # runtime toggle does not persist here - this is only the value the next
 # restart seeds the toggle from.
 enabled = true
+# How speech picks its language in response modes "voice" and "text_voice"
+# ("text" always behaves as "dynamic"). "dynamic" (default) voices each
+# Cyrillic or Latin run with its own [tts.languages.*] route. "request"
+# voices the whole answer in one language, the language of the request; "ru"
+# / "en" ask for that language. In the last three the model is told the
+# language (see [response].speech_language_*) as a default that an explicit
+# user request for another language overrides, and the voice follows the
+# language the answer is actually written in. Also settable from the
+# Settings tab; restart-to-apply.
+language_mode = "dynamic"
 
 [tts.languages.ru]
 engine = "silero"
@@ -551,6 +561,16 @@ mode = "text"
 # @file reference, as in [generation]) to customize what "voice-friendly"
 # means. Mode 3's contract is [generation.spoken_derivative].prompt.
 # voice_contract = "Speak in plain connected prose, no lists or tables."
+# Directives appended after the voice contract (mode 2) and after the
+# [generation.spoken_derivative] prompt (mode 3's second pass) when
+# [tts].language_mode voices the whole answer in one language. _request is
+# used when that language is not known before the answer (a voice request in
+# "request" mode). The built-in defaults are full directives (Russian text
+# for _ru and _request); the values below are only examples of the literal
+# or @file override syntax.
+# speech_language_ru = "@speech-ru.md"
+# speech_language_en = "Answer in English unless the user asks otherwise."
+# speech_language_request = "@speech-request.md"
 
 [mcp]
 # Off by default (two-tier locality contract, PROJECT.md): with enabled =

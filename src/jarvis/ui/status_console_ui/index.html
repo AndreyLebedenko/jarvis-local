@@ -193,6 +193,15 @@
       <label for="ttsEnabled" data-i18n="config_tts_enabled_label">Speak responses</label>
       <input type="checkbox" id="ttsEnabled" onchange="onTtsEnabledChanged()">
     </div>
+    <div class="config-field">
+      <label for="ttsLanguageModeSelect" data-i18n="config_tts_language_mode_label">Speech language</label>
+      <select id="ttsLanguageModeSelect" onchange="onConfigInputChanged()">
+        <option value="dynamic" data-i18n="tts_language_mode_dynamic_option">Auto-detect answer language</option>
+        <option value="request" data-i18n="tts_language_mode_request_option">Language of the request</option>
+        <option value="ru" data-i18n="tts_language_mode_ru_option">Always Russian</option>
+        <option value="en" data-i18n="tts_language_mode_en_option">Always English</option>
+      </select>
+    </div>
     <div class="config-field config-field-checkbox">
       <label for="ttsCustomRoutes" data-i18n="config_tts_custom_label">Configure per-language voices</label>
       <input type="checkbox" id="ttsCustomRoutes" onchange="onTtsRoutingModeChanged()">
