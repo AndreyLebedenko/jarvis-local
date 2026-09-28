@@ -265,3 +265,62 @@ def test_playback_strings_exist_in_both_languages():
         body = STRINGS_JS[start:end]
         assert "journal_audio_play:" in body
         assert "journal_audio_pause:" in body
+
+
+def test_fork_row_carries_the_source_session_id_only_for_fork_events():
+    element_body = _function_body("_journalEventElement")
+    assert "const forkSourceId = _journalForkSourceId(event);" in element_body
+    assert "if (forkSourceId) message.dataset.continuedFrom = forkSourceId;" in (
+        element_body
+    )
+    helper_body = _function_body("_journalForkSourceId")
+    assert 'event.source !== "fork"' in helper_body
+    assert 'typeof event.metadata?.continued_from === "string"' in helper_body
+    assert "event.metadata.continued_from" in helper_body
+
+
+def test_fork_source_dataset_is_set_regardless_of_feed_position():
+    """Live appends pass no position; the entry must still appear on them."""
+    body = _function_body("_journalEventElement")
+    assignment_lines = [
+        line for line in body.splitlines() if "dataset.continuedFrom" in line
+    ]
+    assert assignment_lines == [
+        "  if (forkSourceId) message.dataset.continuedFrom = forkSourceId;"
+    ]
+
+
+def test_message_menu_offers_open_source_session_for_fork_rows():
+    body = _function_body("_journalMessageMenuEntries")
+    assert "row.dataset.continuedFrom" in body
+    after_source = body.split("row.dataset.continuedFrom")[1]
+    entry = after_source.split("position !== undefined")[0]
+    assert 'label: uiString("journal_fork_open_source")' in entry
+    assert "run: () => _openJournalForkSource(sourceId)" in entry
+    assert (
+        "disabled: !_journalSessions.some((session) => session.id === sourceId)"
+        in entry
+    )
+
+
+def test_open_source_session_entry_precedes_the_annotation_entry():
+    body = _function_body("_journalMessageMenuEntries")
+    assert body.index("journal_fork_open_source") < body.index(
+        "journal_annotation_generate_message"
+    )
+
+
+def test_open_source_session_selects_it_and_scrolls_its_list_row_into_view():
+    body = _function_body("_openJournalForkSource")
+    assert "selectJournalSession(sessionId)" in body
+    assert 'getElementById("journalSessionList")' in body
+    assert ".journal-session" in body
+    assert 'scrollIntoView({ block: "nearest" })' in body
+
+
+def test_open_source_session_string_exists_in_both_languages():
+    for language in ("en", "ru"):
+        marker = f"  {language}: {{"
+        start = STRINGS_JS.index(marker)
+        end = STRINGS_JS.index("\n  },", start)
+        assert "journal_fork_open_source:" in STRINGS_JS[start:end]
