@@ -3,8 +3,9 @@
 **Status:** Accepted roadmap update (owner planning dialog, 2026-08-30). Amended
 2026-08-31 (owner planning dialog): v2.0 is now the functional self-model
 (idle-time reflection); the former v2.0 "Canvas-guided voice" moves to v2.1.
-Amended 2026-09-30 (owner planning dialog): v1.9.4 file operations and
-v1.9.5 execution tools added; v2.0 is now the MCP voice guide
+Amended 2026-09-30 (owner planning dialog): file operations and execution
+tools added, then parked as needing a safety rethink (see "Parked"); v2.0
+is now the MCP voice guide
 (`--mcp-mode`); the functional self-model moves to v3.0 - deferred because
 its user value is uncertain under the current limitations. The filename
 keeps its original range so existing references stay valid.
@@ -175,54 +176,6 @@ Boundary:
 - Prompt spike first; no production prompt change without recorded examples.
 - The canvas must remain readable and user-facing. It must not become a raw
   scratchpad or private intermediate dump.
-
-## v1.9.4 - File operations tools
-
-Purpose: let the model add, edit, and safely delete files, not only create
-them.
-
-Scope:
-
-- Add, edit, and delete tools. Delete moves the file to the Windows Recycle
-  Bin.
-
-Settled constraints (owner planning dialog, 2026-09-30):
-
-- This explicitly reverses v1.8.1 locked decision 2 ("create-only for the
-  model; destructive actions stay in the user's hands"). The story card must
-  state the reversal and its reason.
-- Delete never degrades to a permanent delete. Where Windows would bypass the
-  Recycle Bin (network or removable drives, files too large for it), the tool
-  refuses with a typed error.
-- Edit is recoverable by construction: the previous version is preserved
-  before the change, because a small local model will make wrong edits.
-
-Open design questions (before a story card):
-
-- Scope root: the session directory only, the workspace root
-  (`story-installer-and-workspaces.md`), or arbitrary paths. The workspace
-  root is the recommended boundary; if chosen, workspace tasks 2-4 go first.
-- Edit shape: search/replace fragments vs whole-file rewrite.
-
-## v1.9.5 - Execution tools
-
-Purpose: let the model run commands.
-
-Settled constraints (owner planning dialog, 2026-09-30):
-
-- Designed together with v1.9.4: `[files].write_ext_blacklist` was accepted
-  in v1.8.1 on the premise that Jarvis never executes what the model writes.
-  Execution removes that premise, so the deny-list is revisited in this
-  story.
-- Every command is confirmed by the user in the UI, not by voice.
-- Time and output caps; cancellation kills the whole process tree.
-- No sandboxing promise for this version.
-
-Open design questions (before a story card):
-
-- Arbitrary shell vs registered commands/scripts.
-- How execution interacts with untrusted text the model has read (files,
-  MCP results): prompt-injection path to execution.
 
 ## v2.0 - MCP voice guide (`--mcp-mode`)
 
@@ -421,6 +374,63 @@ Open design questions (deferred until a story card):
   next feature.
 - Whether Phase 2 prompt injection is gated by a flag and how the self-model
   section is bounded in the prompt to contain drift.
+
+## Parked: needs rethinking before any version
+
+Parked 2026-09-30 (owner): both items are too dangerous for the product
+concept in their current form - destructive file changes and command
+execution driven by a small local model that also reads untrusted text
+(files, MCP results). They are not scheduled. Before either gets a version,
+it needs a design rethink of its safety model, not just a story card.
+Possible slot: after v2.0.
+
+### File operations tools (was v1.9.4)
+
+Purpose: let the model add, edit, and safely delete files, not only create
+them.
+
+Scope:
+
+- Add, edit, and delete tools. Delete moves the file to the Windows Recycle
+  Bin.
+
+Settled constraints (owner planning dialog, 2026-09-30):
+
+- This explicitly reverses v1.8.1 locked decision 2 ("create-only for the
+  model; destructive actions stay in the user's hands"). The story card must
+  state the reversal and its reason.
+- Delete never degrades to a permanent delete. Where Windows would bypass the
+  Recycle Bin (network or removable drives, files too large for it), the tool
+  refuses with a typed error.
+- Edit is recoverable by construction: the previous version is preserved
+  before the change, because a small local model will make wrong edits.
+
+Open design questions (before a story card):
+
+- Scope root: the session directory only, the workspace root
+  (`story-installer-and-workspaces.md`), or arbitrary paths. The workspace
+  root is the recommended boundary; if chosen, workspace tasks 2-4 go first.
+- Edit shape: search/replace fragments vs whole-file rewrite.
+
+### Execution tools (was v1.9.5)
+
+Purpose: let the model run commands.
+
+Settled constraints (owner planning dialog, 2026-09-30):
+
+- Designed together with the file operations tools: `[files].write_ext_blacklist` was accepted
+  in v1.8.1 on the premise that Jarvis never executes what the model writes.
+  Execution removes that premise, so the deny-list is revisited in this
+  story.
+- Every command is confirmed by the user in the UI, not by voice.
+- Time and output caps; cancellation kills the whole process tree.
+- No sandboxing promise for this version.
+
+Open design questions (before a story card):
+
+- Arbitrary shell vs registered commands/scripts.
+- How execution interacts with untrusted text the model has read (files,
+  MCP results): prompt-injection path to execution.
 
 ## Floating candidates
 
