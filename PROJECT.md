@@ -5173,9 +5173,20 @@ Current direction:
    what they are and what they are based on; spoken derivatives may become
    locator-only search material without becoming model memory.
 3. v1.9.x prompt experiments for the Text + voice first-pass canvas contract.
-4. v2.0 "canvas-guided voice": explore single-pass or interleaved visible
-   canvas plus spoken guide protocols, if a spike proves tag stability,
-   latency benefit, factual preservation, and recovery behavior.
+4. v2.0 MCP voice guide: `--mcp-mode` serves a localhost-only,
+   token-authenticated streamable-HTTP MCP server; an external client passes
+   a long answer as the canvas and Jarvis speaks a derivative over it. No
+   user input into the model in this mode; never concurrent with a normal
+   instance; journal search, memory, and annotations preserved. Runtime
+   locality unchanged.
+5. v2.1 "canvas-guided voice": explore interleaved visible canvas plus spoken
+   guide protocols, if a spike proves tag stability, latency benefit, factual
+   preservation, and recovery behavior.
+6. v3.0 functional self-model (idle-time reflection), deferred from v2.0.
+
+Parked, unversioned: file operations (edit, delete to the Recycle Bin) and
+execution tools - too dangerous for the concept in their current form; they
+need a safety-model rethink before any version (roadmap, "Parked").
 
 Floating candidates from the old list remain possible future work, but are no
 longer the active roadmap spine: emotion2vec+ prosody, backend/prefix-cache
