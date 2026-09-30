@@ -854,7 +854,10 @@ system is intended to grow.
     (`test_annotation_reachable_through_automatic_retrieval_with_typed_framing`):
     the assembled prompt's retrieved-history block contains
     `"kind":"annotation"`, the annotation id, its target session id, and
-    `"source":"generated"`.
+    `"source":"generated"`. Amended 2026-09-30 (v2.0 task 2): the exception
+    is an annotation of a session that contains an `mcp_canvas` event - it is
+    an `external_annotation` and never reaches automatic retrieval (see
+    Architecture v2.0).
   - **Editable and traceable.** Updating an annotation's text
     (`AnnotationSource.EDITED`) and reprojecting it replaces the retrievable
     content immediately - the old text is gone, the new text is retrieved,
@@ -3467,7 +3470,10 @@ surface while preserving the append-only journal invariant.
   system events are retained as part of the seed chain, but
   `source="context"` blank-context markers are skipped because they only
   describe the UI boundary and do not carry source conversation content; these
-  markers are counted as `excluded_events`, not `skipped_events`.
+  markers are counted as `excluded_events`, not `skipped_events`. Amended
+  2026-09-30 (v2.0 task 2): `source="mcp_canvas"` events are excluded and
+  counted the same way, so forking an MCP-only session yields an empty seed
+  with an honest drop report.
 - Blank context creation is also explicit. `POST /api/journal/context/new`
   clears the live model-facing history, resamples the session-start system
   prompt/memory snapshot, and creates a new journal-visible session
@@ -4182,7 +4188,9 @@ story cards under `tasks/done/`).
 - **Provenance is one typed descriptor for the retrieval/tool boundary.**
   `src/jarvis/journal/provenance.py` defines
   `ProvenanceSourceKind` (`raw_event` / `transcript` / `annotation` /
-  `spoken_derivative`) with the eligibility axis encoded once on the enum
+  `spoken_derivative` / `external_canvas` / `external_annotation` - six kinds;
+  the last two were added by v2.0 task 2, 2026-09-30) with the eligibility
+  axis encoded once on the enum
   (`AUTO_RETRIEVAL` / `MODEL_SEARCH` / `JOURNAL_UI` / `LOCATOR_ONLY`) and a
   frozen `ProvenanceDescriptor` (source kind, eligibility, target,
   `is_canonical`). Every hybrid-retrieval candidate and `search_history`
@@ -4208,6 +4216,61 @@ story cards under `tasks/done/`).
   audio-removal outcome metadata (bytes reclaimed, per-file KEEP/REMOVE) -
   there is no indexable prose in it and no surface to invent for it without
   a new scope decision.
+
+## Architecture v2.0 (MCP voice guide) - in progress
+
+Facts settled by story-v2.0 task 2 (external canvas provenance). Task 8
+completes this section; the queue, guide prompt, server, and UI facts are not
+recorded here yet.
+
+- **An external canvas is one journal event.** `role="assistant"`,
+  `source="mcp_canvas"` (`MCP_CANVAS_SOURCE` in
+  `src/jarvis/journal/external_canvas.py`), `event.text` = the canvas. The role
+  stays `assistant` so replay, the derivative locator index, and Journal
+  rendering work unchanged; provenance, not role, says the text is not
+  Jarvis's own claim. `JournalRecorder.record_external_canvas()` writes it.
+  Metadata keys: `caller` (`{name, version, transport_session_id}`, always
+  present, every field nullable), `speech_origin` (`derivative` / `verbatim` /
+  `caller`), `speech_status` (`spoken` / `muted` / `interrupted` / `skipped` /
+  `failed`; `muted` = produced and stored but not played because the global
+  TTS switch was off), optional `guidance`, and the existing
+  `spoken_derivative` / `spoken_derivative_truncated` keys (no derivative for
+  `verbatim`; a truncation flag without a derivative is rejected).
+- **Two provenance kinds.** `EXTERNAL_CANVAS` (canonical text of its event)
+  and `EXTERNAL_ANNOTATION` (an annotation of a session that contains an
+  `mcp_canvas` event) both carry eligibility `{MODEL_SEARCH, JOURNAL_UI}` -
+  searchable by the model and in the Journal, never `AUTO_RETRIEVAL`.
+  `ProvenanceSourceKind.is_external` marks both.
+- **Annotation-session probe.** `HistoryRetrievalService` decides
+  `ANNOTATION` vs `EXTERNAL_ANNOTATION` with one read-time corpus query per
+  session per `retrieve()` call
+  (`HistoryCorpusRepository.read_first_event_with_source`), cached within the
+  call. No schema change. An MCP session holds only `mcp_canvas` events and an
+  ordinary session never does, so the session-level check is exact.
+- **Eligibility is enforced twice.** `HistoryRetrievalQuery.required_eligibility`
+  makes `retrieve()` drop candidates whose descriptor lacks it before the
+  result is cut to `limit`; `to_history_retrieval_query()` sets
+  `AUTO_RETRIEVAL`, explicit search leaves it unset. Fetch factors are not
+  inflated for this. External annotations still take part in per-leg scoring
+  (they count in their leg's lexical rank and can set the top score of the
+  annotation semantic gate), so they can lower an eligible annotation's
+  relevance or gate it out. The loss is recall only; no external text reaches
+  the prompt. Deferred, see
+  `tasks/bug_reports/2026-09-30-external-annotations-depress-eligible-recall.md`.
+  `select_automatic_retrieval_passages()` is the last line of defense: it
+  drops every candidate without `AUTO_RETRIEVAL`, fail-closed (a candidate
+  with no descriptor is dropped too), before `candidate_limit` slicing, and
+  counts them in `skipped_ineligible_count`. The `("text",)` default sources
+  filter is kept as an older, separate pre-filter (voice exclusion); the
+  contract holds with `sources=()`.
+- **Fork excludes external canvases** (see the v1.5.3 fork facts above).
+- **Model-facing labels.** `search_history` items whose provenance is external
+  add `caller_name` (`provenance.source_kind` already names the kind);
+  `read_history` events with source `mcp_canvas` add `source_kind` and
+  `caller_name`; `role` stays `assistant`. The `search_history`,
+  `read_history`, and `read_history_ranges` descriptions tell the model that
+  such an item is another assistant's text the user was shown, not its own
+  past answer.
 
 ## Documentation navigation doctrine (2026-08-30)
 

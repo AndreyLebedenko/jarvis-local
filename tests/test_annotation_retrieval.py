@@ -34,7 +34,9 @@ from jarvis.journal import (
 )
 from jarvis.journal.annotation_search import AnnotationSearchRequest
 from jarvis.journal.annotation_semantic import AnnotationSemanticQuery
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.provenance import (
+    ProvenanceEligibility,
     ProvenanceSourceKind,
     provenance_descriptor_from_annotation_identity,
 )
@@ -78,19 +80,36 @@ def _annotation(
     )
 
 
-def _event(position: int, text: str) -> HistoryCorpusEvent:
+def _event(
+    position: int,
+    text: str,
+    *,
+    role: str = "user",
+    source: str = "text",
+    metadata: dict | None = None,
+) -> HistoryCorpusEvent:
     reference = JournalEventRef(_SESSION, position)
     return HistoryCorpusEvent(
         reference,
         "2026-08-01T10:00:00+00:00",
         1785578400.0,
-        "user",
-        "text",
+        role,
+        source,
         text,
         (),
         0,
         None,
-        {},
+        metadata or {},
+    )
+
+
+def _canvas_event(position: int, caller_name: str | None) -> HistoryCorpusEvent:
+    return _event(
+        position,
+        "Внешний ответ.",
+        role="assistant",
+        source=MCP_CANVAS_SOURCE,
+        metadata={"caller": {"name": caller_name}},
     )
 
 
@@ -105,6 +124,7 @@ class _FakeCorpusRepository:
         self._hits = hits
         self._events = {event.reference: event for event in events}
         self._search_status = search_status
+        self.first_event_queries: list[tuple[str, str]] = []
 
     def search(self, request: object) -> HistorySearchResult:
         del request
@@ -125,6 +145,19 @@ class _FakeCorpusRepository:
         )
         return HistoryEventRefsRead(
             HistoryEventRefsReadStatus.ACCEPTED, events, missing
+        )
+
+    def read_first_event_with_source(
+        self, session_id: str, source: str
+    ) -> HistoryCorpusEvent | None:
+        self.first_event_queries.append((session_id, source))
+        matching = [
+            event
+            for event in self._events.values()
+            if event.reference.session_id == session_id and event.source == source
+        ]
+        return min(
+            matching, key=lambda event: event.reference.event_position, default=None
         )
 
 
@@ -273,6 +306,169 @@ def test_annotation_candidate_carries_provenance_descriptor() -> None:
     assert candidate.provenance == provenance_descriptor_from_annotation_identity(
         candidate.annotation
     )
+
+
+def _annotation_service(
+    repository: _FakeCorpusRepository, *annotations: Annotation
+) -> HistoryRetrievalService:
+    return HistoryRetrievalService(
+        repository,
+        _NoSemantic(),
+        _settings(),
+        annotation_lexical=_FakeAnnotationLexical(
+            tuple(
+                _annotation_hit(annotation.annotation_id, order_index=index)
+                for index, annotation in enumerate(annotations)
+            )
+        ),
+        annotation_repository=_FakeAnnotationRead(
+            {annotation.annotation_id: annotation for annotation in annotations}
+        ),
+    )
+
+
+def test_annotation_of_a_session_with_an_external_canvas_is_external() -> None:
+    repository = _FakeCorpusRepository(events=(_canvas_event(0, "claude-desktop"),))
+    service = _annotation_service(repository, _annotation("ann-x", "Сводка."))
+
+    [candidate] = service.retrieve(HistoryRetrievalQuery("сводка", limit=5)).candidates
+
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_ANNOTATION
+    assert candidate.external_caller_name == "claude-desktop"
+
+
+def test_annotation_of_an_ordinary_session_stays_an_annotation() -> None:
+    repository = _FakeCorpusRepository(
+        events=(
+            _event(0, "Вопрос."),
+            _event(1, "Ответ.", role="assistant", source="assistant"),
+        )
+    )
+    service = _annotation_service(repository, _annotation("ann-n", "Сводка."))
+
+    [candidate] = service.retrieve(HistoryRetrievalQuery("сводка", limit=5)).candidates
+
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.ANNOTATION
+    assert candidate.external_caller_name is None
+
+
+def test_annotation_session_check_runs_once_per_session_within_one_retrieve() -> None:
+    repository = _FakeCorpusRepository(events=(_canvas_event(0, None),))
+    service = _annotation_service(
+        repository,
+        _annotation("ann-1", "Первая сводка."),
+        _annotation("ann-2", "Вторая сводка.", start=0, end=0),
+    )
+
+    result = service.retrieve(HistoryRetrievalQuery("сводка", limit=5))
+
+    assert result.returned_count == 2
+    assert repository.first_event_queries == [(_SESSION, MCP_CANVAS_SOURCE)]
+
+
+def test_annotation_session_check_is_not_cached_across_retrieve_calls() -> None:
+    repository = _FakeCorpusRepository(events=(_canvas_event(0, None),))
+    service = _annotation_service(repository, _annotation("ann-1", "Сводка."))
+
+    service.retrieve(HistoryRetrievalQuery("сводка", limit=5))
+    service.retrieve(HistoryRetrievalQuery("сводка", limit=5))
+
+    assert len(repository.first_event_queries) == 2
+
+
+def _service_with_outranking_external_annotations() -> tuple[
+    HistoryRetrievalService, _FakeAnnotationLexical
+]:
+    """Three external annotations outrank two eligible events."""
+    eligible = (_event(0, "Первый обычный ответ."), _event(1, "Второй обычный ответ."))
+    repository = _FakeCorpusRepository(
+        hits=tuple(
+            HistorySearchHit(
+                event.reference,
+                event.timestamp,
+                event.role,
+                event.source,
+                "ответ",
+                -0.5,
+                3 + event.reference.event_position,
+            )
+            for event in eligible
+        ),
+        events=(*eligible, _canvas_event(2, None)),
+    )
+    annotations = tuple(
+        _annotation(f"ann-{index}", f"Внешняя сводка {index}.") for index in range(3)
+    )
+    lexical = _FakeAnnotationLexical(
+        tuple(
+            _annotation_hit(annotation.annotation_id, order_index=index)
+            for index, annotation in enumerate(annotations)
+        )
+    )
+    service = HistoryRetrievalService(
+        repository,
+        _NoSemantic(),
+        _settings(),
+        annotation_lexical=lexical,
+        annotation_repository=_FakeAnnotationRead(
+            {annotation.annotation_id: annotation for annotation in annotations}
+        ),
+    )
+    return service, lexical
+
+
+def test_required_eligibility_fills_the_limit_from_eligible_candidates() -> None:
+    service, _ = _service_with_outranking_external_annotations()
+
+    result = service.retrieve(
+        HistoryRetrievalQuery(
+            "ответ",
+            limit=2,
+            required_eligibility=ProvenanceEligibility.AUTO_RETRIEVAL,
+        )
+    )
+
+    assert [candidate.text for candidate in result.candidates] == [
+        "Первый обычный ответ.",
+        "Второй обычный ответ.",
+    ]
+    assert [candidate.combined_rank for candidate in result.candidates] == [1, 2]
+    assert result.returned_count == 2
+
+
+def test_without_required_eligibility_external_annotations_are_returned() -> None:
+    service, _ = _service_with_outranking_external_annotations()
+
+    result = service.retrieve(HistoryRetrievalQuery("ответ", limit=2))
+
+    assert [candidate.provenance.source_kind for candidate in result.candidates] == [
+        ProvenanceSourceKind.EXTERNAL_ANNOTATION
+    ] * 2
+
+
+def test_external_canvas_event_candidate_carries_kind_and_caller_name() -> None:
+    event = _canvas_event(0, "claude-desktop")
+    repository = _FakeCorpusRepository(
+        hits=(
+            HistorySearchHit(
+                event.reference,
+                event.timestamp,
+                event.role,
+                event.source,
+                "ответ",
+                -0.5,
+                0,
+            ),
+        ),
+        events=(event,),
+    )
+    service = HistoryRetrievalService(repository, _NoSemantic(), _settings())
+
+    [candidate] = service.retrieve(HistoryRetrievalQuery("ответ", limit=5)).candidates
+
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_CANVAS
+    assert candidate.external_caller_name == "claude-desktop"
+    assert candidate.role == "assistant"
 
 
 def test_events_and_annotations_fuse_into_one_ranked_result() -> None:

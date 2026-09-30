@@ -42,8 +42,10 @@ from jarvis.journal.corpus import (
     HistorySearchStatus,
 )
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE, caller_name_from_metadata
 from jarvis.journal.provenance import (
     ProvenanceDescriptor,
+    ProvenanceEligibility,
     provenance_descriptor_from_annotation_identity,
     provenance_descriptor_from_corpus_event,
 )
@@ -139,6 +141,7 @@ class HistoryRetrievalQuery:
     date_to: str | None = None
     roles: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
+    required_eligibility: ProvenanceEligibility | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +158,8 @@ class HistoryRetrievalCandidate:
     only for backward compatibility with candidates constructed outside the
     retrieval service (older tests, fixtures); the retrieval builders always
     set it. Raw-vs-transcript lives solely in ``provenance.source_kind``.
+    ``external_caller_name`` names the caller of an external canvas (or of the
+    canvases an external annotation describes); it is ``None`` otherwise.
     """
 
     reference: JournalEventRef | None
@@ -171,6 +176,7 @@ class HistoryRetrievalCandidate:
     lexical_score: float | None = None
     lexical_rank: int | None = None
     truncated: bool = False
+    external_caller_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -275,7 +281,12 @@ class HistoryRetrievalService:
             (*lexical, *semantic, *annotation_lexical, *annotation_semantic)
         )
 
-        collected = self._collect_candidates(fused, request.limit)
+        collected = self._collect_candidates(
+            fused,
+            request.limit,
+            request.required_eligibility,
+            _ExternalSessionProbe(self._repository),
+        )
         if collected is None:
             return HistoryRetrievalResult(
                 HistoryRetrievalStatus.HYDRATION_FAILED,
@@ -297,7 +308,11 @@ class HistoryRetrievalService:
         )
 
     def _collect_candidates(
-        self, fused: tuple[_CandidateAccumulator, ...], limit: int
+        self,
+        fused: tuple[_CandidateAccumulator, ...],
+        limit: int,
+        required_eligibility: ProvenanceEligibility | None,
+        external_sessions: _ExternalSessionProbe,
     ) -> (
         tuple[tuple[HistoryRetrievalCandidate, ...], tuple[JournalEventRef, ...]] | None
     ):
@@ -323,9 +338,14 @@ class HistoryRetrievalService:
                 if len(candidates) >= limit:
                     break
                 candidate = self._build_candidate(
-                    accumulator, events_by_reference, len(candidates) + 1
+                    accumulator,
+                    events_by_reference,
+                    len(candidates) + 1,
+                    external_sessions,
                 )
-                if candidate is not None:
+                if candidate is not None and _has_eligibility(
+                    candidate, required_eligibility
+                ):
                     candidates.append(candidate)
         return tuple(candidates), tuple(missing)
 
@@ -351,16 +371,20 @@ class HistoryRetrievalService:
         accumulator: _CandidateAccumulator,
         events_by_reference: dict[JournalEventRef, HistoryCorpusEvent],
         rank: int,
+        external_sessions: _ExternalSessionProbe,
     ) -> HistoryRetrievalCandidate | None:
         if accumulator.kind is HistoryRetrievalCandidateKind.EVENT:
             event = events_by_reference.get(accumulator.reference)  # type: ignore[arg-type]
             if event is None:
                 return None
             return _event_candidate(accumulator, event, rank)
-        return self._build_annotation_candidate(accumulator, rank)
+        return self._build_annotation_candidate(accumulator, rank, external_sessions)
 
     def _build_annotation_candidate(
-        self, accumulator: _CandidateAccumulator, rank: int
+        self,
+        accumulator: _CandidateAccumulator,
+        rank: int,
+        external_sessions: _ExternalSessionProbe,
     ) -> HistoryRetrievalCandidate | None:
         repository = self._annotation_repository
         if repository is None or accumulator.annotation_id is None:
@@ -369,7 +393,14 @@ class HistoryRetrievalService:
         annotation = read.annotation if read.found else None
         if annotation is None or annotation.status is not AnnotationStatus.ACTIVE:
             return None
-        return _annotation_candidate(accumulator, annotation, rank)
+        return _annotation_candidate(
+            accumulator,
+            annotation,
+            rank,
+            external_canvas=external_sessions.first_canvas(
+                annotation.target.session_id
+            ),
+        )
 
     def _lexical_candidates(
         self, request: HistoryRetrievalQuery
@@ -509,6 +540,27 @@ class HistoryRetrievalService:
         )
 
 
+class _ExternalSessionProbe:
+    """Memoizes, for one ``retrieve()`` call, which sessions hold external canvases.
+
+    An external-canvas session contains only external canvases and an ordinary
+    session never does, so the first canvas event decides the whole session.
+    """
+
+    def __init__(self, repository: HistoryCorpusRepository) -> None:
+        self._repository = repository
+        self._first_canvas: dict[str, HistoryCorpusEvent | None] = {}
+
+    def first_canvas(self, session_id: str) -> HistoryCorpusEvent | None:
+        if session_id not in self._first_canvas:
+            self._first_canvas[session_id] = (
+                self._repository.read_first_event_with_source(
+                    session_id, MCP_CANVAS_SOURCE
+                )
+            )
+        return self._first_canvas[session_id]
+
+
 @dataclass(frozen=True)
 class _CandidateAccumulator:
     kind: HistoryRetrievalCandidateKind
@@ -608,11 +660,23 @@ def _apply_relative_gate(
     )
 
 
+def _has_eligibility(
+    candidate: HistoryRetrievalCandidate, required: ProvenanceEligibility | None
+) -> bool:
+    if required is None:
+        return True
+    return (
+        candidate.provenance is not None
+        and required in candidate.provenance.eligibility
+    )
+
+
 def _event_candidate(
     accumulator: _CandidateAccumulator,
     event: HistoryCorpusEvent,
     rank: int,
 ) -> HistoryRetrievalCandidate:
+    descriptor = provenance_descriptor_from_corpus_event(event)
     return HistoryRetrievalCandidate(
         reference=accumulator.reference,
         text=event.indexed_text,
@@ -622,11 +686,16 @@ def _event_candidate(
         source_mode=_source_mode(accumulator),
         combined_rank=rank,
         kind=HistoryRetrievalCandidateKind.EVENT,
-        provenance=provenance_descriptor_from_corpus_event(event),
+        provenance=descriptor,
         semantic_score=accumulator.semantic_score,
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,
         truncated=False,
+        external_caller_name=(
+            caller_name_from_metadata(event.metadata)
+            if descriptor.source_kind.is_external
+            else None
+        ),
     )
 
 
@@ -634,6 +703,8 @@ def _annotation_candidate(
     accumulator: _CandidateAccumulator,
     annotation: Annotation,
     rank: int,
+    *,
+    external_canvas: HistoryCorpusEvent | None,
 ) -> HistoryRetrievalCandidate:
     identity = AnnotationCandidateIdentity(
         annotation_id=annotation.annotation_id,
@@ -652,11 +723,18 @@ def _annotation_candidate(
         combined_rank=rank,
         kind=HistoryRetrievalCandidateKind.ANNOTATION,
         annotation=identity,
-        provenance=provenance_descriptor_from_annotation_identity(identity),
+        provenance=provenance_descriptor_from_annotation_identity(
+            identity, target_is_external=external_canvas is not None
+        ),
         semantic_score=accumulator.semantic_score,
         lexical_score=accumulator.lexical_score,
         lexical_rank=accumulator.lexical_rank,
         truncated=False,
+        external_caller_name=(
+            caller_name_from_metadata(external_canvas.metadata)
+            if external_canvas is not None
+            else None
+        ),
     )
 
 

@@ -6,12 +6,23 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from jarvis.core.bus import EventBus
+from jarvis.journal.corpus import SPOKEN_DERIVATIVE_METADATA_KEY
 from jarvis.journal.events import (
     JournalEvent,
     JournalEventAppended,
     JSONValue,
     TurnOutcome,
     new_session_id,
+)
+from jarvis.journal.external_canvas import (
+    CALLER_METADATA_KEY,
+    GUIDANCE_METADATA_KEY,
+    MCP_CANVAS_SOURCE,
+    SPEECH_ORIGIN_METADATA_KEY,
+    SPEECH_STATUS_METADATA_KEY,
+    ExternalCanvasCaller,
+    SpeechOrigin,
+    SpeechStatus,
 )
 from jarvis.journal.fork import ForkSeedDropReport
 from jarvis.journal.store import JournalStore
@@ -126,6 +137,55 @@ class JournalRecorder:
                 source="assistant",
                 role="assistant",
                 text=text,
+                media=(),
+                metadata=metadata,
+            )
+        )
+
+    async def record_external_canvas(
+        self,
+        canvas: str,
+        *,
+        speech_origin: SpeechOrigin,
+        speech_status: SpeechStatus,
+        caller: ExternalCanvasCaller | None = None,
+        guidance: str | None = None,
+        spoken_derivative: str | None = None,
+        spoken_derivative_truncated: bool = False,
+    ) -> None:
+        if speech_origin is SpeechOrigin.VERBATIM and spoken_derivative is not None:
+            raise ValueError(
+                "a verbatim canvas has no spoken derivative: it would duplicate "
+                "the canonical text in the locator index"
+            )
+        if spoken_derivative_truncated and spoken_derivative is None:
+            raise ValueError("a truncation flag needs a spoken derivative to describe")
+        if not self._enabled:
+            return
+        timestamp = self._now()
+        session_id = self._session(timestamp)
+        metadata: dict[str, JSONValue] = {
+            CALLER_METADATA_KEY: (caller or ExternalCanvasCaller()).to_metadata(),
+            SPEECH_ORIGIN_METADATA_KEY: speech_origin.value,
+            # Not folded into a turn outcome, for the reason record_assistant()
+            # documents: the canvas is complete whatever happened to its speech.
+            SPEECH_STATUS_METADATA_KEY: speech_status.value,
+        }
+        if guidance is not None:
+            metadata[GUIDANCE_METADATA_KEY] = guidance
+        # Same key record_assistant() uses, so the locator index and replay
+        # read an external canvas's derivative exactly like Jarvis's own.
+        if spoken_derivative is not None:
+            metadata[SPOKEN_DERIVATIVE_METADATA_KEY] = spoken_derivative
+        if spoken_derivative_truncated:
+            metadata["spoken_derivative_truncated"] = True
+        self._schedule(
+            self._append_event(
+                session_id=session_id,
+                timestamp=timestamp,
+                source=MCP_CANVAS_SOURCE,
+                role="assistant",
+                text=canvas,
                 media=(),
                 metadata=metadata,
             )

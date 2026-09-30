@@ -22,10 +22,12 @@ from jarvis.journal import (
     JournalEventRef,
 )
 from jarvis.journal.annotation import AnnotationTarget
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.provenance import (
     ProvenanceDescriptor,
     ProvenanceSourceKind,
     ProvenanceTarget,
+    provenance_descriptor_from_annotation_identity,
 )
 from jarvis.tools.history import (
     READ_HISTORY_RANGES_TOOL_NAME,
@@ -394,6 +396,177 @@ async def test_search_history_candidates_and_order_unchanged_with_provenance() -
     ]
 
 
+def _external_canvas_candidate(
+    caller_name: str | None = "claude-desktop",
+) -> HistoryRetrievalCandidate:
+    reference = JournalEventRef("20260801-100000-ab12", 3)
+    return HistoryRetrievalCandidate(
+        reference=reference,
+        text="Another assistant's answer.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="assistant",
+        source=MCP_CANVAS_SOURCE,
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.EXTERNAL_CANVAS,
+            eligibility=ProvenanceSourceKind.EXTERNAL_CANVAS.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=True,
+        ),
+        lexical_score=-0.2,
+        lexical_rank=1,
+        external_caller_name=caller_name,
+    )
+
+
+def _external_annotation_candidate() -> HistoryRetrievalCandidate:
+    identity = AnnotationCandidateIdentity(
+        annotation_id="ann-ext",
+        session_id="20260801-100000-ab12",
+        source="generated",
+    )
+    return HistoryRetrievalCandidate(
+        reference=None,
+        text="Summary of another assistant's answer.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="annotation",
+        source="generated",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=identity,
+        provenance=provenance_descriptor_from_annotation_identity(
+            identity, target_is_external=True
+        ),
+        lexical_rank=1,
+        external_caller_name="claude-desktop",
+    )
+
+
+async def _search_items(*candidates: HistoryRetrievalCandidate) -> list[dict]:
+    _, _, provider = _provider(
+        retrieval_result=HistoryRetrievalResult(
+            HistoryRetrievalStatus.ACCEPTED,
+            candidates=candidates,
+            returned_count=len(candidates),
+        )
+    )
+    result = await provider.call_tool(
+        SEARCH_HISTORY_TOOL_NAME, {"query": "answer", "limit": len(candidates)}
+    )
+    assert result.is_error is False
+    return result.structured_content["results"]
+
+
+async def test_search_history_labels_an_external_canvas_with_kind_and_caller() -> None:
+    [item] = await _search_items(_external_canvas_candidate())
+
+    assert item["provenance"]["source_kind"] == "external_canvas"
+    assert item["caller_name"] == "claude-desktop"
+
+
+async def test_search_history_keeps_the_assistant_role_of_an_external_canvas() -> None:
+    [item] = await _search_items(_external_canvas_candidate())
+
+    assert item["role"] == "assistant"
+
+
+async def test_search_history_labels_an_external_annotation_with_kind_and_caller() -> (
+    None
+):
+    [item] = await _search_items(_external_annotation_candidate())
+
+    assert item["provenance"]["source_kind"] == "external_annotation"
+    assert item["caller_name"] == "claude-desktop"
+
+
+async def test_search_history_reports_an_unknown_external_caller_as_null() -> None:
+    [item] = await _search_items(_external_canvas_candidate(caller_name=None))
+
+    assert item["caller_name"] is None
+
+
+async def test_search_history_does_not_label_an_ordinary_assistant_answer() -> None:
+    [item] = await _search_items(
+        _event_candidate(text="Own answer.", role="assistant", source="assistant")
+    )
+
+    assert "caller_name" not in item
+    assert item["provenance"]["source_kind"] == "raw_event"
+
+
+async def _read_events(*events: HistoryCorpusEvent) -> list[dict]:
+    _, _, provider = _provider(
+        read_events_result=HistoryEventRefsRead(
+            HistoryEventRefsReadStatus.ACCEPTED, events=events
+        )
+    )
+    result = await provider.call_tool(
+        READ_HISTORY_TOOL_NAME,
+        {
+            "references": [
+                {
+                    "session_id": event.reference.session_id,
+                    "event_position": event.reference.event_position,
+                }
+                for event in events
+            ]
+        },
+    )
+    assert result.is_error is False
+    return result.structured_content["events"]
+
+
+async def test_read_history_labels_an_external_canvas_with_kind_and_caller() -> None:
+    [item] = await _read_events(
+        _event(
+            "20260801-100000-ab12",
+            0,
+            text="Another assistant's answer.",
+            role="assistant",
+            source=MCP_CANVAS_SOURCE,
+            metadata={"caller": {"name": "claude-desktop"}},
+        )
+    )
+
+    assert item["source_kind"] == "external_canvas"
+    assert item["caller_name"] == "claude-desktop"
+    assert item["role"] == "assistant"
+
+
+async def test_read_history_does_not_label_an_ordinary_assistant_event() -> None:
+    [item] = await _read_events(
+        _event(
+            "20260801-100000-ab12",
+            0,
+            text="Own answer.",
+            role="assistant",
+            source="assistant",
+        )
+    )
+
+    assert "source_kind" not in item
+    assert "caller_name" not in item
+
+
+def test_history_tool_descriptions_tell_the_model_what_external_items_are() -> None:
+    _, _, provider = _provider()
+    registry = ToolRegistry()
+    provider.register_tools(registry)
+
+    descriptions = {tool.name: tool.description for tool in registry.all()}
+
+    for name in (
+        SEARCH_HISTORY_TOOL_NAME,
+        READ_HISTORY_TOOL_NAME,
+        READ_HISTORY_RANGES_TOOL_NAME,
+    ):
+        assert "external_canvas" in descriptions[name]
+        assert "another assistant" in descriptions[name]
+        assert "not your own" in descriptions[name]
+
+
 def _event(
     session_id: str,
     event_position: int,
@@ -401,6 +574,7 @@ def _event(
     text: str,
     role: str = "user",
     source: str = "text",
+    metadata: dict | None = None,
 ) -> HistoryCorpusEvent:
     return HistoryCorpusEvent(
         reference=JournalEventRef(session_id, event_position),
@@ -412,7 +586,7 @@ def _event(
         media=(),
         media_count=0,
         transcript=None,
-        metadata={},
+        metadata=metadata or {},
     )
 
 

@@ -4,6 +4,7 @@ import pytest
 
 from jarvis.core.lifecycle import VOICE_PLACEHOLDER_TEXT
 from jarvis.journal.events import JournalEvent, JournalEventRecord, JournalEventRef
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.fork import (
     UNTRANSCRIBED_VOICE_TURN_TEXT,
     ForkSeedOversizeTurnError,
@@ -153,6 +154,31 @@ def test_fork_seed_skips_blank_context_provenance_events() -> None:
     assert result.turns == (ForkSeedTurn(role="user", text="real turn"),)
     assert result.drop_report.skipped_events == 0
     assert result.drop_report.excluded_events == 1
+
+
+def test_fork_seed_excludes_and_counts_external_canvas_events() -> None:
+    replay = _replay(
+        _event(role="assistant", source=MCP_CANVAS_SOURCE, text="another assistant"),
+        _event(role="user", source="dock", text="real turn"),
+    )
+
+    result = build_fork_seed(replay, budget_chars=100)
+
+    assert result.turns == (ForkSeedTurn(role="user", text="real turn"),)
+    assert result.drop_report.skipped_events == 0
+    assert result.drop_report.excluded_events == 1
+
+
+def test_fork_seed_of_an_external_only_session_is_empty_with_an_honest_report() -> None:
+    replay = _replay(
+        _event(role="assistant", source=MCP_CANVAS_SOURCE, text="first canvas"),
+        _event(role="assistant", source=MCP_CANVAS_SOURCE, text="second canvas"),
+    )
+
+    result = build_fork_seed(replay, budget_chars=100)
+
+    assert result.turns == ()
+    assert result.drop_report.excluded_events == 2
 
 
 def test_fork_seed_keeps_fork_provenance_as_part_of_the_seed_chain() -> None:

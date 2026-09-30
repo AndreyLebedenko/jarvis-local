@@ -16,6 +16,12 @@ from jarvis.journal import (
     TurnOutcome,
     new_session_id,
 )
+from jarvis.journal.external_canvas import (
+    MCP_CANVAS_SOURCE,
+    ExternalCanvasCaller,
+    SpeechOrigin,
+    SpeechStatus,
+)
 from jarvis.journal.fork import ForkSeedDropReport
 
 
@@ -632,6 +638,199 @@ async def test_record_assistant_flags_a_truncated_spoken_derivative_additively(
         "spoken_derivative": "spoken der",
         "spoken_derivative_truncated": True,
     }
+
+
+async def _record_one_external_canvas(tmp_path: Path, **kwargs) -> JournalEvent:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 7, 16, 15, 30, 0, tzinfo=UTC)),
+    )
+    await recorder.record_external_canvas("the canvas", **kwargs)
+    await recorder.wait_for_pending()
+    replay = JournalStore(tmp_path).read_session(recorder.session_id)
+    [event] = replay.events
+    return event
+
+
+async def test_record_external_canvas_writes_one_assistant_event_from_mcp_canvas(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.VERBATIM,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+
+    assert (event.role, event.source, event.text, event.media) == (
+        "assistant",
+        MCP_CANVAS_SOURCE,
+        "the canvas",
+        (),
+    )
+
+
+async def test_record_external_canvas_stores_caller_fields(tmp_path: Path) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        caller=ExternalCanvasCaller(
+            name="claude-desktop", version="1.2", transport_session_id="t-42"
+        ),
+        speech_origin=SpeechOrigin.VERBATIM,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+
+    assert event.metadata["caller"] == {
+        "name": "claude-desktop",
+        "version": "1.2",
+        "transport_session_id": "t-42",
+    }
+
+
+async def test_record_external_canvas_without_caller_info_still_records(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.VERBATIM,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+
+    assert event.metadata["caller"] == {
+        "name": None,
+        "version": None,
+        "transport_session_id": None,
+    }
+
+
+@pytest.mark.parametrize("origin", list(SpeechOrigin))
+async def test_record_external_canvas_stores_speech_origin(
+    tmp_path: Path, origin: SpeechOrigin
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path, speech_origin=origin, speech_status=SpeechStatus.SPOKEN
+    )
+
+    assert event.metadata["speech_origin"] == origin.value
+
+
+@pytest.mark.parametrize("status", list(SpeechStatus))
+async def test_record_external_canvas_stores_speech_status(
+    tmp_path: Path, status: SpeechStatus
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path, speech_origin=SpeechOrigin.DERIVATIVE, speech_status=status
+    )
+
+    assert event.metadata["speech_status"] == status.value
+
+
+async def test_record_external_canvas_derivative_origin_stores_derivative_and_cap_flag(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.DERIVATIVE,
+        speech_status=SpeechStatus.SPOKEN,
+        spoken_derivative="short spoken form",
+        spoken_derivative_truncated=True,
+    )
+
+    assert event.metadata["spoken_derivative"] == "short spoken form"
+    assert event.metadata["spoken_derivative_truncated"] is True
+
+
+async def test_record_external_canvas_caller_origin_stores_caller_spoken_text(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.CALLER,
+        speech_status=SpeechStatus.SPOKEN,
+        spoken_derivative="what the caller asked to be said",
+    )
+
+    assert event.metadata["spoken_derivative"] == "what the caller asked to be said"
+
+
+async def test_record_external_canvas_verbatim_origin_writes_no_derivative(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.VERBATIM,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+
+    assert "spoken_derivative" not in event.metadata
+    assert "spoken_derivative_truncated" not in event.metadata
+
+
+async def test_record_external_canvas_rejects_a_derivative_for_verbatim_origin(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(JournalStore(tmp_path))
+
+    with pytest.raises(ValueError):
+        await recorder.record_external_canvas(
+            "the canvas",
+            speech_origin=SpeechOrigin.VERBATIM,
+            speech_status=SpeechStatus.SPOKEN,
+            spoken_derivative="duplicates the canonical text",
+        )
+
+
+async def test_record_external_canvas_rejects_a_truncation_flag_without_a_derivative(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(JournalStore(tmp_path))
+
+    with pytest.raises(ValueError):
+        await recorder.record_external_canvas(
+            "the canvas",
+            speech_origin=SpeechOrigin.DERIVATIVE,
+            speech_status=SpeechStatus.FAILED,
+            spoken_derivative_truncated=True,
+        )
+
+
+async def test_record_external_canvas_stores_guidance_when_given(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.DERIVATIVE,
+        speech_status=SpeechStatus.SPOKEN,
+        guidance="mention the deadline",
+    )
+
+    assert event.metadata["guidance"] == "mention the deadline"
+
+
+async def test_record_external_canvas_omits_guidance_when_not_given(
+    tmp_path: Path,
+) -> None:
+    event = await _record_one_external_canvas(
+        tmp_path,
+        speech_origin=SpeechOrigin.DERIVATIVE,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+
+    assert "guidance" not in event.metadata
+
+
+async def test_record_external_canvas_writes_nothing_when_journal_disabled(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(JournalStore(tmp_path), enabled=False)
+
+    await recorder.record_external_canvas(
+        "the canvas",
+        speech_origin=SpeechOrigin.VERBATIM,
+        speech_status=SpeechStatus.SPOKEN,
+    )
+    await recorder.wait_for_pending()
+
+    assert recorder.session_id is None
 
 
 async def test_recorder_writes_voice_event_with_screenshot_media(

@@ -22,10 +22,13 @@ from jarvis.journal import (
     HistoryRetrievalSourceMode,
     JournalEventRef,
 )
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.provenance import (
     ProvenanceDescriptor,
+    ProvenanceEligibility,
     ProvenanceSourceKind,
     ProvenanceTarget,
+    provenance_descriptor_from_annotation_identity,
 )
 
 
@@ -76,14 +79,21 @@ def _candidate(
     role: str = "assistant",
     source: str = "text",
 ) -> HistoryRetrievalCandidate:
+    reference = JournalEventRef("20260801-100000-ab12", index)
     return HistoryRetrievalCandidate(
-        reference=JournalEventRef("20260801-100000-ab12", index),
+        reference=reference,
         text=text,
         timestamp="2026-08-01T10:00:00+01:00",
         role=role,
         source=source,
         source_mode=source_mode,
         combined_rank=combined_rank,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.RAW_EVENT,
+            eligibility=ProvenanceSourceKind.RAW_EVENT.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=True,
+        ),
         semantic_score=semantic_score,
         lexical_score=lexical_score,
         lexical_rank=lexical_rank,
@@ -555,6 +565,11 @@ def test_automatic_retrieval_passage_marks_transcript_source():
 
 
 def test_automatic_retrieval_carries_annotation_kind_into_passage():
+    identity = AnnotationCandidateIdentity(
+        annotation_id="ann-1",
+        session_id="20260801-100000-ab12",
+        source="generated",
+    )
     candidate = HistoryRetrievalCandidate(
         reference=None,
         text="Пользователь предпочитает краткие ответы.",
@@ -564,11 +579,8 @@ def test_automatic_retrieval_carries_annotation_kind_into_passage():
         source_mode=HistoryRetrievalSourceMode.SEMANTIC,
         combined_rank=1,
         kind=HistoryRetrievalCandidateKind.ANNOTATION,
-        annotation=AnnotationCandidateIdentity(
-            annotation_id="ann-1",
-            session_id="20260801-100000-ab12",
-            source="generated",
-        ),
+        annotation=identity,
+        provenance=provenance_descriptor_from_annotation_identity(identity),
         semantic_score=0.9,
     )
     request = build_automatic_retrieval_request("краткие ответы", _recent_history())
@@ -589,3 +601,160 @@ def test_automatic_retrieval_carries_annotation_kind_into_passage():
     formatted = format_retrieved_history_passages(selection.selected_passages)
     assert '"kind":"annotation"' in formatted
     assert '"annotation_id":"ann-1"' in formatted
+
+
+def _external_canvas_candidate(index: int, text: str) -> HistoryRetrievalCandidate:
+    reference = JournalEventRef("20260801-100000-ab12", index)
+    return HistoryRetrievalCandidate(
+        reference=reference,
+        text=text,
+        timestamp="2026-08-01T10:00:00+01:00",
+        role="assistant",
+        source=MCP_CANVAS_SOURCE,
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=index + 1,
+        lexical_rank=1,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.EXTERNAL_CANVAS,
+            eligibility=ProvenanceSourceKind.EXTERNAL_CANVAS.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=True,
+        ),
+    )
+
+
+def _external_annotation_candidate(text: str) -> HistoryRetrievalCandidate:
+    identity = AnnotationCandidateIdentity(
+        annotation_id="ann-ext",
+        session_id="20260801-100000-ab12",
+        source="generated",
+    )
+    return HistoryRetrievalCandidate(
+        reference=None,
+        text=text,
+        timestamp="2026-08-01T10:00:00+01:00",
+        role="annotation",
+        source="generated",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        kind=HistoryRetrievalCandidateKind.ANNOTATION,
+        annotation=identity,
+        lexical_rank=1,
+        provenance=provenance_descriptor_from_annotation_identity(
+            identity, target_is_external=True
+        ),
+    )
+
+
+def test_select_automatic_retrieval_drops_and_counts_an_external_canvas() -> None:
+    request = build_automatic_retrieval_request("реле", _recent_history())
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (
+            _external_canvas_candidate(
+                0, "Реле нужно заменить, пишет внешний ассистент."
+            ),
+        ),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.selected_passages == ()
+    assert selection.skipped_ineligible_count == 1
+
+
+def test_select_automatic_retrieval_drops_and_counts_an_external_annotation() -> None:
+    request = build_automatic_retrieval_request("реле", _recent_history())
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (_external_annotation_candidate("Сводка внешнего ответа про реле."),),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.selected_passages == ()
+    assert selection.skipped_ineligible_count == 1
+
+
+def test_select_automatic_retrieval_ineligible_candidates_do_not_use_up_slots() -> None:
+    request = build_automatic_retrieval_request("реле", _recent_history())
+    candidates = (
+        _external_canvas_candidate(0, "Внешний ответ про реле номер один."),
+        _external_canvas_candidate(1, "Внешний ответ про реле номер два."),
+        _candidate(
+            2,
+            "Собственный ответ: реле заменили в среду.",
+            source_mode=HistoryRetrievalSourceMode.LEXICAL,
+            combined_rank=3,
+            lexical_rank=1,
+        ),
+    )
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        candidates,
+        AutomaticRetrievalSelectionLimits(candidate_limit=2),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert [passage.text for passage in selection.selected_passages] == [
+        "Собственный ответ: реле заменили в среду."
+    ]
+    assert selection.skipped_ineligible_count == 2
+
+
+def test_select_automatic_retrieval_reports_zero_ineligible_for_eligible_input() -> (
+    None
+):
+    request = build_automatic_retrieval_request("реле", _recent_history())
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (
+            _candidate(
+                0,
+                "Реле заменили в среду.",
+                source_mode=HistoryRetrievalSourceMode.LEXICAL,
+                combined_rank=1,
+                lexical_rank=1,
+            ),
+        ),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.skipped_ineligible_count == 0
+
+
+def test_select_automatic_retrieval_drops_a_candidate_without_provenance() -> None:
+    request = build_automatic_retrieval_request("реле", _recent_history())
+    undescribed = HistoryRetrievalCandidate(
+        reference=JournalEventRef("20260801-100000-ab12", 0),
+        text="Реле заменили в среду.",
+        timestamp="2026-08-01T10:00:00+01:00",
+        role="assistant",
+        source="text",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        lexical_rank=1,
+    )
+
+    selection = select_automatic_retrieval_passages(
+        request,
+        (undescribed,),
+        AutomaticRetrievalSelectionLimits(),
+        estimator=ConservativeUtf8TokenEstimator(),
+    )
+
+    assert selection.selected_passages == ()
+    assert selection.skipped_ineligible_count == 1
+
+
+def test_to_history_retrieval_query_requires_auto_retrieval_eligibility() -> None:
+    request = build_automatic_retrieval_request("реле", _recent_history())
+
+    query = to_history_retrieval_query(request, limit=3)
+
+    assert query.required_eligibility is ProvenanceEligibility.AUTO_RETRIEVAL
