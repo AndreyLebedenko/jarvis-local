@@ -181,10 +181,11 @@ workspaces land, the installer's launcher starts Jarvis from the app home.
    an explicit manifest path if the library allows it. Changing cwd is simple
    but makes every remaining cwd-relative path silently app-home-relative,
    which task 2's inventory must rule out first.
-5. **Interaction with v2.0 functional self-model.** The self-model is a
-   projection over the journal (`roadmap-v1.9-v2.0.md`, v2.0). With
-   per-workspace journals, is `self.md` and its reflection substrate
-   per-workspace or global? Decide before v2.0 phase 1 fixes its storage.
+5. **Interaction with the functional self-model (v3.0; was v2.0 until
+   2026-09-30).** The self-model is a projection over the journal
+   (`roadmap-v1.9-v2.0.md`, v3.0). With per-workspace journals, is
+   `self.md` and its reflection substrate per-workspace or global? Decide
+   before v3.0 phase 1 fixes its storage.
 6. **Relation to sessions.** Sessions already group conversations inside one
    journal (v1.8.1 session files and scope inheritance). The workspace adds a
    hard retrieval boundary on top; confirm that grouping without the boundary

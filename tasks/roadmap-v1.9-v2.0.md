@@ -1,8 +1,13 @@
-# Roadmap: v1.9.0 through v2.1
+# Roadmap: v1.9.0 through v3.0
 
 **Status:** Accepted roadmap update (owner planning dialog, 2026-08-30). Amended
 2026-08-31 (owner planning dialog): v2.0 is now the functional self-model
 (idle-time reflection); the former v2.0 "Canvas-guided voice" moves to v2.1.
+Amended 2026-09-30 (owner planning dialog): v1.9.4 file operations and
+v1.9.5 execution tools added; v2.0 is now the MCP voice guide
+(`--mcp-mode`); the functional self-model moves to v3.0 - deferred because
+its user value is uncertain under the current limitations. The filename
+keeps its original range so existing references stay valid.
 **Branch:** codex/document-mode3-canvas-voice-contract.
 **Predecessor:** `tasks/done/roadmap-v1.5.1-v1.8.0.md`, which planned the v1.5.1
 stabilization through the v1.8.0 unlimited-history arc and is now removed as
@@ -171,7 +176,165 @@ Boundary:
 - The canvas must remain readable and user-facing. It must not become a raw
   scratchpad or private intermediate dump.
 
-## v2.0 - Functional self-model (idle-time reflection)
+## v1.9.4 - File operations tools
+
+Purpose: let the model add, edit, and safely delete files, not only create
+them.
+
+Scope:
+
+- Add, edit, and delete tools. Delete moves the file to the Windows Recycle
+  Bin.
+
+Settled constraints (owner planning dialog, 2026-09-30):
+
+- This explicitly reverses v1.8.1 locked decision 2 ("create-only for the
+  model; destructive actions stay in the user's hands"). The story card must
+  state the reversal and its reason.
+- Delete never degrades to a permanent delete. Where Windows would bypass the
+  Recycle Bin (network or removable drives, files too large for it), the tool
+  refuses with a typed error.
+- Edit is recoverable by construction: the previous version is preserved
+  before the change, because a small local model will make wrong edits.
+
+Open design questions (before a story card):
+
+- Scope root: the session directory only, the workspace root
+  (`story-installer-and-workspaces.md`), or arbitrary paths. The workspace
+  root is the recommended boundary; if chosen, workspace tasks 2-4 go first.
+- Edit shape: search/replace fragments vs whole-file rewrite.
+
+## v1.9.5 - Execution tools
+
+Purpose: let the model run commands.
+
+Settled constraints (owner planning dialog, 2026-09-30):
+
+- Designed together with v1.9.4: `[files].write_ext_blacklist` was accepted
+  in v1.8.1 on the premise that Jarvis never executes what the model writes.
+  Execution removes that premise, so the deny-list is revisited in this
+  story.
+- Every command is confirmed by the user in the UI, not by voice.
+- Time and output caps; cancellation kills the whole process tree.
+- No sandboxing promise for this version.
+
+Open design questions (before a story card):
+
+- Arbitrary shell vs registered commands/scripts.
+- How execution interacts with untrusted text the model has read (files,
+  MCP results): prompt-injection path to execution.
+
+## v2.0 - MCP voice guide (`--mcp-mode`)
+
+Origin: owner planning dialog, 2026-09-30. A strong external model (for
+example Claude in Claude Code) produces long, dense answers that are hard to
+follow as text. Jarvis becomes the local voice guide over them: it speaks the
+gist and points to where the details are, without the external answer ever
+leaving the machine through Jarvis.
+
+This is the v1.9.0 mode-3 architecture with an external canvas producer: the
+external answer is the authoritative canvas; Jarvis's spoken layer is a
+derivative (cross-cutting rule 1).
+
+Scope:
+
+- `--mcp-mode` start flag. In this mode Jarvis accepts no user input into the
+  model (no microphone, no typed chat request); it only serves external
+  calls.
+- A long-lived local MCP server over streamable HTTP, bound to localhost,
+  token-authenticated. Not stdio: a stdio server lives and dies with the
+  client session and would reload TTS on every start.
+- One tool, `speak(canvas, spoken_text?, guidance?)`:
+  - `canvas` only: the second pass produces the spoken derivative over the
+    canvas, or the canvas is spoken directly - chosen by settings;
+  - `spoken_text`: goes straight to TTS; `canvas` is still journaled;
+  - `guidance`: added to the second-pass prompt to steer the derivative.
+- The tool does not block the caller: it returns immediately with an
+  "accepted, queued" result. Calls queue; a new call does not interrupt the
+  current one.
+
+Settled constraints (owner, 2026-09-30):
+
+- **Single instance, now and in the future.** Normal mode and `--mcp-mode`
+  never run concurrently. A second start must be refused, not merely
+  discouraged.
+- **Journal search, memory, and annotations are preserved** in `--mcp-mode`:
+  same journal, same indexes, same Status Console surfaces.
+- Runtime locality is unchanged: the server listens on localhost only and
+  Jarvis sends nothing outward.
+
+Open design questions (before a story card):
+
+- Provenance of the external canvas under the v1.9.1 typed indexing
+  contract: a new source kind (external canvas, with the caller named), and
+  whether it is eligible for automatic retrieval or explicit search only.
+  The spoken derivative stays locator-only as today.
+- Session mapping: one Jarvis journal session per caller session, or per
+  `--mcp-mode` run.
+- Pointers: how `canvas` carries references to details (sections, files,
+  lines) so the spoken derivative can say where to look.
+- Whether a Claude Code `Stop` hook (every answer, no pointers) is offered
+  beside the explicit tool call.
+
+Rejected for v2.0 (same dialog): Jarvis calling an external LLM itself,
+with local STT and a local sensitive-data gate. It would revise the
+unconditional core-inference locality contract, needs a dedicated STT engine
+(the bare Gemma-class transcription pass is recorded as unreliable in
+`PROJECT.md`), an API-key store (`secret-storage.md`), and a leakage gate
+that can reduce but never prove absence of sensitive data. The voice-guide
+shape gives the same user value with none of that. May return later as a
+separate canvas source.
+
+## v2.1 - Canvas-guided voice
+
+Purpose: explore the larger capability hinted by Text + voice: a structured
+multi-channel answer where Jarvis can build visible content and guide the user
+through it by voice with lower perceived delay than today's two-pass mode.
+
+Candidate directions:
+
+- **Single-pass tagged output.** One backend response contains separate
+  `canvas` and `voice` channels. The UI renders only canvas text; TTS speaks
+  only voice text; the Journal stores both with clear provenance.
+  Amended 2026-09-26 (owner planning dialog): its simplest form - the canvas
+  first, then one trailing `<tts>` block - is pulled forward as a measured
+  spike, `spike-single-pass-tts-block.md`, as a candidate additional mode
+  "3b" beside two-pass mode 3, not its replacement: faster, but the voice
+  inherits the canvas's generation parameters. Voice-first ordering is
+  rejected.
+  Closed 2026-09-27 by that spike's frozen decision rule (speed): the median
+  first-sentence gain was 0.61 s at reasoning off. At medium the single pass
+  was 9.0 s slower, because the contract inflates the thinking phase by about
+  1.8x. See `PROJECT.md`, "Mode 3b ... closed".
+  Interleaving (next item) stays here as a possible, questionable later
+  improvement. Its latency case must be measured at the reasoning levels
+  actually used, not inferred from the voice text's token count.
+- **Interleaved block protocol.** The model can alternate visible blocks and
+  spoken guide blocks, for example a paragraph/table/formula followed by the
+  voice explanation tied to that block. This could let speech begin before the
+  entire answer is complete while preserving the canvas relationship.
+- **Block identity and references.** Spoken blocks may target canvas block ids,
+  so "look at the second column" is grounded in a specific rendered object.
+- **Streaming parser and recovery.** The runtime needs a safe parser for partial
+  tagged output, broken tags, cancelled turns, and incomplete blocks before this
+  can be production behavior.
+- **Journal and replay model.** The Journal must represent visible blocks,
+  spoken blocks, and their relationships without turning spoken commentary into
+  independent memory. Replay should know whether to replay a whole answer, one
+  spoken block, or a block range.
+
+Boundary:
+
+- v2.1 is exploratory until a spike proves model compliance with the tagged or
+  interleaved protocol.
+- Do not replace the v1.9 two-pass Text + voice mode until the single-pass or
+  interleaved design has better measured behavior on latency, tag stability,
+  factual preservation, and recovery from malformed output.
+
+## v3.0 - Functional self-model (idle-time reflection)
+
+Deferred from v2.0 to v3.0 on 2026-09-30 (owner): not clearly what users
+need under the current limitations. The design below stands as recorded.
 
 Working name: **functional self-model**. Origin: the standalone "VAC Harness"
 PoC (`D:\AI\VAC`, brief dated 2026-08-31). The PoC proves an idea, not a
@@ -258,52 +421,6 @@ Open design questions (deferred until a story card):
   next feature.
 - Whether Phase 2 prompt injection is gated by a flag and how the self-model
   section is bounded in the prompt to contain drift.
-
-## v2.1 - Canvas-guided voice
-
-Purpose: explore the larger capability hinted by Text + voice: a structured
-multi-channel answer where Jarvis can build visible content and guide the user
-through it by voice with lower perceived delay than today's two-pass mode.
-
-Candidate directions:
-
-- **Single-pass tagged output.** One backend response contains separate
-  `canvas` and `voice` channels. The UI renders only canvas text; TTS speaks
-  only voice text; the Journal stores both with clear provenance.
-  Amended 2026-09-26 (owner planning dialog): its simplest form - the canvas
-  first, then one trailing `<tts>` block - is pulled forward as a measured
-  spike, `spike-single-pass-tts-block.md`, as a candidate additional mode
-  "3b" beside two-pass mode 3, not its replacement: faster, but the voice
-  inherits the canvas's generation parameters. Voice-first ordering is
-  rejected.
-  Closed 2026-09-27 by that spike's frozen decision rule (speed): the median
-  first-sentence gain was 0.61 s at reasoning off. At medium the single pass
-  was 9.0 s slower, because the contract inflates the thinking phase by about
-  1.8x. See `PROJECT.md`, "Mode 3b ... closed".
-  Interleaving (next item) stays here as a possible, questionable later
-  improvement. Its latency case must be measured at the reasoning levels
-  actually used, not inferred from the voice text's token count.
-- **Interleaved block protocol.** The model can alternate visible blocks and
-  spoken guide blocks, for example a paragraph/table/formula followed by the
-  voice explanation tied to that block. This could let speech begin before the
-  entire answer is complete while preserving the canvas relationship.
-- **Block identity and references.** Spoken blocks may target canvas block ids,
-  so "look at the second column" is grounded in a specific rendered object.
-- **Streaming parser and recovery.** The runtime needs a safe parser for partial
-  tagged output, broken tags, cancelled turns, and incomplete blocks before this
-  can be production behavior.
-- **Journal and replay model.** The Journal must represent visible blocks,
-  spoken blocks, and their relationships without turning spoken commentary into
-  independent memory. Replay should know whether to replay a whole answer, one
-  spoken block, or a block range.
-
-Boundary:
-
-- v2.1 is exploratory until a spike proves model compliance with the tagged or
-  interleaved protocol.
-- Do not replace the v1.9 two-pass Text + voice mode until the single-pass or
-  interleaved design has better measured behavior on latency, tag stability,
-  factual preservation, and recovery from malformed output.
 
 ## Floating candidates
 
