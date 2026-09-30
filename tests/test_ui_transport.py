@@ -280,6 +280,26 @@ def test_hello_message_declares_identity_and_capabilities():
     }
 
 
+def test_state_store_answers_every_options_request_even_when_options_are_unchanged():
+    """Reproduces tasks/bug_reports/2026-09-28-settings-apply-stays-disabled-
+    after-a-spoken-turn.md: the page re-arms "Apply" on every Settings open
+    and waits for both options deltas, so an unchanged enumeration that
+    produced no delta left "Apply" disabled from the second open onward."""
+    state = UiStateStore(model_label="demo")
+    microphone = {"device": "USB Headset", "host_api": "MME", "label": "USB Headset"}
+    current_microphone = {"device": "", "host_api": ""}
+
+    state.set_model_options(["demo", "other"], "demo")
+    state.set_microphone_options([microphone], current_microphone)
+    model_delta = state.set_model_options(["demo", "other"], "demo")
+    microphone_delta = state.set_microphone_options([microphone], current_microphone)
+
+    assert model_delta is not None
+    assert model_delta["payload"]["key"] == "model_options"
+    assert microphone_delta is not None
+    assert microphone_delta["payload"]["key"] == "microphone_options"
+
+
 def test_state_store_replaces_values_and_keeps_system_event_snapshot_history():
     state = UiStateStore(model_label="demo")
 

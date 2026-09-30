@@ -3,9 +3,64 @@
 Commit: `526c950` (main) plus the uncommitted `feature/tts-language-mode`
 working tree. Observed during that task's manual handoff on 2026-09-28.
 
-**Status:** Preliminary. Cause not verified; not yet known whether `main`
-reproduces it. Deferred by the owner so the TTS language mode handoff can
-continue.
+**Status:** Fixed (2026-09-30, branch `fix/settings-apply-after-spoken-turn`).
+Verified by the human-run check below, with the caveat recorded under
+"Human-run result".
+
+## Resolution (2026-09-30)
+
+The spoken turn is incidental. The real trigger is **the second opening of
+the Settings view in the same run**, with or without any turn in between.
+
+`UiStateStore._replace()` (`src/jarvis/ui/transport.py`) publishes a state
+delta only when the value differs from the stored one. The first Settings
+open replaces the empty initial `model_options` / `microphone_options`, so
+both deltas arrive and "Apply" enables. Every later open re-arms "Apply" to
+disabled (`refreshSettingsOptions()` in `app.js`) and re-requests options;
+the engine answers with the same lists, `_replace()` swallows them as
+"unchanged", no delta reaches the page, and both `...Loaded` flags stay
+false. The log matched: `/api/tags` on every reopen (the request is served),
+no enumeration warning (nothing failed). The PortAudio hang hypothesis
+below is not needed to explain the evidence.
+
+Fix: `set_model_options()` and `set_microphone_options()` now always emit a
+delta (new `UiStateStore._set()`), because options are an answer to a
+request, not state that merely changed. Regression test:
+`test_state_store_answers_every_options_request_even_when_options_are_unchanged`
+in `tests/test_ui_transport.py` (failed before the fix).
+
+### Human-run check
+
+1. Start: `python -m jarvis --status-console` (README, "Usage").
+2. In the Status Console click the view toggle "Settings"
+   (`index.html`, `#viewToggle`, `data-view="settings"`). Wait until the
+   Model and Microphone lists are filled; "Apply" must be enabled.
+3. Click the "Journal" view, then "Settings" again - no turn needed.
+   Before the fix "Apply" stayed dimmed here. Expected now: enabled within
+   a second or two.
+4. Send one typed message with TTS on (the original scenario), wait for the
+   spoken answer to finish, open "Settings" again. Expected: "Apply"
+   enabled.
+5. Report step 3 and 4 results. If step 4 still fails while step 3 passes,
+   the PortAudio hypothesis below becomes live again.
+
+### Human-run result (owner, 2026-09-30)
+
+- Step 2: "Apply" enabled immediately.
+- Step 3 and later reopens, including after spoken turns: "Apply" goes
+  dimmed for a fraction of a second, then enables. That flash is the
+  expected mechanism - re-armed on open, enabled when both options deltas
+  arrive - so the observation supports this fix as the cause, not an
+  accidental one.
+- Repeated attempts to reproduce the original symptom failed.
+
+Caveat: the pre-fix failure on a plain second open (no turn) was shown by
+the regression test and by code reading, not re-run live on the unfixed
+build. The conclusion is therefore "consistent with and most likely
+explained by the fix", not proven by a live before/after pair. If the
+symptom returns after a spoken turn only, reopen with the PortAudio
+hypothesis below.
+
 
 ## Symptoms
 
