@@ -2,6 +2,10 @@ import ast
 import sys
 from pathlib import Path
 
+import pytest
+
+from jarvis.core.single_instance import HeldInstance, MutexCreation
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -24,3 +28,37 @@ def assert_stdlib_only_imports(module_filename: str) -> None:
 
     non_stdlib = imported_top_level_names - set(sys.stdlib_module_names)
     assert not non_stdlib, f"{module_filename} imports non-stdlib modules: {non_stdlib}"
+
+
+class NoWin32SingleInstanceGuard:
+    """Stands in for the real guard: no Win32, never refuses, records calls."""
+
+    def __init__(self) -> None:
+        self.acquire_calls = 0
+        self.closed_handles: list[int] = []
+
+    def create(self, name: str) -> MutexCreation:
+        return MutexCreation(handle=1, already_exists=False)
+
+    def close(self, handle: int) -> None:
+        self.closed_handles.append(handle)
+
+    def acquire(self) -> HeldInstance:
+        self.acquire_calls += 1
+        return HeldInstance(self, 1)
+
+
+def _message_box_must_never_appear(message: str) -> None:
+    raise AssertionError(f"a real message box would have appeared: {message}")
+
+
+@pytest.fixture(autouse=True)
+def no_win32_single_instance_guard(monkeypatch: pytest.MonkeyPatch):
+    # A Jarvis running on the dev machine would otherwise refuse main() in
+    # the suite and pop a real modal box.
+    guard = NoWin32SingleInstanceGuard()
+    monkeypatch.setattr("jarvis.app.acquire_single_instance", guard.acquire)
+    monkeypatch.setattr(
+        "jarvis.app.show_already_running_message_box", _message_box_must_never_appear
+    )
+    return guard
