@@ -1,6 +1,7 @@
 # Story v1.7.0: Interrupting Jarvis (hotkey default, experimental voice barge-in for headphones)
 
-**Status:** Proposed. Task 1 (spike), task 2 (hotkey and cancellation
+**Status:** Completed. Closed 2026-09-30 with task 4 deferred to backlog.
+Task 1 (spike), task 2 (hotkey and cancellation
 core), task 3 (turn and journal handling), and task 5 (hotkey docs and
 release verification) completed and closed.
 Task 4 (experimental voice barge-in) deferred to backlog 2026-07-29
