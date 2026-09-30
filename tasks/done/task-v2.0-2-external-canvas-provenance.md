@@ -1,6 +1,6 @@
 # Task v2.0-2: External canvas provenance and journal shape
 
-**Status:** Not started.
+**Status:** Completed. (2026-09-30; see completion notes below.)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** nothing in code (independent of task 1). Read the story's
 design decisions first.
@@ -172,19 +172,19 @@ Extend existing suites; do not fork parallel ones:
 
 ## Acceptance criteria
 
-- [ ] `EXTERNAL_CANVAS` and `EXTERNAL_ANNOTATION` exist with
+- [x] `EXTERNAL_CANVAS` and `EXTERNAL_ANNOTATION` exist with
       `{MODEL_SEARCH, JOURNAL_UI}` eligibility, encoded only on the enum.
-- [ ] The recorder writes one `mcp_canvas` event per call with the metadata
+- [x] The recorder writes one `mcp_canvas` event per call with the metadata
       shape above.
-- [ ] Automatic retrieval enforces eligibility at one chokepoint; neither an
+- [x] Automatic retrieval enforces eligibility at one chokepoint; neither an
       external canvas nor an annotation of one can reach it, asserted end to
       end.
-- [ ] Fork never seeds an `mcp_canvas` event as a model turn.
-- [ ] `search_history` and `read_history` label external items with the
+- [x] Fork never seeds an `mcp_canvas` event as a model turn.
+- [x] `search_history` and `read_history` label external items with the
       caller; the tool descriptions say what they are.
-- [ ] Existing retrieval/annotation/fork/tool tests pass unchanged apart from
+- [x] Existing retrieval/annotation/fork/tool tests pass unchanged apart from
       additive assertions.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green.
 
 ## Stop conditions
 
@@ -200,3 +200,51 @@ Extend existing suites; do not fork parallel ones:
   as Jarvis's own words and is not listed here (grep `role == "assistant"` and
   `"assistant"` role sets under `src/jarvis/`). Report it; do not fold it in
   silently.
+
+## Completion notes (2026-09-30)
+
+- Shape: `src/jarvis/journal/external_canvas.py` owns the vocabulary
+  (`MCP_CANVAS_SOURCE`, `SpeechOrigin`, `SpeechStatus`, `ExternalCanvasCaller`,
+  metadata key constants, `caller_name_from_metadata`).
+  `ProvenanceSourceKind` gained `EXTERNAL_CANVAS` (canonical) and
+  `EXTERNAL_ANNOTATION`, both `{MODEL_SEARCH, JOURNAL_UI}`, plus an
+  `is_external` property. `JournalRecorder.record_external_canvas()` writes the
+  event; VERBATIM + derivative and a truncation flag without a derivative
+  raise. `HistoryCorpusRepository.read_first_event_with_source()` is a
+  read-only probe (no schema change) used once per session per `retrieve()`
+  call.
+- Eligibility is enforced in two places with one definition. `retrieve()`
+  takes `HistoryRetrievalQuery.required_eligibility`, which
+  `to_history_retrieval_query()` sets to `AUTO_RETRIEVAL`, and filters before
+  the `limit` cut. `select_automatic_retrieval_passages()` filters
+  fail-closed (a missing descriptor is dropped) and reports
+  `skipped_ineligible_count`. The `("text",)` source default stays as a
+  pre-filter. Fetch factors are not inflated: an x4 lexical over-fetch was
+  tried and removed after review showed it displaced stronger semantic-only
+  candidates.
+- Fork: `mcp_canvas` joins `context` in the excluded sources.
+  `search_history` / `read_history` / `read_history_ranges` label external
+  items (`source_kind`, `caller_name`); `role` stays `assistant`.
+- Deferred (owner, 2026-09-30: annotations are not a blocker here):
+  `tasks/bug_reports/2026-09-30-external-annotations-depress-eligible-recall.md`
+  and
+  `tasks/bug_reports/2026-09-30-annotation-summarizer-cannot-tell-external-answers.md`.
+- `PROJECT.md`: new "Architecture v2.0 (MCP voice guide) - in progress"
+  section and three dated amendments (annotations and auto-retrieval, six
+  provenance kinds, fork exclusions).
+- Gates: 2957 passed, 1 skipped; `ruff check` and `ruff format --check`
+  green. Independent review LGTM after two fix rounds, with mutation checks
+  confirming the chokepoint, probe, and fork tests catch regressions.
+- For task 6 (UI): an external canvas currently renders as an ordinary
+  assistant bubble with role-keyed outcome badges, and
+  `_journal_session_title_and_kind` gives an MCP-only session the
+  `voice_only` placeholder title (`src/jarvis/ui/status_console.py`, around
+  line 283; `status_console_ui/app.js`, around lines 2560, 2654, 3641, 3659).
+  Locator hits for an `mcp_canvas` derivative carry a `SPOKEN_DERIVATIVE`
+  descriptor with no external marker.
+- Cleanup candidates for task 7: `record_assistant()` still uses the literal
+  derivative keys; `recorder.py` imports `corpus.py` only for
+  `SPOKEN_DERIVATIVE_METADATA_KEY`; `search_history` uses
+  `provenance.source_kind` while `read_history` uses a top-level `source_kind`
+  (field shape could be unified); `skipped_ineligible_count` is not surfaced
+  in `_resolve_automatic_retrieval()` telemetry in `app.py`.

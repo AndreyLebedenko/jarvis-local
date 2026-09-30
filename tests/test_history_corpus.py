@@ -516,6 +516,65 @@ def test_read_session_metadata_reports_found_and_unknown(tmp_path: Path) -> None
     assert unknown.session is None
 
 
+def test_read_first_event_with_source_returns_the_earliest_matching_event(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    session_id = "20260716-153000-ab12"
+    for position, (source, text) in enumerate(
+        (("text", "question"), ("mcp_canvas", "first canvas"), ("mcp_canvas", "second"))
+    ):
+        store.append(
+            _event(
+                session_id=session_id,
+                timestamp=f"2026-07-16T15:30:0{position}+01:00",
+                role="user" if source == "text" else "assistant",
+                source=source,
+                text=text,
+                metadata={"caller": {"name": "claude"}} if position == 1 else {},
+            )
+        )
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    event = repository.read_first_event_with_source(session_id, "mcp_canvas")
+
+    assert event is not None
+    assert event.reference == JournalEventRef(session_id, 1)
+    assert event.metadata == {"caller": {"name": "claude"}}
+
+
+def test_read_first_event_with_source_is_none_when_session_lacks_the_source(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    _append_sequence(store, "20260716-153000-ab12", ("zero", "one"))
+    repository = HistoryCorpusRepository(store, tmp_path / "derived")
+    repository.rebuild()
+
+    assert (
+        repository.read_first_event_with_source("20260716-153000-ab12", "mcp_canvas")
+        is None
+    )
+    assert (
+        repository.read_first_event_with_source("20260717-090000-cd34", "mcp_canvas")
+        is None
+    )
+
+
+def test_read_first_event_with_source_is_none_before_the_first_rebuild(
+    tmp_path: Path,
+) -> None:
+    repository = HistoryCorpusRepository(
+        JournalStore(tmp_path / "journal"), tmp_path / "derived"
+    )
+
+    assert (
+        repository.read_first_event_with_source("20260716-153000-ab12", "mcp_canvas")
+        is None
+    )
+
+
 def test_read_ranges_returns_ordered_ranges_and_per_range_outcomes(
     tmp_path: Path,
 ) -> None:

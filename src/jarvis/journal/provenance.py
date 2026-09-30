@@ -13,6 +13,9 @@ The eligibility contract encoded in this module is the single source of
 truth: raw events, transcripts, and annotations are eligible for automatic
 retrieval, model-facing search, and Journal UI search; the spoken derivative
 is locator-only and must never enter model memory or automatic retrieval.
+An external canvas (another assistant's answer) and an annotation of one are
+searchable by the model and in the Journal, but never fed to automatic
+retrieval: they are not Jarvis's own claim.
 
 This module is pure: no sqlite, no filesystem, no network, no event bus.
 """
@@ -25,6 +28,7 @@ from typing import TYPE_CHECKING
 
 from jarvis.journal.annotation import AnnotationTarget
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 
 if TYPE_CHECKING:
     from jarvis.journal.corpus import HistoryCorpusEvent
@@ -42,10 +46,16 @@ class ProvenanceSourceKind(Enum):
     TRANSCRIPT = "transcript"
     ANNOTATION = "annotation"
     SPOKEN_DERIVATIVE = "spoken_derivative"
+    EXTERNAL_CANVAS = "external_canvas"
+    EXTERNAL_ANNOTATION = "external_annotation"
 
     @property
     def eligibility(self) -> frozenset[ProvenanceEligibility]:
         return _ELIGIBILITY_BY_SOURCE_KIND[self]
+
+    @property
+    def is_external(self) -> bool:
+        return self in _EXTERNAL_SOURCE_KINDS
 
 
 class ProvenanceEligibility(Enum):
@@ -71,6 +81,9 @@ _CANONICAL_ELIGIBILITY = frozenset(
     }
 )
 _LOCATOR_ELIGIBILITY = frozenset({ProvenanceEligibility.LOCATOR_ONLY})
+_EXTERNAL_ELIGIBILITY = frozenset(
+    {ProvenanceEligibility.MODEL_SEARCH, ProvenanceEligibility.JOURNAL_UI}
+)
 
 
 @dataclass(frozen=True)
@@ -126,9 +139,17 @@ def provenance_descriptor_from_corpus_event(
 
     ``text_is_transcript`` decides raw vs transcript: the corpus indexes
     ``effective_text`` only when the raw text is empty, so a transcript-backed
-    event's indexed text is derived, never canonical.
+    event's indexed text is derived, never canonical. An external canvas is
+    the canonical text of its event, just not authored by Jarvis.
     """
 
+    if event.source == MCP_CANVAS_SOURCE:
+        return ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.EXTERNAL_CANVAS,
+            eligibility=ProvenanceSourceKind.EXTERNAL_CANVAS.eligibility,
+            target=ProvenanceTarget(event_ref=event.reference),
+            is_canonical=True,
+        )
     is_transcript = event.text_is_transcript
     source_kind = (
         ProvenanceSourceKind.TRANSCRIPT
@@ -145,16 +166,25 @@ def provenance_descriptor_from_corpus_event(
 
 def provenance_descriptor_from_annotation_identity(
     identity: AnnotationCandidateIdentity,
+    *,
+    target_is_external: bool = False,
 ) -> ProvenanceDescriptor:
     """Map a retrieval annotation identity to its descriptor.
 
     The session/range shape is carried faithfully: both positions set for an
     inclusive range, both ``None`` for a whole-session annotation.
+    ``target_is_external`` marks an annotation of a session that holds
+    external canvases; eligibility lives on the kind, so it needs its own kind.
     """
 
+    source_kind = (
+        ProvenanceSourceKind.EXTERNAL_ANNOTATION
+        if target_is_external
+        else ProvenanceSourceKind.ANNOTATION
+    )
     return ProvenanceDescriptor(
-        source_kind=ProvenanceSourceKind.ANNOTATION,
-        eligibility=ProvenanceSourceKind.ANNOTATION.eligibility,
+        source_kind=source_kind,
+        eligibility=source_kind.eligibility,
         target=ProvenanceTarget(
             annotation=AnnotationTarget(
                 session_id=identity.session_id,
@@ -185,6 +215,10 @@ def spoken_derivative_provenance_descriptor(
     )
 
 
+_EXTERNAL_SOURCE_KINDS = frozenset(
+    {ProvenanceSourceKind.EXTERNAL_CANVAS, ProvenanceSourceKind.EXTERNAL_ANNOTATION}
+)
+
 # The eligibility contract (task-v1.9.1-1 card): encode once, re-derive at no
 # call site. Consulted only through ProvenanceSourceKind.eligibility.
 _ELIGIBILITY_BY_SOURCE_KIND: dict[
@@ -194,4 +228,6 @@ _ELIGIBILITY_BY_SOURCE_KIND: dict[
     ProvenanceSourceKind.TRANSCRIPT: _CANONICAL_ELIGIBILITY,
     ProvenanceSourceKind.ANNOTATION: _CANONICAL_ELIGIBILITY,
     ProvenanceSourceKind.SPOKEN_DERIVATIVE: _LOCATOR_ELIGIBILITY,
+    ProvenanceSourceKind.EXTERNAL_CANVAS: _EXTERNAL_ELIGIBILITY,
+    ProvenanceSourceKind.EXTERNAL_ANNOTATION: _EXTERNAL_ELIGIBILITY,
 }

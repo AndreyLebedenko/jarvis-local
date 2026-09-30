@@ -472,6 +472,39 @@ class HistoryCorpusRepository:
             return HistorySessionRead(HistorySessionReadStatus.UNKNOWN_SESSION)
         return HistorySessionRead(HistorySessionReadStatus.FOUND, metadata)
 
+    def read_first_event_with_source(
+        self, session_id: str, source: str
+    ) -> HistoryCorpusEvent | None:
+        connection = self._open_read_connection()
+        if connection is None:
+            return None
+        with closing(connection):
+            if not _table_exists(connection, "history_corpus_events"):
+                return None
+            row = connection.execute(
+                """
+                SELECT
+                    session_id,
+                    event_position,
+                    timestamp,
+                    timestamp_sort,
+                    role,
+                    source,
+                    text,
+                    media_json,
+                    media_count,
+                    transcript,
+                    metadata_json,
+                    effective_text
+                FROM history_corpus_events
+                WHERE session_id = ? AND source = ?
+                ORDER BY event_position
+                LIMIT 1
+                """,
+                (session_id, source),
+            ).fetchone()
+        return None if row is None else self._row_to_event(row)
+
     def read_ranges(self, ranges: tuple[HistoryEventRange, ...]) -> HistoryBatchRead:
         if len(ranges) > HISTORY_READ_MAX_BATCH_RANGES:
             return HistoryBatchRead(

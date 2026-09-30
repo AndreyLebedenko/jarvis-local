@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from jarvis.journal.events import JournalEvent
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.store import JournalReplay
 
 # Stands in for a past voice turn whose words were never transcribed. A seed
@@ -11,6 +12,10 @@ from jarvis.journal.store import JournalReplay
 # read as a label for something that happened, never as an instruction to
 # listen to a recording the request does not contain.
 UNTRANSCRIBED_VOICE_TURN_TEXT = "[голосовое сообщение без расшифровки]"
+
+# An external canvas carries role "assistant" but is another assistant's text:
+# seeding it would present it to the local model as its own past turn.
+_EXCLUDED_SOURCES = frozenset({"context", MCP_CANVAS_SOURCE})
 
 
 @dataclass(frozen=True)
@@ -107,7 +112,7 @@ def build_fork_seed(replay: JournalReplay, budget_chars: int) -> ForkSeedResult:
 
 
 def _is_excluded_event(event: JournalEvent) -> bool:
-    return event.source == "context"
+    return event.source in _EXCLUDED_SOURCES
 
 
 def _seed_turn(event: JournalEvent) -> ForkSeedTurn | None:

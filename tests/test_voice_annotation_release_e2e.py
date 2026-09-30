@@ -27,6 +27,7 @@ event/annotation - never a whole-session rebuild.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,14 @@ from jarvis.app import ConversationHistory, Orchestrator
 from jarvis.core.bus import EventBus
 from jarvis.core.config import HistorySemanticSettings
 from jarvis.core.lifecycle import ModelRequestStarted, TextSubmissionReason
+from jarvis.history import (
+    AutomaticRetrievalSelectionLimits,
+    ConservativeUtf8TokenEstimator,
+    build_automatic_retrieval_request,
+    select_automatic_retrieval_passages,
+    select_recent_history,
+    to_history_retrieval_query,
+)
 from jarvis.journal import (
     AnnotationHistoryProjection,
     AnnotationOverlayChanged,
@@ -61,6 +70,7 @@ from jarvis.journal import (
     TranscriptSource,
 )
 from jarvis.journal.events import JournalEventRef
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.provenance import ProvenanceSourceKind
 from jarvis.journal.transcript import (
     TranscriptOverlayChanged,
@@ -78,6 +88,9 @@ VOICE_TRANSCRIPT_TEXT = "На кухне нужно заменить фильт�
 VOICE_EXPLICIT_QUERY = "фильтр для воды"
 ANNOTATION_TEXT = "Пользователь попросил проверить давление в шинах в среду."
 ANNOTATION_QUERY = "проверить давление в шинах"
+EXTERNAL_CANVAS_TEXT = (
+    "Давление в шинах проверяйте раз в месяц, пишет внешний ассистент."
+)
 
 
 class _TaggedEmbedder:
@@ -168,7 +181,9 @@ class _VoiceAnnotationJournal:
         )
 
 
-def _build_journal(root: Path, *, filler_events: int = 500) -> _VoiceAnnotationJournal:
+def _build_journal(
+    root: Path, *, filler_events: int = 500, annotated_answer_source: str = "assistant"
+) -> _VoiceAnnotationJournal:
     store = JournalStore(root / "journal")
     resolver = JournalStoreEventReferenceResolver(store)
 
@@ -200,9 +215,13 @@ def _build_journal(root: Path, *, filler_events: int = 500) -> _VoiceAnnotationJ
         JournalEvent(
             session_id=annotation_session_id,
             timestamp=_timestamp(1),
-            source="assistant",
+            source=annotated_answer_source,
             role="assistant",
-            text="Обычно 2.2-2.4 бар, но сверься с наклейкой на двери.",
+            text=(
+                EXTERNAL_CANVAS_TEXT
+                if annotated_answer_source == MCP_CANVAS_SOURCE
+                else "Обычно 2.2-2.4 бар, но сверься с наклейкой на двери."
+            ),
             media=(),
             transcript=None,
         )
@@ -434,6 +453,111 @@ async def test_annotation_reachable_through_automatic_retrieval_with_typed_frami
     assert journal.annotation_id in retrieved
     assert journal.annotation_session_id in retrieved
     assert '"source":"generated"' in retrieved
+
+
+def test_annotation_of_an_external_canvas_session_is_an_external_annotation(
+    tmp_path: Path,
+) -> None:
+    journal = _build_journal(tmp_path, annotated_answer_source=MCP_CANVAS_SOURCE)
+
+    result = journal.service().retrieve(
+        HistoryRetrievalQuery(ANNOTATION_QUERY, limit=5)
+    )
+
+    [annotation] = [c for c in result.candidates if c.annotation is not None]
+    assert annotation.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_ANNOTATION
+
+
+async def test_external_annotation_is_not_reached_by_automatic_retrieval(
+    tmp_path: Path,
+) -> None:
+    """Annotations bypass the roles/sources filter, so the eligibility
+    chokepoint is what keeps an external answer's summary out of the prompt."""
+
+    journal = _build_journal(tmp_path, annotated_answer_source=MCP_CANVAS_SOURCE)
+    orchestrator, backend, _recorder = _drive_turn(journal.service())
+
+    result = await orchestrator.submit_text_input(ANNOTATION_QUERY)
+
+    assert result.reason is TextSubmissionReason.ACCEPTED
+    [(messages, _media)] = backend.calls
+    contents = _messages_content(messages)
+    assert not any(ANNOTATION_TEXT in c for c in contents)
+    assert not any(journal.annotation_id in c for c in contents)
+
+
+async def test_external_canvas_is_not_reached_by_automatic_retrieval(
+    tmp_path: Path,
+) -> None:
+    journal = _build_journal(tmp_path, annotated_answer_source=MCP_CANVAS_SOURCE)
+    explicit = journal.service().retrieve(
+        HistoryRetrievalQuery(ANNOTATION_QUERY, limit=5)
+    )
+    assert any(
+        c.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_CANVAS
+        for c in explicit.candidates
+    )
+    orchestrator, backend, _recorder = _drive_turn(journal.service())
+
+    await orchestrator.submit_text_input(ANNOTATION_QUERY)
+
+    [(messages, _media)] = backend.calls
+    assert not any(EXTERNAL_CANVAS_TEXT in c for c in _messages_content(messages))
+
+
+def _unfiltered_automatic_request(estimator: ConservativeUtf8TokenEstimator):
+    """sources=() removes the ("text",) pre-filter, so only the eligibility
+    contract can keep external canvases and their annotations out."""
+    return build_automatic_retrieval_request(
+        ANNOTATION_QUERY,
+        select_recent_history(
+            (), estimator=estimator, max_tokens=256, minimum_recent_exchanges=1
+        ),
+        sources=(),
+    )
+
+
+def test_external_items_do_not_reach_passages_without_the_source_prefilter(
+    tmp_path: Path,
+) -> None:
+    journal = _build_journal(tmp_path, annotated_answer_source=MCP_CANVAS_SOURCE)
+    estimator = ConservativeUtf8TokenEstimator()
+    request = _unfiltered_automatic_request(estimator)
+    limits = AutomaticRetrievalSelectionLimits()
+
+    retrieval = journal.service().retrieve(
+        to_history_retrieval_query(request, limit=limits.candidate_limit)
+    )
+    selection = select_automatic_retrieval_passages(
+        request, retrieval.candidates, limits, estimator=estimator
+    )
+
+    assert selection.selected_passages == ()
+
+
+def test_selection_alone_drops_external_items_the_retrieval_did_not_filter(
+    tmp_path: Path,
+) -> None:
+    journal = _build_journal(tmp_path, annotated_answer_source=MCP_CANVAS_SOURCE)
+    estimator = ConservativeUtf8TokenEstimator()
+    request = _unfiltered_automatic_request(estimator)
+    limits = AutomaticRetrievalSelectionLimits()
+    unfiltered_query = dataclasses.replace(
+        to_history_retrieval_query(request, limit=limits.candidate_limit),
+        required_eligibility=None,
+    )
+
+    retrieval = journal.service().retrieve(unfiltered_query)
+    selection = select_automatic_retrieval_passages(
+        request, retrieval.candidates, limits, estimator=estimator
+    )
+
+    assert {c.provenance.source_kind for c in retrieval.candidates} >= {
+        ProvenanceSourceKind.EXTERNAL_CANVAS,
+        ProvenanceSourceKind.EXTERNAL_ANNOTATION,
+    }
+    assert selection.selected_passages == ()
+    assert selection.skipped_ineligible_count >= 2
 
 
 def test_annotation_edit_is_reflected_and_traceable_to_its_target(

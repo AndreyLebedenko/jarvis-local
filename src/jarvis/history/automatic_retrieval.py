@@ -14,7 +14,7 @@ from jarvis.history.working_context import (
     format_retrieved_history_passages,
 )
 from jarvis.journal import HistoryRetrievalCandidate, HistoryRetrievalQuery
-from jarvis.journal.provenance import ProvenanceSourceKind
+from jarvis.journal.provenance import ProvenanceEligibility, ProvenanceSourceKind
 
 __all__ = [
     "AutomaticRetrievalRequest",
@@ -70,6 +70,7 @@ class AutomaticRetrievalSelection:
     skipped_duplicate_count: int
     skipped_weak_count: int
     skipped_capacity_count: int
+    skipped_ineligible_count: int
     estimated_tokens: int
     token_budget: int
 
@@ -114,6 +115,7 @@ def to_history_retrieval_query(
         date_to=request.date_to,
         roles=request.roles,
         sources=request.sources,
+        required_eligibility=ProvenanceEligibility.AUTO_RETRIEVAL,
     )
 
 
@@ -133,6 +135,7 @@ def select_automatic_retrieval_passages(
             skipped_duplicate_count=0,
             skipped_weak_count=0,
             skipped_capacity_count=0,
+            skipped_ineligible_count=0,
             estimated_tokens=0,
             token_budget=limits.token_budget,
         )
@@ -149,7 +152,14 @@ def select_automatic_retrieval_passages(
     skipped_weak = 0
     skipped_capacity = 0
 
-    for candidate in tuple(candidates[: limits.candidate_limit]):
+    # Filtered before the candidate_limit slice so ineligible candidates never
+    # use up a slot.
+    eligible_candidates = tuple(
+        candidate for candidate in candidates if _is_auto_retrieval_eligible(candidate)
+    )
+    skipped_ineligible = len(candidates) - len(eligible_candidates)
+
+    for candidate in eligible_candidates[: limits.candidate_limit]:
         normalized_candidate_text = _normalize_text(candidate.text)
         if not normalized_candidate_text:
             skipped_empty += 1
@@ -179,11 +189,12 @@ def select_automatic_retrieval_passages(
     return AutomaticRetrievalSelection(
         request=request,
         selected_passages=selected_passages,
-        inspected_candidate_count=min(len(candidates), limits.candidate_limit),
+        inspected_candidate_count=min(len(eligible_candidates), limits.candidate_limit),
         skipped_empty_count=skipped_empty,
         skipped_duplicate_count=skipped_duplicate,
         skipped_weak_count=skipped_weak,
         skipped_capacity_count=skipped_capacity,
+        skipped_ineligible_count=skipped_ineligible,
         estimated_tokens=estimated_tokens,
         token_budget=limits.token_budget,
     )
@@ -204,6 +215,14 @@ def _compose_query_text(
         if text:
             parts.append(text)
     return "\n\n".join(parts)
+
+
+def _is_auto_retrieval_eligible(candidate: HistoryRetrievalCandidate) -> bool:
+    descriptor = candidate.provenance
+    return (
+        descriptor is not None
+        and ProvenanceEligibility.AUTO_RETRIEVAL in descriptor.eligibility
+    )
 
 
 def _candidate_relevance(candidate: HistoryRetrievalCandidate) -> float:

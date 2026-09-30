@@ -27,6 +27,8 @@ from jarvis.journal import (
     JournalEventRef,
 )
 from jarvis.journal.events import parse_journal_timestamp
+from jarvis.journal.external_canvas import caller_name_from_metadata
+from jarvis.journal.provenance import provenance_descriptor_from_corpus_event
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.tools.results import ToolArguments, ToolCallResult
@@ -48,6 +50,11 @@ _MAX_SURROUNDING_EVENTS = 6
 _MAX_RANGE_BATCHES = 3
 _MAX_RANGE_TOTAL_EVENTS = 6
 _EVENT_TEXT_CHAR_LIMIT = 200
+_EXTERNAL_ITEMS_NOTE = (
+    "An item whose source_kind is external_canvas or external_annotation is "
+    "another assistant's text that the user was shown (caller_name says which "
+    "one), not your own past answer, even when its role is assistant."
+)
 
 
 class HistoryToolProvider:
@@ -208,7 +215,8 @@ def _history_tools() -> list[RegisteredTool]:
             name=SEARCH_HISTORY_TOOL_NAME,
             description=(
                 "Search local conversation history with hybrid lexical and semantic "
-                "retrieval. Returns grounded text passages with provenance."
+                "retrieval. Returns grounded text passages with provenance. "
+                + _EXTERNAL_ITEMS_NOTE
             ),
             schema=_search_history_schema(),
             provider=HISTORY_TOOL_PROVIDER_NAME,
@@ -219,7 +227,8 @@ def _history_tools() -> list[RegisteredTool]:
             name=READ_HISTORY_TOOL_NAME,
             description=(
                 "Read grounded local history either by explicit references or as "
-                "bounded surrounding context around one anchor event."
+                "bounded surrounding context around one anchor event. "
+                + _EXTERNAL_ITEMS_NOTE
             ),
             schema=_read_history_schema(),
             provider=HISTORY_TOOL_PROVIDER_NAME,
@@ -229,7 +238,8 @@ def _history_tools() -> list[RegisteredTool]:
         RegisteredTool(
             name=READ_HISTORY_RANGES_TOOL_NAME,
             description=(
-                "Read and compare several bounded local history ranges in one call."
+                "Read and compare several bounded local history ranges in one call. "
+                + _EXTERNAL_ITEMS_NOTE
             ),
             schema=_read_history_ranges_schema(),
             provider=HISTORY_TOOL_PROVIDER_NAME,
@@ -847,6 +857,8 @@ def _serialize_retrieval_candidates(
             "lexical_rank": candidate.lexical_rank,
             "provenance": _provenance_payload(candidate),
         }
+        if candidate.provenance.source_kind.is_external:
+            payload["caller_name"] = candidate.external_caller_name
         if (
             candidate.kind is HistoryRetrievalCandidateKind.ANNOTATION
             and candidate.annotation is not None
@@ -902,19 +914,22 @@ def _serialize_events(
     for event in events:
         text = _truncate_text(event.indexed_text)
         truncated_count += int(text.truncated)
-        serialized.append(
-            {
-                "reference": _reference_payload(event.reference),
-                "timestamp": event.timestamp,
-                "role": event.role,
-                "source": event.source,
-                "text": text.payload["text"],
-                "truncated": text.truncated,
-                "text_is_transcript": event.text_is_transcript,
-                "media_count": event.media_count,
-                "transcript": event.transcript,
-            }
-        )
+        item: JSONObject = {
+            "reference": _reference_payload(event.reference),
+            "timestamp": event.timestamp,
+            "role": event.role,
+            "source": event.source,
+            "text": text.payload["text"],
+            "truncated": text.truncated,
+            "text_is_transcript": event.text_is_transcript,
+            "media_count": event.media_count,
+            "transcript": event.transcript,
+        }
+        source_kind = provenance_descriptor_from_corpus_event(event).source_kind
+        if source_kind.is_external:
+            item["source_kind"] = source_kind.value
+            item["caller_name"] = caller_name_from_metadata(event.metadata)
+        serialized.append(item)
     return serialized, truncated_count
 
 

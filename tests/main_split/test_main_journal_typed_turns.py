@@ -28,6 +28,11 @@ from jarvis.journal import (
     HistoryRetrievalStatus,
     JournalEventRef,
 )
+from jarvis.journal.provenance import (
+    ProvenanceDescriptor,
+    ProvenanceSourceKind,
+    ProvenanceTarget,
+)
 
 # --- Orchestrator: Journal typed input turns (story-v1.5.2 task 1) ---------
 
@@ -72,14 +77,21 @@ async def test_submit_text_input_starts_shared_turn_without_pending_screenshot()
 
 
 async def test_submit_text_input_automatic_retrieval_timeout_telemetry():
+    retrieval_reference = JournalEventRef("20260718-120000-ab12", 0)
     retrieval_candidate = HistoryRetrievalCandidate(
-        reference=JournalEventRef("20260718-120000-ab12", 0),
+        reference=retrieval_reference,
         text="Реле не сработало.",
         timestamp="2026-07-18T12:00:00+00:00",
         role="assistant",
         source="text",
         source_mode=HistoryRetrievalSourceMode.LEXICAL,
         combined_rank=1,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.RAW_EVENT,
+            eligibility=ProvenanceSourceKind.RAW_EVENT.eligibility,
+            target=ProvenanceTarget(event_ref=retrieval_reference),
+            is_canonical=True,
+        ),
         semantic_score=0.95,
     )
     retrieval_service = _FakeHistoryRetrievalService(
