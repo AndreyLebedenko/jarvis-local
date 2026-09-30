@@ -531,6 +531,9 @@ class UiStateStore:
     def _replace(self, key: str, value: JSONValue) -> JsonObject | None:
         if self._state[key] == value:
             return None
+        return self._set(key, value)
+
+    def _set(self, key: str, value: JSONValue) -> JsonObject:
         self._state[key] = value
         return make_message("state", "delta", {"key": key, "value": value})
 
@@ -634,17 +637,20 @@ class UiStateStore:
             "visibility", cast(JsonObject, visibility_mode_payload(mode))
         )
 
-    def set_model_options(self, options: list[str], current: str) -> JsonObject | None:
-        return self._replace("model_options", {"options": options, "current": current})
+    # Options are the answer to a request, not state that merely changed:
+    # the page keeps "Apply" disabled until each request is answered, so an
+    # unchanged enumeration must still produce a delta - never _replace here.
+    def set_model_options(self, options: list[str], current: str) -> JsonObject:
+        return self._set("model_options", {"options": options, "current": current})
 
     def set_microphone_options(
         self, options: list[JsonObject], current: JsonObject
-    ) -> JsonObject | None:
+    ) -> JsonObject:
         """A microphone option is a (device, host_api) pair, not a string:
         one physical microphone appears once per host API under the same
         name, so a name alone cannot identify what the user picked (see
         audio/devices.py)."""
-        return self._replace(
+        return self._set(
             "microphone_options",
             {"options": cast(JSONValue, options), "current": current},
         )
