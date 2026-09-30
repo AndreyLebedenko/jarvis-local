@@ -216,18 +216,19 @@ Settled constraints (owner, 2026-09-30):
 - Runtime locality is unchanged: the server listens on localhost only and
   Jarvis sends nothing outward.
 
-Open design questions (before a story card):
+Open design questions resolved (owner, 2026-09-30), detail in
+`story-v2.0-mcp-voice-guide.md`:
 
-- Provenance of the external canvas under the v1.9.1 typed indexing
-  contract: a new source kind (external canvas, with the caller named), and
-  whether it is eligible for automatic retrieval or explicit search only.
-  The spoken derivative stays locator-only as today.
-- Session mapping: one Jarvis journal session per caller session, or per
-  `--mcp-mode` run.
-- Pointers: how `canvas` carries references to details (sections, files,
-  lines) so the spoken derivative can say where to look.
-- Whether a Claude Code `Stop` hook (every answer, no pointers) is offered
-  beside the explicit tool call.
+- Provenance: a new external-canvas source kind, eligible for explicit
+  model search and Journal UI, not for automatic retrieval. The spoken
+  derivative stays locator-only.
+- Sessions: one journal session per `--mcp-mode` run; caller identity in
+  event metadata.
+- Pointers: carried in the canvas text; the tool signature does not change.
+- Claude Code `Stop` hook: out of v2.0, a possible follow-up.
+
+Story/task readiness: story card exists at
+`tasks/story-v2.0-mcp-voice-guide.md` (approved 2026-09-30).
 
 Rejected for v2.0 (same dialog): Jarvis calling an external LLM itself,
 with local STT and a local sensitive-data gate. It would revise the
