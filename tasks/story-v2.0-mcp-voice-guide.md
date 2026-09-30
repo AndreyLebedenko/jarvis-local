@@ -1,6 +1,6 @@
 # Story v2.0: MCP voice guide (`--mcp-mode`)
 
-**Status:** Approved (owner, 2026-09-30); task cards not started.
+**Status:** Approved (owner, 2026-09-30); task cards written, none started.
 **Created:** 2026-09-30
 **Updated:** 2026-09-30
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md` (section "v2.0 - MCP voice guide
@@ -103,7 +103,12 @@ an external LLM itself (roadmap, "Rejected for v2.0").
 - **Derived layers inherit the exclusion.** An annotation targeting an
   `mcp_canvas` event is not eligible for automatic retrieval either.
   Otherwise the external text reaches the auto-retrieval feed one hop
-  removed.
+  removed. Refined while writing task 2: automatic retrieval already skips
+  `mcp_canvas` events, but only through its `sources=("text",)` default,
+  and annotations bypass that filter by design. Task 2 therefore adds an
+  `EXTERNAL_ANNOTATION` kind and enforces eligibility at one chokepoint,
+  `select_automatic_retrieval_passages()`. A fork excludes `mcp_canvas`
+  events through the existing `_is_excluded_event()` mechanism.
 - **What goes into metadata.** `guidance`, caller identity, and how the
   speech was produced: `derivative` (Jarvis's second pass), `verbatim`
   (canvas spoken as is), or `caller` (`spoken_text`). The caller's
@@ -113,7 +118,8 @@ an external LLM itself (roadmap, "Rejected for v2.0").
   index).
 - **Write timing mirrors mode 3.** One event per call, written when the item
   finishes: spoken, interrupted, skipped, or failed, with the matching
-  outcome. Items still queued when Jarvis dies are lost; this is accepted
+  status (`spoken`, `muted`, `interrupted`, `skipped`, `failed`) in
+  metadata, not in `outcome`. Items still queued when Jarvis dies are lost; this is accepted
   and documented, because the journal is append-only and an early write
   would need a second event per call.
 - **The voice-guide pass is its own generation profile.** A new
@@ -126,12 +132,18 @@ an external LLM itself (roadmap, "Rejected for v2.0").
   the local model. With no tools, a prompt injection in it can at worst
   change what is spoken. `McpHost` stays `OFF` for the whole `--mcp-mode`
   run.
-- **The derivative pass is extracted from the user-turn lifecycle.** Today
-  `Orchestrator.run_derivative_pass()` (`app.py`) is bound to a user turn
-  (`claim_turn_end()`, `_journal_turn_started`, `_pending_canonical_text`).
-  The canvas-to-speech transformation becomes a reusable component. Mode 3
-  calls it from the turn lifecycle, and the voice-guide worker calls it from
-  the queue. Mode-3 behavior is byte-identical before and after.
+- **The voice guide runs outside the user-turn lifecycle.** (Refined while
+  writing task 3; the approved text said the whole derivative pass would be
+  extracted and shared.) `Orchestrator.run_derivative_pass()` dispatches
+  through `OllamaBackend.chat()`, whose bus events drive the turn machinery
+  (`claim_turn_end()`, history, `finish_turn()`), so the dispatch half cannot
+  be shared. The guide pass instead uses the bus-free `iter_chat()` (as the
+  voice-intent probe and the annotation backend already do). Speech goes
+  through the app's `ReplayPlayer`, which already handles mute, the shared
+  playback lock, and interrupt. Mode 3 shares only the pure message
+  composition and stays byte-identical. Cost: the guide is generated in full
+  before it is spoken (no sentence streaming). Streaming is a follow-up if the
+  delay is felt.
 - **Interrupt clears the queue.** The existing interrupt hotkey
   (`HotkeySettings.interrupt`, default `ctrl+alt+i`, `core/config.py`) stops
   the item being spoken and drops the pending ones. Each is journaled with
@@ -143,12 +155,16 @@ an external LLM itself (roadmap, "Rejected for v2.0").
   error and is not journaled.
 - **Server, port, token.** `mcp` (already in `requirements.txt`) provides the
   streamable-HTTP server. It runs inside Jarvis's event loop, bound to
-  `127.0.0.1`, on a fixed configured port (the client stores the URL, so the
+  `127.0.0.1`, on a fixed configured port (config section `[mcp_mode]`; the
+  `McpServerSettings` name is taken by the client side) (the client stores the URL, so the
   port cannot be ephemeral), with the SDK's host/origin validation on. The
   bearer token is generated once (`secrets.token_urlsafe(32)`) into a token
   file on first `--mcp-mode` start and reused across runs, so client config
   survives restarts; deleting the file rotates it. The token is never logged
-  and never shown in the Status Console. Any package imported directly
+  and never shown in the Status Console. The token is checked by a small
+  ASGI middleware in front of the SDK app, not the SDK's `token_verifier`,
+  which requires OAuth resource-server settings a static local token does
+  not need. Any package imported directly
   (for example `uvicorn`, `starlette`) is added to `requirements.txt`
   explicitly, not relied on transitively.
 - **Single-instance guard: a Windows named mutex** in the `Local\`
@@ -190,10 +206,11 @@ an external LLM itself (roadmap, "Rejected for v2.0").
    records why). Pure logic, fully unit-tested. Boundary: no queue, no
    server, no prompt.
 
-3. **Voice-guide pipeline.** (Size: M-L.) Extract the canvas-to-speech
-   transformation from `Orchestrator.run_derivative_pass()` into a
-   component mode 3 and the worker both use (mode-3 tests unchanged and
-   green). Add the `voice_guide` profile and prompt, the three speech origins
+3. **Voice-guide pipeline.** (Size: M-L.) Extract the pure message
+   composition from `Orchestrator.run_derivative_pass()` (mode-3 tests
+   unchanged and green). Build `VoiceGuideService` outside the turn
+   lifecycle: `iter_chat()` for the guide pass, the app's `ReplayPlayer` for
+   speech. Add the `voice_guide` profile and prompt, the three speech origins
    (derivative / verbatim / caller), the bounded queue with one worker, the
    interrupt-clears-queue behavior, and journaling through task 2's recorder
    method. Tested with a fake backend and fake TTS. Boundary: no MCP server,
@@ -274,18 +291,20 @@ an external LLM itself (roadmap, "Rejected for v2.0").
 ## Stop conditions
 
 - Stop if excluding `EXTERNAL_CANVAS` from automatic retrieval cannot be
-  enforced at one chokepoint that covers both the lexical and the semantic
-  leg, and needs a filter at each call site. That is the signal to switch to
+  enforced at one chokepoint (`select_automatic_retrieval_passages()`) that
+  covers the lexical, semantic, and annotation legs, and needs a filter at
+  each call site. That is the signal to switch to
   a fourth journal role, an architectural change to confirm (0.3, 0.4).
 - Stop if distinguishing the source needs new persisted corpus data (a
   `history_corpus.db` schema bump). The FTS table already stores `source`;
   if that is not enough, the migration is scope to confirm.
-- Stop if the derivative pass cannot be extracted without changing mode-3
-  behavior or its tests - that is a shape problem, not an adaptation.
+- Stop if the message composition cannot be extracted without changing
+  mode-3 behavior or its tests, or if the guide pass turns out to need the
+  `Orchestrator`'s turn state - that is a shape problem, not an adaptation.
 - Stop if the `mcp` SDK's streamable-HTTP server cannot run inside Jarvis's
   existing event loop (for example it needs its own thread or process). The
   threading model is an architectural choice to raise, not absorb.
-- Stop if a bearer-token check or host/origin validation is not available on
-  the SDK server path without forking or patching the SDK.
+- Stop if a bearer-token check in front of the SDK app or host/origin
+  validation is not possible without forking or patching the SDK.
 - Stop if Claude Code cannot send the token header to a streamable-HTTP
   server, which would leave the auth design without a client.
