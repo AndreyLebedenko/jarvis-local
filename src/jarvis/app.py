@@ -5,6 +5,7 @@ import asyncio
 import base64
 import concurrent.futures
 import logging
+import sys
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field
@@ -84,6 +85,14 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.core.log_config import configure_logging
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
+from jarvis.core.single_instance import (
+    ALREADY_RUNNING_EXIT_CODE,
+    ALREADY_RUNNING_MESSAGE,
+    AlreadyRunning,
+    HeldInstance,
+    acquire_single_instance,
+    show_already_running_message_box,
+)
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
@@ -3103,14 +3112,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(
+    argv: list[str] | None = None,
+    *,
+    acquire: Callable[[], HeldInstance | AlreadyRunning] | None = None,
+    show_message_box: Callable[[str], None] | None = None,
+) -> None:
+    # The guard is taken after parse_args so --help and argument errors still
+    # work while another instance runs. It lives here, not in run(), so tests
+    # and manual scripts that call run()/build_app() are never blocked.
     args = parse_args(argv)
-    if args.status_console:
-        run_with_status_console(
-            include_touchstrip=not args.no_touchstrip, debug=args.debug
-        )
-    else:
-        asyncio.run(run())
+    # Seams resolve at call time, not as def-time defaults, so tests can
+    # monkeypatch the module names; a default would stay bound to the real one.
+    guard = (acquire or acquire_single_instance)()
+    if isinstance(guard, AlreadyRunning):
+        print(ALREADY_RUNNING_MESSAGE, file=sys.stderr)
+        if args.status_console:
+            (show_message_box or show_already_running_message_box)(
+                ALREADY_RUNNING_MESSAGE
+            )
+        raise SystemExit(ALREADY_RUNNING_EXIT_CODE)
+    try:
+        if args.status_console:
+            run_with_status_console(
+                include_touchstrip=not args.no_touchstrip, debug=args.debug
+            )
+        else:
+            asyncio.run(run())
+    finally:
+        guard.release()
 
 
 if __name__ == "__main__":

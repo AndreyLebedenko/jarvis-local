@@ -1,6 +1,6 @@
 # Task v2.0-1: Single-instance guard
 
-**Status:** Not started.
+**Status:** Completed. (2026-09-30; see completion notes below.)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** nothing. First card of the story.
 **Executor:** the story's executor profile. This card adds one small
@@ -91,14 +91,14 @@ spawn a second Python process from pytest.
 
 ## Acceptance criteria
 
-- [ ] A second `python -m jarvis` start, with or without `--status-console`,
+- [x] A second `python -m jarvis` start, with or without `--status-console`,
       is refused while one is running, with a visible message and a named
       non-zero exit code.
-- [ ] The guard is released by process exit, including a crash (a named
+- [x] The guard is released by process exit, including a crash (a named
       mutex, not a file).
-- [ ] `run()` and `build_app()` stay guard-free; the existing suite needs no
+- [x] `run()` and `build_app()` stay guard-free; the existing suite needs no
       change to keep passing.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green.
 
 ## Stop conditions
 
@@ -106,3 +106,33 @@ spawn a second Python process from pytest.
   project's Python 3.11 environment (for example a permissions error). That is
   an environment problem (section 0.9), not a reason to switch to a lock file
   silently.
+
+## Completion notes (2026-09-30)
+
+- Shape: `src/jarvis/core/single_instance.py` - `MUTEX_NAME =
+  "Local\Jarvis.SingleInstance"`, `ALREADY_RUNNING_EXIT_CODE = 3`,
+  `ALREADY_RUNNING_MESSAGE` ("Jarvis is already running. Only one instance may
+  run at a time."), `acquire_single_instance(api=None) -> HeldInstance |
+  AlreadyRunning`, `Win32MutexApi` (ctypes `CreateMutexW`/`CloseHandle`,
+  bound lazily so the module imports off Windows),
+  `show_already_running_message_box()` (`MessageBoxW`). `main()` takes
+  keyword-only `acquire` / `show_message_box` seams resolved at call time and
+  releases the guard in `finally`.
+- Review finding fixed before acceptance: an existing test
+  (`tests/main_split/test_main_debug_mode.py`, `main(["--status-console",
+  "--debug"])`) reached the real mutex and, with a Jarvis running, would have
+  blocked pytest on a real modal box. Seams now resolve at call time, and an
+  autouse fixture in `tests/conftest.py` (`no_win32_single_instance_guard`)
+  replaces them suite-wide; its message-box fake raises. Verified by a full
+  suite run while another process held the real mutex. The existing test
+  file itself is unchanged; the "no change to the existing suite" criterion
+  is met in that sense, with one conftest addition.
+- Gates: 2901 passed, 1 skipped (unrelated POSIX-only tzset test);
+  `ruff check` and `ruff format --check` green.
+- Human check (owner, 2026-09-30): a second start shows "Jarvis is already
+  running. Only one instance may run at a time." The crash-release and
+  `--mcp-mode` variants stay in the task-8 handoff.
+- Cleanup candidates for task 7: the `# type: ignore[attr-defined]` markers
+  on `ctypes.WinDLL` / `ctypes.WinError` exist only for non-Windows type
+  checkers; drop them if no type checker runs. Task 8 records the mutex name,
+  exit code, and message-box behavior in `PROJECT.md`.
