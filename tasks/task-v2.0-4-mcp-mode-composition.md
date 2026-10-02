@@ -96,10 +96,38 @@ would not meet the constraint.
      (`mic_sleep_toggle`). Tests list every `HotkeySettings` field with its
      verdict, so a new field forces a decision;
    - never call `McpHost.enable()`, whatever `[mcp].enabled` says;
-   - start `VoiceGuideService.run()` as a background task, cancelled on
-     shutdown with the others;
+   - call `VoiceGuideService.start()` at startup, before the server accepts
+     requests, and `await voice_guide.close()` on shutdown before the
+     background tasks are cancelled and before the journal is flushed;
    - `_on_interrupt_requested()` also calls `voice_guide.interrupt()` when
-     the service exists;
+     the service exists. Call it BEFORE `replay_player.cancel()` (the
+     handler awaits `_cancel_current_turn()` first): if an await separates a
+     preceding `cancel()` from `interrupt()`, the worker can briefly start
+     the next queued item before the interrupt reaches the service. With no
+     await between them either order is safe (task-3 review);
+   - the service owns its worker task (task 3 rewrite): `close()` is the
+     orderly shutdown. It rejects new requests as closed, interrupts the item
+     in flight, journals every accepted request exactly once (the queue as
+     `skipped`), and awaits the worker, whether or not the worker ever ran a
+     step. Cancelling the worker task directly is only a safety net and is
+     not how the app shuts it down. `run_until_shutdown()` flushes journal
+     writes after gathering background tasks; `close()` must complete before
+     that flush. Stop the server from accepting requests before or together
+     with `close()`: requests arriving after it are rejected as closed;
+   - `on_turn_start=replay_player.cancel` (`app.py`, the `Orchestrator`
+     wiring) must not fire in `MCP` mode: with no microphone there are no
+     user turns, and if it fired it would cut the guide off. Verify it with a
+     test rather than assuming the mode has no turns;
+   - Journal Stop during the guide's wait: while a user-started Journal
+     replay plays, the guide item waits (task 3, BUSY). Pressing Stop in the
+     Journal ends that replay, and the guide starts speaking at once. Decide
+     whether that is acceptable in `MCP` mode or whether Stop should also
+     interrupt the guide; state the decision in the completion notes;
+   - the guide does not consult the `Orchestrator` busy flag (story: it runs
+     outside the turn lifecycle). In `MCP` mode no live turn exists, so a
+     test must pin that nothing in the mode can start one (no microphone, the
+     refused input controls); otherwise the next queued item could speak over
+     a live turn;
    - the server slot: an injectable server-runner coroutine, a no-op stub in
      this card, which task 5 replaces;
    - the journal: the recorder's single session is the run's session
@@ -129,8 +157,9 @@ would not meet the constraint.
     transport route (the enumeration test above);
   - in `MCP` mode, `run()` with fakes starts no microphone loop, registers
     exactly the `shutdown` and `interrupt` hotkeys, never enables `McpHost`
-    even with `[mcp].enabled = true`, starts the voice-guide worker and the
-    server stub, and cancels both on shutdown;
+    even with `[mcp].enabled = true`, starts the voice-guide service and the
+    server stub, and on shutdown awaits `voice_guide.close()` before the
+    journal flush;
   - the interrupt event calls `voice_guide.interrupt()`.
 - Refused transport routes return the typed refusal in `MCP` mode
   (extend `tests/test_status_console.py` / `tests/test_journal_live_ui.py`

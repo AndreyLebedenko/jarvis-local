@@ -96,6 +96,16 @@ num_predict = 16384
 # [generation.spoken_derivative]
 # prompt = "Restate the shown text aloud; you may refer to it."
 #
+# Voice guide (the MCP voice-guide service): the pass that speaks a short gist
+# of another assistant's answer, which the user has open in another window. Its
+# prompt is the system message over the exact canvas text; a caller's guidance,
+# when present, is added after it as a separate labeled section. Has a working
+# built-in default (Russian). Reasoning is off by default; the pass never has
+# tools.
+# [generation.voice_guide]
+# prompt = "Briefly say what this answer is about and name the files it cites."
+# reasoning = "off"
+#
 # Optional voice-intent probe. When its prompt is configured, every voice
 # utterance first gets a short non-dialog audio classification pass that may
 # switch the live response mode. Keep this directive in English: Gemma 4 audio

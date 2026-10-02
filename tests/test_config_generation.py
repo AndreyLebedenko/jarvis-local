@@ -13,6 +13,7 @@ from jarvis.core.config import (
     MOVED_CONFIG_KEYS,
     SPOKEN_DERIVATIVE_PROFILE,
     TRANSCRIPTION_PROFILE,
+    VOICE_GUIDE_PROFILE,
     VOICE_INTENT_PROFILE,
     WARMUP_PROFILE,
     ConfigError,
@@ -53,6 +54,7 @@ NON_DIALOG_PROFILES = [
     WARMUP_PROFILE,
     ANNOTATION_PROFILE,
     TRANSCRIPTION_PROFILE,
+    VOICE_GUIDE_PROFILE,
 ]
 
 
@@ -77,6 +79,7 @@ def test_every_request_kind_has_a_profile():
         "warmup",
         "annotation",
         "transcription",
+        "voice_guide",
     }
 
 
@@ -220,6 +223,45 @@ def test_built_in_profile_prompts_match_the_pre_profile_defaults(tmp_path):
         TRANSCRIPTION_PROFILE,
     ]:
         assert generation.profile(name).prompt is None
+
+
+def test_voice_guide_has_a_non_empty_built_in_prompt(tmp_path):
+    settings = _load(tmp_path, "")
+
+    assert settings.generation.profile(VOICE_GUIDE_PROFILE).prompt
+
+
+def test_voice_guide_prompt_is_its_own_and_not_the_spoken_derivative_contract(
+    tmp_path,
+):
+    generation = _load(tmp_path, "").generation
+
+    assert (
+        generation.profile(VOICE_GUIDE_PROFILE).prompt
+        != generation.profile(SPOKEN_DERIVATIVE_PROFILE).prompt
+    )
+
+
+def test_voice_guide_prompt_is_overridden_by_toml_like_other_non_dialog_profiles(
+    tmp_path,
+):
+    settings = _load(tmp_path, '[generation.voice_guide]\nprompt = "Custom guide."\n')
+
+    assert settings.generation.profile(VOICE_GUIDE_PROFILE).prompt == "Custom guide."
+    assert (
+        settings.generation.profile(SPOKEN_DERIVATIVE_PROFILE).prompt != "Custom guide."
+    )
+
+
+def test_voice_guide_options_are_overridden_by_toml_without_reaching_other_profiles(
+    tmp_path,
+):
+    settings = _load(tmp_path, "[generation.voice_guide]\nnum_predict = 512\n")
+
+    assert settings.generation.options_for(VOICE_GUIDE_PROFILE).num_predict == 512
+    assert settings.generation.options_for(SPOKEN_DERIVATIVE_PROFILE).num_predict == (
+        16384
+    )
 
 
 def test_dialog_profile_reasoning_is_its_level_and_others_default_to_off(tmp_path):

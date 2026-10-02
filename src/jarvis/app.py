@@ -96,6 +96,7 @@ from jarvis.core.single_instance import (
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.backend import OllamaBackend, ResponseComplete, ResponseToken
+from jarvis.dialog.canvas_speech import compose_canvas_speech_messages
 from jarvis.dialog.response_mode import (
     ResponseMode,
     ResponseModeChanged,
@@ -1543,14 +1544,11 @@ class Orchestrator:
         speech_language = resolve_speech_language(
             self._tts_language_mode, text_language(canonical_text)
         )
-        system_prompt = _join_prompt_sections(
+        messages = compose_canvas_speech_messages(
             derivative_profile.prompt,
             speech_language_contract(speech_language, self._response_settings),
+            canonical_text,
         )
-        messages: list[dict[str, object]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": canonical_text},
-        ]
         derivative_completion = await self._dispatch_backend_request(
             messages,
             None,

@@ -119,9 +119,14 @@ an external LLM itself (roadmap, "Rejected for v2.0").
 - **Write timing mirrors mode 3.** One event per call, written when the item
   finishes: spoken, interrupted, skipped, or failed, with the matching
   status (`spoken`, `muted`, `interrupted`, `skipped`, `failed`) in
-  metadata, not in `outcome`. Items still queued when Jarvis dies are lost; this is accepted
-  and documented, because the journal is append-only and an early write
-  would need a second event per call.
+  metadata, not in `outcome`. An orderly shutdown (the service's `close()`) journals every
+  accepted request exactly once: the in-flight one by what actually happened
+  to it (interrupted, or spoken if its playback had already finished), the
+  rest skipped; after that the service rejects new requests as closed
+  (refined during task 3). Only a
+  crash loses queued canvases; this is accepted and documented, because the
+  journal is append-only and an early write would need a second event per
+  call.
 - **The voice-guide pass is its own generation profile.** A new
   `voice_guide` profile beside `spoken_derivative` (`core/config.py`,
   `_NON_DIALOG_PROFILES`), reasoning off, with its own prompt file. The

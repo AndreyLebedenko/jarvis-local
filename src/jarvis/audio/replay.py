@@ -236,6 +236,34 @@ class PausablePlayback:
             self._finished.set()
 
 
+class ReplayRun:
+    """One started replay run, told apart from any run that follows it. Waiting
+    on it, asking whether it was cancelled, and cancelling it all concern this
+    run only, however soon the player starts another."""
+
+    def __init__(self, task: asyncio.Task, cancel_run: Callable[[], bool]) -> None:
+        self._task = task
+        self._cancel_run = cancel_run
+
+    @property
+    def cancelled(self) -> bool:
+        """Whether the run ended by cancellation, whoever cancelled it: this
+        handle or the player-wide cancel()."""
+        return self._task.cancelled()
+
+    async def wait(self) -> None:
+        """Returns when the run has ended, cancelled or not; raises the
+        failure of a run that failed. Cancelling the waiter never cancels the
+        run."""
+        await asyncio.wait({self._task})
+        if not self._task.cancelled():
+            self._task.result()
+
+    def cancel(self) -> bool:
+        """Stops this run. Returns whether there was a running run to stop."""
+        return self._cancel_run()
+
+
 class ReplayPlayer:
     def __init__(
         self,
@@ -276,6 +304,16 @@ class ReplayPlayer:
         items: list[PlayItem],
         on_reply_start: Callable[[int], Awaitable[None]] | None = None,
     ) -> ReplayOutcome:
+        started = await self.start_run(items, on_reply_start)
+        if isinstance(started, ReplayRun):
+            return ReplayOutcome.STARTED
+        return started
+
+    async def start_run(
+        self,
+        items: list[PlayItem],
+        on_reply_start: Callable[[int], Awaitable[None]] | None = None,
+    ) -> ReplayRun | ReplayOutcome:
         """Plays a heterogeneous run of replies back to back as one logical
         replay (a single task, so is_active spans the whole run and cancel()
         ends all of it - story-v1.8.3). A TextReply is synthesized (segmented
@@ -284,7 +322,12 @@ class ReplayPlayer:
         before a reply's audio starts, where index is that reply's position in
         items, so a caller can follow which reply is now playing. A VoiceReply
         whose wav is unreadable is skipped (no on_reply_start) and the run
-        continues."""
+        continues.
+
+        Returns a ReplayRun bound to the started run, or the ReplayOutcome
+        that says why nothing started. A caller that must tell its own run
+        from a later one (another replay may start the moment this ends)
+        holds the handle instead of asking the player."""
         if self._mute_state is not None and not self._mute_state.enabled:
             return ReplayOutcome.DISABLED
         if self.is_active:
@@ -299,8 +342,9 @@ class ReplayPlayer:
                 groups.append((index, item, []))
         if not groups:
             return ReplayOutcome.EMPTY
-        self._task = asyncio.create_task(self._run(groups, on_reply_start))
-        return ReplayOutcome.STARTED
+        task = asyncio.create_task(self._run(groups, on_reply_start))
+        self._task = task
+        return ReplayRun(task, lambda: self._cancel_run(task))
 
     @property
     def is_paused(self) -> bool:
@@ -310,12 +354,19 @@ class ReplayPlayer:
         """Stops an in-progress replay. Wired to the same Ctrl+Alt+I
         interrupt path that stops a live turn (story-v1.8.2). Returns
         whether there was a replay to cancel; safe to call when idle."""
-        if not self.is_active:
+        if self._task is None:
             return False
-        assert self._task is not None
+        return self._cancel_run(self._task)
+
+    def _cancel_run(self, task: asyncio.Task) -> bool:
+        # A task that is not done is the player's current run, so its
+        # playback is the one playing; a finished run's handle lands here too
+        # and must not touch whatever runs now.
+        if task.done():
+            return False
         if self._current_playback is not None:
             self._current_playback.stop()
-        self._task.cancel()
+        task.cancel()
         return True
 
     def pause(self) -> bool:

@@ -106,8 +106,12 @@ the delay is felt (roadmap cross-cutting rule 4).
 4. **`VoiceGuideService`.**
    - `enqueue(request)`: synchronous, non-blocking. It never waits for speech
      and never interrupts the item being spoken.
-   - One worker coroutine (`run()`), started and cancelled by the app
-     lifecycle (task 4 wires it). It processes one item at a time, in order.
+   - One worker task, owned by the service: `start()` creates it and
+     `async close()` is the orderly shutdown (task 4 wires both). It
+     processes one item at a time, in order. `close()` rejects new requests
+     as closed, stops the item in flight, and journals every accepted request
+     exactly once, whether or not the worker ever ran (refined during this
+     task: control by cancelling tasks produced races, see completion notes).
    - Per item:
      - choose the origin: `caller` if `spoken_text` is set; otherwise the
        configured canvas-only origin (`derivative` or `verbatim`, passed in as
@@ -126,15 +130,17 @@ the delay is felt (roadmap cross-cutting rule 4).
        origin, status, guidance, caller, and derivative text (none for
        `verbatim`).
    - `interrupt()`: stops the item in flight (cancels its `iter_chat()`
-     consumption or its playback) and drops every queued item. The in-flight
-     item is journaled `interrupted`, each dropped item `skipped`, all with
+     consumption or its own playback run) and drops every queued item. The
+     in-flight item's status follows what actually happened to it: a
+     playback that had already finished stays `spoken` (or `failed`); one
+     that was stopped is `interrupted`. Each dropped item is `skipped`, all with
      their canvases. A guide pass interrupted before it produced text is
      journaled with an empty derivative omitted, not an empty string.
    - A failed guide pass (backend exception) journals `failed`, plays the
      existing `error` sound cue through an injected callback, and the worker
      moves on to the next item. A failure never stops the worker.
    - `queue_length` and a bus event on every queue change (for example
-     `VoiceGuideQueueChanged(length, speaking: bool)`) for task 6's Status
+     `VoiceGuideQueueChanged(length, in_flight: bool)`) for task 6's Status
      Console surface.
 5. **Interrupt wiring seam.** The service exposes `interrupt()`; this card
    does not subscribe it to `InterruptRequested` (task 4 composes the mode).
