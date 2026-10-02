@@ -11,6 +11,7 @@ from jarvis.audio.replay import (
     ReplayOutcome,
     ReplayPlayer,
     ReplayRun,
+    ReplayRunSlot,
     TextReply,
     VoiceReply,
     assistant_reply_speech,
@@ -754,3 +755,132 @@ async def _replay_and_wait(player: ReplayPlayer, reply: TextReply) -> ReplayOutc
     outcome = await player.replay(reply)
     await player.wait_for_pending()
     return outcome
+
+
+def _stream_player() -> tuple[ReplayPlayer, list[_FakeStream]]:
+    created: list[_FakeStream] = []
+
+    def factory(sr, ch, cb, fin) -> _FakeStream:
+        stream = _FakeStream(sr, ch, cb, fin)
+        created.append(stream)
+        return stream
+
+    player = ReplayPlayer(
+        _tts_settings(), _WavEngine(_wav_bytes(120)), stream_factory=factory
+    )
+    return player, created
+
+
+async def _first_stream(created: list[_FakeStream]) -> _FakeStream:
+    for _ in range(200):
+        if created:
+            return created[-1]
+        await asyncio.sleep(0)
+    raise AssertionError("the run never opened a stream")
+
+
+async def _ended(run: ReplayRun) -> None:
+    """A run a control wrongly paused never ends; fail instead of hanging."""
+    await asyncio.wait_for(run.wait(), timeout=2)
+
+
+def test_a_run_pauses_and_resumes_its_own_playback():
+    async def scenario() -> tuple[bool, bool, bool, bool]:
+        player, created = _stream_player()
+        run = _start(player)
+        stream = await _first_stream(created)
+        stream.pump(50)
+        paused = run.pause()
+        paused_state = player.is_paused
+        resumed = run.resume()
+        stream.pump(200)
+        await _ended(run)
+        return paused, paused_state, resumed, player.is_paused
+
+    assert asyncio.run(scenario()) == (True, True, True, False)
+
+
+def test_pausing_a_finished_run_leaves_a_newer_run_playing():
+    async def scenario() -> tuple[bool, bool]:
+        player, created = _stream_player()
+        first = _start(player, "First one.")
+        (await _first_stream(created)).pump(1000)
+        await _ended(first)
+        created.clear()
+        second = _start(player, "Second one.")
+        stream = await _first_stream(created)
+        paused = first.pause()
+        still_playing = not player.is_paused
+        stream.pump(1000)
+        await _ended(second)
+        return paused, still_playing
+
+    assert asyncio.run(scenario()) == (False, True)
+
+
+def test_resuming_a_finished_run_leaves_a_newer_paused_run_paused():
+    async def scenario() -> tuple[bool, bool]:
+        player, created = _stream_player()
+        first = _start(player, "First one.")
+        (await _first_stream(created)).pump(1000)
+        await _ended(first)
+        created.clear()
+        second = _start(player, "Second one.")
+        stream = await _first_stream(created)
+        second.pause()
+        resumed = first.resume()
+        still_paused = player.is_paused
+        second.resume()
+        stream.pump(1000)
+        await _ended(second)
+        return resumed, still_paused
+
+    assert asyncio.run(scenario()) == (False, True)
+
+
+def test_an_empty_run_slot_has_nothing_to_control():
+    slot = ReplayRunSlot()
+
+    assert (slot.cancel(), slot.pause(), slot.resume()) == (False, False, False)
+
+
+def test_a_run_slot_controls_the_run_it_holds():
+    async def scenario() -> tuple[bool, bool, bool, bool]:
+        player, created = _stream_player()
+        slot = ReplayRunSlot()
+        run = _start(player)
+        slot.hold(run)
+        stream = await _first_stream(created)
+        stream.pump(10)
+        paused = slot.pause()
+        resumed = slot.resume()
+        cancelled = slot.cancel()
+        await _ended(run)
+        return paused, resumed, cancelled, player.is_active
+
+    assert asyncio.run(scenario()) == (True, True, True, False)
+
+
+def test_a_run_slot_never_stops_a_run_it_does_not_hold():
+    # Journal Stop race (owner decision 2026-10-02, task-v2.0-4): a Stop
+    # landing after the user's replay ended must not cut the voice guide's run
+    # that started in its place on the same player.
+    async def scenario() -> tuple[bool, bool]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        slot = ReplayRunSlot()
+        release.set()
+        user_run = _start(player, "The user's replay.")
+        slot.hold(user_run)
+        await user_run.wait()
+        release.clear()
+        play.started.clear()
+        guide_run = _start(player, "The guide speaks.")
+        await play.started.wait()
+        stopped = slot.cancel()
+        release.set()
+        await guide_run.wait()
+        return stopped, guide_run.cancelled
+
+    assert asyncio.run(scenario()) == (False, False)

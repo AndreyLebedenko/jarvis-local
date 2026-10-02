@@ -28,6 +28,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionReason,
     TextSubmissionResult,
 )
+from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
@@ -3938,3 +3939,130 @@ async def test_a_lan_capture_widens_the_axis_when_the_call_finishes():
     finally:
         for event_type, handler in server._subscriptions:
             bus.unsubscribe(event_type, handler)
+
+
+# --- story-v2.0 task 4: run-mode refusals ----------------------------------
+
+
+def _mcp_mode_server(**journal) -> tuple[UiTransportServer, _FakeControlApi]:
+    control_api = _FakeControlApi()
+    server = UiTransportServer(
+        EventBus(),
+        control_api,
+        state=UiStateStore(run_mode_policy=RunModePolicy(RunMode.MCP)),
+        token_factory=lambda: "valid-token",
+        **journal,
+    )
+    return server, control_api
+
+
+@pytest.mark.asyncio
+async def test_mcp_mode_refuses_input_new_context_and_fork_with_a_typed_reason():
+    text_submitter = _FakeTextSubmitter(TextSubmissionReason.ACCEPTED)
+    new_context = _FakeNewContextHandler(NewContextResult(NewContextReason.ACCEPTED))
+    fork_handler = _FakeJournalForkHandler(ForkSessionResult(ForkSessionReason.BUSY))
+    server, _ = _mcp_mode_server(
+        journal_text_submitter=text_submitter,
+        journal_new_context_handler=new_context,
+        journal_fork_handler=fork_handler,
+    )
+    info = await server.start()
+    base = f"http://127.0.0.1:{info.port}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            responses = [
+                await session.post(
+                    f"{base}/api/journal/input?token=valid-token", json={"text": "hi"}
+                ),
+                await session.post(f"{base}/api/journal/context/new?token=valid-token"),
+                await session.post(
+                    f"{base}/api/journal/sessions/s1/fork?token=valid-token"
+                ),
+            ]
+            bodies = [await response.json() for response in responses]
+    finally:
+        await server.stop()
+
+    assert [response.status for response in responses] == [403, 403, 403]
+    assert bodies == [
+        {"status": "rejected", "reason": "mcp_mode", "action": "journal_input"},
+        {"status": "rejected", "reason": "mcp_mode", "action": "journal_new_context"},
+        {"status": "rejected", "reason": "mcp_mode", "action": "journal_fork"},
+    ]
+    assert text_submitter.calls == []
+    assert new_context.calls == 0
+    assert fork_handler.calls == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_mode_refusal_still_requires_the_ui_token():
+    server, _ = _mcp_mode_server()
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/input", json={"text": "hi"}
+            )
+            assert response.status == 401
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_mcp_mode_still_serves_allowed_journal_reads():
+    server, _ = _mcp_mode_server()
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.get(
+                f"http://127.0.0.1:{info.port}/api/journal/sessions?token=valid-token"
+            )
+            assert response.status == 200
+            assert await response.json() == {"status": "ok", "sessions": []}
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_mcp_mode_refuses_a_dialog_setting_command_and_allows_tts_toggle():
+    server, control_api = _mcp_mode_server()
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["control"]))
+            await websocket.receive_json()
+            snapshot = await websocket.receive_json()
+            await websocket.send_json(
+                make_message(
+                    "control",
+                    "command",
+                    {"command": "set_reasoning_level", "arguments": {"level": "high"}},
+                )
+            )
+            refused = await websocket.receive_json()
+            await websocket.send_json(
+                make_message(
+                    "control",
+                    "command",
+                    {"command": "set_tts_enabled", "arguments": {"enabled": False}},
+                )
+            )
+            allowed = await websocket.receive_json()
+    finally:
+        await server.stop()
+
+    assert snapshot["payload"]["run_mode"]["mode"] == "mcp"
+    assert "set_reasoning_level" in snapshot["payload"]["run_mode"]["refused"]
+    assert refused["type"] == "error"
+    assert refused["payload"]["code"] == "refused"
+    assert refused["payload"]["reason"] == "mcp_mode"
+    assert refused["payload"]["action"] == "set_reasoning_level"
+    assert allowed["type"] == "command_ack"
+    assert control_api.calls == [("set_tts_enabled", "False")]
+
+
+def test_normal_mode_snapshot_reports_no_refused_actions():
+    assert UiStateStore().snapshot()["run_mode"] == {"mode": "normal", "refused": []}

@@ -225,8 +225,8 @@ an external LLM itself (roadmap, "Rejected for v2.0").
 4. **`--mcp-mode` composition.** (Size: M.) The `--mcp-mode` flag in
    `parse_args()` (`app.py`), combinable with `--status-console`. A config
    section for the mode: port, token file, speech origin for canvas-only
-   calls, max canvas length, queue cap. The mode builds no microphone/VAD
-   input and binds only interrupt, shutdown, and playback-control hotkeys -
+   calls, max canvas length, queue cap. The mode opens no microphone input
+   stream and binds only the interrupt and shutdown hotkeys -
    the card lists every `HotkeySettings` field and says bound or not.
    `McpHost` stays `OFF`. The Status Console shows the mode and disables its
    input surfaces. Boundary: the server is a stub the card's tests
@@ -280,7 +280,8 @@ an external LLM itself (roadmap, "Rejected for v2.0").
       never interrupts the current one. Interrupt stops the current item and
       drops the queue, and every item is journaled with its outcome.
       (Task 3.)
-- [ ] In `--mcp-mode` no microphone input is built, no input hotkey is bound,
+- [ ] In `--mcp-mode` no microphone stream is opened (the input object stays
+      inert; owner, 2026-10-02), no input hotkey is bound,
       and `McpHost` stays `OFF`. (Task 4.)
 - [ ] `speak` is reachable only on `127.0.0.1` with the token. It returns
       "accepted, queued" without waiting for speech, and rejects over-length

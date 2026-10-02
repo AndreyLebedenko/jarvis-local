@@ -39,6 +39,13 @@ from jarvis.core.lifecycle import (
     TextSubmissionReason,
     TextSubmissionResult,
 )
+from jarvis.core.run_mode import (
+    ActionRefusal,
+    ActionRefusedError,
+    ControlAction,
+    RunMode,
+    RunModePolicy,
+)
 from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
@@ -131,6 +138,7 @@ from jarvis.ui.status_console import (
     model_request_payload,
     module_health_payload,
     response_mode_payload,
+    run_mode_payload,
     runtime_state_payload,
     system_event_payload,
     thinking_mode_payload,
@@ -334,6 +342,184 @@ def _is_event_position(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+@dataclass(frozen=True)
+class Route:
+    """One HTTP route: the handler is a UiTransportServer method name, and
+    `action` is what the run-mode policy is asked about before it runs."""
+
+    method: str
+    path: str
+    handler: str
+    action: ControlAction
+
+
+_JOURNAL_REF = "{session_id}/{event_position}"
+_A = ControlAction
+
+ROUTES: tuple[Route, ...] = (
+    Route("GET", "/ws", "_websocket_handler", _A.UI_SHELL),
+    Route("GET", "/api/journal/sessions", "_journal_sessions_handler", _A.JOURNAL_READ),
+    Route("POST", "/api/journal/input", "_journal_input_handler", _A.JOURNAL_INPUT),
+    Route(
+        "POST",
+        "/api/journal/context/new",
+        "_journal_new_context_handler_http",
+        _A.JOURNAL_NEW_CONTEXT,
+    ),
+    Route(
+        "POST",
+        "/api/journal/sessions/{session_id}/fork",
+        "_journal_fork_handler_http",
+        _A.JOURNAL_FORK,
+    ),
+    Route("GET", "/api/journal/usage", "_journal_usage_handler", _A.JOURNAL_READ),
+    Route(
+        "GET",
+        "/api/journal/sessions/{session_id}",
+        "_journal_feed_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "DELETE",
+        "/api/journal/sessions/{session_id}",
+        "_journal_delete_handler",
+        _A.JOURNAL_DELETE_SESSION,
+    ),
+    Route("GET", "/api/journal/search", "_journal_search_handler", _A.JOURNAL_READ),
+    Route(
+        "GET",
+        f"/api/journal/transcripts/{_JOURNAL_REF}",
+        "_journal_transcript_get_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "PUT",
+        f"/api/journal/transcripts/{_JOURNAL_REF}",
+        "_journal_transcript_put_handler",
+        _A.TRANSCRIPT_EDIT,
+    ),
+    Route(
+        "POST",
+        f"/api/journal/transcripts/{_JOURNAL_REF}/generate",
+        "_journal_transcript_generate_handler",
+        _A.TRANSCRIPT_GENERATE,
+    ),
+    Route(
+        "POST",
+        f"/api/journal/replies/{_JOURNAL_REF}/replay",
+        "_journal_reply_replay_handler_http",
+        _A.REPLAY,
+    ),
+    Route(
+        "POST",
+        f"/api/journal/replies/{_JOURNAL_REF}/replay-sequence",
+        "_journal_reply_sequence_handler_http",
+        _A.REPLAY,
+    ),
+    Route(
+        "POST",
+        "/api/journal/replies/replay/stop",
+        "_journal_reply_replay_stop_handler_http",
+        _A.REPLAY,
+    ),
+    Route(
+        "POST",
+        "/api/journal/replies/replay/pause",
+        "_journal_reply_replay_pause_handler_http",
+        _A.REPLAY,
+    ),
+    Route(
+        "POST",
+        "/api/journal/replies/replay/resume",
+        "_journal_reply_replay_resume_handler_http",
+        _A.REPLAY,
+    ),
+    Route(
+        "GET",
+        "/api/journal/annotations/{session_id}",
+        "_journal_annotation_list_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "POST",
+        "/api/journal/annotations/{session_id}/generate",
+        "_journal_annotation_generate_handler",
+        _A.ANNOTATION_GENERATE,
+    ),
+    Route(
+        "GET",
+        "/api/journal/annotations/{session_id}/{annotation_id}",
+        "_journal_annotation_get_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "PUT",
+        "/api/journal/annotations/{session_id}/{annotation_id}",
+        "_journal_annotation_put_handler",
+        _A.ANNOTATION_EDIT,
+    ),
+    Route(
+        "GET",
+        "/api/journal/consolidation/{session_id}",
+        "_journal_consolidation_plan_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "GET",
+        "/api/journal/consolidation/{session_id}/status",
+        "_journal_consolidation_status_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "POST",
+        "/api/journal/consolidation/{session_id}/execute",
+        "_journal_consolidation_execute_handler",
+        _A.CONSOLIDATION_EXECUTE,
+    ),
+    Route(
+        "GET",
+        "/api/journal/media/{session_id}/{media_path:.*}",
+        "_journal_media_handler",
+        _A.JOURNAL_READ,
+    ),
+    Route(
+        "GET",
+        "/api/memory/files/{file_id}",
+        "_memory_file_get_handler",
+        _A.MEMORY_FILE_READ,
+    ),
+    Route(
+        "PUT",
+        "/api/memory/files/{file_id}",
+        "_memory_file_put_handler",
+        _A.MEMORY_FILE_WRITE,
+    ),
+    Route("GET", "/", "_index_handler", _A.UI_SHELL),
+)
+"""Every HTTP route except the static UI files, which are always served
+(`UI_SHELL`). Registration goes through this table only, so a route cannot
+exist without a run-mode action."""
+
+
+def refusal_payload(refusal: ActionRefusal) -> JsonObject:
+    return {
+        "status": "rejected",
+        "reason": refusal.reason.value,
+        "action": refusal.action.value,
+    }
+
+
+def refusal_error_payload(refusal: ActionRefusal) -> JsonObject:
+    return {
+        "code": "refused",
+        "reason": refusal.reason.value,
+        "action": refusal.action.value,
+        "message": (
+            f"{refusal.action.value} is not available ({refusal.reason.value})"
+        ),
+    }
+
+
 @web.middleware
 async def journal_input_413_json_middleware(
     request: web.Request,
@@ -483,8 +669,10 @@ class UiStateStore:
         language: str = DEFAULT_UI_LANGUAGE,
         config_values: JsonObject | None = None,
         debug: bool = False,
+        run_mode_policy: RunModePolicy | None = None,
     ) -> None:
         self._language = language
+        self._run_mode_policy = run_mode_policy or RunModePolicy(RunMode.NORMAL)
         self._state: JsonObject = {
             "runtime": cast(
                 JsonObject, runtime_state_payload(runtime_state, language=language)
@@ -498,6 +686,7 @@ class UiStateStore:
             # a one-time push, so a reconnect (or a second client) sees it
             # without depending on catching the original announcement.
             "debug": {"enabled": debug},
+            "run_mode": cast(JsonObject, run_mode_payload(self._run_mode_policy)),
             "mcp": {"status": "off", "enabled": False, "tools": []},
             "tts": {"enabled": tts_enabled},
             "solo_session": {"enabled": solo_session_enabled},
@@ -521,6 +710,12 @@ class UiStateStore:
     @property
     def language(self) -> str:
         return self._language
+
+    @property
+    def run_mode_policy(self) -> RunModePolicy:
+        """The one policy both the snapshot reports and the server enforces,
+        so what the UI shows as refused cannot drift from what is refused."""
+        return self._run_mode_policy
 
     def snapshot(self) -> JsonObject:
         return json.loads(json.dumps(self._state, ensure_ascii=False))
@@ -733,6 +928,7 @@ class UiTransportServer:
         self._bus = bus
         self._control_api = control_api
         self._state = state or UiStateStore()
+        self._policy = self._state.run_mode_policy
         self._logger = logger or logging.getLogger(__name__)
         self._host = host
         self._port = port
@@ -782,6 +978,27 @@ class UiTransportServer:
             raise RuntimeError("server has not been started")
         return self._token
 
+    def _add_route(self, app: web.Application, route: Route) -> None:
+        handler = self._guarded(route.action, getattr(self, route.handler))
+        if route.method == "GET":
+            app.router.add_get(route.path, handler)
+        else:
+            app.router.add_route(route.method, route.path, handler)
+
+    def _guarded(
+        self,
+        action: ControlAction,
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
+    ) -> Callable[[web.Request], Awaitable[web.StreamResponse]]:
+        async def guarded(request: web.Request) -> web.StreamResponse:
+            refusal = self._policy.refusal(action)
+            if refusal is None:
+                return await handler(request)
+            self._require_http_token(request)
+            return web.json_response(refusal_payload(refusal), status=403)
+
+        return guarded
+
     async def start(self) -> UiTransportInfo:
         if self._runner is not None:
             raise RuntimeError("server is already started")
@@ -794,91 +1011,8 @@ class UiTransportServer:
             client_max_size=MAX_JOURNAL_UPLOAD_REQUEST_BYTES,
             middlewares=[journal_input_413_json_middleware],
         )
-        app.router.add_get("/ws", self._websocket_handler)
-        app.router.add_get("/api/journal/sessions", self._journal_sessions_handler)
-        app.router.add_post("/api/journal/input", self._journal_input_handler)
-        app.router.add_post(
-            "/api/journal/context/new", self._journal_new_context_handler_http
-        )
-        app.router.add_post(
-            "/api/journal/sessions/{session_id}/fork",
-            self._journal_fork_handler_http,
-        )
-        app.router.add_get("/api/journal/usage", self._journal_usage_handler)
-        app.router.add_get(
-            "/api/journal/sessions/{session_id}", self._journal_feed_handler
-        )
-        app.router.add_delete(
-            "/api/journal/sessions/{session_id}", self._journal_delete_handler
-        )
-        app.router.add_get("/api/journal/search", self._journal_search_handler)
-        app.router.add_get(
-            "/api/journal/transcripts/{session_id}/{event_position}",
-            self._journal_transcript_get_handler,
-        )
-        app.router.add_put(
-            "/api/journal/transcripts/{session_id}/{event_position}",
-            self._journal_transcript_put_handler,
-        )
-        app.router.add_post(
-            "/api/journal/transcripts/{session_id}/{event_position}/generate",
-            self._journal_transcript_generate_handler,
-        )
-        app.router.add_post(
-            "/api/journal/replies/{session_id}/{event_position}/replay",
-            self._journal_reply_replay_handler_http,
-        )
-        app.router.add_post(
-            "/api/journal/replies/{session_id}/{event_position}/replay-sequence",
-            self._journal_reply_sequence_handler_http,
-        )
-        app.router.add_post(
-            "/api/journal/replies/replay/stop",
-            self._journal_reply_replay_stop_handler_http,
-        )
-        app.router.add_post(
-            "/api/journal/replies/replay/pause",
-            self._journal_reply_replay_pause_handler_http,
-        )
-        app.router.add_post(
-            "/api/journal/replies/replay/resume",
-            self._journal_reply_replay_resume_handler_http,
-        )
-        app.router.add_get(
-            "/api/journal/annotations/{session_id}",
-            self._journal_annotation_list_handler,
-        )
-        app.router.add_post(
-            "/api/journal/annotations/{session_id}/generate",
-            self._journal_annotation_generate_handler,
-        )
-        app.router.add_get(
-            "/api/journal/annotations/{session_id}/{annotation_id}",
-            self._journal_annotation_get_handler,
-        )
-        app.router.add_put(
-            "/api/journal/annotations/{session_id}/{annotation_id}",
-            self._journal_annotation_put_handler,
-        )
-        app.router.add_get(
-            "/api/journal/consolidation/{session_id}",
-            self._journal_consolidation_plan_handler,
-        )
-        app.router.add_get(
-            "/api/journal/consolidation/{session_id}/status",
-            self._journal_consolidation_status_handler,
-        )
-        app.router.add_post(
-            "/api/journal/consolidation/{session_id}/execute",
-            self._journal_consolidation_execute_handler,
-        )
-        app.router.add_get(
-            "/api/journal/media/{session_id}/{media_path:.*}",
-            self._journal_media_handler,
-        )
-        app.router.add_get("/api/memory/files/{file_id}", self._memory_file_get_handler)
-        app.router.add_put("/api/memory/files/{file_id}", self._memory_file_put_handler)
-        app.router.add_get("/", self._index_handler)
+        for route in ROUTES:
+            self._add_route(app, route)
         app.router.add_static("/", self._ui_dir, show_index=False)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -2424,6 +2558,12 @@ class UiTransportServer:
             return
         try:
             self._dispatch_control(command, cast(JsonObject, arguments))
+        except ActionRefusedError as error:
+            self._enqueue_message(
+                client,
+                make_message("control", "error", refusal_error_payload(error.refusal)),
+            )
+            return
         except ProtocolError as error:
             self._enqueue_message(
                 client,
@@ -2439,27 +2579,35 @@ class UiTransportServer:
             make_message("control", "command_ack", {"command": command}),
         )
 
-    def _dispatch_control(self, command: str, arguments: JsonObject) -> None:
-        handlers: dict[str, Callable[[JsonObject], None]] = {
-            "toggle_thinking": self._toggle_thinking,
-            "set_reasoning_level": self._set_reasoning_level,
-            "set_response_mode": self._set_response_mode,
-            "set_mcp_enabled": self._set_mcp_enabled,
-            "set_tts_enabled": self._set_tts_enabled,
-            "set_solo_session_enabled": self._set_solo_session_enabled,
-            "set_tool_enabled": self._set_tool_enabled,
-            "reset_context": self._reset_context,
-            "reset_module": self._reset_module,
-            "set_visibility_mode": self._set_visibility_mode,
-            "request_shutdown": self._request_shutdown,
-            "request_model_options": self._request_model_options,
-            "request_microphone_options": self._request_microphone_options,
-            "save_config_selection": self._save_config_selection,
+    def _control_handlers(self) -> dict[ControlAction, Callable[[JsonObject], None]]:
+        return {
+            ControlAction.TOGGLE_THINKING: self._toggle_thinking,
+            ControlAction.SET_REASONING_LEVEL: self._set_reasoning_level,
+            ControlAction.SET_RESPONSE_MODE: self._set_response_mode,
+            ControlAction.SET_MCP_ENABLED: self._set_mcp_enabled,
+            ControlAction.SET_TTS_ENABLED: self._set_tts_enabled,
+            ControlAction.SET_SOLO_SESSION_ENABLED: self._set_solo_session_enabled,
+            ControlAction.SET_TOOL_ENABLED: self._set_tool_enabled,
+            ControlAction.RESET_CONTEXT: self._reset_context,
+            ControlAction.RESET_MODULE: self._reset_module,
+            ControlAction.SET_VISIBILITY_MODE: self._set_visibility_mode,
+            ControlAction.REQUEST_SHUTDOWN: self._request_shutdown,
+            ControlAction.REQUEST_MODEL_OPTIONS: self._request_model_options,
+            ControlAction.REQUEST_MICROPHONE_OPTIONS: self._request_microphone_options,
+            ControlAction.SAVE_CONFIG_SELECTION: self._save_config_selection,
         }
-        handler = handlers.get(command)
-        if handler is None:
+
+    def control_commands(self) -> tuple[ControlAction, ...]:
+        """Every WebSocket control command this server dispatches."""
+        return tuple(self._control_handlers())
+
+    def _dispatch_control(self, command: str, arguments: JsonObject) -> None:
+        handlers = self._control_handlers()
+        action = next((action for action in handlers if action.value == command), None)
+        if action is None:
             raise ProtocolError(f"unsupported control command: {command}")
-        handler(arguments)
+        self._policy.check(action)
+        handlers[action](arguments)
 
     def _toggle_thinking(self, arguments: JsonObject) -> None:
         del arguments

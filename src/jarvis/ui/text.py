@@ -27,6 +27,7 @@ _RUNTIME_STATE_TEXT: dict[str, dict[RuntimeState, tuple[str, str]]] = {
             "Loading the model into GPU memory...",
         ),
         RuntimeState.LISTENING: ("Ready", "Waiting for a request"),
+        RuntimeState.MCP_WAITING: ("MCP waiting", "Waiting for a request"),
         RuntimeState.THINKING: (
             "Thinking",
             "Gathering context and composing a response...",
@@ -41,6 +42,7 @@ _RUNTIME_STATE_TEXT: dict[str, dict[RuntimeState, tuple[str, str]]] = {
             "Модель загружается в память GPU...",
         ),
         RuntimeState.LISTENING: ("Готов", "Ожидаю запрос"),
+        RuntimeState.MCP_WAITING: ("MCP ожидает", "Ожидаю запрос"),
         RuntimeState.THINKING: ("Думаю", "Собираю контекст и формирую ответ..."),
         RuntimeState.SPEAKING: ("Отвечаю", "Произношу ответ вслух..."),
         RuntimeState.ERROR: ("Ошибка", ""),
@@ -81,6 +83,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mic_detail_listening": "listening",
         "mic_detail_muted": "not in use",
         "mic_detail_capture_failed": "capture stopped",
+        "mic_detail_off_mcp_mode": "off in MCP mode",
         # Module-health details published by ModuleHealthTracker.
         "backend_detail_ready": "responding",
         "backend_detail_warmup_failed": "warm-up failed",
@@ -180,6 +183,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mic_detail_listening": "слушает",
         "mic_detail_muted": "не используется",
         "mic_detail_capture_failed": "захват остановлен",
+        "mic_detail_off_mcp_mode": "выключен в режиме MCP",
         "backend_detail_ready": "отвечает",
         "backend_detail_warmup_failed": "прогрев не удался",
         "backend_detail_request_failed": "сбой запроса",

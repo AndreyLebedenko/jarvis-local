@@ -7,6 +7,7 @@ const RUNTIME_STATE_LABELS = {
   idle: ["Idle", 'Say "Jarvis" to begin.'],
   warming: ["Warming up (local)", "Loading the model into GPU memory..."],
   listening: ["Ready", "Waiting for a request"],
+  mcp_waiting: ["MCP waiting", "Waiting for a request"],
   thinking: ["Thinking", "Gathering context and composing a response..."],
   speaking: ["Speaking", "Speaking the response aloud..."],
   error: ["Error", "See the event in the log (task-ui-03)."],

@@ -238,12 +238,13 @@ class PausablePlayback:
 
 class ReplayRun:
     """One started replay run, told apart from any run that follows it. Waiting
-    on it, asking whether it was cancelled, and cancelling it all concern this
-    run only, however soon the player starts another."""
+    on it, asking whether it was cancelled, and cancelling, pausing, or
+    resuming it all concern this run only, however soon the player starts
+    another."""
 
-    def __init__(self, task: asyncio.Task, cancel_run: Callable[[], bool]) -> None:
+    def __init__(self, task: asyncio.Task, player: ReplayPlayer) -> None:
         self._task = task
-        self._cancel_run = cancel_run
+        self._player = player
 
     @property
     def cancelled(self) -> bool:
@@ -261,7 +262,38 @@ class ReplayRun:
 
     def cancel(self) -> bool:
         """Stops this run. Returns whether there was a running run to stop."""
-        return self._cancel_run()
+        return self._player._cancel_run(self._task)
+
+    def pause(self) -> bool:
+        """Suspends this run's current clip. Returns whether there was a
+        playing clip of this run to pause."""
+        return self._player._pause_run(self._task)
+
+    def resume(self) -> bool:
+        """Continues this run's paused clip. Returns whether there was a paused
+        clip of this run to resume."""
+        return self._player._resume_run(self._task)
+
+
+class ReplayRunSlot:
+    """The run one owner started last, so controls that arrive later as
+    separate requests (the Journal's Stop, Pause, Resume) reach that run only,
+    never whatever the shared player is playing by then."""
+
+    def __init__(self) -> None:
+        self._run: ReplayRun | None = None
+
+    def hold(self, run: ReplayRun) -> None:
+        self._run = run
+
+    def cancel(self) -> bool:
+        return self._run is not None and self._run.cancel()
+
+    def pause(self) -> bool:
+        return self._run is not None and self._run.pause()
+
+    def resume(self) -> bool:
+        return self._run is not None and self._run.resume()
 
 
 class ReplayPlayer:
@@ -344,7 +376,7 @@ class ReplayPlayer:
             return ReplayOutcome.EMPTY
         task = asyncio.create_task(self._run(groups, on_reply_start))
         self._task = task
-        return ReplayRun(task, lambda: self._cancel_run(task))
+        return ReplayRun(task, self)
 
     @property
     def is_paused(self) -> bool:
@@ -368,6 +400,15 @@ class ReplayPlayer:
             self._current_playback.stop()
         task.cancel()
         return True
+
+    def _is_current_run(self, task: asyncio.Task) -> bool:
+        return task is self._task and not task.done()
+
+    def _pause_run(self, task: asyncio.Task) -> bool:
+        return self._is_current_run(task) and self.pause()
+
+    def _resume_run(self, task: asyncio.Task) -> bool:
+        return self._is_current_run(task) and self.resume()
 
     def pause(self) -> bool:
         """Suspends the current clip at its playback position (story-v1.8.3).
@@ -486,6 +527,18 @@ class SequencePlayer:
         """Plays every playable turn from start forward. on_segment(ref) is
         awaited as each turn begins so the UI can move the now-playing
         highlight across rows before its audio starts (story-v1.8.3)."""
+        started = self.start_from(start, on_segment)
+        if isinstance(started, ReplayRun):
+            return ReplayOutcome.STARTED
+        return started
+
+    def start_from(
+        self,
+        start: JournalEventRef,
+        on_segment: Callable[[JournalEventRef], Awaitable[None]] | None = None,
+    ) -> ReplayRun | ReplayOutcome:
+        """play_from() that hands back the started run (see
+        ReplayPlayer.start_run)."""
         replay = self._store.read_session(start.session_id)
         items: list[PlayItem] = []
         refs: list[JournalEventRef] = []
@@ -503,4 +556,4 @@ class SequencePlayer:
             async def on_reply_start(index: int) -> None:
                 await on_segment(refs[index])
 
-        return await self._player.replay_items(items, on_reply_start=on_reply_start)
+        return self._player.start_run(items, on_reply_start=on_reply_start)

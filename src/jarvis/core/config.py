@@ -509,6 +509,25 @@ class McpSettings:
     servers: dict[str, McpServerSettings] = field(default_factory=dict)
 
 
+MCP_MODE_CANVAS_SPEECH_VALUES = ("derivative", "verbatim")
+
+
+@dataclass(frozen=True)
+class McpModeSettings:
+    """`--mcp-mode`, where Jarvis serves the local `speak` tool. Not to be
+    confused with [mcp]/McpServerSettings: those are servers Jarvis connects
+    to as a client. The bind address is always 127.0.0.1, so there is no host
+    key; config.example.toml documents every default and why it was chosen."""
+
+    port: int = 47821
+    token_file: str = "mcp_mode.token"
+    canvas_speech: str = "derivative"
+    max_canvas_chars: int = 40000
+    max_guidance_chars: int = 2000
+    max_spoken_text_chars: int = 8000
+    queue_capacity: int = 8
+
+
 @dataclass(frozen=True)
 class MicrophoneSettings:
     # "" means "use sounddevice's default input device" (audio_in.py's
@@ -965,6 +984,7 @@ class Settings:
     generation: GenerationSettings = field(default_factory=GenerationSettings)
     response: ResponseSettings = field(default_factory=ResponseSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
+    mcp_mode: McpModeSettings = field(default_factory=McpModeSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
@@ -988,6 +1008,7 @@ _SECTIONS: dict[str, type] = {
     "generation": GenerationSettings,
     "response": ResponseSettings,
     "mcp": McpSettings,
+    "mcp_mode": McpModeSettings,
     "history": HistorySettings,
     "journal": JournalSettings,
     "logging": LoggingSettings,
@@ -1606,6 +1627,40 @@ def _build_history_semantic_section(
     return settings
 
 
+_MCP_MODE_POSITIVE_INT_FIELDS = (
+    "max_canvas_chars",
+    "max_guidance_chars",
+    "max_spoken_text_chars",
+    "queue_capacity",
+)
+
+
+def _build_mcp_mode_section(
+    section_name: str, raw: dict[str, Any]
+) -> "McpModeSettings":
+    settings = _build_plain_section(section_name, McpModeSettings, raw)
+    if not 1024 <= settings.port <= 65535:
+        raise ConfigError(
+            f"[{section_name}].port must be an unprivileged port (1024-65535), "
+            f"got {settings.port!r}"
+        )
+    if not settings.token_file.strip():
+        raise ConfigError(f"[{section_name}].token_file must not be empty")
+    if settings.canvas_speech not in MCP_MODE_CANVAS_SPEECH_VALUES:
+        supported = ", ".join(MCP_MODE_CANVAS_SPEECH_VALUES)
+        raise ConfigError(
+            f"[{section_name}].canvas_speech must be one of: {supported}; "
+            f"got {settings.canvas_speech!r}"
+        )
+    for name in _MCP_MODE_POSITIVE_INT_FIELDS:
+        value = getattr(settings, name)
+        if value <= 0:
+            raise ConfigError(
+                f"[{section_name}].{name} must be a positive int, got {value!r}"
+            )
+    return settings
+
+
 def _build_mcp_section(section_name: str, raw: dict[str, object]) -> "McpSettings":
     known_fields = {
         "enabled",
@@ -2092,6 +2147,7 @@ _SECTION_BUILDERS: dict[type, Any] = {
     UiSettings: _build_ui_section,
     FilesSettings: _build_files_section,
     McpSettings: _build_mcp_section,
+    McpModeSettings: _build_mcp_mode_section,
     MemorySettings: _build_memory_section,
     LoggingSettings: _build_logging_section,
     HistorySettings: _build_history_section,

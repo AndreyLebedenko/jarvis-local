@@ -19,6 +19,7 @@ from jarvis.core.config import (
     load_settings,
 )
 from jarvis.core.lifecycle import ModelRequestInput, ModelRequestPassKind
+from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.core.solo_session import SoloSessionChanged, SoloSessionState
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import (
@@ -74,6 +75,7 @@ from jarvis.ui.status_console import (
     thinking_mode_payload,
     visibility_mode_payload,
 )
+from jarvis.ui.transport import ROUTES
 from jarvis.ui.visibility import VisibilityModeState
 
 logger = logging.getLogger("test_status_console")
@@ -1854,6 +1856,37 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
     assert len(system_events) == 1
 
 
+@pytest.mark.parametrize(
+    ("run_mode", "persisted"),
+    [(RunMode.NORMAL, "enabled = false"), (RunMode.MCP, "enabled = true")],
+)
+async def test_save_config_selection_persists_the_configured_mcp_switch_in_mcp_mode(
+    tmp_path, run_mode, persisted
+):
+    """MCP mode never enables the host, so saving its live (off) state would
+    turn MCP off for the next normal start. Normal mode keeps saving the live
+    state."""
+    bus = EventBus()
+    ui_config_path = tmp_path / "config.ui.toml"
+    api = StatusConsoleApi(
+        loop=asyncio.get_running_loop(),
+        thinking_mode=ReasoningLevelState(bus=bus),
+        history=_FakeHistory(),
+        bus=bus,
+        logger=logger,
+        settings=Settings(mcp=McpSettings(enabled=True)),
+        ui_config_path=ui_config_path,
+        mcp_host=_FakeMcpHost(),
+        run_mode=run_mode,
+    )
+
+    api.save_config_selection("new-model", "USB Headset")
+    await asyncio.sleep(0.05)
+
+    written = ui_config_path.read_text(encoding="utf-8")
+    assert f"[mcp]\n{persisted}" in written
+
+
 async def test_save_config_selection_preserves_the_current_response_mode(tmp_path):
     """Split of task 3b: the Settings form now carries its own restart-to-
     apply choice, so an unrelated Apply must persist the form's choice (not
@@ -2669,3 +2702,74 @@ async def test_the_camera_toggle_also_repaints_the_tool_rows():
     await asyncio.sleep(0.05)
 
     assert len(events) == 1
+
+
+# --- story-v2.0 task 4: run mode in the UI ------------------------------------
+
+
+_MCP_REFUSED = {action.value for action in RunModePolicy(RunMode.MCP).refused_actions()}
+
+# How each surface sends a control command, and how it marks a control
+# disabled for a refused action (a click guard alone is not a marking).
+_UI_SURFACES = {
+    "app.js": (
+        r'_sendControl\("([a-z_]+)"',
+        r'disabled\s*[=:][^;{}]*?isActionRefused\("([a-z_]+)"\)',
+    ),
+    "touchstrip.js": (
+        r'sendUiControl\("([a-z_]+)"',
+        r'_markRefused\("[A-Za-z]+", "([a-z_]+)"\)',
+    ),
+}
+
+
+def _refused_route_actions() -> set[str]:
+    return {route.action.value for route in ROUTES} & _MCP_REFUSED
+
+
+@pytest.mark.parametrize("surface", sorted(_UI_SURFACES))
+def test_each_surface_marks_disabled_every_refused_action_it_can_send(surface):
+    """The engine refuses these actions (core/run_mode.py); each surface
+    disables, not just guards, every control that would send one. Only the
+    console calls the journal API, so the refused routes are its to mark."""
+    script = (UI_DIR / surface).read_text(encoding="utf-8")
+    send_pattern, marking_pattern = _UI_SURFACES[surface]
+    sent = set(re.findall(send_pattern, script))
+    calls_the_journal_api = "/api/journal/" in script
+
+    expected = (sent & _MCP_REFUSED) | (
+        _refused_route_actions() if calls_the_journal_api else set()
+    )
+
+    assert set(re.findall(marking_pattern, script, re.S)) == expected
+
+
+def test_every_refused_action_is_marked_on_some_surface():
+    marked = set()
+    for surface, (_, marking_pattern) in _UI_SURFACES.items():
+        script = (UI_DIR / surface).read_text(encoding="utf-8")
+        marked |= set(re.findall(marking_pattern, script, re.S))
+
+    assert marked == _MCP_REFUSED
+
+
+def test_the_touchstrip_marking_disables_the_control_it_names():
+    script = (UI_DIR / "touchstrip.js").read_text(encoding="utf-8")
+    marking = re.search(r"function _markRefused\(.*?\n\}", script, re.S).group(0)
+
+    assert 'classList.toggle("disabled", isActionRefused(action))' in marking
+    assert 'setAttribute("aria-disabled"' in marking
+
+
+def test_both_ui_surfaces_apply_the_run_mode_from_snapshot_and_delta():
+    for name in ("app.js", "touchstrip.js"):
+        script = (UI_DIR / name).read_text(encoding="utf-8")
+        assert "applyRunMode(state.run_mode" in script
+        assert "run_mode: applyRunMode" in script
+
+
+def test_index_html_has_a_run_mode_label():
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="runModeBadge"' in html
+    assert 'data-i18n="run_mode_mcp_label"' in html

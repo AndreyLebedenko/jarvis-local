@@ -28,6 +28,7 @@ function _applyStateSnapshot(state) {
   applyModelLabel(state.model);
   applyDataLocality(state.data_locality);
   applyDebugMode(state.debug || { enabled: false });
+  applyRunMode(state.run_mode || { mode: "normal", refused: [] });
   applyThinkingMode(state.thinking);
   applyVisibilityMode(state.visibility);
 }
@@ -39,6 +40,7 @@ function _applyStateDelta(payload) {
     model: applyModelLabel,
     data_locality: applyDataLocality,
     debug: applyDebugMode,
+    run_mode: applyRunMode,
     thinking: applyThinkingMode,
     visibility: applyVisibilityMode,
     ui_language: applyUiLanguage,
@@ -103,6 +105,27 @@ function applyDebugMode(payload) {
   banner.classList.toggle("show", Boolean(payload && payload.enabled));
 }
 
+// Same contract as app.js's applyRunMode(): a control bound to an action
+// the engine refuses in this run mode is disabled, not hidden.
+let _refusedActions = new Set();
+
+function isActionRefused(action) {
+  return _refusedActions.has(action);
+}
+
+function applyRunMode(payload) {
+  _refusedActions = new Set((payload && payload.refused) || []);
+  _markRefused("thinkBtn", "toggle_thinking");
+  _markRefused("resetBtn", "reset_context");
+}
+
+function _markRefused(elementId, action) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.classList.toggle("disabled", isActionRefused(action));
+  element.setAttribute("aria-disabled", String(isActionRefused(action)));
+}
+
 function applyThinkingMode(payload) {
   if (!REASONING_LEVELS.includes(payload.level)) {
     throw new Error("Unknown reasoning level: " + payload.level);
@@ -126,6 +149,7 @@ function applyVisibilityMode(payload) {
 }
 
 function toggleThinking() {
+  if (isActionRefused("toggle_thinking")) return;
   sendUiControl("toggle_thinking");
 }
 
@@ -144,6 +168,7 @@ const RESET_HOLD_MS = 1000;
 let _resetHoldTimer = null;
 
 function onResetHoldStart() {
+  if (isActionRefused("reset_context")) return;
   document.getElementById("resetBtn").classList.add("holding");
   _resetHoldTimer = setTimeout(() => {
     _resetHoldTimer = null;

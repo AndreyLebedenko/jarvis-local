@@ -3,17 +3,30 @@ import io
 import types
 
 import numpy as np
+import pytest
+import sounddevice as sd
 import soundfile as sf
 
 from jarvis.app import (
     App,
     _on_interrupt_requested,
     _on_tts_speech_enabled_changed,
+    _pause_reply_replay,
+    _resume_reply_replay,
+    _run_reply_replay,
     _run_reply_sequence,
+    _stop_reply_replay,
     replay_reply,
     replay_sequence,
 )
-from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, ReplayProgress
+from jarvis.audio.replay import (
+    ReplayOutcome,
+    ReplayPlayer,
+    ReplayProgress,
+    ReplayRun,
+    ReplayRunSlot,
+    TextReply,
+)
 from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
@@ -78,15 +91,22 @@ def _app(
     *,
     store: JournalStore,
     engine: _FakeEngine,
-    play: _RecordingPlay,
+    play: _RecordingPlay | None,
     cues: _RecordingCues,
     is_busy: bool = False,
     mute_state: TtsMuteState | None = None,
     bus: EventBus | None = None,
     tts_language_mode: TtsLanguageMode = TtsLanguageMode.DYNAMIC,
+    stream_factory=None,
 ) -> App:
     bus = bus or EventBus()
-    player = ReplayPlayer(TtsSettings(), engine, play=play, mute_state=mute_state)
+    player = ReplayPlayer(
+        TtsSettings(),
+        engine,
+        play=play,
+        mute_state=mute_state,
+        stream_factory=stream_factory,
+    )
     return App(
         bus=bus,
         backend=None,
@@ -553,3 +573,162 @@ def test_disabling_tts_cancels_an_active_replay(tmp_path):
         return app.replay_player.is_active
 
     assert asyncio.run(scenario()) is False
+
+
+class _GatedPlay:
+    """Each clip plays until the test opens the gate."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.gate = asyncio.Event()
+
+    async def __call__(self, audio: bytes) -> None:
+        self.started.set()
+        await self.gate.wait()
+
+
+def test_journal_stop_ends_the_journals_own_replay(tmp_path):
+    async def scenario():
+        play = _GatedPlay()
+        store = _store(tmp_path, _assistant_event("One. Two."))
+        app = _app(store=store, engine=_FakeEngine(), play=play, cues=_RecordingCues())
+        held = asyncio.create_task(_run_reply_replay(app, JournalEventRef(_SESSION, 0)))
+        await play.started.wait()
+        _stop_reply_replay(app)
+        return await held, app.replay_player.is_active
+
+    assert asyncio.run(scenario()) == ("started", False)
+
+
+class _WavEngine:
+    async def synthesize(self, text: str, language: str = "ru") -> bytes:
+        return _wav_bytes()
+
+
+class _FakeStream:
+    """Stands in for the audio device: a clip advances only when pumped, and a
+    paused clip ignores the pump, as a stopped PortAudio stream would."""
+
+    def __init__(self, samplerate, channels, callback, finished_callback) -> None:
+        self._channels = channels
+        self._callback = callback
+        self._finished = finished_callback
+        self.running = False
+
+    def start(self) -> None:
+        self.running = True
+
+    def stop(self) -> None:
+        self.running = False
+        self._finished()
+
+    def abort(self) -> None:
+        self.stop()
+
+    def close(self) -> None:
+        pass
+
+    def pump(self, nframes: int) -> None:
+        if not self.running:
+            return
+        outdata = np.zeros((nframes, self._channels), dtype="float32")
+        try:
+            self._callback(outdata, nframes, None, None)
+        except sd.CallbackStop:
+            self.running = False
+            self._finished()
+
+
+async def _stream_number(streams: list[_FakeStream], count: int) -> _FakeStream:
+    for _ in range(200):
+        if len(streams) >= count:
+            return streams[count - 1]
+        await asyncio.sleep(0)
+    raise AssertionError(f"stream {count} was never opened")
+
+
+def test_late_journal_controls_never_reach_a_run_started_in_its_place(tmp_path):
+    # Journal Stop race (owner decision 2026-10-02, task-v2.0-4): the user's
+    # replay has ended and the voice guide's run now plays on the same player.
+    # A Stop/Pause/Resume landing late must leave that run alone. The streams
+    # are real PausablePlayback ones, so a player-wide pause would show.
+    async def scenario():
+        streams: list[_FakeStream] = []
+
+        def factory(samplerate, channels, callback, finished) -> _FakeStream:
+            streams.append(_FakeStream(samplerate, channels, callback, finished))
+            return streams[-1]
+
+        store = _store(tmp_path, _assistant_event("The user's reply."))
+        app = _app(
+            store=store,
+            engine=_WavEngine(),
+            play=None,
+            cues=_RecordingCues(),
+            stream_factory=factory,
+        )
+        held = asyncio.create_task(_run_reply_replay(app, JournalEventRef(_SESSION, 0)))
+        (await _stream_number(streams, 1)).pump(1000)
+        await asyncio.wait_for(held, timeout=2)
+        guide_run = app.replay_player.start_run([TextReply("The guide speaks.")])
+        assert isinstance(guide_run, ReplayRun)
+        guide_stream = await _stream_number(streams, 2)
+        guide_stream.pump(10)
+        paused = _pause_reply_replay(app)
+        guide_kept_playing = not app.replay_player.is_paused
+        guide_run.pause()
+        resumed = _resume_reply_replay(app)
+        guide_kept_paused = app.replay_player.is_paused
+        guide_run.resume()
+        _stop_reply_replay(app)
+        guide_stream.pump(1000)
+        await asyncio.wait_for(guide_run.wait(), timeout=2)
+        controls = (paused, guide_kept_playing, resumed, guide_kept_paused)
+        return controls, guide_run.cancelled
+
+    assert asyncio.run(scenario()) == ((False, True, False, True), False)
+
+
+class _SlotTakenOver(ReplayRunSlot):
+    """Another owner's run lands in the slot the moment the Journal holds
+    its own, as if something had suspended between holding and waiting."""
+
+    def __init__(self, other_run: ReplayRun) -> None:
+        super().__init__()
+        self._other_run = other_run
+
+    def hold(self, run: ReplayRun) -> None:
+        super().hold(self._other_run)
+
+
+@pytest.mark.parametrize("hold_request", [_run_reply_replay, _run_reply_sequence])
+def test_a_held_journal_request_ends_with_its_own_run(tmp_path, hold_request):
+    async def scenario():
+        streams: list[_FakeStream] = []
+
+        def factory(samplerate, channels, callback, finished) -> _FakeStream:
+            streams.append(_FakeStream(samplerate, channels, callback, finished))
+            return streams[-1]
+
+        other_play = _GatedPlay()
+        other_player = ReplayPlayer(TtsSettings(), _FakeEngine(), play=other_play)
+        other_run = other_player.start_run([TextReply("Someone else speaks.")])
+        assert isinstance(other_run, ReplayRun)
+        store = _store(tmp_path, _assistant_event("The user's reply."))
+        app = _app(
+            store=store,
+            engine=_WavEngine(),
+            play=None,
+            cues=_RecordingCues(),
+            stream_factory=factory,
+        )
+        app.journal_replay = _SlotTakenOver(other_run)
+        held = asyncio.create_task(hold_request(app, JournalEventRef(_SESSION, 0)))
+        (await _stream_number(streams, 1)).pump(1000)
+        try:
+            return await asyncio.wait_for(held, timeout=2), other_run.cancelled
+        finally:
+            other_run.cancel()
+            await other_run.wait()
+
+    assert asyncio.run(scenario()) == ("started", False)

@@ -26,14 +26,16 @@ from jarvis.journal.events import JSONValue
 
 
 class RuntimeState(enum.Enum):
-    """The six states the status orb can be in. WARMING is a runtime
+    """The states the status orb can be in. WARMING is a runtime
     activation/warmup state (tasks/backlog/activation-warmup.md), not a
     privacy or data-locality indicator - see VisibilityMode/DataLocality
-    below for those, which are independent axes."""
+    below for those, which are independent axes. MCP_WAITING takes
+    LISTENING's place in MCP mode, where there is no microphone to listen."""
 
     IDLE = "idle"
     WARMING = "warming"
     LISTENING = "listening"
+    MCP_WAITING = "mcp_waiting"
     THINKING = "thinking"
     SPEAKING = "speaking"
     ERROR = "error"

@@ -86,7 +86,7 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
         fake_live_console.windows_created = True
 
     fake_live_console.create_windows = create_windows
-    monkeypatch.setattr(main_module, "build_app", lambda settings: fake_app)
+    monkeypatch.setattr(main_module, "build_app", lambda settings, run_mode: fake_app)
     monkeypatch.setattr(
         main_module,
         "create_live_status_console",
@@ -94,7 +94,9 @@ def test_status_console_creates_windows_before_starting_pywebview(monkeypatch):
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeTransportServer)
 
-    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
+    async def fake_run(
+        settings=None, app=None, live_console=None, debug=False, run_mode=None
+    ) -> None:
         del settings, app, live_console
 
     monkeypatch.setattr(main_module, "run", fake_run)
@@ -129,7 +131,7 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
         create_windows=lambda: None,
         load_transport_urls=lambda info: None,
     )
-    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(main_module, "build_app", lambda settings, run_mode: app)
     monkeypatch.setattr(
         main_module,
         "create_live_status_console",
@@ -137,7 +139,9 @@ def test_status_console_transport_receives_journal_read_services(monkeypatch):
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
 
-    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
+    async def fake_run(
+        settings=None, app=None, live_console=None, debug=False, run_mode=None
+    ) -> None:
         del settings, app, live_console
 
     monkeypatch.setattr(main_module, "run", fake_run)
@@ -186,7 +190,7 @@ def test_status_console_starts_history_lifecycle_before_transport(monkeypatch):
         create_windows=lambda: None,
         load_transport_urls=lambda info: None,
     )
-    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(main_module, "build_app", lambda settings, run_mode: app)
     monkeypatch.setattr(
         main_module,
         "create_live_status_console",
@@ -194,7 +198,9 @@ def test_status_console_starts_history_lifecycle_before_transport(monkeypatch):
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeUiTransportServer)
 
-    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
+    async def fake_run(
+        settings=None, app=None, live_console=None, debug=False, run_mode=None
+    ) -> None:
         del settings, live_console
         await main_module._start_history_projection_lifecycle(app)
         calls.append("run")
@@ -230,7 +236,7 @@ def _patch_status_console_composition(monkeypatch, app, fake_run) -> None:
         create_windows=lambda: None,
         load_transport_urls=lambda info: None,
     )
-    monkeypatch.setattr(main_module, "build_app", lambda settings: app)
+    monkeypatch.setattr(main_module, "build_app", lambda settings, run_mode: app)
     monkeypatch.setattr(
         main_module,
         "create_live_status_console",
@@ -251,7 +257,9 @@ def test_run_with_status_console_waits_for_a_delayed_engine_callback(monkeypatch
     app = _fake_app()
     engine_finished = threading.Event()
 
-    async def fake_run(settings=None, app=None, live_console=None, debug=False) -> None:
+    async def fake_run(
+        settings=None, app=None, live_console=None, debug=False, run_mode=None
+    ) -> None:
         del settings, app, live_console
         await asyncio.sleep(0.05)
         engine_finished.set()
@@ -282,7 +290,7 @@ def test_run_with_status_console_reraises_an_engine_callback_failure(monkeypatch
     app = _fake_app()
 
     async def failing_run(
-        settings=None, app=None, live_console=None, debug=False
+        settings=None, app=None, live_console=None, debug=False, run_mode=None
     ) -> None:
         del settings, app, live_console
         raise RuntimeError("engine exploded")

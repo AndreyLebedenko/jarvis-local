@@ -178,3 +178,26 @@ def test_the_settings_form_is_not_centered_on_the_axis_it_overflows():
     assert "align-items: flex-start" in container
     assert "justify-content: center" in container
     assert "overflow-y: auto" in container
+
+
+def test_the_contract_js_runtime_states_match_the_python_contract():
+    script = (UI_DIR / "contract.js").read_text(encoding="utf-8")
+    declaration = re.search(r"const RUNTIME_STATES = \[(.*?)\];", script, re.S)
+
+    states = re.findall(r'"([a-z_]+)"', declaration.group(1))
+
+    assert states == [state.value for state in RuntimeState]
+
+
+@pytest.mark.parametrize("css_name", ["style.css", "touchstrip.css"])
+def test_mcp_waiting_is_green_and_listening_stays_cyan(css_name):
+    css = (UI_DIR / css_name).read_text(encoding="utf-8")
+    custom_properties = _root_custom_properties(css)
+    colors = _runtime_color_rules(css)
+
+    assert colors["mcp_waiting"]["--live"] == custom_properties["--green"]
+    assert colors["listening"]["--live"] == custom_properties["--cyan"]
+    others = [
+        rule["--live"] for state, rule in colors.items() if state != "mcp_waiting"
+    ]
+    assert custom_properties["--green"] not in others

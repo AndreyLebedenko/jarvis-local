@@ -617,3 +617,41 @@ max_tool_calls_per_turn = 3
 # Optional overrides for a server whose tools have different reach:
 # [mcp.servers.search.tool_boundaries]
 # cached_lookup = "local"
+
+[mcp_mode]
+# Used only when Jarvis is started with --mcp-mode (Jarvis.cmd --mcp-mode).
+# Not the same thing as [mcp] above: [mcp] lists servers Jarvis connects to
+# as a client; this section configures the one local MCP tool Jarvis serves,
+# speak(canvas, spoken_text?, guidance?), which speaks a short voice guide
+# over another assistant's answer. In this mode Jarvis takes no user input
+# into the model: no microphone, no typed chat, no clipboard or screenshot.
+# The server always binds 127.0.0.1 (there is no host setting). The port is
+# fixed so an MCP client can store the URL; 47821 sits outside the usual
+# dev-server ranges. Change it if another program already uses it.
+port = 47821
+# Where the bearer token lives. Created on the first --mcp-mode start and
+# reused across runs; delete the file to rotate the token. A relative path
+# is relative to the working directory, like [journal].root (Jarvis.cmd runs
+# from the project folder). Never commit it: the default is in .gitignore.
+token_file = "mcp_mode.token"
+# What Jarvis speaks for a canvas-only call (no spoken_text): "derivative"
+# runs the [generation.voice_guide] pass to speak a short guide over the
+# canvas; "verbatim" reads the canvas itself aloud.
+canvas_speech = "derivative"
+# Longest canvas accepted, in characters; a longer call is refused with a
+# typed error, never truncated. The guide pass must fit the model context:
+# backend.num_ctx 65536 minus the default num_predict 16384 leaves 49152
+# prompt tokens. Jarvis's conservative estimate is one token per two UTF-8
+# bytes, i.e. up to one token per Cyrillic character, so 40000 characters
+# plus max_guidance_chars plus the guide prompt stays under that budget for
+# any language. Lower it if you lower num_ctx or raise num_predict.
+max_canvas_chars = 40000
+# Longest guidance (the caller's steering note for the guide pass).
+max_guidance_chars = 2000
+# Longest caller-supplied spoken_text. It goes straight to TTS, not to the
+# model, so it is bounded by listening time (8000 characters is several
+# minutes of speech), not by the context window.
+max_spoken_text_chars = 8000
+# Most unfinished calls at once, the one being spoken included; a call over
+# it is refused with a typed error. Calls are spoken one at a time, in order.
+queue_capacity = 8

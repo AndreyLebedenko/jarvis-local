@@ -18,6 +18,7 @@ def test_runtime_state_has_exactly_the_states_from_the_story_card():
         "idle",
         "warming",
         "listening",
+        "mcp_waiting",
         "thinking",
         "speaking",
         "error",

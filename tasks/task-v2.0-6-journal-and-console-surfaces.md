@@ -71,6 +71,16 @@ prevents on the model side.
 5. **Hidden mode.** Hidden mode suppresses the new feed rows and the queue
    block's content through the existing visibility mechanism, not a new
    check.
+6. **Orb state in `MCP` mode (owner, 2026-10-02, from task 4).** Task 4
+   added the green `RuntimeState.MCP_WAITING` resting state
+   (`RuntimeStateTracker(ready_state=...)`, `wire_status_console()`), but
+   the orb returns to its resting state only at the end of a turn, and
+   `MCP` mode has no turns. So an ERROR system event leaves the orb on
+   Error until restart, and the guide's speech never moves the orb (the
+   guide publishes only `VoiceGuideQueueChanged`). Decide and implement
+   when Error clears in `MCP` mode (for example on the next queue change or
+   the next item that finishes) and whether the orb shows the guide
+   speaking; take the decision to the owner before implementing.
 
 ## Explicitly out of scope
 
