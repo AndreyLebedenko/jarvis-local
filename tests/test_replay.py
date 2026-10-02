@@ -10,6 +10,7 @@ import soundfile as sf
 from jarvis.audio.replay import (
     ReplayOutcome,
     ReplayPlayer,
+    ReplayRun,
     TextReply,
     VoiceReply,
     assistant_reply_speech,
@@ -375,6 +376,214 @@ def test_cancel_is_a_noop_when_idle():
     player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
 
     assert player.cancel() is False
+
+
+def _start(player: ReplayPlayer, text: str = "A sentence.") -> ReplayRun:
+    run = player.start_run([TextReply(text)])
+    assert isinstance(run, ReplayRun)
+    return run
+
+
+def test_a_run_that_played_to_the_end_waits_out_and_is_not_cancelled():
+    async def scenario() -> tuple[bool, bool]:
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
+        run = _start(player)
+        await run.wait()
+        return run.cancelled, player.is_active
+
+    assert asyncio.run(scenario()) == (False, False)
+
+
+def test_a_run_is_not_cancelled_while_it_is_still_playing():
+    async def scenario() -> bool:
+        play = _BlockingPlay(asyncio.Event())
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        run = _start(player)
+        await play.started.wait()
+        return run.cancelled
+
+    assert asyncio.run(scenario()) is False
+
+
+def test_a_run_cancelled_through_its_handle_ends_and_reports_cancelled():
+    async def scenario() -> tuple[bool, bool, bool]:
+        play = _BlockingPlay(asyncio.Event())
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        run = _start(player)
+        await play.started.wait()
+        stopped = run.cancel()
+        await run.wait()
+        return stopped, run.cancelled, player.is_active
+
+    assert asyncio.run(scenario()) == (True, True, False)
+
+
+def test_a_run_cancelled_by_the_player_wide_cancel_reports_cancelled():
+    async def scenario() -> bool:
+        play = _BlockingPlay(asyncio.Event())
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        run = _start(player)
+        await play.started.wait()
+        player.cancel()
+        await run.wait()
+        return run.cancelled
+
+    assert asyncio.run(scenario()) is True
+
+
+def test_a_run_cancelled_before_its_task_first_runs_reports_cancelled():
+    async def scenario() -> bool:
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
+        run = _start(player)
+        run.cancel()
+        await run.wait()
+        return run.cancelled
+
+    assert asyncio.run(scenario()) is True
+
+
+def test_cancelling_a_finished_run_reports_nothing_to_cancel():
+    async def scenario() -> bool:
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
+        run = _start(player)
+        await run.wait()
+        return run.cancel()
+
+    assert asyncio.run(scenario()) is False
+
+
+def test_cancelling_a_finished_run_leaves_a_newer_run_playing():
+    async def scenario() -> tuple[bool, bool, bool]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        release.set()
+        first = _start(player, "First one.")
+        await first.wait()
+        release.clear()
+        play.started.clear()
+        second = _start(player, "Second one.")
+        await play.started.wait()
+        first.cancel()
+        still_active = player.is_active
+        release.set()
+        await second.wait()
+        return still_active, second.cancelled, first.cancelled
+
+    assert asyncio.run(scenario()) == (True, False, False)
+
+
+def test_a_newer_run_does_not_change_whether_an_older_one_was_cancelled():
+    async def scenario() -> tuple[bool, bool]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        cancelled_run = _start(player, "First one.")
+        await play.started.wait()
+        cancelled_run.cancel()
+        await cancelled_run.wait()
+        release.set()
+        completed_run = _start(player, "Second one.")
+        await completed_run.wait()
+        return cancelled_run.cancelled, completed_run.cancelled
+
+    assert asyncio.run(scenario()) == (True, False)
+
+
+def test_a_completed_run_stays_uncancelled_when_a_newer_run_is_cancelled():
+    async def scenario() -> tuple[bool, bool]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        release.set()
+        completed_run = _start(player, "First one.")
+        await completed_run.wait()
+        release.clear()
+        play.started.clear()
+        cancelled_run = _start(player, "Second one.")
+        await play.started.wait()
+        player.cancel()
+        await cancelled_run.wait()
+        return completed_run.cancelled, cancelled_run.cancelled
+
+    assert asyncio.run(scenario()) == (False, True)
+
+
+def test_cancelling_the_waiter_does_not_cancel_the_run():
+    async def scenario() -> tuple[bool, bool, bool]:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        run = _start(player)
+        await play.started.wait()
+        waiter = asyncio.create_task(run.wait())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)
+        still_active = player.is_active
+        release.set()
+        await run.wait()
+        return waiter.cancelled(), still_active, run.cancelled
+
+    assert asyncio.run(scenario()) == (True, True, False)
+
+
+def test_a_run_whose_playback_fails_raises_that_failure_from_wait():
+    async def scenario() -> None:
+        async def failing_play(_: bytes) -> None:
+            raise RuntimeError("audio device lost")
+
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=failing_play)
+        run = _start(player)
+        await run.wait()
+
+    with pytest.raises(RuntimeError, match="audio device lost"):
+        asyncio.run(scenario())
+
+
+def test_start_run_reports_busy_while_another_run_is_active():
+    async def scenario() -> ReplayOutcome | ReplayRun:
+        release = asyncio.Event()
+        play = _BlockingPlay(release)
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        first = _start(player)
+        await play.started.wait()
+        second = player.start_run([TextReply("Second one.")])
+        release.set()
+        await first.wait()
+        return second
+
+    assert asyncio.run(scenario()) is ReplayOutcome.BUSY
+
+
+def test_start_run_reports_disabled_while_tts_is_muted():
+    mute = TtsMuteState(EventBus(), enabled=False)
+    player = ReplayPlayer(
+        _tts_settings(), _FakeEngine(), play=_RecordingPlay(), mute_state=mute
+    )
+
+    outcome = player.start_run([TextReply("Hello there.")])
+
+    assert outcome is ReplayOutcome.DISABLED
+
+
+def test_start_run_reports_empty_when_nothing_is_speakable():
+    player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=_RecordingPlay())
+
+    outcome = player.start_run([TextReply("   ")])
+
+    assert outcome is ReplayOutcome.EMPTY
+
+
+def test_a_run_started_through_start_run_is_also_awaited_by_wait_for_pending():
+    async def scenario() -> list[bytes]:
+        play = _RecordingPlay()
+        player = ReplayPlayer(_tts_settings(), _FakeEngine(), play=play)
+        _start(player, "Hello there.")
+        await player.wait_for_pending()
+        return play.played
+
+    assert asyncio.run(scenario()) == [b"Hello there."]
 
 
 def test_pause_and_resume_are_noops_when_idle():

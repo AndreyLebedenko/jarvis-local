@@ -191,6 +191,17 @@ async def test_text_voice_second_pass_is_told_the_fixed_language():
     assert requests.events[1].speech_language == SingleLanguageSpeech("en")
 
 
+async def test_text_voice_second_pass_messages_are_the_contract_then_the_canvas():
+    backend, _requests = await _run_text_voice_turn(
+        TtsLanguageMode.ENGLISH, "Ответ на экране."
+    )
+
+    assert backend.calls[1][0] == [
+        {"role": "system", "content": "derivative contract\n\nspeak english"},
+        {"role": "user", "content": "Ответ на экране."},
+    ]
+
+
 async def test_text_voice_second_pass_in_request_mode_follows_the_canvas_language():
     backend, requests = await _run_text_voice_turn(
         TtsLanguageMode.REQUEST, "Ответ: используйте git rebase."

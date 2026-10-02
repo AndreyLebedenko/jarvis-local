@@ -4271,6 +4271,79 @@ recorded here yet.
   `read_history`, and `read_history_ranges` descriptions tell the model that
   such an item is another assistant's text the user was shown, not its own
   past answer.
+- **The voice guide runs outside the Orchestrator turn lifecycle**
+  (`VoiceGuideService`, `src/jarvis/dialog/voice_guide.py`). The guide pass is
+  `OllamaBackend.iter_chat()` with `tools=None` and the `voice_guide`
+  generation profile (built-in Russian prompt, reasoning off); `chat()` is not
+  used because its `ResponseToken` events would be taken for a user turn.
+  Speech goes through the app's shared `ReplayPlayer`. There is no sentence
+  streaming: the guide is generated in full first, so the first word comes
+  after the whole guide pass.
+- **Mode 3 and the guide share only `compose_canvas_speech_messages()`**
+  (`src/jarvis/dialog/canvas_speech.py`). System message = profile prompt, then
+  the labeled guidance section (if any), then the speech-language contract
+  last; user message = the exact canvas. Mode 3's dispatch is unchanged.
+- **Queue.** FIFO, one strictly serial worker, no per-item deadline. `enqueue`
+  is synchronous and never interrupts the item in flight. Capacity and the
+  1-based position count the in-flight item.
+- **Control is explicit data, not task cancellation.** Each request records
+  what happened to it: its guide pass (a subtask, so its outcome is read from
+  that task's state), the `ReplayRun` it started, and whether an interrupt was
+  requested for it. One function, `_status_of()`, derives the journal status
+  from those facts; nothing infers a status from where a `CancelledError` was
+  caught.
+- **Interrupt is a per-item signal.** `interrupt()` marks the item in flight
+  interrupted, stops its guide pass, calls `cancel()` on the item's own
+  `ReplayRun` (a no-op once that run has finished, never touching another
+  owner's run), and moves every queued item to the dropped list, which the
+  worker journals `skipped` in order. The worker is never cancelled and keeps
+  serving later items. Every wait inside an item (guide pass, BUSY wait,
+  playback) ends when the signal is set. A `ReplayPlayer.cancel()` from
+  outside the service (the interrupt handler, the Journal Stop button) ends
+  that run cancelled, so it interrupts only the current item and does not
+  clear the queue. A BUSY player (a user's Journal replay) is waited for until
+  it ends or the item is interrupted, never cancelled, and a failure of that
+  replay is not the guide's failure.
+- **Status mapping.** Player `DISABLED` -> `muted` (the derivative is still
+  generated and journaled). Own `ReplayRun` ended: cancelled -> `interrupted`,
+  raised -> `failed`, otherwise `spoken`; this holds whenever an interrupt or
+  shutdown arrived, so a run that finished before `cancel()` reached it is
+  `spoken`, not `interrupted`. Player `EMPTY` (nothing speakable), a guide
+  pass that raised or produced no speakable text, and an own-playback failure
+  -> `failed`. Every `failed` the worker finishes plays the `error` sound
+  cue (also during `close()`), then the worker continues. No run because the
+  guide pass was stopped, or because an interrupt arrived before playback
+  started -> `interrupted`.
+- **Lifecycle: `start()` and `async close()`.** `start()` creates the worker
+  task (a second call raises). `close()` is the orderly shutdown, idempotent,
+  correct whether or not `start()` was called and whether or not the worker
+  has run a step: it marks the service closed (`enqueue()` rejects with
+  `VoiceGuideRejection.CLOSED`, `interrupt()` does nothing), interrupts the
+  item in flight like `interrupt()`, and awaits the worker if it was started;
+  the worker finishes and journals that item by the fact rules above,
+  journals the dropped requests `skipped`, and returns. `close()` then
+  journals `skipped` any dropped request no worker reached (none was
+  started), clears the in-flight slot, publishes a final empty
+  `VoiceGuideQueueChanged`, and waits for its background tasks. When it
+  returns, every request ever accepted has been journaled exactly once.
+  Only a crash (process death, an event-loop teardown without `close()`
+  before the scheduled journal writes flush, or a worker that ends without
+  `close()`, below) loses canvases.
+- **A worker that ends without `close()` is a crash** (cancelled from
+  outside, or killed by a bug in the middle of an item): the service only
+  marks itself closed and logs it, and unfinished canvases, that item's event
+  included, may be lost, as the story accepts for a crash.
+- **`ReplayPlayer.start_run()` is a plain method that returns a per-run
+  `ReplayRun` handle.** It never suspends, so nothing can interrupt the guide
+  between starting a run and holding its handle. The guide binds its wait,
+  its result, and its cancellation to the run it started: `run.wait()` waits
+  for that run only and never passes the waiter's cancellation into it,
+  `run.cancelled` is True only if that run ended by cancellation (by the
+  handle or by the player-wide `cancel()`), and `run.cancel()` is a no-op
+  once the run has finished, so it can never stop a later replay that
+  started in its place. The player-wide state (`cancel()`,
+  `wait_for_pending()`, `is_active`) keeps its Journal behavior; the guide
+  uses it only to wait out a BUSY user replay, never to cancel.
 
 ## Documentation navigation doctrine (2026-08-30)
 
