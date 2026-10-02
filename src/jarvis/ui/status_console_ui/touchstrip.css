@@ -18,6 +18,9 @@
   --cyan: #3FE0D0;
   --cyan-dim: #1E5C56;
   --cyan-tint: rgba(63, 224, 208, 0.09);
+  --green: #5BD67A;
+  --green-dim: #1F5A30;
+  --green-tint: rgba(91, 214, 122, 0.09);
   --violet: #9A8CFB;
   --violet-dim: #3E3878;
   --violet-tint: rgba(154, 140, 251, 0.1);
@@ -38,6 +41,7 @@
 html[data-state="idle"] { --live: var(--gray); --live-dim: var(--border); --live-tint: rgba(107, 118, 132, 0.08); }
 html[data-state="warming"] { --live: var(--amber-warm); --live-dim: var(--amber-warm-dim); --live-tint: var(--amber-warm-tint); }
 html[data-state="listening"] { --live: var(--cyan); --live-dim: var(--cyan-dim); --live-tint: var(--cyan-tint); }
+html[data-state="mcp_waiting"] { --live: var(--green); --live-dim: var(--green-dim); --live-tint: var(--green-tint); }
 html[data-state="thinking"] { --live: var(--violet); --live-dim: var(--violet-dim); --live-tint: var(--violet-tint); }
 html[data-state="speaking"] { --live: var(--amber); --live-dim: var(--amber-dim); --live-tint: var(--amber-tint); }
 html[data-state="error"] { --live: var(--red); --live-dim: var(--red-dim); --live-tint: rgba(232, 91, 91, 0.1); }
@@ -155,6 +159,7 @@ html[data-visibility="hidden"] .g-visibility { background: var(--violet-tint); c
   transition: all 0.15s; user-select: none; -webkit-user-select: none;
 }
 .act-btn:active { transform: scale(0.97); }
+.act-btn.disabled { opacity: 0.4; pointer-events: none; }
 .act-label { font-weight: 600; font-size: 15px; color: var(--text); }
 .act-sub { font-family: "Consolas", "Cascadia Mono", monospace; font-size: 10.5px; color: var(--text-dim); }
 #thinkBtn.on { border-color: var(--violet-dim); background: var(--violet-tint); }

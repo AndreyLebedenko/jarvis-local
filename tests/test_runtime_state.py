@@ -165,3 +165,22 @@ async def test_repeated_error_with_new_message_is_republished():
     await bus.publish(SystemEvent, _system_event(EventLevel.ERROR, "second"))
 
     assert [event.substatus_text for event in recorder.events] == ["first", "second"]
+
+
+async def test_an_mcp_waiting_tracker_rests_in_mcp_waiting_between_turns():
+    bus = EventBus()
+    RuntimeStateTracker(bus, ready_state=RuntimeState.MCP_WAITING).subscribe()
+    recorder = _Recorder(bus)
+
+    await bus.publish(WarmupStarted, WarmupStarted())
+    await bus.publish(WarmupCompleted, WarmupCompleted(succeeded=True))
+    await bus.publish(TurnAccepted, TurnAccepted(source=TurnSource.TEXT))
+    await bus.publish(TurnCompleted, TurnCompleted())
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.WARMING,
+        RuntimeState.MCP_WAITING,
+        RuntimeState.THINKING,
+        RuntimeState.MCP_WAITING,
+    ]
+    assert recorder.events[1].substatus_key == "ready_to_listen"

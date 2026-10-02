@@ -27,6 +27,7 @@ from jarvis.core.config import (
     write_ui_config,
 )
 from jarvis.core.lifecycle import ModelRequestPassKind
+from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
@@ -295,6 +296,13 @@ def thinking_mode_payload(level: ReasoningLevel) -> dict:
 
 def response_mode_payload(mode: ResponseMode) -> dict:
     return {"mode": mode.value}
+
+
+def run_mode_payload(policy: RunModePolicy) -> dict:
+    return {
+        "mode": policy.run_mode.value,
+        "refused": [action.value for action in policy.refused_actions()],
+    }
 
 
 def visibility_mode_payload(mode: VisibilityMode) -> dict:
@@ -600,8 +608,10 @@ class StatusConsoleApi:
         tts_mute_state: TtsMuteState | None = None,
         solo_session_state: SoloSessionState | None = None,
         response_mode: ResponseModeState | None = None,
+        run_mode: RunMode = RunMode.NORMAL,
     ) -> None:
         self._loop = loop
+        self._run_mode = run_mode
         self._thinking_mode = thinking_mode
         self._history = history
         self._bus = bus
@@ -971,6 +981,13 @@ class StatusConsoleApi:
         )
         self._schedule(self._save_config_selection_async(selection))
 
+    def _persisted_mcp_enabled(self) -> bool:
+        # MCP mode never enables the host, so its live state would persist
+        # [mcp] enabled = false for the next normal start.
+        if self._mcp_host is None or self._run_mode is RunMode.MCP:
+            return self._settings.mcp.enabled
+        return self._mcp_host.enabled
+
     async def _save_config_selection_async(self, selection: UiConfigSelection) -> None:
         """Writes restart-to-apply UI config after validating selections.
 
@@ -1003,11 +1020,7 @@ class StatusConsoleApi:
             tts_routes=selection.tts_routes,
             tts_enabled=selection.tts_enabled,
             tts_language_mode=selection.tts_language_mode,
-            mcp_enabled=(
-                self._mcp_host.enabled
-                if self._mcp_host is not None
-                else self._settings.mcp.enabled
-            ),
+            mcp_enabled=self._persisted_mcp_enabled(),
             # The Settings form's own restart-to-apply choice for the mode a
             # new launch starts in (task 3b) - NOT the live session value,
             # which only the Status-tab buttons and the hotkey change and

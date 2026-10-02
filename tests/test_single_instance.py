@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from jarvis import app
+from jarvis.core.run_mode import RunMode
 from jarvis.core.single_instance import (
     ALREADY_RUNNING_EXIT_CODE,
     ALREADY_RUNNING_MESSAGE,
@@ -38,7 +39,7 @@ class EntryPointSpy:
         self.message_boxes: list[str] = []
         self.acquire_calls = 0
 
-    async def run(self) -> None:
+    async def run(self, run_mode: RunMode) -> None:
         self.run_calls += 1
 
     def run_with_status_console(self, **kwargs) -> None:
@@ -214,7 +215,9 @@ def test_free_status_console_main_runs_console_and_releases_handle_afterwards(
 
     run_main(["--status-console"], api, spy)
 
-    assert spy.status_console_calls == [{"include_touchstrip": True, "debug": False}]
+    assert spy.status_console_calls == [
+        {"include_touchstrip": True, "debug": False, "run_mode": RunMode.NORMAL}
+    ]
     assert api.closed_handles == [FAKE_HANDLE]
 
 
@@ -224,7 +227,7 @@ def test_handle_is_still_held_while_run_is_executing(
     api = FakeMutexApi(already_exists=False)
     closed_during_run: list[list[int]] = []
 
-    async def run_probe() -> None:
+    async def run_probe(run_mode: RunMode) -> None:
         closed_during_run.append(list(api.closed_handles))
 
     monkeypatch.setattr(app, "run", run_probe)
@@ -239,7 +242,7 @@ def test_handle_is_released_when_run_raises(
 ) -> None:
     api = FakeMutexApi(already_exists=False)
 
-    async def failing_run() -> None:
+    async def failing_run(run_mode: RunMode) -> None:
         raise RuntimeError("engine crashed")
 
     monkeypatch.setattr(app, "run", failing_run)

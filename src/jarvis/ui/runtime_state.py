@@ -44,8 +44,14 @@ class RuntimeStateChanged:
 
 
 class RuntimeStateTracker:
-    def __init__(self, bus: EventBus) -> None:
+    """`ready_state` is the state the orb rests in between turns: LISTENING,
+    or MCP_WAITING in MCP mode."""
+
+    def __init__(
+        self, bus: EventBus, ready_state: RuntimeState = RuntimeState.LISTENING
+    ) -> None:
         self._bus = bus
+        self._ready_state = ready_state
         self._last: RuntimeStateChanged | None = None
 
     def subscribe(self) -> list[Subscription]:
@@ -67,10 +73,10 @@ class RuntimeStateTracker:
 
     async def _on_warmup_completed(self, event: WarmupCompleted) -> None:
         # A failed warm-up already surfaces as a WARN system event; the
-        # engine keeps accepting input either way, so the orb goes to
-        # LISTENING regardless (pre-tracker behavior preserved).
+        # engine keeps accepting input either way, so the orb goes to its
+        # ready state regardless (pre-tracker behavior preserved).
         del event
-        await self._transition(RuntimeState.LISTENING, key="ready_to_listen")
+        await self._transition(self._ready_state, key="ready_to_listen")
 
     async def _on_turn_accepted(self, event: TurnAccepted) -> None:
         key = _TURN_SOURCE_SUBSTATUS_KEY[event.source]
@@ -89,7 +95,7 @@ class RuntimeStateTracker:
 
     async def _on_turn_completed(self, event: TurnCompleted) -> None:
         del event
-        await self._transition(RuntimeState.LISTENING, key="ready_to_listen")
+        await self._transition(self._ready_state, key="ready_to_listen")
 
     async def _on_system_event(self, event: SystemEvent) -> None:
         if event.level is EventLevel.ERROR:

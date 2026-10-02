@@ -7,7 +7,7 @@ import concurrent.futures
 import logging
 import sys
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -26,6 +26,8 @@ from jarvis.audio.replay import (
     ReplayOutcome,
     ReplayPlayer,
     ReplayProgress,
+    ReplayRun,
+    ReplayRunSlot,
     SequencePlayer,
     reply_speech,
 )
@@ -53,6 +55,7 @@ from jarvis.core.config import (
     GenerationProfile,
     GenerationSettings,
     HistorySettings,
+    McpModeSettings,
     PromptSettings,
     ResponseSettings,
     Settings,
@@ -85,6 +88,7 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.core.log_config import configure_logging
 from jarvis.core.model_request_log import LOG_SOURCE, model_request_log_message
+from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.core.single_instance import (
     ALREADY_RUNNING_EXIT_CODE,
     ALREADY_RUNNING_MESSAGE,
@@ -115,6 +119,7 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
+from jarvis.dialog.voice_guide import VoiceGuideService
 from jarvis.dialog.voice_intent import (
     build_probe_messages,
     intent_directive_from_settings,
@@ -188,6 +193,7 @@ from jarvis.journal.events import (
     TurnOutcome,
     parse_journal_timestamp,
 )
+from jarvis.journal.external_canvas import SpeechOrigin
 from jarvis.journal.fork import (
     ForkSeedOversizeTurnError,
     ForkSessionReason,
@@ -1742,6 +1748,9 @@ class App:
     # persistence tests never touch the real config.ui.toml (story-v1.9.0
     # task 2 review finding).
     ui_config_path: Path = DEFAULT_UI_CONFIG_PATH
+    run_mode: RunMode = RunMode.NORMAL
+    voice_guide: VoiceGuideService | None = None
+    journal_replay: ReplayRunSlot = field(default_factory=ReplayRunSlot)
 
 
 def _fork_provenance_seed_line(source_end_timestamp: str) -> str:
@@ -1817,10 +1826,13 @@ def build_app(
     audio_input: AudioInput | None = None,
     tts_output: TtsOutput | None = None,
     capture_input: CaptureInput | None = None,
+    run_mode: RunMode = RunMode.NORMAL,
 ) -> App:
     """Constructs every module. Does not subscribe anything to the bus -
     see wire(). Hardware-touching modules (audio_input, tts_output,
-    capture_input) are injectable so tests can substitute fakes."""
+    capture_input) are injectable so tests can substitute fakes. In MCP mode
+    AudioInput is still built but stays inert: only run() would open a
+    stream, and it never starts the microphone loop in that mode."""
     bus = bus or EventBus()
     solo_session_state = SoloSessionState(bus)
     backend = backend or OllamaBackend(bus, settings.backend)
@@ -2092,6 +2104,19 @@ def build_app(
         session_file_scope=current_session_file_scope,
         on_turn_start=replay_player.cancel,
     )
+    voice_guide = (
+        _build_voice_guide(
+            settings,
+            backend,
+            replay_player,
+            journal_recorder,
+            sound_cues,
+            bus,
+            orchestrator,
+        )
+        if run_mode is RunMode.MCP
+        else None
+    )
     return App(
         bus=bus,
         backend=backend,
@@ -2124,6 +2149,31 @@ def build_app(
         tts_mute_state=tts_mute_state,
         solo_session_state=solo_session_state,
         replay_player=replay_player,
+        run_mode=run_mode,
+        voice_guide=voice_guide,
+    )
+
+
+def _build_voice_guide(
+    settings: Settings,
+    backend: OllamaBackend,
+    replay_player: ReplayPlayer,
+    journal_recorder: JournalRecorder,
+    sound_cues: SoundCuePlayer,
+    bus: EventBus,
+    orchestrator: Orchestrator,
+) -> VoiceGuideService:
+    return VoiceGuideService(
+        backend=backend,
+        player=replay_player,
+        recorder=journal_recorder,
+        bus=bus,
+        generation_settings=settings.generation,
+        response_settings=settings.response,
+        language_mode=lambda: orchestrator.tts_language_mode,
+        canvas_only_origin=SpeechOrigin(settings.mcp_mode.canvas_speech),
+        on_error=lambda: sound_cues.play("error"),
+        capacity=settings.mcp_mode.queue_capacity,
     )
 
 
@@ -2171,6 +2221,17 @@ def _microphone_health(is_awake: bool, language: str) -> ModuleHealth:
             "mic_detail_listening" if is_awake else "mic_detail_muted", language
         ),
     )
+
+
+def _seed_microphone_health(app: App) -> ModuleHealth:
+    language = app.settings.ui.language
+    if app.run_mode is RunMode.MCP:
+        return ModuleHealth(
+            module=ModuleId.MICROPHONE,
+            status=HealthStatus.UNAVAILABLE,
+            detail=ui_text("mic_detail_off_mcp_mode", language),
+        )
+    return _microphone_health(app.audio_input.is_awake, language)
 
 
 def _camera_health(is_enabled: bool, language: str) -> ModuleHealth:
@@ -2230,6 +2291,7 @@ def create_live_status_console(
         tts_mute_state=app.tts_mute_state,
         solo_session_state=app.solo_session_state,
         ui_config_path=app.ui_config_path,
+        run_mode=app.run_mode,
     )
     console = console or StatusConsoleWindow()
     touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
@@ -2258,9 +2320,7 @@ def wire_status_console(
     live_console.transport.set_thinking_mode(app.thinking_mode.level)
     live_console.transport.set_response_mode(app.response_mode.mode)
     live_console.transport.set_visibility_mode(app.visibility_mode.mode)
-    live_console.transport.set_module_health(
-        _microphone_health(app.audio_input.is_awake, app.settings.ui.language)
-    )
+    live_console.transport.set_module_health(_seed_microphone_health(app))
     live_console.transport.set_module_health(
         _camera_health(app.camera_state.enabled, app.settings.ui.language)
     )
@@ -2289,7 +2349,14 @@ def wire_status_console(
             mcp_state_payload(event.status, app.mcp_host.registry.all())
         )
 
-    tracker = RuntimeStateTracker(app.bus)
+    tracker = RuntimeStateTracker(
+        app.bus,
+        ready_state=(
+            RuntimeState.MCP_WAITING
+            if app.run_mode is RunMode.MCP
+            else RuntimeState.LISTENING
+        ),
+    )
     health_tracker = ModuleHealthTracker(app.bus)
     subscriptions: list[Subscription] = [
         *tracker.subscribe(),
@@ -2425,7 +2492,13 @@ async def _on_interrupt_requested(app: App, event: InterruptRequested) -> None:
 
     Also stops an in-progress replay (story-v1.8.2): reject-when-busy means
     a live turn and a replay never run at once, so at most one of these two
-    actually cancels anything; cancel() is a no-op when its target is idle."""
+    actually cancels anything; cancel() is a no-op when its target is idle.
+
+    In MCP mode it also clears the voice guide's queue. That comes first: an
+    await between the player cancel and the guide interrupt would let the
+    guide's worker start its next queued item."""
+    if app.voice_guide is not None:
+        app.voice_guide.interrupt()
     await _cancel_current_turn(app)
     if app.replay_player is not None:
         app.replay_player.cancel()
@@ -2438,6 +2511,12 @@ async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | 
     attempts (a live turn is speaking, TTS is off, nothing speakable, or a
     replay is already running) beep and publish a visible error rather than
     queueing. The chat-log Play control (task 2) calls this."""
+    return _outcome_of(await _start_reply_replay(app, reference))
+
+
+async def _start_reply_replay(
+    app: App, reference: JournalEventRef
+) -> ReplayRun | ReplayOutcome | None:
     if app.replay_player is None or app.journal_store is None:
         return None
     if app.orchestrator.is_busy:
@@ -2449,14 +2528,7 @@ async def replay_reply(app: App, reference: JournalEventRef) -> ReplayOutcome | 
     if reply is None:
         await _reject_replay(app, "replay_unavailable")
         return None
-    outcome = await app.replay_player.replay(reply)
-    if outcome is ReplayOutcome.BUSY:
-        await _reject_replay(app, "replay_busy")
-    elif outcome is ReplayOutcome.DISABLED:
-        await _reject_replay(app, "replay_tts_disabled")
-    elif outcome is ReplayOutcome.EMPTY:
-        await _reject_replay(app, "replay_unavailable")
-    return outcome
+    return await _hold_journal_run(app, app.replay_player.start_run([reply]))
 
 
 async def replay_sequence(app: App, start: JournalEventRef) -> ReplayOutcome | None:
@@ -2466,6 +2538,12 @@ async def replay_sequence(app: App, start: JournalEventRef) -> ReplayOutcome | N
     sequence and an external replay attempt is rejected while it runs. Returns
     None when replay is unavailable (no player/store), else the outcome.
     Rejected attempts beep and publish a visible error rather than queueing."""
+    return _outcome_of(await _start_reply_sequence(app, start))
+
+
+async def _start_reply_sequence(
+    app: App, start: JournalEventRef
+) -> ReplayRun | ReplayOutcome | None:
     if app.replay_player is None or app.journal_store is None:
         return None
     if app.orchestrator.is_busy:
@@ -2478,14 +2556,38 @@ async def replay_sequence(app: App, start: JournalEventRef) -> ReplayOutcome | N
     async def on_segment(reference: JournalEventRef) -> None:
         await app.bus.publish(ReplayProgress, ReplayProgress(reference))
 
-    outcome = await sequence.play_from(start, on_segment=on_segment)
-    if outcome is ReplayOutcome.BUSY:
-        await _reject_replay(app, "replay_busy")
-    elif outcome is ReplayOutcome.DISABLED:
-        await _reject_replay(app, "replay_tts_disabled")
-    elif outcome is ReplayOutcome.EMPTY:
-        await _reject_replay(app, "replay_unavailable")
-    return outcome
+    return await _hold_journal_run(
+        app, sequence.start_from(start, on_segment=on_segment)
+    )
+
+
+_REPLAY_REJECTION_KEYS = {
+    ReplayOutcome.BUSY: "replay_busy",
+    ReplayOutcome.DISABLED: "replay_tts_disabled",
+    ReplayOutcome.EMPTY: "replay_unavailable",
+}
+
+
+async def _hold_journal_run(
+    app: App, started: ReplayRun | ReplayOutcome
+) -> ReplayRun | ReplayOutcome:
+    """Gives a started run to the Journal's controls, or rejects audibly."""
+    if isinstance(started, ReplayRun):
+        app.journal_replay.hold(started)
+    elif started in _REPLAY_REJECTION_KEYS:
+        await _reject_replay(app, _REPLAY_REJECTION_KEYS[started])
+    return started
+
+
+def _outcome_of(started: ReplayRun | ReplayOutcome | None) -> ReplayOutcome | None:
+    if isinstance(started, ReplayRun):
+        return ReplayOutcome.STARTED
+    return started
+
+
+def _outcome_value(started: ReplayRun | ReplayOutcome | None) -> str:
+    outcome = _outcome_of(started)
+    return outcome.value if outcome is not None else "unavailable"
 
 
 async def _run_reply_sequence(app: App, start: JournalEventRef) -> str:
@@ -2495,13 +2597,13 @@ async def _run_reply_sequence(app: App, start: JournalEventRef) -> str:
     ReplayProgress(ref) per reply so the UI moves the now-playing highlight
     across rows; a final ReplayProgress(None) clears it when the sequence ends
     or is cancelled (its end, Stop, a new live turn, or TTS disabled)."""
-    outcome = await replay_sequence(app, start)
-    if outcome is ReplayOutcome.STARTED and app.replay_player is not None:
+    started = await _start_reply_sequence(app, start)
+    if isinstance(started, ReplayRun):
         try:
-            await app.replay_player.wait_for_pending()
+            await started.wait()
         finally:
             await app.bus.publish(ReplayProgress, ReplayProgress(None))
-    return outcome.value if outcome is not None else "unavailable"
+    return _outcome_value(started)
 
 
 async def _run_reply_replay(app: App, reference: JournalEventRef) -> str:
@@ -2509,27 +2611,22 @@ async def _run_reply_replay(app: App, reference: JournalEventRef) -> str:
     transport keeps the HTTP request open for this coroutine's lifetime, so
     the UI toggles Play<->Stop off the request alone, with no separate
     replay-lifecycle event channel."""
-    outcome = await replay_reply(app, reference)
-    if outcome is ReplayOutcome.STARTED and app.replay_player is not None:
-        await app.replay_player.wait_for_pending()
-    return outcome.value if outcome is not None else "unavailable"
+    started = await _start_reply_replay(app, reference)
+    if isinstance(started, ReplayRun):
+        await started.wait()
+    return _outcome_value(started)
 
 
 def _stop_reply_replay(app: App) -> None:
-    if app.replay_player is not None:
-        app.replay_player.cancel()
+    app.journal_replay.cancel()
 
 
 def _pause_reply_replay(app: App) -> bool:
-    if app.replay_player is None:
-        return False
-    return app.replay_player.pause()
+    return app.journal_replay.pause()
 
 
 def _resume_reply_replay(app: App) -> bool:
-    if app.replay_player is None:
-        return False
-    return app.replay_player.resume()
+    return app.journal_replay.resume()
 
 
 async def _reject_replay(app: App, ui_text_key: str) -> None:
@@ -2714,13 +2811,7 @@ def wire(app: App) -> list[Subscription]:
         await _on_tts_speech_enabled_changed(app, event)
 
     subscriptions: list[Subscription] = [
-        (UtteranceChunk, app.orchestrator.on_utterance),
-        # Unconditional, like every subscription here: on_utterance_captured
-        # checks recording() itself and does nothing in a normal run, so
-        # wiring it does not need to know whether debug is on.
-        (UtteranceChunk, on_utterance_captured),
-        (ScreenshotCaptured, app.orchestrator.on_screenshot),
-        (ClipboardSubmitted, app.orchestrator.on_clipboard),
+        *_user_input_subscriptions(app),
         (ModelRequestStarted, app.tts_output.on_request_started),
         (ResponseToken, app.tts_output.on_token),
         (ResponseToken, app.orchestrator.on_response_token),
@@ -2735,6 +2826,23 @@ def wire(app: App) -> list[Subscription]:
     for event_type, handler in subscriptions:
         app.bus.subscribe(event_type, handler)
     return subscriptions
+
+
+def _user_input_subscriptions(app: App) -> list[Subscription]:
+    """The bus inputs that start a user turn. MCP mode takes no user input
+    into the model, so it subscribes none of them: nothing published there
+    can start a turn, whoever publishes it."""
+    if app.run_mode is RunMode.MCP:
+        return []
+    return [
+        (UtteranceChunk, app.orchestrator.on_utterance),
+        # Unconditional, like every subscription here: on_utterance_captured
+        # checks recording() itself and does nothing in a normal run, so
+        # wiring it does not need to know whether debug is on.
+        (UtteranceChunk, on_utterance_captured),
+        (ScreenshotCaptured, app.orchestrator.on_screenshot),
+        (ClipboardSubmitted, app.orchestrator.on_clipboard),
+    ]
 
 
 def unwire(app: App, subscriptions: list[Subscription]) -> None:
@@ -2785,16 +2893,66 @@ async def warm_up(
     await bus.publish(WarmupCompleted, WarmupCompleted(succeeded=succeeded))
 
 
+McpServerRunner = Callable[[McpModeSettings, VoiceGuideService], Awaitable[None]]
+
+
+async def serve_no_mcp_server(
+    settings: McpModeSettings, voice_guide: VoiceGuideService
+) -> None:
+    """The MCP server slot's placeholder: it serves nothing, so the voice
+    guide receives no requests."""
+    del settings, voice_guide
+
+
+def _start_mcp_mode(
+    app: App, settings: Settings, mcp_server_runner: McpServerRunner
+) -> asyncio.Task | None:
+    """Starts the voice guide before the server, so the server never accepts
+    a request the guide cannot queue."""
+    if app.voice_guide is None:
+        return None
+    app.voice_guide.start()
+    return asyncio.create_task(
+        mcp_server_runner(settings.mcp_mode, app.voice_guide), name="mcp-server"
+    )
+
+
+async def _stop_mcp_mode(app: App, mcp_server: asyncio.Task | None) -> None:
+    """Stops the server first, so no request arrives after the guide is
+    closed; close() then journals every request the guide accepted."""
+    if mcp_server is not None:
+        logger.info("Shutdown: stopping the MCP server")
+        mcp_server.cancel()
+        results = await asyncio.gather(mcp_server, return_exceptions=True)
+        _log_task_failures([mcp_server], results)
+    if app.voice_guide is not None:
+        logger.info("Shutdown: closing the voice guide")
+        await app.voice_guide.close()
+
+
+def _log_task_failures(tasks: list[asyncio.Task], results: list[object]) -> None:
+    for task, result in zip(tasks, results, strict=False):
+        if isinstance(result, Exception):
+            logger.error(
+                "Shutdown: background task %s raised instead of exiting cleanly",
+                task.get_name(),
+                exc_info=result,
+            )
+
+
 async def run_until_shutdown(
     app: App,
     subscriptions: list[Subscription],
     shutdown_event: asyncio.Event,
     background_tasks: list[asyncio.Task],
+    *,
+    mcp_server: asyncio.Task | None = None,
 ) -> None:
     """Runs the clean shutdown sequence after shutdown_event is set."""
     try:
         await shutdown_event.wait()
     finally:
+        await _stop_mcp_mode(app, mcp_server)
         logger.info("Shutdown: stopping microphone capture")
         # Cancelling a task awaiting a running executor future cannot stop
         # the underlying blocking read; the microphone loop needs its own
@@ -2807,13 +2965,7 @@ async def run_until_shutdown(
         for task in background_tasks:
             task.cancel()
         results = await asyncio.gather(*background_tasks, return_exceptions=True)
-        for task, result in zip(background_tasks, results, strict=False):
-            if isinstance(result, Exception):
-                logger.error(
-                    "Shutdown: background task %s raised instead of exiting cleanly",
-                    task.get_name(),
-                    exc_info=result,
-                )
+        _log_task_failures(background_tasks, results)
         logger.info("Shutdown: background tasks finished, flushing pending TTS")
         await app.tts_output.wait_for_pending()
         logger.info("Shutdown: flushing pending sound cues")
@@ -2843,6 +2995,8 @@ async def run(
     live_console: LiveStatusConsole | None = None,
     shutdown_provider: HotkeyProvider | None = None,
     debug: bool = False,
+    run_mode: RunMode = RunMode.NORMAL,
+    mcp_server_runner: McpServerRunner = serve_no_mcp_server,
 ) -> None:
     # The invariant lives here, not only in parse_args(): run() is an entry
     # point of its own, and once a later slice keys transcript recording off
@@ -2885,7 +3039,7 @@ async def run(
     announce_debug_mode(debug, transcript_path)
     ensure_generated(settings.sound_cues)
 
-    app = app or build_app(settings)
+    app = _app_for_run_mode(settings, app, run_mode)
     await _start_history_projection_lifecycle(app)
     if debug:
         await _announce_debug_mode_to_panel(app, settings.ui.language)
@@ -2909,48 +3063,39 @@ async def run(
     # shutdown_provider.stop() always has a real object to call, even if
     # something inside the try raises before register()/start() run.
     shutdown_provider = shutdown_provider or WindowsHotkeyProvider()
+    mcp_server: asyncio.Task | None = None
+    orderly_shutdown_completed = False
 
     # Everything from here through run_until_shutdown() is covered by the
     # finally below: a failure anywhere in this block (hotkey
     # registration, background task creation, ...) must not leave MCP
     # connected with nothing left to disable it - review finding 4.
     try:
-        if app.mcp_host is not None and settings.mcp.enabled:
-            await app.mcp_host.enable()
+        await _enable_configured_mcp_host(app, settings)
         subscriptions = [*status_console_subscriptions, *wire(app)]
 
         shutdown_provider.register(settings.hotkeys.shutdown, on_shutdown_hotkey)
         shutdown_provider.start()
 
+        mcp_server = _start_mcp_mode(app, settings, mcp_server_runner)
         background_tasks = [
-            asyncio.create_task(app.audio_input.run_microphone_loop()),
-            asyncio.create_task(
-                run_capture_hotkey_listener(app.capture_input, settings.hotkeys)
-            ),
-            asyncio.create_task(
-                run_clipboard_hotkey_listener(
-                    app.bus, settings.hotkeys, settings.clipboard
-                )
-            ),
-            asyncio.create_task(
-                run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys)
-            ),
-            asyncio.create_task(
-                run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys)
-            ),
-            asyncio.create_task(
-                run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys)
-            ),
-            asyncio.create_task(
-                run_interrupt_hotkey_listener(app.bus, settings.hotkeys)
-            ),
+            asyncio.create_task(work) for work in _background_work(app, settings)
         ]
 
         await app.sound_cues.play("listening")
         print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
 
-        await run_until_shutdown(app, subscriptions, shutdown_event, background_tasks)
+        await run_until_shutdown(
+            app,
+            subscriptions,
+            shutdown_event,
+            background_tasks,
+            mcp_server=mcp_server,
+        )
+        orderly_shutdown_completed = True
     finally:
+        if not orderly_shutdown_completed:
+            await _close_mcp_mode_after_failure(app, mcp_server)
         if app.mcp_host is not None:
             # Safety net: run_until_shutdown()'s own disable() call
             # already covers the clean-shutdown path and this is a no-op
@@ -2966,6 +3111,56 @@ async def run(
                 live_console.close()
 
 
+def _app_for_run_mode(settings: Settings, app: App | None, run_mode: RunMode) -> App:
+    if app is None:
+        return build_app(settings, run_mode=run_mode)
+    if app.run_mode is not run_mode:
+        raise ValueError(
+            f"app was built for run mode {app.run_mode.value}, not {run_mode.value}"
+        )
+    return app
+
+
+async def _enable_configured_mcp_host(app: App, settings: Settings) -> None:
+    # MCP mode never enables McpHost, whatever [mcp].enabled says: the voice
+    # guide's model pass reads untrusted canvas text and must have no tools.
+    if app.run_mode is RunMode.MCP or app.mcp_host is None:
+        return
+    if settings.mcp.enabled:
+        await app.mcp_host.enable()
+
+
+async def _close_mcp_mode_after_failure(
+    app: App, mcp_server: asyncio.Task | None
+) -> None:
+    """Safety net for a run whose orderly shutdown did not complete: an
+    unclosed guide would lose the canvases it accepted."""
+    if app.voice_guide is None:
+        return
+    await _stop_mcp_mode(app, mcp_server)
+    if app.journal_recorder is not None:
+        await app.journal_recorder.wait_for_pending()
+
+
+def _background_work(
+    app: App, settings: Settings
+) -> list[Coroutine[object, object, None]]:
+    """The inputs and hotkey listeners a run keeps alive. MCP mode has no
+    microphone and no input or dialog-setting hotkey: only interrupt (run()
+    registers the shutdown hotkey itself)."""
+    if app.run_mode is RunMode.MCP:
+        return [run_interrupt_hotkey_listener(app.bus, settings.hotkeys)]
+    return [
+        app.audio_input.run_microphone_loop(),
+        run_capture_hotkey_listener(app.capture_input, settings.hotkeys),
+        run_clipboard_hotkey_listener(app.bus, settings.hotkeys, settings.clipboard),
+        run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys),
+        run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys),
+        run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys),
+        run_interrupt_hotkey_listener(app.bus, settings.hotkeys),
+    ]
+
+
 async def _start_history_projection_lifecycle(app: App) -> None:
     if app.history_projection_lifecycle is None:
         return
@@ -2977,9 +3172,10 @@ def run_with_status_console(
     *,
     include_touchstrip: bool = True,
     debug: bool = False,
+    run_mode: RunMode = RunMode.NORMAL,
 ) -> None:
     settings = settings or load_settings()
-    app = build_app(settings)
+    app = build_app(settings, run_mode=run_mode)
     if app.journal_history_service is None:
         raise RuntimeError("live Status Console requires journal read services")
     live_console = create_live_status_console(
@@ -3009,6 +3205,7 @@ def run_with_status_console(
             language=settings.ui.language,
             config_values=config_values_payload(settings),
             debug=debug,
+            run_mode_policy=RunModePolicy(run_mode),
         ),
         logger=logger,
         journal_history_service=app.journal_history_service,
@@ -3064,7 +3261,11 @@ def run_with_status_console(
             transport_info = await live_console.transport.start()
             live_console.load_transport_urls(transport_info)
             await run(
-                settings=settings, app=app, live_console=live_console, debug=debug
+                settings=settings,
+                app=app,
+                live_console=live_console,
+                debug=debug,
+                run_mode=run_mode,
             )
 
         try:
@@ -3100,6 +3301,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "which is where the debug and privacy warnings are shown"
         ),
     )
+    parser.add_argument(
+        "--mcp-mode",
+        action="store_true",
+        help=(
+            "run as the local MCP voice guide: no microphone, no typed chat, "
+            "no input hotkeys; Jarvis only speaks what an MCP client sends"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.debug and not args.status_console:
         # The console banner is the consent surface: debug lifts the
@@ -3120,6 +3329,7 @@ def main(
     # work while another instance runs. It lives here, not in run(), so tests
     # and manual scripts that call run()/build_app() are never blocked.
     args = parse_args(argv)
+    run_mode = RunMode.MCP if args.mcp_mode else RunMode.NORMAL
     # Seams resolve at call time, not as def-time defaults, so tests can
     # monkeypatch the module names; a default would stay bound to the real one.
     guard = (acquire or acquire_single_instance)()
@@ -3133,10 +3343,12 @@ def main(
     try:
         if args.status_console:
             run_with_status_console(
-                include_touchstrip=not args.no_touchstrip, debug=args.debug
+                include_touchstrip=not args.no_touchstrip,
+                debug=args.debug,
+                run_mode=run_mode,
             )
         else:
-            asyncio.run(run())
+            asyncio.run(run(run_mode=run_mode))
     finally:
         guard.release()
 

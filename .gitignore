@@ -31,3 +31,4 @@ examples/mcp/data/
 *.egg-info/
 manual_check_answer_revision_out/
 manual_check_single_pass_tts_out/
+/mcp_mode.token

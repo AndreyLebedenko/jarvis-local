@@ -63,6 +63,7 @@ function _applyStateSnapshot(state) {
   applyDataLocality(state.data_locality);
   applyDataSource(state.data_source || { source: "local_only" });
   applyDebugMode(state.debug || { enabled: false });
+  applyRunMode(state.run_mode || { mode: "normal", refused: [] });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
   applyTtsState(state.tts || { enabled: true });
   applySoloSessionState(state.solo_session || { enabled: false });
@@ -86,6 +87,7 @@ function _applyStateDelta(payload) {
     data_locality: applyDataLocality,
     data_source: applyDataSource,
     debug: applyDebugMode,
+    run_mode: applyRunMode,
     mcp: applyMcpState,
     tts: applyTtsState,
     solo_session: applySoloSessionState,
@@ -239,6 +241,38 @@ function applyDebugMode(payload) {
   banner.classList.toggle("show", Boolean(payload && payload.enabled));
 }
 
+// Fixed for the whole process run, like debug, and routed the same way.
+// The engine names the actions it refuses in this run mode (core/run_mode.py);
+// each control bound to one is disabled, not hidden, so a click cannot reach
+// a refused action. The engine refuses them too - this is the visible half.
+let _refusedActions = new Set();
+
+function isActionRefused(action) {
+  return _refusedActions.has(action);
+}
+
+function applyRunMode(payload) {
+  const mode = (payload && payload.mode) || "normal";
+  _refusedActions = new Set((payload && payload.refused) || []);
+  document.documentElement.setAttribute("data-run-mode", mode);
+  const badge = document.getElementById("runModeBadge");
+  if (badge) badge.classList.toggle("show", mode === "mcp");
+  _disableRefusedControls();
+}
+
+function _disableRefusedControls() {
+  document
+    .querySelectorAll("#reasoningLevelToggle button")
+    .forEach((button) => { button.disabled = isActionRefused("set_reasoning_level"); });
+  document
+    .querySelectorAll("#responseModeToggle button")
+    .forEach((button) => { button.disabled = isActionRefused("set_response_mode"); });
+  const solo = document.getElementById("journalSoloToggle");
+  if (solo) solo.disabled = isActionRefused("set_solo_session_enabled");
+  _updateJournalNewContextButton();
+  _syncJournalInputControls();
+}
+
 function applyDataSource(payload) {
   if (!DATA_SOURCES.includes(payload.source)) {
     throw new Error("Unknown data source: " + payload.source);
@@ -261,7 +295,10 @@ function applyMcpState(payload) {
   document.getElementById("mcpStatus").textContent = uiString("mcp_" + payload.status);
   const button = document.getElementById("btnMcpToggle");
   button.textContent = uiString(_mcpEnabled ? "mcp_disable" : "mcp_enable");
-  button.disabled = payload.status === "connecting" || payload.status === "disconnecting";
+  button.disabled =
+    payload.status === "connecting" ||
+    payload.status === "disconnecting" ||
+    isActionRefused("set_mcp_enabled");
 
   renderToolList("mcpTools", "mcpToolsEmpty", payload.tools || []);
   renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
@@ -362,7 +399,7 @@ function renderToolList(listId, emptyId, tools) {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = tool.enabled === true;
-    checkbox.disabled = tool.available !== true;
+    checkbox.disabled = tool.available !== true || isActionRefused("set_tool_enabled");
     checkbox.setAttribute("aria-label", `${name} (${tool.name})`);
     checkbox.addEventListener("change", () => {
       _sendControl("set_tool_enabled", { name: tool.name, enabled: checkbox.checked });
@@ -1488,7 +1525,9 @@ async function startNewJournalContext() {
 
 function _updateJournalNewContextButton() {
   const button = document.getElementById("journalNewContextButton");
-  if (button) button.disabled = _journalNewContextInFlight;
+  if (button) {
+    button.disabled = _journalNewContextInFlight || isActionRefused("journal_new_context");
+  }
 }
 
 function _journalNewContextErrorMessage(payload) {
@@ -1759,7 +1798,11 @@ function _journalInputTargetsSelectedSession() {
 
 function _syncJournalInputControls() {
   const inactiveSession = !_journalInputTargetsSelectedSession();
-  const disabled = _journalInputInFlight || _isHiddenActive() || inactiveSession;
+  const disabled =
+    _journalInputInFlight ||
+    _isHiddenActive() ||
+    inactiveSession ||
+    isActionRefused("journal_input");
   const input = document.getElementById("journalTextInput");
   const send = document.getElementById("journalSendButton");
   const attach = document.getElementById("journalAttachButton");
@@ -2009,7 +2052,8 @@ function _journalSessionElement(session) {
   continueButton.setAttribute("aria-label", continueButton.title);
   continueButton.disabled =
     session.id === _journalActiveSessionId ||
-    session.id === _journalForkInFlightSessionId;
+    session.id === _journalForkInFlightSessionId ||
+    isActionRefused("journal_fork");
   continueButton.addEventListener("click", (event) => {
     event.stopPropagation();
     continueJournalSession(session.id);
@@ -2056,7 +2100,8 @@ function _journalSessionMenuEntries(row) {
     !isActive && {
       label: uiString("journal_session_continue"),
       run: () => continueJournalSession(sessionId),
-      disabled: sessionId === _journalForkInFlightSessionId,
+      disabled:
+        sessionId === _journalForkInFlightSessionId || isActionRefused("journal_fork"),
     },
     !isActive && {
       label: uiString("journal_session_delete"),

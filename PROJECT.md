@@ -4219,9 +4219,9 @@ story cards under `tasks/done/`).
 
 ## Architecture v2.0 (MCP voice guide) - in progress
 
-Facts settled by story-v2.0 task 2 (external canvas provenance). Task 8
-completes this section; the queue, guide prompt, server, and UI facts are not
-recorded here yet.
+Facts settled by story-v2.0 tasks 2-4 (external canvas provenance, the
+voice-guide pipeline, the `--mcp-mode` composition). Task 8 completes this
+section; the server and Journal-rendering facts are not recorded here yet.
 
 - **An external canvas is one journal event.** `role="assistant"`,
   `source="mcp_canvas"` (`MCP_CANVAS_SOURCE` in
@@ -4344,6 +4344,63 @@ recorded here yet.
   started in its place. The player-wide state (`cancel()`,
   `wait_for_pending()`, `is_active`) keeps its Journal behavior; the guide
   uses it only to wait out a BUSY user replay, never to cancel.
+- **Run mode is one value decided in `main()`.** `RunMode` (`NORMAL`, `MCP`;
+  `src/jarvis/core/run_mode.py`) comes from `--mcp-mode` and is passed
+  explicitly into `run_with_status_console()`, `run()`, and `build_app()`,
+  which stores it on `App.run_mode`; `run()` refuses an `App` built for the
+  other mode. No global state. Switching modes needs a restart.
+- **One policy object refuses input in `MCP` mode.** `RunModePolicy` answers
+  per `ControlAction` (every WebSocket control command, named as the command,
+  plus the HTTP route groups). `MCP_MODE_VERDICTS` is exhaustive: a new action
+  has no verdict until one is written, and construction fails without it.
+  The verdict tables are `MappingProxyType`s, so nothing can change a
+  verdict at runtime.
+  Refused in `MCP` mode: `toggle_thinking`, `set_reasoning_level`,
+  `set_response_mode`, `set_mcp_enabled`, `set_solo_session_enabled`,
+  `set_tool_enabled` (camera enable included), `reset_context`, Journal input
+  and attachments, new context, and fork; everything else is allowed. The
+  transport consults it at two seams only: `_dispatch_control()` for WebSocket
+  commands (typed `control/error` with `code = "refused"`, `reason`, `action`)
+  and the declarative `ROUTES` table, the only way an HTTP route is registered
+  (403 `{"status": "rejected", "reason": "mcp_mode", "action": ...}`, after
+  the token check). The UI snapshot key `run_mode` (`{mode, refused}`) lets
+  the console and touchstrip disable, not hide, every control bound to a
+  refused action. There is one policy object per run: `UiStateStore` owns it
+  and the transport enforces `state.run_mode_policy`, so the refused list
+  the UI shows cannot disagree with what the server refuses.
+- **`MCP`-mode composition.** `AudioInput` is still constructed but stays
+  inert: the microphone loop is never started, so no input stream opens.
+  Only the `shutdown` and `interrupt` hotkeys are bound. `wire()` subscribes
+  no user-input event (`UtteranceChunk`, `ScreenshotCaptured`,
+  `ClipboardSubmitted`), so nothing published can start a turn and
+  `on_turn_start` never fires. `McpHost` is never enabled, whatever
+  `[mcp].enabled` says. `build_app()` builds the `VoiceGuideService` (capacity
+  and canvas-only speech origin from `[mcp_mode]`); `run()` starts it before
+  the injectable server runner (a no-op stub until the server exists).
+  Shutdown order: stop the server task, `await voice_guide.close()`, then the
+  existing sequence (task cancellation, then the journal flush). `run()`'s
+  `finally` closes the guide and flushes the journal only when that orderly
+  shutdown did not complete (a startup failure or a failed teardown), so a
+  clean shutdown runs it once. The interrupt handler
+  calls `voice_guide.interrupt()` before anything that awaits. A Settings save
+  in `MCP` mode persists the configured `[mcp].enabled`, not the host's
+  forced-off live state. The microphone chip reads "off in MCP mode".
+  The orb rests in `RuntimeState.MCP_WAITING` (`"mcp_waiting"`, green
+  `--green` on both surfaces, label "MCP waiting" / "MCP ожидает" from
+  `ui/text.py`) where `NORMAL` mode rests in `LISTENING`:
+  `RuntimeStateTracker(ready_state=...)` is the single owner, so warm-up
+  completion and turn completion both land there. No other state changes.
+- **Journal replay controls act on the Journal's own run.** `App.journal_replay`
+  (`ReplayRunSlot`) holds the `ReplayRun` the Journal started last; Stop,
+  Pause, and Resume (separate HTTP requests) act on that run only, never on
+  whatever the shared player plays by then. The held-open replay request
+  waits on the `ReplayRun` handle it started itself, never on the slot, so
+  it cannot end with another run whatever lands in the slot meanwhile.
+  `ReplayRun` has per-run `pause()` / `resume()`, no-ops once the run has
+  finished. In `NORMAL` mode this is observably the same as the player-wide
+  calls, because every player run there is a Journal run. A Journal Stop
+  while the guide waits on a user replay ends only that replay; the guide
+  then speaks. The interrupt hotkey is the way to silence the guide.
 
 ## Documentation navigation doctrine (2026-08-30)
 

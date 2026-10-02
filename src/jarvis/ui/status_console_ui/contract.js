@@ -4,7 +4,9 @@
 // so the two surfaces validate against one list each, not two hand-
 // maintained copies that could silently drift apart.
 
-const RUNTIME_STATES = ["idle", "warming", "listening", "thinking", "speaking", "error"];
+const RUNTIME_STATES = [
+  "idle", "warming", "listening", "mcp_waiting", "thinking", "speaking", "error",
+];
 const MODULE_IDS = ["backend", "microphone", "tts", "memory", "vision", "camera"];
 const HEALTH_STATUSES = ["ok", "degraded", "error", "unavailable"];
 const EVENT_LEVELS = ["info", "active", "warn", "error"];

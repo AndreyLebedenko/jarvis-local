@@ -112,7 +112,7 @@ def _stop_run_before_the_engine(monkeypatch) -> None:
     monkeypatch.setattr("jarvis.app.configure_logging", lambda settings: None)
     monkeypatch.setattr("jarvis.app.ensure_generated", lambda settings: None)
     monkeypatch.setattr(
-        "jarvis.app.build_app", lambda settings: _raise(_StopBeforeEngine())
+        "jarvis.app.build_app", lambda settings, run_mode: _raise(_StopBeforeEngine())
     )
 
 
