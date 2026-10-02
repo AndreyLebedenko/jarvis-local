@@ -4311,41 +4311,37 @@ recorded here yet.
   `spoken`, not `interrupted`. Player `EMPTY` (nothing speakable), a guide
   pass that raised or produced no speakable text, and an own-playback failure
   -> `failed`. Every `failed` the worker finishes plays the `error` sound
-  cue (also during `close()`; not on the safety-net path below), then the
-  worker continues. No run because the guide pass was stopped, or because an
-  interrupt arrived before playback started -> `interrupted`.
+  cue (also during `close()`), then the worker continues. No run because the
+  guide pass was stopped, or because an interrupt arrived before playback
+  started -> `interrupted`.
 - **Lifecycle: `start()` and `async close()`.** `start()` creates the worker
   task (a second call raises). `close()` is the orderly shutdown, idempotent,
   correct whether or not `start()` was called and whether or not the worker
   has run a step: it marks the service closed (`enqueue()` rejects with
   `VoiceGuideRejection.CLOSED`, `interrupt()` does nothing), interrupts the
-  item in flight like `interrupt()`, lets the worker finish and journal it by
-  the fact rules above, journals every dropped and pending request `skipped`,
-  ends the worker, and publishes a final empty `VoiceGuideQueueChanged`. When
-  it returns, every request ever accepted has been journaled exactly once.
-  Only a crash (process death, or an event-loop teardown without `close()`
-  before the scheduled journal writes flush) loses canvases.
-- **A cancelled worker is only a safety net.** If the worker task is cancelled
-  from outside (loop teardown without `close()`), it journals from the same
-  facts (a finished, uncancelled run is `spoken` or `failed` by its result;
-  otherwise the run is cancelled through its handle and the item is
-  `interrupted`; the queue is `skipped`), marks the service closed, and
-  re-raises; it plays no error cue on this path, since the loop is going
-  down. A worker cancelled before its first step cannot run code of its own:
-  its done-callback closes the service and starts the same journaling. There
-  is exactly one drain task: the worker's end, a cancelled worker and `close()`
-  all await that same task, so no request is journaled by two drains.
-  No status logic depends on `Task.cancelling()`. `record_external_canvas`
-  should schedule the write without suspending on I/O (`JournalRecorder`
-  does); a recorder that suspends can lose a write only in this safety-net
-  window.
-- **`ReplayPlayer.start_run()` returns a per-run `ReplayRun` handle.** The
-  guide binds its wait, its result, and its cancellation to the run it started:
-  `run.wait()` waits for that run only and never passes the waiter's
-  cancellation into it, `run.cancelled` is True only if that run ended by
-  cancellation (by the handle or by the player-wide `cancel()`), and
-  `run.cancel()` is a no-op once the run has finished, so it can never stop a
-  later replay that started in its place. The player-wide state (`cancel()`,
+  item in flight like `interrupt()`, and awaits the worker if it was started;
+  the worker finishes and journals that item by the fact rules above,
+  journals the dropped requests `skipped`, and returns. `close()` then
+  journals `skipped` any dropped request no worker reached (none was
+  started), clears the in-flight slot, publishes a final empty
+  `VoiceGuideQueueChanged`, and waits for its background tasks. When it
+  returns, every request ever accepted has been journaled exactly once.
+  Only a crash (process death, an event-loop teardown without `close()`
+  before the scheduled journal writes flush, or a worker that ends without
+  `close()`, below) loses canvases.
+- **A worker that ends without `close()` is a crash** (cancelled from
+  outside, or killed by a bug in the middle of an item): the service only
+  marks itself closed and logs it, and unfinished canvases, that item's event
+  included, may be lost, as the story accepts for a crash.
+- **`ReplayPlayer.start_run()` is a plain method that returns a per-run
+  `ReplayRun` handle.** It never suspends, so nothing can interrupt the guide
+  between starting a run and holding its handle. The guide binds its wait,
+  its result, and its cancellation to the run it started: `run.wait()` waits
+  for that run only and never passes the waiter's cancellation into it,
+  `run.cancelled` is True only if that run ended by cancellation (by the
+  handle or by the player-wide `cancel()`), and `run.cancel()` is a no-op
+  once the run has finished, so it can never stop a later replay that
+  started in its place. The player-wide state (`cancel()`,
   `wait_for_pending()`, `is_active`) keeps its Journal behavior; the guide
   uses it only to wait out a BUSY user replay, never to cancel.
 

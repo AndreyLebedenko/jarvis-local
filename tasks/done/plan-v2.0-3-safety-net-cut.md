@@ -1,7 +1,7 @@
 # Plan: cut the worker-cancellation safety net (task v2.0-3 rework)
 
-**Status:** Approved (owner, 2026-10-02).
-**Card:** `tasks/task-v2.0-3-voice-guide-pipeline.md`.
+**Status:** Completed. (2026-10-02)
+**Card:** `tasks/done/task-v2.0-3-voice-guide-pipeline.md`.
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Starting point:** the WIP commit that follows this file on
 `feat/v2.0-3-voice-guide-pipeline`.

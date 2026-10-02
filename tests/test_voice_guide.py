@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, ReplayRun, TextReply
+from jarvis.audio.replay import ReplayOutcome, ReplayPlayer, TextReply
 from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
@@ -138,7 +138,6 @@ class _FakeRecorder:
         self.calls: list[dict[str, object]] = []
         self.failures_left = 0
         self.on_record: Callable[[], None] | None = None
-        self.suspend_seconds = 0.0
 
     async def record_external_canvas(self, canvas: str, **metadata: object) -> None:
         if self.on_record is not None:
@@ -147,8 +146,6 @@ class _FakeRecorder:
             self.failures_left -= 1
             raise OSError("journal unavailable")
         self.calls.append({"canvas": canvas, **metadata})
-        if self.suspend_seconds:
-            await asyncio.sleep(self.suspend_seconds)
 
     @property
     def statuses(self) -> list[SpeechStatus]:
@@ -197,13 +194,6 @@ class _Rig:
             if self.service._worker is not None:
                 self.service._worker.cancel()
             pytest.fail("close() did not finish")
-
-    async def cancel_worker(self) -> None:
-        """Cancels the worker task from outside, as a teardown without close()
-        would, and fails rather than hangs when it does not end."""
-        self.worker.cancel()
-        done, _ = await asyncio.wait({self.worker}, timeout=_STOP_TIMEOUT_SECONDS)
-        assert done, "the worker swallowed its own cancellation"
 
     async def settled(self, journaled: int) -> None:
         await _until(
@@ -979,6 +969,61 @@ async def test_guide_pass_that_fails_while_being_stopped_is_interrupted_not_fail
     assert rig.error_cues == []
 
 
+class _GuidePassFailingOnSignal:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.fail = asyncio.Event()
+
+    async def iter_chat(self, messages, *args, **kwargs):
+        yield {"message": {"content": "Half a gist"}, "done": False}
+        self.started.set()
+        await self.fail.wait()
+        raise RuntimeError("ollama is down")
+
+
+async def _fail_the_guide_pass_before_the_worker_sees_it(
+    rig: _Rig, backend: _GuidePassFailingOnSignal
+) -> None:
+    await _until(backend.started.is_set)
+    guide_pass = next(
+        task
+        for task in asyncio.all_tasks()
+        if task.get_coro().__qualname__.endswith("_guide_pass")
+    )
+    backend.fail.set()
+    await _until(guide_pass.done)
+    assert rig.recorder.calls == []
+
+
+async def test_guide_pass_that_failed_just_before_an_interrupt_is_failed_with_a_cue(
+    make_rig,
+):
+    backend = _GuidePassFailingOnSignal()
+    rig = make_rig(backend=backend)
+    rig.service.enqueue(VoiceGuideRequest("The whole answer."))
+    await _fail_the_guide_pass_before_the_worker_sees_it(rig, backend)
+
+    rig.service.interrupt()
+    await rig.settled(1)
+
+    assert rig.recorder.statuses == [SpeechStatus.FAILED]
+    assert rig.error_cues == ["error"]
+
+
+async def test_guide_pass_that_failed_just_before_close_is_failed_with_a_cue(
+    make_rig,
+):
+    backend = _GuidePassFailingOnSignal()
+    rig = make_rig(backend=backend)
+    rig.service.enqueue(VoiceGuideRequest("The whole answer."))
+    await _fail_the_guide_pass_before_the_worker_sees_it(rig, backend)
+
+    await rig.stop()
+
+    assert rig.recorder.statuses == [SpeechStatus.FAILED]
+    assert rig.error_cues == ["error"]
+
+
 async def test_interrupt_while_waiting_on_a_user_replay_leaves_no_waiter_task(
     make_rig,
 ):
@@ -1029,35 +1074,6 @@ async def test_item_enqueued_after_an_interrupted_wait_is_spoken_after_the_user_
     await rig.settled(2)
 
     assert rig.recorder.statuses == [SpeechStatus.INTERRUPTED, SpeechStatus.SPOKEN]
-
-
-async def test_interrupt_while_the_player_starts_the_run_stops_that_run():
-    starting = asyncio.Event()
-    runs: list[asyncio.Task] = []
-
-    class SlowStartPlayer:
-        async def start_run(self, items):
-            starting.set()
-            await asyncio.sleep(0.05)
-            run = asyncio.create_task(asyncio.Event().wait())
-            runs.append(run)
-            return ReplayRun(run, run.cancel)
-
-        async def wait_for_pending(self) -> None: ...
-
-    recorder = _FakeRecorder()
-    service = _service_with(player=SlowStartPlayer(), recorder=recorder, capacity=2)
-    service.start()
-    service.enqueue(VoiceGuideRequest("Say this."))
-    async with asyncio.timeout(_STOP_TIMEOUT_SECONDS):
-        await starting.wait()
-
-    service.interrupt()
-    async with asyncio.timeout(_STOP_TIMEOUT_SECONDS):
-        await service.close()
-
-    assert recorder.statuses == [SpeechStatus.INTERRUPTED]
-    assert runs[0].cancelled()
 
 
 # --- close ------------------------------------------------------------------
@@ -1325,160 +1341,29 @@ async def test_start_after_close_is_an_error(make_rig):
         rig.service.start()
 
 
-# --- a worker cancelled from outside (safety net) ----------------------------
+async def test_a_worker_that_ended_without_close_rejects_new_requests(make_rig):
+    rig = make_rig(origin=SpeechOrigin.VERBATIM)
+    rig.worker.cancel()
+    await asyncio.wait({rig.worker})
+
+    result = rig.service.enqueue(VoiceGuideRequest("Too late."))
+
+    assert result == VoiceGuideRejected(VoiceGuideRejection.CLOSED)
 
 
-async def test_worker_cancelled_mid_playback_interrupts_the_item_and_skips_the_queue(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    for canvas in ("First.", "Second.", "Third."):
-        rig.service.enqueue(VoiceGuideRequest(canvas))
-    await _until(lambda: rig.play.clips == ["First."])
-
-    await rig.cancel_worker()
-
-    assert rig.recorder.canvases == ["First.", "Second.", "Third."]
-    assert rig.recorder.statuses == [
-        SpeechStatus.INTERRUPTED,
-        SpeechStatus.SKIPPED,
-        SpeechStatus.SKIPPED,
-    ]
-    assert not rig.player.is_active
-    assert rig.play.finished == []
-
-
-async def test_worker_cancelled_mid_playback_publishes_the_emptied_queue(make_rig):
+async def test_close_after_the_worker_died_mid_item_publishes_an_empty_queue(make_rig):
     rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
     rig.service.enqueue(VoiceGuideRequest("First."))
     await _until(lambda: rig.play.clips == ["First."])
+    rig.worker.cancel()
+    await asyncio.wait({rig.worker})
 
-    await rig.cancel_worker()
-    await _until(lambda: rig.queue_events[-1].length == 0)
+    await rig.stop()
 
     assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0, in_flight=False)
 
 
-async def test_worker_cancelled_after_the_run_completed_journals_it_spoken(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    rig.service.enqueue(VoiceGuideRequest("Guide item."))
-    await _until(lambda: rig.play.clips == ["Guide item."])
-
-    rig.play.release_one()
-    await _until(lambda: not rig.player.is_active)
-    await rig.cancel_worker()
-
-    assert rig.recorder.statuses == [SpeechStatus.SPOKEN]
-
-
-async def test_worker_cancelled_during_the_guide_pass_keeps_the_text_so_far(
-    make_rig,
-):
-    partial = {"message": {"content": "Half a gist"}, "done": False}
-    rig = make_rig([partial, _HANG])
-    rig.service.enqueue(VoiceGuideRequest("The whole answer."))
-    await _until(lambda: len(rig.backend.calls) == 1)
-    await asyncio.sleep(0)
-
-    await rig.cancel_worker()
-
-    call = rig.recorder.calls[0]
-    assert call["speech_status"] is SpeechStatus.INTERRUPTED
-    assert call["spoken_derivative"] == "Half a gist"
-
-
-async def test_worker_ends_cancelled_after_journaling_when_cancelled_from_outside(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    rig.service.enqueue(VoiceGuideRequest("First."))
-    await _until(lambda: rig.play.clips == ["First."])
-
-    await rig.cancel_worker()
-
-    assert rig.worker.cancelled()
-    assert len(rig.recorder.calls) == 1
-
-
-async def test_worker_cancelled_before_its_first_step_still_closes_and_journals(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM)
-    rig.service.enqueue(VoiceGuideRequest("Accepted."))
-
-    await rig.cancel_worker()
-    result = rig.service.enqueue(VoiceGuideRequest("After."))
-    await rig.stop()
-
-    assert result == VoiceGuideRejected(VoiceGuideRejection.CLOSED)
-    assert rig.recorder.canvases == ["Accepted."]
-    assert rig.recorder.statuses == [SpeechStatus.SKIPPED]
-
-
-async def test_worker_cancelled_during_the_journal_write_does_not_journal_it_twice(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    rig.recorder.suspend_seconds = 0.05
-    rig.service.enqueue(VoiceGuideRequest("Only."))
-    await _until(lambda: rig.play.clips == ["Only."])
-    rig.play.release_one()
-    await _until(lambda: len(rig.recorder.calls) == 1)
-
-    await rig.cancel_worker()
-    await rig.stop()
-
-    assert rig.recorder.canvases == ["Only."]
-
-
-async def test_worker_cancelled_twice_then_close_journals_the_item_once(make_rig):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    rig.service.enqueue(VoiceGuideRequest("Only."))
-    await _until(lambda: rig.play.clips == ["Only."])
-
-    rig.worker.cancel()
-    await asyncio.sleep(0)
-    rig.worker.cancel()
-    await rig.stop()
-    for _ in range(20):
-        await asyncio.sleep(0)
-
-    assert rig.recorder.canvases == ["Only."]
-
-
-async def test_one_drain_serves_a_worker_end_and_every_close(make_rig, monkeypatch):
-    drains: list[str] = []
-    drain = VoiceGuideService._drain_unfinished
-
-    async def counting_drain(service: VoiceGuideService) -> None:
-        drains.append("drain")
-        await drain(service)
-
-    monkeypatch.setattr(VoiceGuideService, "_drain_unfinished", counting_drain)
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    rig.service.enqueue(VoiceGuideRequest("Only."))
-    await _until(lambda: rig.play.clips == ["Only."])
-
-    rig.worker.cancel()
-    await asyncio.sleep(0)
-    rig.worker.cancel()
-    await asyncio.gather(rig.stop(), rig.stop())
-
-    assert drains == ["drain"]
-
-
-async def test_worker_cancelled_before_its_first_step_journals_without_a_close(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM)
-    rig.service.enqueue(VoiceGuideRequest("Accepted."))
-
-    await rig.cancel_worker()
-    await _until(lambda: len(rig.recorder.calls) == 1)
-
-    assert rig.recorder.statuses == [SpeechStatus.SKIPPED]
+# --- failure, truncation --------------------------------------------------
 
 
 async def test_a_failing_bus_publish_is_logged_not_left_unretrieved(make_rig, caplog):
@@ -1501,21 +1386,6 @@ async def test_a_failing_bus_publish_is_logged_not_left_unretrieved(make_rig, ca
 
     assert unreported == []
     assert "background task failed" in caplog.text
-
-
-async def test_worker_cancelled_while_waiting_on_a_user_replay_leaves_it_playing(
-    make_rig,
-):
-    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
-    await rig.player.replay(TextReply("User replay."))
-    await _until(lambda: rig.play.clips == ["User replay."])
-    rig.service.enqueue(VoiceGuideRequest("Guide item."))
-    await asyncio.sleep(0)
-
-    await rig.cancel_worker()
-
-    assert rig.recorder.statuses == [SpeechStatus.INTERRUPTED]
-    assert rig.player.is_active
 
 
 async def test_backend_failure_is_journaled_failed_and_cues_an_error(make_rig):

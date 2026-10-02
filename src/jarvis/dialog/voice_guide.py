@@ -104,20 +104,12 @@ class GuideBackend(Protocol):
 
 
 class GuidePlayer(Protocol):
-    """`start_run` must not suspend once it has started a run, as the real
-    ReplayPlayer never does: a cancellation inside it would orphan that run."""
-
-    async def start_run(self, items: list[PlayItem]) -> ReplayRun | ReplayOutcome: ...
+    def start_run(self, items: list[PlayItem]) -> ReplayRun | ReplayOutcome: ...
 
     async def wait_for_pending(self) -> None: ...
 
 
 class GuideRecorder(Protocol):
-    """`record_external_canvas` should schedule the write and return without
-    suspending on I/O, as JournalRecorder does. Every request is journaled at
-    most once whatever the recorder does; a recorder that suspends can lose a
-    write only when the worker is cancelled from outside during that call."""
-
     async def record_external_canvas(
         self,
         canvas: str,
@@ -149,7 +141,6 @@ class _Item:
     guide_stopped: bool = False
     playback: ReplayRun | ReplayOutcome | None = None
     failure: Exception | None = None
-    journaled: bool = False
 
     @property
     def interrupted(self) -> bool:
@@ -245,7 +236,6 @@ class VoiceGuideService:
         self._current: _Item | None = None
         self._worker: asyncio.Task[None] | None = None
         self._close_task: asyncio.Task[None] | None = None
-        self._drain_task: asyncio.Task[None] | None = None
         self._wakeup = asyncio.Event()
         self._background: set[asyncio.Task[None]] = set()
 
@@ -305,18 +295,10 @@ class VoiceGuideService:
     async def _shutdown(self) -> None:
         if self._worker is not None:
             await asyncio.wait({self._worker})
-        await asyncio.wait({self._drain_once()})
-        await self._settle_background()
-
-    def _drain_once(self) -> asyncio.Task[None]:
-        """The one drain task: whichever path needs the unfinished requests
-        journaled (the worker's end, a cancelled worker, close()) gets this
-        same task, so they can never be journaled by two drains at once."""
-        if self._drain_task is None:
-            self._drain_task = self._run_in_background(self._drain_unfinished())
-        return self._drain_task
-
-    async def _settle_background(self) -> None:
+        while self._dropped:
+            await self._journal(self._dropped.popleft(), SpeechStatus.SKIPPED)
+        self._current = None
+        self._queue_changed()
         if self._background:
             await asyncio.wait(set(self._background))
 
@@ -324,43 +306,18 @@ class VoiceGuideService:
         self._closed = True
         if not worker.cancelled() and worker.exception() is not None:
             logger.error("Voice guide worker crashed", exc_info=worker.exception())
-        self._drain_once()
 
     async def _serve_forever(self) -> None:
-        try:
-            while True:
-                if self._dropped:
-                    await self._journal(self._dropped.popleft(), SpeechStatus.SKIPPED)
-                elif self._pending:
-                    await self._serve(self._pending.popleft())
-                elif self._closed:
-                    return
-                else:
-                    self._wakeup.clear()
-                    await self._wakeup.wait()
-        except asyncio.CancelledError:
-            self._closed = True
-            await asyncio.shield(self._drain_once())
-            raise
-
-    async def _drain_unfinished(self) -> None:
-        item = self._current
-        if item is not None:
-            await self._settle(item)
-            await self._journal(item, _status_of(item))
-            self._current = None
-        for queue in (self._dropped, self._pending):
-            while queue:
-                await self._journal(queue.popleft(), SpeechStatus.SKIPPED)
-        self._queue_changed()
-
-    async def _settle(self, item: _Item) -> None:
-        self._request_interrupt(item)
-        if item.guide_task is not None:
-            await asyncio.wait({item.guide_task})
-            self._finished_guide_text(item)
-        if isinstance(item.playback, ReplayRun):
-            await self._await_run(item, item.playback)
+        while True:
+            if self._dropped:
+                await self._journal(self._dropped.popleft(), SpeechStatus.SKIPPED)
+            elif self._pending:
+                await self._serve(self._pending.popleft())
+            elif self._closed:
+                return
+            else:
+                self._wakeup.clear()
+                await self._wakeup.wait()
 
     def _origin_of(self, request: VoiceGuideRequest) -> SpeechOrigin:
         if request.spoken_text is not None:
@@ -454,7 +411,7 @@ class VoiceGuideService:
         while True:
             if item.interrupted:
                 return
-            started = await self._player.start_run([reply])
+            started = self._player.start_run([reply])
             if started is not ReplayOutcome.BUSY:
                 break
             await self._wait_for_other_run(item)
@@ -462,15 +419,7 @@ class VoiceGuideService:
         if started is ReplayOutcome.EMPTY:
             logger.warning("Voice guide text has nothing speakable")
         if isinstance(started, ReplayRun):
-            if item.interrupted:
-                started.cancel()
-            await self._await_run(item, started)
-
-    async def _await_run(self, item: _Item, run: ReplayRun) -> None:
-        try:
-            await run.wait()
-        except Exception as failure:
-            self._record_failure(item, failure)
+            await started.wait()
 
     async def _wait_for_other_run(self, item: _Item) -> None:
         other_run_ended = asyncio.get_running_loop().create_task(
@@ -495,9 +444,6 @@ class VoiceGuideService:
             await asyncio.shield(pending)
 
     async def _journal(self, item: _Item, status: SpeechStatus) -> None:
-        if item.journaled:
-            return
-        item.journaled = True
         request = item.request
         try:
             await self._recorder.record_external_canvas(
@@ -525,9 +471,8 @@ class VoiceGuideService:
         )
         self._run_in_background(self._bus.publish(VoiceGuideQueueChanged, event))
 
-    def _run_in_background(self, work: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+    def _run_in_background(self, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.get_running_loop().create_task(work)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
         task.add_done_callback(_log_failure)
-        return task

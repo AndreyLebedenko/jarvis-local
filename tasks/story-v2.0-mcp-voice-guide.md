@@ -123,10 +123,11 @@ an external LLM itself (roadmap, "Rejected for v2.0").
   accepted request exactly once: the in-flight one by what actually happened
   to it (interrupted, or spoken if its playback had already finished), the
   rest skipped; after that the service rejects new requests as closed
-  (refined during task 3). Only a
-  crash loses queued canvases; this is accepted and documented, because the
-  journal is append-only and an early write would need a second event per
-  call.
+  (refined during task 3). Only a crash loses canvases, the in-flight one
+  included; a worker that ends without `close()` (cancelled from outside, or
+  killed by a bug in the middle of an item) is a crash too (task 3). This is
+  accepted and documented, because the journal is append-only and an early
+  write would need a second event per call.
 - **The voice-guide pass is its own generation profile.** A new
   `voice_guide` profile beside `spoken_derivative` (`core/config.py`,
   `_NON_DIALOG_PROFILES`), reasoning off, with its own prompt file. The

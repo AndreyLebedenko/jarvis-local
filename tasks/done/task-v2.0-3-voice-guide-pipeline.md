@@ -1,6 +1,6 @@
 # Task v2.0-3: Voice-guide pipeline (queue, guide pass, speech)
 
-**Status:** Not started.
+**Status:** Completed. (2026-10-02; see completion notes below.)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** task-v2.0-2 (`JournalRecorder.record_external_canvas()` and
 the origin/status vocabulary).
@@ -111,7 +111,12 @@ the delay is felt (roadmap cross-cutting rule 4).
      processes one item at a time, in order. `close()` rejects new requests
      as closed, stops the item in flight, and journals every accepted request
      exactly once, whether or not the worker ever ran (refined during this
-     task: control by cancelling tasks produced races, see completion notes).
+     task: control by cancelling tasks produced races; see the voice-guide
+     facts in `PROJECT.md`, "Control is explicit data, not task
+     cancellation"). A worker that ends without `close()` (cancelled from
+     outside, or killed by a bug in the middle of an item) is a crash: the
+     service marks itself closed, and unfinished canvases, that item's event
+     included, may be lost, as the story accepts.
    - Per item:
      - choose the origin: `caller` if `spoken_text` is set; otherwise the
        configured canvas-only origin (`derivative` or `verbatim`, passed in as
@@ -192,16 +197,16 @@ device:
 
 ## Acceptance criteria
 
-- [ ] `VoiceGuideService` speaks queued requests one at a time, in order,
+- [x] `VoiceGuideService` speaks queued requests one at a time, in order,
       without interrupting the current item, and rejects enqueue beyond
       capacity with a typed reason.
-- [ ] The three speech origins behave as specified; the guide pass uses
+- [x] The three speech origins behave as specified; the guide pass uses
       `iter_chat()` with no tools and the `voice_guide` profile.
-- [ ] Interrupt stops the current item and drops the queue; every request is
+- [x] Interrupt stops the current item and drops the queue; every request is
       journaled exactly once with its status.
-- [ ] Mode 3 is byte-identical: same messages, same dispatch path, existing
+- [x] Mode 3 is byte-identical: same messages, same dispatch path, existing
       tests unchanged and green.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green.
 
 ## Stop conditions
 
@@ -214,3 +219,34 @@ device:
 - Stop if the guide pass needs the `Orchestrator`'s busy flag or turn state
   to be correct. That would mean the "outside the turn lifecycle" shape is
   wrong, and the decision goes back to the owner.
+
+## Completion notes (2026-10-02)
+
+- Shape: `src/jarvis/dialog/voice_guide.py` (`VoiceGuideService`, request,
+  result, and queue-event types) and `src/jarvis/dialog/canvas_speech.py`
+  (`compose_canvas_speech_messages()`, shared with mode 3). The `voice_guide`
+  profile and its Russian default prompt live in `core/config.py`. Full
+  architecture facts: `PROJECT.md`, v2.0 section, from "The voice guide runs
+  outside the Orchestrator turn lifecycle" through the `start_run` bullet.
+- Lifecycle changed from the card's original `run()` cancelled by the app to
+  `start()` / `async close()` owned by the service: control by task
+  cancellation produced status races. `close()` journals every accepted
+  request exactly once; a worker that ends without `close()` is a crash
+  (canvases may be lost, as the story accepts).
+- `ReplayPlayer` gained `start_run()` (a plain method) returning a per-run
+  `ReplayRun` handle, so the guide waits on, reads, and cancels only its own
+  run and never a user's Journal replay. `replay_items()` and `cancel()`
+  behave as before for existing callers.
+- Rework after the first acceptance review (owner, 2026-10-02): the
+  worker-cancellation safety net was cut, plan in
+  `tasks/done/plan-v2.0-3-safety-net-cut.md`. Independent review LGTM with 52
+  single-point mutations on the remaining paths; one confirmed race (a guide
+  pass that fails just before an interrupt or `close()` stays `failed` with
+  the error cue) was pinned by two tests. Left untested by decision: the log
+  noise when a user replay the guide waits on fails, and redundant empty
+  queue events on a second `close()`.
+- For task 4: the card records the `close()` ordering, the interrupt
+  ordering, `on_turn_start`, and the Journal Stop race with its fix direction
+  (the Journal Stop cancels its own `ReplayRun`).
+- Gates: 3073 passed, 1 skipped; `ruff check` and `ruff format --check`
+  green.

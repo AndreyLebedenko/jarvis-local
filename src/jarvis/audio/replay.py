@@ -304,12 +304,12 @@ class ReplayPlayer:
         items: list[PlayItem],
         on_reply_start: Callable[[int], Awaitable[None]] | None = None,
     ) -> ReplayOutcome:
-        started = await self.start_run(items, on_reply_start)
+        started = self.start_run(items, on_reply_start)
         if isinstance(started, ReplayRun):
             return ReplayOutcome.STARTED
         return started
 
-    async def start_run(
+    def start_run(
         self,
         items: list[PlayItem],
         on_reply_start: Callable[[int], Awaitable[None]] | None = None,

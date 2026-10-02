@@ -109,11 +109,13 @@ would not meet the constraint.
      orderly shutdown. It rejects new requests as closed, interrupts the item
      in flight, journals every accepted request exactly once (the queue as
      `skipped`), and awaits the worker, whether or not the worker ever ran a
-     step. Cancelling the worker task directly is only a safety net and is
-     not how the app shuts it down. `run_until_shutdown()` flushes journal
-     writes after gathering background tasks; `close()` must complete before
-     that flush. Stop the server from accepting requests before or together
-     with `close()`: requests arriving after it are rejected as closed;
+     step. A worker cancelled from outside without `close()` is a crash:
+     unfinished canvases may be lost, as the story accepts, so the app must
+     never shut the service down that way. `run_until_shutdown()` flushes
+     journal writes after gathering background tasks; `close()` must complete
+     before that flush. Stop the server from accepting requests before or
+     together with `close()`: requests arriving after it are rejected as
+     closed;
    - `on_turn_start=replay_player.cancel` (`app.py`, the `Orchestrator`
      wiring) must not fire in `MCP` mode: with no microphone there are no
      user turns, and if it fired it would cut the guide off. Verify it with a
@@ -123,6 +125,13 @@ would not meet the constraint.
      Journal ends that replay, and the guide starts speaking at once. Decide
      whether that is acceptable in `MCP` mode or whether Stop should also
      interrupt the guide; state the decision in the completion notes;
+   - Journal Stop race (owner decision, 2026-10-02, task 3 rework): the
+     button keeps its name; it stops the Journal's own replay sequence, and
+     the guide's speech never shows a Stop control (no `ReplayProgress` is
+     published for it). The stop route calls the player-wide
+     `ReplayPlayer.cancel()`, so a Stop click landing just after the user's
+     replay ended can cut the guide that started in its place. Fix it here:
+     the Journal Stop cancels its own `ReplayRun`, not the player;
    - the guide does not consult the `Orchestrator` busy flag (story: it runs
      outside the turn lifecycle). In `MCP` mode no live turn exists, so a
      test must pin that nothing in the mode can start one (no microphone, the
