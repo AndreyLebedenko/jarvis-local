@@ -1,4 +1,5 @@
 import inspect
+from pathlib import Path
 
 import pytest
 from aiohttp.web_urldispatcher import StaticResource
@@ -17,7 +18,9 @@ from jarvis.core.run_mode import (
     RunModePolicy,
     Verdict,
 )
-from jarvis.core.single_instance import HeldInstance
+from jarvis.core.single_instance import ALREADY_RUNNING_EXIT_CODE, HeldInstance
+from jarvis.mcp_mode.server import McpPortUnavailableError
+from jarvis.mcp_mode.token import McpTokenFileError
 from jarvis.ui.status_console import StatusConsoleApi
 from jarvis.ui.transport import ROUTES, UiTransportServer
 
@@ -81,6 +84,29 @@ def test_main_carries_mcp_mode_into_a_headless_run(monkeypatch):
     app_module.main(["--mcp-mode"], acquire=_HeldGuard)
 
     assert run_modes == [RunMode.MCP]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        McpTokenFileError(Path("mcp_mode.token"), "is empty"),
+        McpPortUnavailableError(47821, "address in use"),
+    ],
+)
+def test_a_headless_mcp_mode_startup_failure_exits_with_its_own_code_and_message(
+    monkeypatch, capsys, error
+):
+    async def failing_run(run_mode: RunMode) -> None:
+        raise error
+
+    monkeypatch.setattr(app_module, "run", failing_run)
+
+    with pytest.raises(SystemExit) as raised:
+        app_module.main(["--mcp-mode"], acquire=_HeldGuard)
+
+    assert raised.value.code == app_module.MCP_MODE_STARTUP_FAILED_EXIT_CODE
+    assert raised.value.code not in (0, 1, ALREADY_RUNNING_EXIT_CODE)
+    assert str(error) in capsys.readouterr().err
 
 
 # --- [mcp_mode] config ----------------------------------------------------------

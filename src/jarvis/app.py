@@ -10,6 +10,7 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from jarvis.audio.debug_metrics import on_utterance_captured
 from jarvis.audio.input import (
@@ -227,6 +228,13 @@ from jarvis.journal.transcription import (
     OllamaTranscriptionBackend,
     TranscriptionService,
 )
+from jarvis.mcp_mode.server import (
+    McpPortUnavailableError,
+    McpServerState,
+    McpServerStatusChanged,
+    prepare_mcp_mode_server,
+)
+from jarvis.mcp_mode.token import McpTokenFileError
 from jarvis.memory.files import (
     MemoryFileLoader,
     MemoryFileRepository,
@@ -2893,27 +2901,64 @@ async def warm_up(
     await bus.publish(WarmupCompleted, WarmupCompleted(succeeded=succeeded))
 
 
-McpServerRunner = Callable[[McpModeSettings, VoiceGuideService], Awaitable[None]]
+MCP_MODE_STARTUP_FAILED_EXIT_CODE = 4
+MCP_MODE_STARTUP_ERRORS = (McpTokenFileError, McpPortUnavailableError)
+_MCP_MODE_EVENT_SOURCE = "MCP_MODE"
 
 
-async def serve_no_mcp_server(
-    settings: McpModeSettings, voice_guide: VoiceGuideService
-) -> None:
-    """The MCP server slot's placeholder: it serves nothing, so the voice
-    guide receives no requests."""
-    del settings, voice_guide
+class McpServer(Protocol):
+    def start(self) -> asyncio.Task[None]: ...
 
 
-def _start_mcp_mode(
-    app: App, settings: Settings, mcp_server_runner: McpServerRunner
+McpServerPreparer = Callable[[McpModeSettings, VoiceGuideService, EventBus], McpServer]
+
+
+async def _start_mcp_mode(
+    app: App,
+    settings: Settings,
+    prepare_mcp_server: McpServerPreparer,
+    *,
+    keep_running_on_startup_failure: bool,
 ) -> asyncio.Task | None:
-    """Starts the voice guide before the server, so the server never accepts
-    a request the guide cannot queue."""
+    """Prepares the server (token, port) before starting the voice guide, and
+    starts the guide before serving, so the server never accepts a request
+    the guide cannot queue. A startup failure leaves the guide unstarted; it
+    ends the run unless keep_running_on_startup_failure."""
+    if app.run_mode is not RunMode.MCP:
+        return None
     if app.voice_guide is None:
+        raise RuntimeError("MCP mode cannot serve without a voice guide")
+    try:
+        server = prepare_mcp_server(settings.mcp_mode, app.voice_guide, app.bus)
+    except MCP_MODE_STARTUP_ERRORS as error:
+        await _report_mcp_mode_startup_failure(app, settings.ui.language, error)
+        if not keep_running_on_startup_failure:
+            raise
         return None
     app.voice_guide.start()
-    return asyncio.create_task(
-        mcp_server_runner(settings.mcp_mode, app.voice_guide), name="mcp-server"
+    return server.start()
+
+
+async def _report_mcp_mode_startup_failure(
+    app: App, language: str, error: McpTokenFileError | McpPortUnavailableError
+) -> None:
+    await app.bus.publish(
+        McpServerStatusChanged,
+        McpServerStatusChanged(McpServerState.FAILED, reason=str(error)),
+    )
+    if isinstance(error, McpTokenFileError):
+        ui_message = ui_text(
+            "mcp_mode_token_file_unusable", language, path=str(error.token_file)
+        )
+    else:
+        ui_message = ui_text("mcp_mode_port_unavailable", language, port=error.port)
+    await publish_system_event(
+        app.bus,
+        logger,
+        source=_MCP_MODE_EVENT_SOURCE,
+        level=EventLevel.ERROR,
+        log_message=str(error),
+        ui_message=ui_message,
     )
 
 
@@ -2996,7 +3041,7 @@ async def run(
     shutdown_provider: HotkeyProvider | None = None,
     debug: bool = False,
     run_mode: RunMode = RunMode.NORMAL,
-    mcp_server_runner: McpServerRunner = serve_no_mcp_server,
+    prepare_mcp_server: McpServerPreparer = prepare_mcp_mode_server,
 ) -> None:
     # The invariant lives here, not only in parse_args(): run() is an entry
     # point of its own, and once a later slice keys transcript recording off
@@ -3077,7 +3122,12 @@ async def run(
         shutdown_provider.register(settings.hotkeys.shutdown, on_shutdown_hotkey)
         shutdown_provider.start()
 
-        mcp_server = _start_mcp_mode(app, settings, mcp_server_runner)
+        mcp_server = await _start_mcp_mode(
+            app,
+            settings,
+            prepare_mcp_server,
+            keep_running_on_startup_failure=live_console is not None,
+        )
         background_tasks = [
             asyncio.create_task(work) for work in _background_work(app, settings)
         ]
@@ -3348,9 +3398,17 @@ def main(
                 run_mode=run_mode,
             )
         else:
-            asyncio.run(run(run_mode=run_mode))
+            _run_headless(run_mode)
     finally:
         guard.release()
+
+
+def _run_headless(run_mode: RunMode) -> None:
+    try:
+        asyncio.run(run(run_mode=run_mode))
+    except MCP_MODE_STARTUP_ERRORS as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(MCP_MODE_STARTUP_FAILED_EXIT_CODE) from error
 
 
 if __name__ == "__main__":

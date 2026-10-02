@@ -1,6 +1,6 @@
 # Task v2.0-5: MCP server and the `speak` tool
 
-**Status:** Not started.
+**Status:** Completed. (2026-10-03; see completion notes below.)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** task-v2.0-3 (`VoiceGuideService.enqueue()`) and
 task-v2.0-4 (`[mcp_mode]` config, the server-runner slot in `run()`).
@@ -139,14 +139,14 @@ locality contract.
 
 ## Acceptance criteria
 
-- [ ] The server listens only on `127.0.0.1:<[mcp_mode].port>`, rejects
+- [x] The server listens only on `127.0.0.1:<[mcp_mode].port>`, rejects
       requests without the bearer token and requests with a foreign `Host`.
-- [ ] `speak` validates, enqueues, and returns `queued` with its position
+- [x] `speak` validates, enqueues, and returns `queued` with its position
       immediately; invalid calls get typed error codes and are not journaled.
-- [ ] The token persists across runs in `[mcp_mode].token_file`, is never
+- [x] The token persists across runs in `[mcp_mode].token_file`, is never
       logged or shown, and a broken token file fails loudly.
-- [ ] `uvicorn` and `starlette` are pinned in `requirements.txt`.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green.
+- [x] `uvicorn` and `starlette` have lower bounds in `requirements.txt`.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green.
 
 ## Stop conditions
 
@@ -162,3 +162,27 @@ locality contract.
 - Stop if session initialize parameters (`clientInfo`) are not reachable from
   a tool handler through the SDK's public API. Record the caller as unknown
   only with the owner's agreement.
+
+## Completion notes (2026-10-03)
+
+Executed by subagents under `tasks/done/plan-v2.0-5-subagent-execution.md`,
+which records the phase-0 gate results and every owner decision. Deviations
+from this card, all owner-approved:
+
+- The standalone GET stream is served (a 405 makes Claude Code show a
+  recurring error toast, anthropics/claude-code#78193). On stop, sessions are
+  terminated through the SDK's private `session_manager._server_instances`
+  before uvicorn's `should_exit`; a test guards it.
+- uvicorn is subclassed: `capture_signals` is a no-op (signals stay with
+  Jarvis) and `startup` is overridden to close two startup races.
+- A startup failure (token file, busy port) exits headless runs with code 4;
+  with `--status-console` Jarvis keeps running and reports `FAILED`.
+- Extra error codes: `empty_spoken_text`, `closed`. `VoiceGuideAccepted`
+  carries `speech_origin` so the tool never re-derives it.
+- SDK floor `mcp>=1.30,<2`: 1.30's idle timeout and session cap bound
+  session growth. The 2.x migration is
+  `tasks/backlog/mcp-sdk-2x-migration.md`.
+- Verified against Claude Code 2.1.247: the bearer header arrives on every
+  request and a real `speak` call returns `queued`.
+
+Server facts are recorded in `PROJECT.md`, "Architecture v2.0".

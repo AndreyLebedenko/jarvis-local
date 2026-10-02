@@ -4219,9 +4219,10 @@ story cards under `tasks/done/`).
 
 ## Architecture v2.0 (MCP voice guide) - in progress
 
-Facts settled by story-v2.0 tasks 2-4 (external canvas provenance, the
-voice-guide pipeline, the `--mcp-mode` composition). Task 8 completes this
-section; the server and Journal-rendering facts are not recorded here yet.
+Facts settled by story-v2.0 tasks 2-5 (external canvas provenance, the
+voice-guide pipeline, the `--mcp-mode` composition, the MCP server and its
+`speak` tool). Task 8 completes this section; the Journal-rendering and
+server-state UI facts (task 6) are not recorded here yet.
 
 - **An external canvas is one journal event.** `role="assistant"`,
   `source="mcp_canvas"` (`MCP_CANVAS_SOURCE` in
@@ -4375,8 +4376,8 @@ section; the server and Journal-rendering facts are not recorded here yet.
   `ClipboardSubmitted`), so nothing published can start a turn and
   `on_turn_start` never fires. `McpHost` is never enabled, whatever
   `[mcp].enabled` says. `build_app()` builds the `VoiceGuideService` (capacity
-  and canvas-only speech origin from `[mcp_mode]`); `run()` starts it before
-  the injectable server runner (a no-op stub until the server exists).
+  and canvas-only speech origin from `[mcp_mode]`); `run()` starts it after
+  the server is prepared and before it serves (see "Startup and failure").
   Shutdown order: stop the server task, `await voice_guide.close()`, then the
   existing sequence (task cancellation, then the journal flush). `run()`'s
   `finally` closes the guide and flushes the journal only when that orderly
@@ -4401,6 +4402,130 @@ section; the server and Journal-rendering facts are not recorded here yet.
   calls, because every player run there is a Journal run. A Journal Stop
   while the guide waits on a user replay ends only that replay; the guide
   then speaks. The interrupt hotkey is the way to silence the guide.
+- **The MCP server** (`src/jarvis/mcp_mode/server.py`) is a streamable-HTTP
+  `FastMCP` app served by `uvicorn` as a task in Jarvis's own event loop
+  (main thread headless, engine thread with `--status-console`). Every start
+  builds a fresh `FastMCP`: its session manager runs once per instance. It is
+  stateful (`stateless_http=True` leaves `clientInfo` and the session id
+  `None`) with `json_response=True`. `uvicorn` and `starlette` have lower
+  bounds in `requirements.txt` because the module imports them directly.
+- **SDK floor `mcp>=1.30,<2`.** 1.30's session manager defaults
+  (`session_idle_timeout` 30 min, which never reaps a session with a request
+  in flight or an open GET stream, and `max_sessions=10000`) bound session
+  growth; Jarvis relies on them and configures neither, and a test asserts
+  the exact values (1800 s, 10000) so an SDK default change is visible. The
+  idle timeout reaps abandoned real sessions, for example a client that exits
+  without a DELETE. Claude Code 2.1.x first sends a protocol `2026-07-28`
+  `server/discover` POST, which SDK 1.x answers 400 "Missing session ID"
+  before Claude Code falls back to `initialize`; 1.30 keeps no session for an
+  opening request answered with a status of 400 or more, so that probe leaves
+  nothing behind. 2.x removes `mcp.server.fastmcp`, hence the cap.
+- **Localhost bind, fail fast.** `bind_mcp_listener()` binds `127.0.0.1` on
+  `[mcp_mode].port` itself and hands the socket to `serve(sockets=...)`;
+  uvicorn's own bind would `sys.exit(1)` on a busy port. A busy port raises
+  `McpPortUnavailableError` naming the port and `[mcp_mode].port`; there is no
+  fallback port, since the client's stored URL would point at nothing. On
+  Windows a second bind to a held `127.0.0.1` port fails (errno 10048) with or
+  without the holder's `SO_REUSEADDR`.
+- **Token.** `load_or_create_token()` (`src/jarvis/mcp_mode/token.py`) reads
+  `[mcp_mode].token_file` (relative to the working directory) or, if missing,
+  creates it with `secrets.token_urlsafe(32)`. An empty, unreadable,
+  non-UTF-8, or uncreatable file is `McpTokenFileError` naming the path and
+  the config key, never a silent regeneration; deleting the file rotates the
+  token. The token is in no log record, exception message, or UI payload;
+  the middleware keeps only its SHA-256 digest.
+- **Bearer middleware, not the SDK's OAuth path.** `FastMCP`'s
+  `token_verifier` requires `AuthSettings` and turns the server into an OAuth
+  resource server (metadata, `WWW-Authenticate` challenges). Our ASGI
+  `BearerTokenMiddleware` wraps `streamable_http_app()` instead: it compares
+  digests with `hmac.compare_digest` (like `token_matches()` in
+  `ui/transport.py`) and answers anything else with a plain 401. Behind it,
+  the SDK's DNS-rebinding protection (on by default for `host="127.0.0.1"`)
+  rejects a foreign `Host` with 421 and a foreign `Origin` with 403; the test
+  sends a valid token so the 401 cannot mask the host check.
+- **The GET stream is served; stop terminates sessions first.** Claude Code
+  shows a recurring "capabilities not available" toast when the standalone
+  GET stream gets 405 (anthropics/claude-code#78193), so it is served. An
+  open GET stream makes uvicorn's graceful shutdown wait indefinitely, so
+  `McpModeServer` calls the public `StreamableHTTPServerTransport.terminate()`
+  on every session in the private `session_manager._server_instances` before
+  setting `should_exit`; `timeout_graceful_shutdown=2` is the safety net. A
+  test stops the server with an open GET stream and requires under 1 s with
+  no ERROR record, so an SDK rename fails CI.
+- **Cancellation becomes a graceful shutdown.** A bare `task.cancel()` of
+  `uvicorn.Server.serve()` skips `shutdown()` (the port keeps accepting, the
+  lifespan never stops). `McpModeServer.start()` creates the `mcp-server`
+  task, which shields the serve future; on `CancelledError` it waits for
+  startup to finish, terminates the sessions, sets `should_exit`, awaits
+  serve, publishes `STOPPED`, and re-raises. Once begun, that shutdown is
+  cancellation-proof: further cancels (Ctrl+C after the shutdown hotkey
+  cancelling `_stop_mcp_mode`'s gather again) are absorbed until it has
+  finished, then the cancellation is re-raised. The task owns the listener:
+  a done-callback closes it, so the port is released even when the task is
+  cancelled before its first step. The uvicorn subclass makes
+  `capture_signals` a no-op (uvicorn would take SIGINT/SIGTERM from Jarvis on
+  the main thread) and overrides `startup` for two races: it signals
+  "startup finished" only after its last await, because uvicorn skips
+  `shutdown()` when `should_exit` is already set as `startup()` returns; and
+  when the listener fails after the lifespan started, it shuts the lifespan
+  down as uvicorn's own bind-failure path does. Both races have tests.
+- **Mid-run failure.** If uvicorn raises, the server logs it at ERROR at
+  once, terminates the sessions, runs uvicorn's `shutdown()` (which uvicorn
+  skipped, leaving the lifespan up), and publishes `FAILED` once. This holds
+  whether or not a stop was already requested (a failure that lands with or
+  after the cancel); one helper serves both paths. Without a stop request the
+  task ends with that error, otherwise the cancellation propagates. If
+  terminating a session raises during a stop, it is logged and the stop goes
+  on (`should_exit`, await uvicorn). If uvicorn returns on its own without
+  being cancelled, a WARNING is logged and `STOPPED` published.
+- **Accepted limitations.** sse-starlette starts one shutdown poller task
+  (`_shutdown_watcher`) per event loop on the first SSE response and never
+  ends it, so it outlives the server. Argument type or shape errors (for
+  example a non-string `canvas`) are rejected by FastMCP's schema validation
+  before our code runs, as a tool error without our error codes; the value is
+  echoed back to the caller only, nothing is logged.
+- **FastMCP's logging is kept out.** `FastMCP()` calls
+  `logging.basicConfig()` with a RichHandler, a no-op only if root already
+  has a handler. `run()` configures logging before the server is built, and
+  `build_speak_mcp()` adds a temporary `NullHandler` when root has none, so
+  root logging never changes. uvicorn runs with `log_config=None`,
+  `access_log=False`, and `ws="none"`; nothing logs request bodies.
+- **The `speak` tool** validates in `src/jarvis/mcp_mode/speak.py`
+  (transport-free), enqueues, and returns at once. Its result is a
+  `CallToolResult`, never a raised `ToolError`: FastMCP prefixes a raised
+  error with "Error executing tool speak:", so the text would not start with
+  the code. Success: `{"status": "queued", "position", "speech_origin"}`
+  (plus `"guidance_ignored": true` when guidance and spoken_text are both
+  given), as JSON text and as `structuredContent`. Errors are `isError: true`
+  with text `"<code>: <detail>"` (the detail names limits, never the caller's
+  text): `empty_canvas`, `canvas_too_long`, `empty_spoken_text` (a given but
+  blank `spoken_text`), `spoken_text_too_long`, `guidance_too_long`,
+  `queue_full`, and `closed` (`VoiceGuideRejection.CLOSED`, a shutdown race).
+  Checks run in that order, lengths are `len()`, and a blank guidance counts
+  as absent. The caller is `clientInfo` from `ctx.session.client_params` plus
+  the `mcp-session-id` request header, all nullable.
+  `VoiceGuideAccepted.speech_origin` (from the service's `_origin_of()`)
+  gives the result its origin without re-deriving the rule. The model-facing
+  description states the configured limits.
+- **Startup and failure.** `run()` calls the injectable
+  `prepare_mcp_server(settings.mcp_mode, voice_guide, bus)` (production:
+  `prepare_mcp_mode_server`, i.e. token, bind, build) synchronously, then
+  `voice_guide.start()`, then `start()` for the `mcp-server` task. An
+  `MCP`-mode `App` without a voice guide is a `RuntimeError`, never a silent
+  run that serves nothing. On `McpTokenFileError` or `McpPortUnavailableError` the guide is not started,
+  and `McpServerStatusChanged(FAILED, reason)` plus an ERROR `SystemEvent`
+  (source `MCP_MODE`, localized `ui/text.py` message) are published. Headless,
+  the error ends the run through the existing cleanup, and `main()` prints it
+  to stderr and exits with `MCP_MODE_STARTUP_FAILED_EXIT_CODE` (4). With
+  `--status-console` (decided by `run()`'s explicit `live_console`), Jarvis
+  keeps running without a server. A server that fails after startup is not
+  supervised or restarted: it is logged at once, its task ends, `FAILED` is
+  published, the guide stays up with no requests, and shutdown logs the
+  task's exception again.
+- **Server status is an event.** `McpServerStatusChanged(state, port, reason)`
+  on the bus: `LISTENING` (with the port, once uvicorn has started),
+  `STOPPED`, or `FAILED` (with the reason). It is task 6's input for the
+  server-state widget.
 
 ## Documentation navigation doctrine (2026-08-30)
 

@@ -146,6 +146,13 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_enabled_degraded": "MCP enabled (not everything connected)",
         "mcp_disabled": "MCP disabled",
         "mcp_server_unavailable": "Server {server} is unavailable",
+        "mcp_mode_token_file_unusable": (
+            "MCP server not started: the token file {path} cannot be used; "
+            "see [mcp_mode].token_file"
+        ),
+        "mcp_mode_port_unavailable": (
+            "MCP server not started: port {port} is unavailable; change [mcp_mode].port"
+        ),
         "mcp_server_disconnect_failed": "Error disconnecting server {server}",
         "mcp_tool_name_collision": "Tool name collision: {tool} ({server})",
         "mcp_server_call_failed": (
@@ -244,6 +251,13 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mcp_enabled_degraded": "MCP включён (не всё подключилось)",
         "mcp_disabled": "MCP выключен",
         "mcp_server_unavailable": "Сервер «{server}» недоступен",
+        "mcp_mode_token_file_unusable": (
+            "MCP-сервер не запущен: файл токена {path} нельзя использовать; "
+            "см. [mcp_mode].token_file"
+        ),
+        "mcp_mode_port_unavailable": (
+            "MCP-сервер не запущен: порт {port} недоступен; измените [mcp_mode].port"
+        ),
         "mcp_server_disconnect_failed": "Ошибка отключения сервера «{server}»",
         "mcp_tool_name_collision": "Конфликт имён инструментов: «{tool}» ({server})",
         "mcp_server_call_failed": (
