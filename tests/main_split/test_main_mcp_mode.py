@@ -2,6 +2,7 @@ import asyncio
 import sys
 import types
 from dataclasses import fields
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -46,9 +47,22 @@ from jarvis.dialog.voice_guide import (
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
-from jarvis.journal.external_canvas import SPEECH_ORIGIN_METADATA_KEY
-from jarvis.ui.contract import HealthStatus, ModuleId, RuntimeState
+from jarvis.journal.external_canvas import SPEECH_ORIGIN_METADATA_KEY, SpeechOrigin
+from jarvis.mcp_mode.server import (
+    McpPortUnavailableError,
+    McpServerState,
+    McpServerStatusChanged,
+)
+from jarvis.mcp_mode.token import McpTokenFileError
+from jarvis.ui.contract import (
+    EventLevel,
+    HealthStatus,
+    ModuleId,
+    RuntimeState,
+    SystemEvent,
+)
 from jarvis.ui.status_console import runtime_state_payload
+from jarvis.ui.text import ui_text
 
 # Every HotkeySettings field and whether --mcp-mode binds it. A new field
 # fails test_every_hotkey_has_an_mcp_mode_verdict until it gets a verdict here.
@@ -110,6 +124,21 @@ class _RecordingVoiceGuide:
 
     async def close(self) -> None:
         self._order.append("guide closed")
+
+
+class _RecordingServer:
+    def __init__(self, order: list[str]) -> None:
+        self._order = order
+
+    def start(self) -> asyncio.Task[None]:
+        return asyncio.create_task(self._serve())
+
+    async def _serve(self) -> None:
+        self._order.append("server started")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            self._order.append("server stopped")
 
 
 class _RecordingJournal:
@@ -206,14 +235,12 @@ async def test_mcp_mode_run_composes_the_voice_guide_and_nothing_that_takes_inpu
     _isolate(app, order)
     registered = fake_hotkeys
 
-    async def server_runner(mcp_mode: McpModeSettings, voice_guide) -> None:
+    def prepare_server(mcp_mode: McpModeSettings, voice_guide, bus) -> _RecordingServer:
         assert mcp_mode is settings.mcp_mode
         assert voice_guide is app.voice_guide
-        order.append("server started")
-        try:
-            await asyncio.Event().wait()
-        finally:
-            order.append("server stopped")
+        assert bus is app.bus
+        order.append("server prepared")
+        return _RecordingServer(order)
 
     running = asyncio.create_task(
         run(
@@ -221,7 +248,7 @@ async def test_mcp_mode_run_composes_the_voice_guide_and_nothing_that_takes_inpu
             app=app,
             shutdown_provider=_RecordingHotkeyProvider(registered),
             run_mode=RunMode.MCP,
-            mcp_server_runner=server_runner,
+            prepare_mcp_server=prepare_server,
         )
     )
     await _until(lambda: settings.hotkeys.interrupt in registered)
@@ -234,6 +261,7 @@ async def test_mcp_mode_run_composes_the_voice_guide_and_nothing_that_takes_inpu
     assert microphone.loop_starts == 0
     assert app.mcp_host.enable_calls == 0
     assert order == [
+        "server prepared",
         "guide started",
         "server started",
         "server stopped",
@@ -262,6 +290,132 @@ async def test_mcp_mode_closes_the_guide_and_flushes_the_journal_when_startup_fa
             run_mode=RunMode.MCP,
         )
 
+    assert order == ["guide closed", "journal flushed"]
+
+
+async def test_an_mcp_mode_run_without_a_voice_guide_fails_instead_of_serving_nothing(
+    tmp_path, quiet_run, fake_hotkeys
+):
+    settings = _mcp_mode_settings(tmp_path)
+    app = _mcp_mode_app(settings)
+    order: list[str] = []
+    _isolate(app, order)
+    app.voice_guide = None
+
+    def prepare_server(mcp_mode, voice_guide, bus):
+        order.append("server prepared")
+
+    with pytest.raises(RuntimeError, match="voice guide"):
+        await asyncio.wait_for(
+            run(
+                settings=settings,
+                app=app,
+                shutdown_provider=_RecordingHotkeyProvider(fake_hotkeys),
+                run_mode=RunMode.MCP,
+                prepare_mcp_server=prepare_server,
+            ),
+            timeout=5,
+        )
+
+    assert "server prepared" not in order
+
+
+_STARTUP_FAILURES = [
+    pytest.param(
+        McpTokenFileError(Path("mcp_mode.token"), "is empty"),
+        ui_text("mcp_mode_token_file_unusable", "en", path="mcp_mode.token"),
+        id="token-file",
+    ),
+    pytest.param(
+        McpPortUnavailableError(47821, "address in use"),
+        ui_text("mcp_mode_port_unavailable", "en", port=47821),
+        id="port",
+    ),
+]
+
+
+def _failing_preparer(error: Exception):
+    def prepare(mcp_mode, voice_guide, bus):
+        raise error
+
+    return prepare
+
+
+@pytest.mark.parametrize(("error", "ui_message"), _STARTUP_FAILURES)
+async def test_a_headless_mcp_mode_startup_failure_ends_the_run_with_that_error(
+    tmp_path, quiet_run, fake_hotkeys, error, ui_message
+):
+    del ui_message
+    settings = _mcp_mode_settings(tmp_path)
+    app = _mcp_mode_app(settings)
+    order: list[str] = []
+    _isolate(app, order)
+
+    with pytest.raises(type(error)):
+        await asyncio.wait_for(
+            run(
+                settings=settings,
+                app=app,
+                shutdown_provider=_RecordingHotkeyProvider(fake_hotkeys),
+                run_mode=RunMode.MCP,
+                prepare_mcp_server=_failing_preparer(error),
+            ),
+            timeout=5,
+        )
+
+    assert order == ["guide closed", "journal flushed"]
+
+
+@pytest.mark.parametrize(("error", "ui_message"), _STARTUP_FAILURES)
+async def test_a_console_mcp_mode_startup_failure_is_reported_and_jarvis_keeps_running(
+    tmp_path, quiet_run, fake_hotkeys, monkeypatch, error, ui_message
+):
+    monkeypatch.setattr(main_module, "wire_status_console", lambda *args: [])
+    settings = _mcp_mode_settings(tmp_path)
+    app = _mcp_mode_app(settings)
+    order: list[str] = []
+    _isolate(app, order)
+    statuses: list[McpServerStatusChanged] = []
+    system_events: list[SystemEvent] = []
+
+    async def record_status(event: McpServerStatusChanged) -> None:
+        statuses.append(event)
+
+    async def record_system_event(event: SystemEvent) -> None:
+        system_events.append(event)
+
+    app.bus.subscribe(McpServerStatusChanged, record_status)
+    app.bus.subscribe(SystemEvent, record_system_event)
+    console = types.SimpleNamespace(
+        api=types.SimpleNamespace(set_shutdown_event=lambda event: None),
+        transport=None,
+        close=lambda: None,
+    )
+    registered = fake_hotkeys
+
+    running = asyncio.create_task(
+        run(
+            settings=settings,
+            app=app,
+            live_console=console,
+            shutdown_provider=_RecordingHotkeyProvider(registered),
+            run_mode=RunMode.MCP,
+            prepare_mcp_server=_failing_preparer(error),
+        )
+    )
+    await _until(lambda: settings.hotkeys.interrupt in registered)
+    still_running = not running.done()
+    registered[settings.hotkeys.shutdown]()
+    await asyncio.wait_for(running, timeout=5)
+
+    assert still_running
+    assert statuses == [
+        McpServerStatusChanged(McpServerState.FAILED, reason=str(error))
+    ]
+    mcp_events = [event for event in system_events if event.source == "MCP_MODE"]
+    assert [(event.level, event.message) for event in mcp_events] == [
+        (EventLevel.ERROR, ui_message)
+    ]
     assert order == ["guide closed", "journal flushed"]
 
 
@@ -358,7 +512,7 @@ async def test_the_voice_guide_takes_its_queue_capacity_from_mcp_mode_config(tmp
     await guide.close()
 
     assert results == [
-        VoiceGuideAccepted(position=1),
+        VoiceGuideAccepted(position=1, speech_origin=SpeechOrigin.DERIVATIVE),
         VoiceGuideRejected(VoiceGuideRejection.QUEUE_FULL),
     ]
 

@@ -484,7 +484,32 @@ async def test_enqueue_reports_a_one_based_position_behind_what_is_pending(make_
         for canvas in ("First.", "Second.", "Third.")
     ]
 
-    assert positions == [VoiceGuideAccepted(position) for position in (1, 2, 3)]
+    assert positions == [
+        VoiceGuideAccepted(position, SpeechOrigin.VERBATIM) for position in (1, 2, 3)
+    ]
+
+
+@pytest.mark.parametrize(
+    "canvas_only_origin", [SpeechOrigin.DERIVATIVE, SpeechOrigin.VERBATIM]
+)
+async def test_enqueue_reports_the_configured_origin_for_a_canvas_only_request(
+    make_rig, canvas_only_origin
+):
+    rig = make_rig(origin=canvas_only_origin, held=True)
+
+    result = rig.service.enqueue(VoiceGuideRequest("An answer."))
+
+    assert result == VoiceGuideAccepted(1, canvas_only_origin)
+
+
+async def test_enqueue_reports_the_caller_origin_when_spoken_text_is_given(make_rig):
+    rig = make_rig(origin=SpeechOrigin.DERIVATIVE, held=True)
+
+    result = rig.service.enqueue(
+        VoiceGuideRequest("An answer.", spoken_text="Read this.")
+    )
+
+    assert result == VoiceGuideAccepted(1, SpeechOrigin.CALLER)
 
 
 async def test_enqueue_beyond_capacity_is_rejected_as_queue_full(make_rig):
@@ -518,7 +543,7 @@ async def test_capacity_frees_up_as_items_finish(make_rig):
 
     result = rig.service.enqueue(VoiceGuideRequest("Second."))
 
-    assert result == VoiceGuideAccepted(1)
+    assert result == VoiceGuideAccepted(1, SpeechOrigin.VERBATIM)
 
 
 async def test_queue_length_counts_the_item_in_flight(make_rig):

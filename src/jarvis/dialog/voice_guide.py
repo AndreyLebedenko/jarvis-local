@@ -69,9 +69,11 @@ class VoiceGuideRequest:
 @dataclass(frozen=True)
 class VoiceGuideAccepted:
     """`position` is 1-based among the requests not yet finished, the one in
-    flight included: 1 means nothing is ahead of it."""
+    flight included: 1 means nothing is ahead of it. `speech_origin` is what
+    the request will be spoken from."""
 
     position: int
+    speech_origin: SpeechOrigin
 
 
 @dataclass(frozen=True)
@@ -256,9 +258,10 @@ class VoiceGuideService:
             return VoiceGuideRejected(VoiceGuideRejection.CLOSED)
         if self.queue_length >= self._capacity:
             return VoiceGuideRejected(VoiceGuideRejection.QUEUE_FULL)
-        self._pending.append(_Item(request, self._origin_of(request)))
+        origin = self._origin_of(request)
+        self._pending.append(_Item(request, origin))
         self._queue_changed()
-        return VoiceGuideAccepted(self.queue_length)
+        return VoiceGuideAccepted(self.queue_length, origin)
 
     def interrupt(self) -> None:
         """Stops the item in flight and drops every queued one. The journal
