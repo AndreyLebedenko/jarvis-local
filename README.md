@@ -2,6 +2,8 @@
 
 Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks answers through configurable local TTS routes.
 
+The v2.0 headline is the voice guide mode. Started with `--mcp-mode`, Jarvis serves a localhost-only, token-authenticated MCP server, and another local assistant (for example Claude Code) hands it a long answer as the canvas: Jarvis speaks a short guide over it and keeps that answer in its Journal, labeled as somebody else's. See [Voice guide mode](#voice-guide-mode---mcp-mode).
+
 Jarvis core is designed to run without network access after the one-time setup
 steps are complete. The LLM backend is a separate component: the default
 supported backend is a local Ollama server on the same machine, but the selected
@@ -33,9 +35,12 @@ data rather than by widget type:
 
 The header stays the same on every tab: the `LOCAL` and `LOCAL SOURCES`
 honesty indicators and the Open/Hidden visibility mode never disappear behind
-a tab switch. Local builtin tools for delegated reasoning and memory updates
-and the compact touchstrip glance surface are unchanged. Since v1.2.11 the UI
-is English by default, with Russian available via `[ui].language = "ru"`.
+a tab switch. In `--mcp-mode` it also carries the `MCP MODE` / `РЕЖИМ MCP`
+badge, and the Status tab grows a "Voice guide" block with the server state,
+its port, and the speech queue. Local builtin tools for delegated reasoning and
+memory updates and the compact touchstrip glance surface are unchanged. Since
+v1.2.11 the UI is English by default, with Russian available via
+`[ui].language = "ru"`.
 
 ![Jarvis Status Console](docs/screenshots/en/status-console.jpg)
 
@@ -45,13 +50,19 @@ is English by default, with Russian available via `[ui].language = "ru"`.
 
 ## Status
 
-This is a usable v1.6.1 hobby/research release with verified bilingual TTS:
-Silero handles Russian and Piper handles English, with streamed text routed
-automatically by character set. TTS engines and local voice models remain
-configurable per language. The zero-config compatibility default uses Russian
-Silero only; its rough Latin-to-Cyrillic transliteration is a fallback for
-users who have not configured the English Piper route, not the recommended
-bilingual setup.
+This is the v2.0.0 hobby/research release. Its headline is the voice guide
+mode: `Jarvis.cmd --mcp-mode` serves a localhost-only, token-authenticated MCP
+server whose single `speak` tool takes another assistant's long answer as the
+canvas, and Jarvis speaks a short derivative guide over it while keeping the
+answer in its Journal as an external answer with its caller - see
+[Voice guide mode](#voice-guide-mode---mcp-mode) below.
+
+Verified bilingual TTS is unchanged: Silero handles Russian and Piper handles
+English, with streamed text routed automatically by character set. TTS engines
+and local voice models remain configurable per language. The zero-config
+compatibility default uses Russian Silero only; its rough Latin-to-Cyrillic
+transliteration is a fallback for users who have not configured the English
+Piper route, not the recommended bilingual setup.
 
 The current release also provides four Ollama reasoning levels and injects the
 local date, weekday, time, and UTC offset into every accepted model request.
@@ -121,6 +132,16 @@ Jarvis is not affiliated with Marvel, Disney, or any related trademark owner.
     only the canonical text; the spoken derivative is stored under the same
     Journal turn as "spoken aloud", but is not treated as an independent
     source of facts.
+- Voice guide mode (`--mcp-mode`, see
+  [Voice guide mode](#voice-guide-mode---mcp-mode)): a localhost-only,
+  token-authenticated MCP server with one tool,
+  `speak(canvas, spoken_text?, guidance?)`. Jarvis speaks a short derivative
+  guide over the canvas it is given (or the canvas verbatim, or the caller's
+  own text), calls queue instead of interrupting, `Ctrl+Alt+I` stops the current
+  one and drops the rest of the queue, and each accepted call is journaled as
+  an external answer with its caller: it stays out of automatic retrieval, so
+  the model reaches it only on explicit search, always labeled with its caller.
+  No microphone, no typed chat, and never alongside a normal Jarvis instance.
 - Unlimited conversation history: the normal request to Ollama stays a bounded
   working context regardless of how large the local journal grows. See
   [Unlimited conversation history](#unlimited-conversation-history).
@@ -578,6 +599,10 @@ carries that token. It is the one MCP tool Jarvis serves,
 `speak(canvas, spoken_text?, guidance?)`; see
 [Architecture v2.0](PROJECT.md) for what it stores and how it is labeled.
 
+![Jarvis voice guide on the Status tab](docs/screenshots/en/voice-guide-status.jpg)
+
+![Jarvis voice guide in the Journal](docs/screenshots/en/voice-guide-journal.jpg)
+
 ## Response modes
 
 A reply full of bullets, tables, and links is hard to *listen to*, while some
@@ -612,7 +637,7 @@ The mode is a persistent setting (`[response].mode` in `config.toml`, default
 Switching between modes:
 
 - **Hotkey** `Ctrl+Alt+O` (`hotkeys.response_mode_toggle`, default
-  `src/jarvis/core/config.py:140`; overridable via `[hotkeys]
+  `src/jarvis/core/config.py:175`; overridable via `[hotkeys]
   response_mode_toggle` in `config.toml`) cycles Text-Only -> TTS-Only ->
   Text + voice -> Text-Only. It is a live, session-only switch: the
   Settings-tab drop-down, not the hotkey, is what persists.
@@ -730,16 +755,21 @@ knobs (`[history]`, `[history.semantic]`, `[history.transcription]`, and
 The installable application package lives in `src/jarvis/`. Run it from the
 repository root with `python -m jarvis`; production modules are never imported
 by modifying `sys.path`. The app is split into small asyncio modules connected
-through `bus.py`:
+through `core/bus.py` and grouped into subpackages:
 
-- `audio_in.py`: microphone capture, VAD, utterance chunking.
-- `backend.py`: Ollama `/api/chat` streaming adapter.
-- `capture.py`: screenshot capture.
-- `tts.py`: sentence buffering, configurable Silero/Piper routing, playback.
-- `sound_cues.py`: generated local cue sounds.
-- `config.py`: TOML settings and validation, including the dialog prompts
+- `audio/input.py`: microphone capture, VAD, utterance chunking.
+- `dialog/backend.py`: Ollama `/api/chat` streaming adapter.
+- `inputs/capture.py`: screenshot capture.
+- `audio/tts.py`: sentence buffering, configurable Silero/Piper routing,
+  playback.
+- `audio/sound_cues.py`: generated local cue sounds.
+- `core/config.py`: TOML settings and validation, including the dialog prompts
   (`[prompts]`) and the UI language (`[ui]`).
-- `main.py`: wiring, orchestration, shutdown.
+- `app.py`: wiring, orchestration, shutdown.
+
+The other subpackages are `core` (bus, config, logging, run mode, single
+instance), `audio`, `dialog`, `files`, `history`, `inputs`, `journal`,
+`mcp_mode`, `memory`, `tools`, and `ui`.
 
 `PROJECT.md` is the source of truth for architectural decisions and verified experiments. The `tasks/` directory keeps story cards, task cards, and bug reports from development.
 
@@ -769,7 +799,7 @@ This repository was built with an agent-assisted workflow: project facts were re
 - Closing the Status Console can expose a microphone shutdown race around a
   blocking executor read; see
   [the open bug report](tasks/bug_reports/2026-07-17-shutdown-microphone-executor-race.md).
-- There is no real echo cancellation in v1.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
+- There is no real echo cancellation in v2.0. Jarvis can hear its own TTS through speakers; the app includes a cooldown mitigation, not a full fix.
 - Silero TTS `v3_1_ru` does not support Latin characters. Jarvis transliterates Latin words to Cyrillic before synthesis as a best-effort workaround.
 - Dense screenshots, especially large IDE views, can cause OCR confabulation. Use region capture for targeted questions.
 - The same confabulation applies to camera frames, and it does not announce
