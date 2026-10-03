@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -7,6 +6,13 @@ from pathlib import Path
 
 import aiohttp
 import pytest
+from _mcp_mode_support import (
+    CANVAS_TEXT,
+    DERIVATIVE_TEXT,
+    FakeVoiceGuide,
+    external_canvas_event,
+    serving_mcp_server,
+)
 
 from jarvis.app import _report_mcp_mode_startup_failure
 from jarvis.audio.replay import ReplayProgress, reply_speech
@@ -39,11 +45,8 @@ from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
 from jarvis.dialog.voice_guide import (
-    EnqueueResult,
-    VoiceGuideAccepted,
     VoiceGuidePhase,
     VoiceGuideQueueChanged,
-    VoiceGuideRequest,
 )
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import AttachmentPlan, AttachmentUpload
@@ -75,7 +78,7 @@ from jarvis.journal import (
     JournalStoreConsolidationSource,
     UnavailableSemanticHistoryProjection,
 )
-from jarvis.journal.external_canvas import SpeechOrigin
+from jarvis.journal.external_canvas import SpeechOrigin, SpeechStatus
 from jarvis.journal.fork import (
     ForkSeedDropReport,
     ForkSessionReason,
@@ -3666,31 +3669,25 @@ async def test_annotation_generate_reports_failure(tmp_path: Path) -> None:
 
 
 _MCP_SESSION = "20260801-150000-mc90"
-_MCP_CANVAS = "Реле перегрелось после обеда."
-_MCP_DERIVATIVE = "напоминаю, реле перегрелось из-за пыли"
+_MCP_CANVAS = CANVAS_TEXT
+_MCP_DERIVATIVE = DERIVATIVE_TEXT
 
 
 def _mcp_canvas_store(
     tmp_path: Path, *, derivative: str | None
 ) -> tuple[JournalStore, AnnotationOverlayRepository]:
+    """An MCP-mode session holding one external answer, spoken either from a
+    stored derivative or verbatim."""
     store = JournalStore(tmp_path / "journal")
-    metadata = {
-        "caller": {"name": "claude-code", "version": None},
-        "speech_origin": "derivative" if derivative else "verbatim",
-        "speech_status": "spoken",
-    }
-    if derivative is not None:
-        metadata["spoken_derivative"] = derivative
     store.append(
-        JournalEvent(
+        external_canvas_event(
             session_id=_MCP_SESSION,
             timestamp="2026-08-01T15:00:00+01:00",
-            source="mcp_canvas",
-            role="assistant",
-            text=_MCP_CANVAS,
-            media=(),
-            transcript=None,
-            metadata=metadata,
+            speech_origin=(
+                SpeechOrigin.DERIVATIVE if derivative else SpeechOrigin.VERBATIM
+            ),
+            speech_status=SpeechStatus.SPOKEN,
+            derivative=derivative,
         )
     )
     overlays = AnnotationOverlayRepository(
@@ -3825,23 +3822,19 @@ async def test_voice_guide_blocks_are_pushed_by_the_transport() -> None:
             )
             server_block = await websocket.receive_json()
             server.set_voice_guide_queue_state(
-                VoiceGuideQueueChanged(
-                    length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-                )
+                VoiceGuideQueueChanged(length=2, phase=VoiceGuidePhase.SPEAKING)
             )
             queue_block = await websocket.receive_json()
     finally:
         await server.stop()
 
     assert snapshot["payload"]["mcp_server"] == {"state": "unknown", "port": None}
-    assert server_block["payload"] == {
-        "key": "mcp_server",
-        "value": {"state": "listening", "port": 8765},
-    }
-    assert queue_block["payload"] == {
-        "key": "voice_guide_queue",
-        "value": {"length": 2, "phase": "speaking"},
-    }
+    # Which key each event lands under is this test's own claim; the value
+    # shapes are pinned by tests/test_status_console.py's payload-builder tests.
+    assert server_block["payload"]["key"] == "mcp_server"
+    assert server_block["payload"]["value"]["port"] == 8765
+    assert queue_block["payload"]["key"] == "voice_guide_queue"
+    assert queue_block["payload"]["value"]["length"] == 2
 
 
 @pytest.mark.asyncio
@@ -3863,9 +3856,7 @@ async def test_the_queue_block_is_not_pushed_while_hidden() -> None:
             await websocket.receive_json()
 
             server.set_voice_guide_queue_state(
-                VoiceGuideQueueChanged(
-                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-                )
+                VoiceGuideQueueChanged(length=1, phase=VoiceGuidePhase.SPEAKING)
             )
             with pytest.raises(TimeoutError):
                 await websocket.receive(timeout=0.05)
@@ -3903,14 +3894,10 @@ async def test_the_current_queue_arrives_when_the_client_leaves_hidden() -> None
             server.set_visibility_mode(VisibilityMode.HIDDEN)
             await websocket.receive_json()
             server.set_voice_guide_queue_state(
-                VoiceGuideQueueChanged(
-                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-                )
+                VoiceGuideQueueChanged(length=1, phase=VoiceGuidePhase.SPEAKING)
             )
             server.set_voice_guide_queue_state(
-                VoiceGuideQueueChanged(
-                    length=3, in_flight=True, phase=VoiceGuidePhase.PREPARING
-                )
+                VoiceGuideQueueChanged(length=3, phase=VoiceGuidePhase.PREPARING)
             )
             with pytest.raises(TimeoutError):
                 await websocket.receive(timeout=0.05)
@@ -3936,7 +3923,7 @@ async def test_a_client_connecting_while_hidden_receives_no_queue() -> None:
         token_factory=lambda: "valid-token",
     )
     server.set_voice_guide_queue_state(
-        VoiceGuideQueueChanged(length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING)
+        VoiceGuideQueueChanged(length=2, phase=VoiceGuidePhase.SPEAKING)
     )
     info = await server.start()
     try:
@@ -3968,11 +3955,7 @@ async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
     # The real server, built from settings whose token file holds the sentinel,
     # publishes the events the transport is given in production
     # (wire_status_console, pinned by tests/main_split/test_main_wiring.py).
-    mcp_server = prepare_mcp_mode_server(
-        McpModeSettings(port=0, token_file=str(token_file)),
-        _EnqueueOnlyVoiceGuide(),
-        bus,
-    )
+    settings = McpModeSettings(port=0, token_file=str(token_file))
     startup_failures = (
         McpTokenFileError(token_file, "is empty"),
         McpPortUnavailableError(8765, "address already in use"),
@@ -3986,14 +3969,17 @@ async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
 
     bus.subscribe(McpServerStatusChanged, on_mcp_server_status_changed)
     bus.subscribe(VoiceGuideQueueChanged, on_voice_guide_queue_changed)
-    task = mcp_server.start()
     pushed: list[dict] = []
     try:
-        # Wait for the real server through the store, not through a delta: the
-        # client below connects afterwards, so it reads the state in the
-        # snapshot instead of racing the server's own announcement.
-        await _wait_for_server_state(server, McpServerState.LISTENING)
+        # The server comes up first: the transport closes a client that has
+        # not completed its handshake within HANDSHAKE_TIMEOUT_SECONDS.
         async with (
+            serving_mcp_server(
+                bus=bus,
+                build=lambda event_bus: prepare_mcp_mode_server(
+                    settings, FakeVoiceGuide(), event_bus
+                ),
+            ) as running,
             aiohttp.ClientSession() as session,
             session.ws_connect(info.websocket_url) as websocket,
         ):
@@ -4001,9 +3987,7 @@ async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
             pushed.append(await websocket.receive_json())
             snapshot_message = await websocket.receive_json()
             pushed.append(snapshot_message)
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.wait_for(task, 5)
+            await asyncio.wait_for(running.stop(), 5)
             await _wait_for_server_state(server, McpServerState.STOPPED)
             for failure in startup_failures:
                 await _report_mcp_mode_startup_failure(_BusOnly(bus), "en", failure)
@@ -4013,15 +3997,11 @@ async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
                 pushed.append(await websocket.receive_json(timeout=5))
             await bus.publish(
                 VoiceGuideQueueChanged,
-                VoiceGuideQueueChanged(
-                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-                ),
+                VoiceGuideQueueChanged(length=1, phase=VoiceGuidePhase.SPEAKING),
             )
             pushed.append(await websocket.receive_json(timeout=5))
         snapshot = server.state.snapshot()
     finally:
-        if not task.done():
-            task.cancel()
         await server.stop()
 
     blocks = [
@@ -4048,7 +4028,7 @@ async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
         assert token_file.name not in text
     assert snapshot_message["payload"]["mcp_server"] == {
         "state": "listening",
-        "port": mcp_server.port,
+        "port": running.port,
     }
     # Each startup failure reaches the block as a state, never as its text; the
     # second one repeats the first and is deduplicated like any other repeat.
@@ -4074,11 +4054,6 @@ class _BusOnly:
     """What _report_mcp_mode_startup_failure reads off an App."""
 
     bus: EventBus
-
-
-class _EnqueueOnlyVoiceGuide:
-    def enqueue(self, request: VoiceGuideRequest) -> EnqueueResult:
-        return VoiceGuideAccepted(1, SpeechOrigin.DERIVATIVE)
 
 
 _CONSOLIDATION_SESSION = "20260801-140000-ef56"

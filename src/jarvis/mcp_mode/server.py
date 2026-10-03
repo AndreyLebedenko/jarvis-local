@@ -33,7 +33,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from jarvis.core.bus import EventBus
 from jarvis.core.config import McpModeSettings
 from jarvis.dialog.voice_guide import EnqueueResult, VoiceGuideRequest
-from jarvis.journal.external_canvas import ExternalCanvasCaller
+from jarvis.journal.external_canvas import ExternalCanvasCaller, SpeechOrigin
 from jarvis.mcp_mode.speak import (
     SpeakError,
     SpeakQueued,
@@ -148,7 +148,7 @@ async def _send_unauthorized(send: Send) -> None:
 
 
 def speak_tool_description(settings: McpModeSettings) -> str:
-    if settings.canvas_speech == "verbatim":
+    if settings.canvas_speech == SpeechOrigin.VERBATIM.value:
         canvas_only = "Jarvis reads the canvas itself aloud."
     else:
         canvas_only = (

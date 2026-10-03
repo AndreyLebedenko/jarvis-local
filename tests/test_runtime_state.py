@@ -194,7 +194,7 @@ def _voice_guide_bus() -> tuple[EventBus, _Recorder]:
 
 
 def _queue(length: int, phase: VoiceGuidePhase) -> VoiceGuideQueueChanged:
-    return VoiceGuideQueueChanged(length=length, in_flight=length > 0, phase=phase)
+    return VoiceGuideQueueChanged(length=length, phase=phase)
 
 
 async def test_guide_phases_drive_the_orb_through_thinking_and_speaking():

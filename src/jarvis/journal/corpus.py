@@ -38,6 +38,8 @@ _SCHEMA_VERSION_KEY = "schema_version"
 # The mode-3 spoken derivative lives in the journal event's metadata; the
 # locator FTS (story-v1.9.1 task 3) projects it, the canonical FTS never sees it.
 SPOKEN_DERIVATIVE_METADATA_KEY = "spoken_derivative"
+SPOKEN_DERIVATIVE_INTERRUPTED_METADATA_KEY = "spoken_derivative_interrupted"
+SPOKEN_DERIVATIVE_TRUNCATED_METADATA_KEY = "spoken_derivative_truncated"
 _QUERY_TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
 
 

@@ -68,7 +68,7 @@ def acquire_single_instance(
 
 class Win32MutexApi:
     def __init__(self) -> None:
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.CreateMutexW.argtypes = [
             ctypes.c_void_p,
             ctypes.c_int,
@@ -87,7 +87,7 @@ class Win32MutexApi:
         handle = self._kernel32.CreateMutexW(None, False, name)
         error = ctypes.get_last_error()
         if not handle:
-            raise ctypes.WinError(error)  # type: ignore[attr-defined]
+            raise ctypes.WinError(error)
         return MutexCreation(
             handle=handle, already_exists=error == _ERROR_ALREADY_EXISTS
         )
@@ -97,7 +97,7 @@ class Win32MutexApi:
 
 
 def show_already_running_message_box(message: str) -> None:
-    user32 = ctypes.WinDLL("user32", use_last_error=True)  # type: ignore[attr-defined]
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.MessageBoxW.argtypes = [
         ctypes.c_void_p,
         ctypes.c_wchar_p,

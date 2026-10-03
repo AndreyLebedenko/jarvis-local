@@ -6,7 +6,11 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from jarvis.core.bus import EventBus
-from jarvis.journal.corpus import SPOKEN_DERIVATIVE_METADATA_KEY
+from jarvis.journal.corpus import (
+    SPOKEN_DERIVATIVE_INTERRUPTED_METADATA_KEY,
+    SPOKEN_DERIVATIVE_METADATA_KEY,
+    SPOKEN_DERIVATIVE_TRUNCATED_METADATA_KEY,
+)
 from jarvis.journal.events import (
     JournalEvent,
     JournalEventAppended,
@@ -119,7 +123,7 @@ class JournalRecorder:
         # HistoryCorpusRepository._effective_text) - same reason "outcome"
         # above is metadata and not text.
         if spoken_derivative is not None:
-            metadata["spoken_derivative"] = spoken_derivative
+            metadata[SPOKEN_DERIVATIVE_METADATA_KEY] = spoken_derivative
         # Deliberately not folded into `outcome`: outcome describes `text`
         # (the turn's own answer), which is complete here regardless - only
         # the derivative rendering was cut short. Reusing outcome for that
@@ -127,9 +131,9 @@ class JournalRecorder:
         # case misreport a complete answer as unfinished. The same holds
         # for a derivative cut at its own length cap.
         if spoken_derivative_interrupted:
-            metadata["spoken_derivative_interrupted"] = True
+            metadata[SPOKEN_DERIVATIVE_INTERRUPTED_METADATA_KEY] = True
         if spoken_derivative_truncated:
-            metadata["spoken_derivative_truncated"] = True
+            metadata[SPOKEN_DERIVATIVE_TRUNCATED_METADATA_KEY] = True
         self._schedule(
             self._append_event(
                 session_id=session_id,
@@ -178,7 +182,7 @@ class JournalRecorder:
         if spoken_derivative is not None:
             metadata[SPOKEN_DERIVATIVE_METADATA_KEY] = spoken_derivative
         if spoken_derivative_truncated:
-            metadata["spoken_derivative_truncated"] = True
+            metadata[SPOKEN_DERIVATIVE_TRUNCATED_METADATA_KEY] = True
         self._schedule(
             self._append_event(
                 session_id=session_id,

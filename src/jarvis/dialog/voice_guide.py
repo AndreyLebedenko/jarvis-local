@@ -95,12 +95,9 @@ class VoiceGuidePhase(Enum):
 @dataclass(frozen=True)
 class VoiceGuideQueueChanged:
     """Published on every queue change. `length` counts unfinished requests;
-    `in_flight` says one of them is being generated or spoken right now.
-    `phase` is that item's finer-grained step, for a UI that shows what the
-    guide is doing rather than only that something is."""
+    `phase` says what the one in flight is doing."""
 
     length: int
-    in_flight: bool
     phase: VoiceGuidePhase = VoiceGuidePhase.IDLE
 
 
@@ -483,7 +480,6 @@ class VoiceGuideService:
         self._wakeup.set()
         event = VoiceGuideQueueChanged(
             length=self.queue_length,
-            in_flight=self._current is not None,
             phase=self._phase_of(self._current),
         )
         self._run_in_background(self._bus.publish(VoiceGuideQueueChanged, event))

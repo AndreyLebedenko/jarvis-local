@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from _mcp_mode_support import DERIVATIVE_TEXT, external_canvas_event
+
 from jarvis.journal import (
     HistoryCorpusRepository,
     HistorySearchOrder,
@@ -14,6 +16,11 @@ from jarvis.journal import (
     JournalSearchIndex,
     JournalSessionSummary,
     JournalStore,
+)
+from jarvis.journal.external_canvas import (
+    MCP_CANVAS_SOURCE,
+    SpeechOrigin,
+    SpeechStatus,
 )
 
 
@@ -606,18 +613,12 @@ class _StaticRetrievalService:
 def _external_canvas_fixture(tmp_path: Path) -> JournalSearchIndex:
     store = JournalStore(tmp_path / "journal")
     store.append(
-        _event(
+        external_canvas_event(
             session_id="20260716-153000-ab12",
             timestamp="2026-07-16T15:30:00+01:00",
-            role="assistant",
-            source="mcp_canvas",
-            text="Реле перегрелось после обеда.",
-            metadata={
-                "caller": {"name": "claude-code", "version": None},
-                "speech_origin": "derivative",
-                "speech_status": "spoken",
-                "spoken_derivative": "напоминаю, реле перегрелось из-за пыли",
-            },
+            speech_origin=SpeechOrigin.DERIVATIVE,
+            speech_status=SpeechStatus.SPOKEN,
+            derivative=DERIVATIVE_TEXT,
         )
     )
     index = JournalSearchIndex(store, tmp_path / "derived")
@@ -633,7 +634,7 @@ def test_canonical_search_hit_of_an_external_canvas_carries_its_caller(
     hits = index.search("перегрелось после обеда")
 
     assert len(hits) == 1
-    assert hits[0].source == "mcp_canvas"
+    assert hits[0].source == MCP_CANVAS_SOURCE
     assert hits[0].caller_name == "claude-code"
 
 
@@ -646,7 +647,7 @@ def test_locator_search_hit_of_an_external_canvas_carries_its_caller(
 
     assert len(hits) == 1
     assert hits[0].kind == "locator"
-    assert hits[0].source == "mcp_canvas"
+    assert hits[0].source == MCP_CANVAS_SOURCE
     assert hits[0].caller_name == "claude-code"
 
 

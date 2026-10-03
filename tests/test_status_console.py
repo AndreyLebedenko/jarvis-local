@@ -4,6 +4,7 @@ import re
 from dataclasses import replace
 
 import pytest
+from _mcp_mode_support import DERIVATIVE_TEXT, external_canvas_event
 
 from jarvis.audio.tts_mute import TtsMuteState, TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
@@ -36,6 +37,11 @@ from jarvis.inputs.camera import (
     CameraStateChanged,
 )
 from jarvis.journal import JournalEvent, JournalSearchHit, JournalStore
+from jarvis.journal.external_canvas import (
+    MCP_CANVAS_SOURCE,
+    SpeechOrigin,
+    SpeechStatus,
+)
 from jarvis.mcp_mode.server import McpServerState, McpServerStatusChanged
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
@@ -149,7 +155,7 @@ def test_blank_context_session_payload_carries_new_context_title_kind(tmp_path):
 def test_external_canvas_feed_payload_carries_its_caller_and_speech():
     payload = journal_event_payload(_external_canvas_event(), _media_url)
 
-    assert payload["source"] == "mcp_canvas"
+    assert payload["source"] == MCP_CANVAS_SOURCE
     assert payload["metadata"]["caller"]["name"] == "claude-code"
     assert payload["metadata"]["speech_origin"] == "derivative"
     assert payload["metadata"]["speech_status"] == "muted"
@@ -224,20 +230,12 @@ def _assistant_event() -> JournalEvent:
 
 
 def _external_canvas_event() -> JournalEvent:
-    return JournalEvent(
+    return external_canvas_event(
         session_id="20260719-100000-ab12",
         timestamp="2026-07-19T10:00:00+01:00",
-        source="mcp_canvas",
-        role="assistant",
-        text="Реле перегрелось после обеда.",
-        media=[],
-        transcript=None,
-        metadata={
-            "caller": {"name": "claude-code", "version": None},
-            "speech_origin": "derivative",
-            "speech_status": "muted",
-            "spoken_derivative": "напоминаю, реле перегрелось из-за пыли",
-        },
+        speech_origin=SpeechOrigin.DERIVATIVE,
+        speech_status=SpeechStatus.MUTED,
+        derivative=DERIVATIVE_TEXT,
     )
 
 
@@ -264,7 +262,7 @@ def test_mcp_server_payload_never_carries_the_failure_reason():
 
 def test_voice_guide_queue_payload_reports_length_and_the_phase():
     payload = voice_guide_queue_payload(
-        VoiceGuideQueueChanged(length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING)
+        VoiceGuideQueueChanged(length=2, phase=VoiceGuidePhase.SPEAKING)
     )
 
     assert payload == {"length": 2, "phase": "speaking"}
@@ -1433,10 +1431,44 @@ def test_the_voice_guide_block_is_rendered_only_in_mcp_run_mode():
     body = app_js.split("function renderVoiceGuideBlock(")[1].split("\n}")[0]
     card = app_js.split("function _voiceGuideCard(")[1].split("\n}")[0]
 
-    assert 'data-run-mode") !== "mcp"' in body
+    assert 'data-run-mode") !== RUN_MODE.MCP' in body
     assert "return;" in body
     assert body.index("return;") < body.index("_voiceGuideCard()")
     assert 'document.createElement("section")' in card
+
+
+def test_the_run_mode_and_external_source_vocabulary_lives_in_one_js_contract():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    contract_js = (UI_DIR / "contract.js").read_text(encoding="utf-8")
+
+    assert 'const RUN_MODE = { NORMAL: "normal", MCP: "mcp" };' in contract_js
+    assert 'const MCP_CANVAS_SOURCE = "mcp_canvas";' in contract_js
+    # Both surfaces compare against the constants, never against a literal.
+    for function_body in (
+        app_js.split("function applyRunMode(")[1].split("\n}")[0],
+        app_js.split("function renderVoiceGuideBlock(")[1].split("\n}")[0],
+        app_js.split("function _journalExternalAnswerLabel(")[1].split("\n}")[0],
+        app_js.split("function _journalExternalAnswerDetail(")[1].split("\n}")[0],
+    ):
+        assert '"mcp"' not in function_body
+    for filename in ("app.js", "touchstrip.js"):
+        source = (UI_DIR / filename).read_text(encoding="utf-8")
+        assert '"mcp_canvas"' not in source, filename
+
+
+def test_the_js_contract_run_mode_and_source_match_python():
+    """Same guard as test_ui_qa.py's RUNTIME_STATES check: the JS mirror is a
+    hand-written copy, so it is pinned to the Python values it mirrors."""
+    contract_js = (UI_DIR / "contract.js").read_text(encoding="utf-8")
+
+    run_mode = re.search(r"const RUN_MODE = \{(.*?)\};", contract_js, re.S)
+    assert run_mode is not None
+    assert re.findall(r': "([a-z]+)"', run_mode.group(1)) == [
+        mode.value for mode in RunMode
+    ]
+    source = re.search(r'const MCP_CANVAS_SOURCE = "(\w+)";', contract_js)
+    assert source is not None
+    assert source.group(1) == MCP_CANVAS_SOURCE
 
 
 def test_a_failed_voice_guide_server_points_at_the_event_log_instead_of_a_reason():
