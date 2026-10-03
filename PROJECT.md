@@ -4392,9 +4392,10 @@ server-state UI facts (task 6) are not recorded here yet.
   `RuntimeStateTracker(ready_state=...)` is the single owner, so warm-up
   completion and turn completion both land there.
   The guide moves it too, through the phase of `VoiceGuideQueueChanged`
-  (`IDLE` / `PREPARING` / `SPEAKING`, additive beside `in_flight`, which stays
-  for task 7 to reconcile): `PREPARING` is `THINKING` with substatus
-  `voice_guide_preparing`, `SPEAKING` is `SPEAKING` with `voice_guide_speaking`,
+  (`IDLE` / `PREPARING` / `SPEAKING`; it replaced the older `in_flight` flag,
+  which said only that an item was in flight): `PREPARING` is `THINKING` with
+  substatus `voice_guide_preparing`, `SPEAKING` is `SPEAKING` with
+  `voice_guide_speaking`,
   `IDLE` with an empty queue is back to the ready state. An `IDLE` event that
   still has items queued moves nothing - the next item publishes its own phase,
   and resting in between would blink the orb. The tracker reacts to a queue

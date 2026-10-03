@@ -44,7 +44,7 @@ class RuntimeStateChanged:
     substatus_text: str | None = None
 
 
-_EMPTY_QUEUE = VoiceGuideQueueChanged(length=0, in_flight=False)
+_EMPTY_QUEUE = VoiceGuideQueueChanged(length=0)
 
 
 class RuntimeStateTracker:

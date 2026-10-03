@@ -28,7 +28,7 @@ function _applyStateSnapshot(state) {
   applyModelLabel(state.model);
   applyDataLocality(state.data_locality);
   applyDebugMode(state.debug || { enabled: false });
-  applyRunMode(state.run_mode || { mode: "normal", refused: [] });
+  applyRunMode(state.run_mode || { mode: RUN_MODE.NORMAL, refused: [] });
   applyThinkingMode(state.thinking);
   applyVisibilityMode(state.visibility);
 }

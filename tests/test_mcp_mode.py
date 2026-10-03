@@ -7,7 +7,13 @@ from aiohttp.web_urldispatcher import StaticResource
 from jarvis import app as app_module
 from jarvis.app import parse_args
 from jarvis.core.bus import EventBus
-from jarvis.core.config import ConfigError, McpModeSettings, Settings, load_settings
+from jarvis.core.config import (
+    MCP_MODE_CANVAS_SPEECH_VALUES,
+    ConfigError,
+    McpModeSettings,
+    Settings,
+    load_settings,
+)
 from jarvis.core.run_mode import (
     MCP_MODE_VERDICTS,
     ActionRefusal,
@@ -19,6 +25,7 @@ from jarvis.core.run_mode import (
     Verdict,
 )
 from jarvis.core.single_instance import ALREADY_RUNNING_EXIT_CODE, HeldInstance
+from jarvis.journal.external_canvas import SpeechOrigin
 from jarvis.mcp_mode.server import McpPortUnavailableError
 from jarvis.mcp_mode.token import McpTokenFileError
 from jarvis.ui.status_console import StatusConsoleApi
@@ -116,6 +123,16 @@ def _load(tmp_path, body: str) -> Settings:
     config_path = tmp_path / "config.toml"
     config_path.write_text(body, encoding="utf-8")
     return load_settings(config_path, ui_path=tmp_path / "no-such-config.ui.toml")
+
+
+def test_the_canvas_speech_setting_offers_exactly_the_speech_origins():
+    """core.config is stdlib-only (conftest.assert_stdlib_only_imports), so it
+    cannot import SpeechOrigin and spells the two accepted values itself. This
+    is the one place that keeps the two spellings from drifting."""
+    assert set(MCP_MODE_CANVAS_SPEECH_VALUES) == {
+        SpeechOrigin.DERIVATIVE.value,
+        SpeechOrigin.VERBATIM.value,
+    }
 
 
 def test_mcp_mode_section_defaults():

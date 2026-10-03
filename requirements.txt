@@ -3,6 +3,9 @@ aiohttp>=3.11
 mcp>=1.30,<2
 uvicorn>=0.37
 starlette>=0.52
+# Imported directly for the speak tool's Field annotations (mcp_mode/server.py),
+# not only pulled in by the MCP SDK.
+pydantic>=2.13
 # torchaudio>=2.9 drops its built-in wav decoder in favor of the separate
 # torchcodec package - silero-vad's read_audio() (test fixture loading only)
 # then fails with "torchcodec is required". Capped below 2.9 to keep the

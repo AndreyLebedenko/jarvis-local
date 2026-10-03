@@ -11,6 +11,12 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 import uvicorn
+from _mcp_mode_support import (
+    FakeVoiceGuide,
+    RunningMcpServer,
+    ServerStatusLog,
+    serving_mcp_server,
+)
 from mcp import ClientSession, types
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.streamable_http import StreamableHTTPServerTransport
@@ -18,9 +24,6 @@ from mcp.server.streamable_http import StreamableHTTPServerTransport
 from jarvis.core.bus import EventBus
 from jarvis.core.config import McpModeSettings
 from jarvis.dialog.voice_guide import (
-    EnqueueResult,
-    VoiceGuideAccepted,
-    VoiceGuideRejected,
     VoiceGuideRejection,
     VoiceGuideRequest,
 )
@@ -59,76 +62,19 @@ _JSON_HEADERS = {
 }
 
 
-class _FakeVoiceGuide:
-    """Accepts or rejects synchronously. The speech origin is whatever the
-    test configures, never derived from the request: the real rule lives in
-    VoiceGuideService and is tested there."""
+def _serving(
+    voice_guide: FakeVoiceGuide, settings: McpModeSettings = _SETTINGS
+) -> AsyncIterator[RunningMcpServer]:
+    def build(bus: EventBus) -> McpModeServer:
+        return McpModeServer(
+            listener=bind_mcp_listener(0),
+            token=TOKEN,
+            settings=settings,
+            voice_guide=voice_guide,
+            bus=bus,
+        )
 
-    def __init__(
-        self,
-        rejection: VoiceGuideRejection | None = None,
-        origin: SpeechOrigin = SpeechOrigin.DERIVATIVE,
-    ) -> None:
-        self.requests: list[VoiceGuideRequest] = []
-        self._rejection = rejection
-        self._origin = origin
-
-    def enqueue(self, request: VoiceGuideRequest) -> EnqueueResult:
-        if self._rejection is not None:
-            return VoiceGuideRejected(self._rejection)
-        self.requests.append(request)
-        return VoiceGuideAccepted(len(self.requests), self._origin)
-
-
-class _StatusLog:
-    def __init__(self, bus: EventBus) -> None:
-        self.events: list[McpServerStatusChanged] = []
-        self.listening = asyncio.Event()
-        bus.subscribe(McpServerStatusChanged, self._record)
-
-    async def _record(self, event: McpServerStatusChanged) -> None:
-        self.events.append(event)
-        if event.state is McpServerState.LISTENING:
-            self.listening.set()
-
-
-class _Running:
-    def __init__(
-        self, server: McpModeServer, task: asyncio.Task, status: _StatusLog
-    ) -> None:
-        self.server = server
-        self.task = task
-        self.status = status
-
-    @property
-    def url(self) -> str:
-        return f"http://127.0.0.1:{self.server.port}/mcp"
-
-    async def stop(self) -> None:
-        self.task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self.task
-
-
-@contextlib.asynccontextmanager
-async def _serving(
-    voice_guide: _FakeVoiceGuide, settings: McpModeSettings = _SETTINGS
-) -> AsyncIterator[_Running]:
-    bus = EventBus()
-    status = _StatusLog(bus)
-    server = McpModeServer(
-        listener=bind_mcp_listener(0),
-        token=TOKEN,
-        settings=settings,
-        voice_guide=voice_guide,
-        bus=bus,
-    )
-    running = _Running(server, server.start(), status)
-    try:
-        await asyncio.wait_for(status.listening.wait(), 5)
-        yield running
-    finally:
-        await running.stop()
+    return serving_mcp_server(build=build)
 
 
 @contextlib.asynccontextmanager
@@ -172,7 +118,7 @@ def _build_server(listener: socket.socket) -> McpModeServer:
         listener=listener,
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=EventBus(),
     )
 
@@ -185,7 +131,7 @@ def _build_server(listener: socket.socket) -> McpModeServer:
     [{}, {"Authorization": "Bearer wrong-token"}, {"Authorization": TOKEN}],
 )
 async def test_a_request_without_the_right_bearer_token_gets_401(headers):
-    guide = _FakeVoiceGuide()
+    guide = FakeVoiceGuide()
     async with _serving(guide) as running, httpx.AsyncClient() as http:
         response = await http.post(
             running.url, json=_INITIALIZE, headers={**_JSON_HEADERS, **headers}
@@ -197,7 +143,7 @@ async def test_a_request_without_the_right_bearer_token_gets_401(headers):
 
 
 async def test_an_unauthorized_tool_call_never_reaches_the_voice_guide():
-    guide = _FakeVoiceGuide()
+    guide = FakeVoiceGuide()
     call = {
         "jsonrpc": "2.0",
         "id": 2,
@@ -216,7 +162,7 @@ async def test_an_unauthorized_tool_call_never_reaches_the_voice_guide():
 
 
 async def test_the_bearer_scheme_is_case_insensitive():
-    async with _serving(_FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
+    async with _serving(FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
         response = await http.post(
             running.url,
             json=_INITIALIZE,
@@ -227,7 +173,7 @@ async def test_the_bearer_scheme_is_case_insensitive():
 
 
 async def test_a_foreign_host_header_is_rejected_even_with_a_valid_token():
-    async with _serving(_FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
+    async with _serving(FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
         response = await http.post(
             running.url,
             json=_INITIALIZE,
@@ -260,7 +206,7 @@ def test_the_token_is_absent_from_the_repr_and_str_of_server_objects():
 
 async def test_the_server_lists_exactly_the_speak_tool_with_its_schema():
     async with (
-        _serving(_FakeVoiceGuide()) as running,
+        _serving(FakeVoiceGuide()) as running,
         _client(running.url) as (
             session,
             _,
@@ -281,7 +227,7 @@ async def test_the_server_lists_exactly_the_speak_tool_with_its_schema():
 
 async def test_the_tool_description_covers_what_the_caller_must_know():
     async with (
-        _serving(_FakeVoiceGuide()) as running,
+        _serving(FakeVoiceGuide()) as running,
         _client(running.url) as (
             session,
             _,
@@ -297,7 +243,7 @@ async def test_the_tool_description_covers_what_the_caller_must_know():
 
 
 async def test_a_call_enqueues_one_request_carrying_the_caller_identity():
-    guide = _FakeVoiceGuide()
+    guide = FakeVoiceGuide()
     async with (
         _serving(guide) as running,
         _client(running.url) as (
@@ -329,7 +275,7 @@ def test_the_server_sees_only_a_synchronous_enqueue_so_it_cannot_wait_for_speech
 
 
 async def test_a_call_returns_the_queue_position_and_origin_it_was_given():
-    guide = _FakeVoiceGuide(origin=SpeechOrigin.VERBATIM)
+    guide = FakeVoiceGuide(origin=SpeechOrigin.VERBATIM)
     async with _serving(guide) as running:
         result = await _speak(running.url, canvas="An answer.")
 
@@ -341,14 +287,14 @@ async def test_a_call_returns_the_queue_position_and_origin_it_was_given():
 
 
 async def test_a_queued_result_carries_the_same_payload_as_structured_content():
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         result = await _speak(running.url, canvas="An answer.")
 
     assert result.structuredContent == _payload(result)
 
 
 async def test_guidance_with_spoken_text_is_queued_with_guidance_ignored():
-    async with _serving(_FakeVoiceGuide(origin=SpeechOrigin.CALLER)) as running:
+    async with _serving(FakeVoiceGuide(origin=SpeechOrigin.CALLER)) as running:
         result = await _speak(
             running.url, canvas="An answer.", spoken_text="Read.", guidance="Brief."
         )
@@ -372,7 +318,7 @@ async def test_guidance_with_spoken_text_is_queued_with_guidance_ignored():
     ],
 )
 async def test_an_invalid_call_is_a_tool_error_starting_with_its_code(arguments, code):
-    guide = _FakeVoiceGuide()
+    guide = FakeVoiceGuide()
     async with _serving(guide) as running:
         result = await _speak(running.url, **arguments)
 
@@ -390,7 +336,7 @@ async def test_an_invalid_call_is_a_tool_error_starting_with_its_code(arguments,
 async def test_a_rejected_enqueue_is_a_tool_error_starting_with_its_code(
     rejection, code
 ):
-    async with _serving(_FakeVoiceGuide(rejection)) as running:
+    async with _serving(FakeVoiceGuide(rejection)) as running:
         result = await _speak(running.url, canvas="An answer.")
 
     assert _error_text(result).startswith(f"{code}: ")
@@ -426,7 +372,7 @@ def test_a_port_in_use_fails_with_the_port_and_its_config_key():
 
 
 async def test_the_server_publishes_listening_with_its_port_then_stopped():
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         port = running.server.port
 
     assert running.status.events == [
@@ -437,12 +383,12 @@ async def test_the_server_publishes_listening_with_its_port_then_stopped():
 
 async def test_cancelling_during_startup_still_shuts_the_server_down():
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
     server = McpModeServer(
         listener=bind_mcp_listener(0),
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=bus,
     )
     task = server.start()
@@ -462,7 +408,7 @@ async def test_cancelling_during_startup_still_shuts_the_server_down():
 
 
 async def test_cancelling_the_server_ends_its_task_as_cancelled():
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         pass
 
     assert running.task.cancelled()
@@ -470,13 +416,13 @@ async def test_cancelling_the_server_ends_its_task_as_cancelled():
 
 async def test_a_server_that_cannot_serve_publishes_failed_and_raises():
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
     listener = bind_mcp_listener(0)
     server = McpModeServer(
         listener=listener,
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=bus,
     )
     listener.close()
@@ -511,7 +457,7 @@ async def test_stopping_with_an_open_session_stream_is_fast_clean_and_frees_the_
             stream_opened.set()
 
     measured: dict[str, float] = {}
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         port = running.server.port
         # The client outlives its server here, so its own teardown may fail.
         with contextlib.suppress(Exception):
@@ -536,7 +482,7 @@ async def test_stopping_with_an_open_session_stream_is_fast_clean_and_frees_the_
 async def test_the_token_appears_in_no_log_record(caplog):
     caplog.set_level(logging.DEBUG)
 
-    async with _serving(_FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
+    async with _serving(FakeVoiceGuide()) as running, httpx.AsyncClient() as http:
         await _speak(running.url, canvas="An answer.")
         await http.post(
             running.url,
@@ -589,10 +535,12 @@ async def test_prepare_returns_a_server_on_the_configured_port_and_token(tmp_pat
         free_port = probe.getsockname()[1]
     settings = McpModeSettings(port=free_port, token_file=str(token_file))
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
 
-    server = prepare_mcp_mode_server(settings, _FakeVoiceGuide(), bus)
-    running = _Running(server, server.start(), status)
+    server = prepare_mcp_mode_server(settings, FakeVoiceGuide(), bus)
+    running = RunningMcpServer(
+        server=server, task=server.start(), bus=bus, status=status
+    )
     try:
         await asyncio.wait_for(status.listening.wait(), 5)
         result = await _speak(running.url, canvas="An answer.")
@@ -612,7 +560,7 @@ def test_prepare_fails_on_a_broken_token_file_without_binding_the_port(tmp_path)
     settings = McpModeSettings(port=free_port, token_file=str(token_file))
 
     with pytest.raises(McpTokenFileError) as raised:
-        prepare_mcp_mode_server(settings, _FakeVoiceGuide(), EventBus())
+        prepare_mcp_mode_server(settings, FakeVoiceGuide(), EventBus())
 
     assert raised.value.token_file == token_file
     bind_mcp_listener(free_port).close()
@@ -655,7 +603,7 @@ async def _until(condition, timeout: float = 5) -> None:
 
 
 def test_the_session_manager_bounds_idle_sessions_and_their_number():
-    mcp = build_speak_mcp(_SETTINGS, _FakeVoiceGuide())
+    mcp = build_speak_mcp(_SETTINGS, FakeVoiceGuide())
     mcp.streamable_http_app()
 
     assert mcp.session_manager.session_idle_timeout == 1800
@@ -682,7 +630,7 @@ async def test_further_cancels_during_shutdown_do_not_abort_it(further_cancels):
         if response.request.method == "GET" and response.status_code == 200:
             stream_opened.set()
 
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         port = running.server.port
         # The client outlives its server here, so its own teardown may fail.
         with contextlib.suppress(Exception):
@@ -718,14 +666,14 @@ async def test_a_failure_mid_run_is_logged_at_once_and_leaves_nothing_running(
 
     monkeypatch.setattr(uvicorn.Server, "main_loop", failing_main_loop)
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
     listener = bind_mcp_listener(0)
     port = listener.getsockname()[1]
     server = McpModeServer(
         listener=listener,
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=bus,
     )
     task = server.start()
@@ -756,13 +704,13 @@ async def test_a_stop_nobody_asked_for_is_logged_as_a_warning(monkeypatch, caplo
 
     monkeypatch.setattr(uvicorn.Server, "main_loop", returning_main_loop)
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
     listener = bind_mcp_listener(0)
     server = McpModeServer(
         listener=listener,
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=bus,
     )
 
@@ -803,14 +751,14 @@ async def test_a_failure_during_a_requested_stop_still_shuts_uvicorn_down(
 
     monkeypatch.setattr(uvicorn.Server, "main_loop", main_loop_failing_on_demand)
     bus = EventBus()
-    status = _StatusLog(bus)
+    status = ServerStatusLog(bus)
     listener = bind_mcp_listener(0)
     port = listener.getsockname()[1]
     server = McpModeServer(
         listener=listener,
         token=TOKEN,
         settings=_SETTINGS,
-        voice_guide=_FakeVoiceGuide(),
+        voice_guide=FakeVoiceGuide(),
         bus=bus,
     )
     task = server.start()
@@ -843,7 +791,7 @@ async def test_a_session_that_cannot_be_terminated_does_not_block_the_stop(
 
     monkeypatch.setattr(StreamableHTTPServerTransport, "terminate", failing_terminate)
 
-    async with _serving(_FakeVoiceGuide()) as running:
+    async with _serving(FakeVoiceGuide()) as running:
         port = running.server.port
         with contextlib.suppress(Exception):
             async with _client(running.url, terminate_on_close=False):

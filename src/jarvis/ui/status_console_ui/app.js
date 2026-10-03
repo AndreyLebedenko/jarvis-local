@@ -63,7 +63,7 @@ function _applyStateSnapshot(state) {
   applyDataLocality(state.data_locality);
   applyDataSource(state.data_source || { source: "local_only" });
   applyDebugMode(state.debug || { enabled: false });
-  applyRunMode(state.run_mode || { mode: "normal", refused: [] });
+  applyRunMode(state.run_mode || { mode: RUN_MODE.NORMAL, refused: [] });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
   applyMcpServerState(state.mcp_server);
   applyVoiceGuideQueueState(state.voice_guide_queue);
@@ -256,11 +256,11 @@ function isActionRefused(action) {
 }
 
 function applyRunMode(payload) {
-  const mode = (payload && payload.mode) || "normal";
+  const mode = (payload && payload.mode) || RUN_MODE.NORMAL;
   _refusedActions = new Set((payload && payload.refused) || []);
   document.documentElement.setAttribute("data-run-mode", mode);
   const badge = document.getElementById("runModeBadge");
-  if (badge) badge.classList.toggle("show", mode === "mcp");
+  if (badge) badge.classList.toggle("show", mode === RUN_MODE.MCP);
   _disableRefusedControls();
 }
 
@@ -326,7 +326,9 @@ function applyVoiceGuideQueueState(payload) {
 }
 
 function renderVoiceGuideBlock() {
-  if (document.documentElement.getAttribute("data-run-mode") !== "mcp") return;
+  if (document.documentElement.getAttribute("data-run-mode") !== RUN_MODE.MCP) {
+    return;
+  }
   const server = _mcpServerState;
   const rows = [
     _voiceGuideRow(
@@ -3843,7 +3845,7 @@ function _journalMessageSourceLabel(event) {
 // rides in the label. `plainLabel` is what the calling surface shows for
 // every other source.
 function _journalExternalAnswerLabel(source, callerName, plainLabel) {
-  if (source !== "mcp_canvas") return plainLabel;
+  if (source !== MCP_CANVAS_SOURCE) return plainLabel;
   const label = _journalSourceLabel(source);
   return callerName ? `${label} - ${callerName}` : label;
 }
@@ -3857,7 +3859,7 @@ function _journalCallerName(event) {
 // Which text was spoken, and - only when it was not `spoken` - what kept
 // the user from hearing it.
 function _journalExternalAnswerDetail(event) {
-  if (event.source !== "mcp_canvas" || !event.metadata) return null;
+  if (event.source !== MCP_CANVAS_SOURCE || !event.metadata) return null;
   const fragment = document.createDocumentFragment();
   const origin = event.metadata.speech_origin;
   if (typeof origin === "string" && origin) {

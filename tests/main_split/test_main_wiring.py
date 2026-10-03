@@ -358,19 +358,20 @@ async def test_wire_status_console_projects_the_voice_guide_server_and_queue():
     )
     await app.bus.publish(
         VoiceGuideQueueChanged,
-        VoiceGuideQueueChanged(
-            length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-        ),
+        VoiceGuideQueueChanged(length=2, phase=VoiceGuidePhase.SPEAKING),
     )
 
-    assert [
+    # The payload shapes are pinned by tests/test_status_console.py; what only
+    # this test can show is that each event arrived with its own values, not a
+    # stale or default block.
+    blocks = [
         call
         for call in transport.calls
         if call[0] in ("mcp_server", "voice_guide_queue")
-    ] == [
-        ("mcp_server", {"state": "listening", "port": 8765}),
-        ("voice_guide_queue", {"length": 2, "phase": "speaking"}),
     ]
+    assert [call[0] for call in blocks] == ["mcp_server", "voice_guide_queue"]
+    assert blocks[0][1]["port"] == 8765
+    assert blocks[1][1]["length"] == 2
     unwire(app, subscriptions)
 
 

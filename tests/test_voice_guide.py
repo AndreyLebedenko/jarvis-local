@@ -564,14 +564,10 @@ async def test_bus_event_follows_every_queue_change(make_rig):
     await _until(lambda: len(rig.queue_events) == 4)
 
     assert rig.queue_events == [
-        VoiceGuideQueueChanged(length=1, in_flight=False),
-        VoiceGuideQueueChanged(
-            length=1, in_flight=True, phase=VoiceGuidePhase.PREPARING
-        ),
-        VoiceGuideQueueChanged(
-            length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
-        ),
-        VoiceGuideQueueChanged(length=0, in_flight=False),
+        VoiceGuideQueueChanged(length=1),
+        VoiceGuideQueueChanged(length=1, phase=VoiceGuidePhase.PREPARING),
+        VoiceGuideQueueChanged(length=1, phase=VoiceGuidePhase.SPEAKING),
+        VoiceGuideQueueChanged(length=0),
     ]
 
 
@@ -627,7 +623,7 @@ async def test_interrupt_publishes_the_emptied_queue(make_rig):
     await rig.settled(2)
     await _until(lambda: rig.queue_events[-1].length == 0)
 
-    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0, in_flight=False)
+    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0)
 
 
 # --- interrupt -------------------------------------------------------------
@@ -1376,7 +1372,7 @@ async def test_close_publishes_a_final_empty_queue_event(make_rig):
 
     await rig.stop()
 
-    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0, in_flight=False)
+    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0)
 
 
 async def test_close_returns_only_after_a_slow_subscriber_got_every_queue_event(
@@ -1396,7 +1392,7 @@ async def test_close_returns_only_after_a_slow_subscriber_got_every_queue_event(
     await rig.stop()
 
     assert delivered == rig.queue_events
-    assert delivered[-1] == VoiceGuideQueueChanged(length=0, in_flight=False)
+    assert delivered[-1] == VoiceGuideQueueChanged(length=0)
 
 
 async def test_start_twice_is_an_error(make_rig):
@@ -1433,7 +1429,7 @@ async def test_close_after_the_worker_died_mid_item_publishes_an_empty_queue(mak
 
     await rig.stop()
 
-    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0, in_flight=False)
+    assert rig.queue_events[-1] == VoiceGuideQueueChanged(length=0)
 
 
 # --- failure, truncation --------------------------------------------------

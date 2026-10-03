@@ -32,6 +32,7 @@ from jarvis.journal.corpus import (
     HistorySearchStatus,
     HistorySessionReadStatus,
 )
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.provenance import (
     ProvenanceEligibility,
     ProvenanceSourceKind,
@@ -522,7 +523,11 @@ def test_read_first_event_with_source_returns_the_earliest_matching_event(
     store = JournalStore(tmp_path / "journal")
     session_id = "20260716-153000-ab12"
     for position, (source, text) in enumerate(
-        (("text", "question"), ("mcp_canvas", "first canvas"), ("mcp_canvas", "second"))
+        (
+            ("text", "question"),
+            (MCP_CANVAS_SOURCE, "first canvas"),
+            (MCP_CANVAS_SOURCE, "second"),
+        )
     ):
         store.append(
             _event(
@@ -537,7 +542,7 @@ def test_read_first_event_with_source_returns_the_earliest_matching_event(
     repository = HistoryCorpusRepository(store, tmp_path / "derived")
     repository.rebuild()
 
-    event = repository.read_first_event_with_source(session_id, "mcp_canvas")
+    event = repository.read_first_event_with_source(session_id, MCP_CANVAS_SOURCE)
 
     assert event is not None
     assert event.reference == JournalEventRef(session_id, 1)
@@ -553,11 +558,15 @@ def test_read_first_event_with_source_is_none_when_session_lacks_the_source(
     repository.rebuild()
 
     assert (
-        repository.read_first_event_with_source("20260716-153000-ab12", "mcp_canvas")
+        repository.read_first_event_with_source(
+            "20260716-153000-ab12", MCP_CANVAS_SOURCE
+        )
         is None
     )
     assert (
-        repository.read_first_event_with_source("20260717-090000-cd34", "mcp_canvas")
+        repository.read_first_event_with_source(
+            "20260717-090000-cd34", MCP_CANVAS_SOURCE
+        )
         is None
     )
 
@@ -570,7 +579,9 @@ def test_read_first_event_with_source_is_none_before_the_first_rebuild(
     )
 
     assert (
-        repository.read_first_event_with_source("20260716-153000-ab12", "mcp_canvas")
+        repository.read_first_event_with_source(
+            "20260716-153000-ab12", MCP_CANVAS_SOURCE
+        )
         is None
     )
 

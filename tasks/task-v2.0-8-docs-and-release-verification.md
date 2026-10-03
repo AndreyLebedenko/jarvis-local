@@ -5,7 +5,8 @@
 **Depends on:** tasks v2.0-1 through v2.0-7 completed and green.
 **Executor:** the story's executor profile. Docs and a human-run handoff only.
 No production logic change; if you need one, the story is not done - report
-it instead.
+it instead. One owner-approved exception (2026-10-03): the MCP session
+title placeholder, "What to build" item 0.
 
 ## Summary
 
@@ -30,6 +31,15 @@ real Claude Code client.
 
 ## What to build
 
+0. **MCP session title placeholder (owner, 2026-10-03).** A `--mcp-mode`
+   session has no user turn, so `_journal_session_title_and_kind()`
+   (`src/jarvis/ui/status_console.py`) gives it the voice-only placeholder.
+   Add a separate placeholder kind, localized "MCP session" / "Сессия MCP",
+   chosen when the session's first titled event is an `mcp_canvas` event,
+   following the existing `NEW_CONTEXT_TITLE_KIND` / `VOICE_ONLY_TITLE_KIND`
+   pattern (Python fallback title plus a client-localized kind). Tests in the
+   existing style; a normal voice-only session keeps its placeholder.
+   Handed over from task 2's completion notes; task 6 did not take it.
 1. **`PROJECT.md`:**
    - a new section "Architecture v2.0 (MCP voice guide)" with the settled
      facts: the single-instance mutex; `EXTERNAL_CANVAS` /
@@ -85,7 +95,8 @@ real Claude Code client.
    6. Interrupt: during speech with one item queued, press `Ctrl+Alt+I`:
       speech stops, the queued item is not spoken, and both appear in the
       Journal as interrupted / skipped.
-   7. Journal: the calls appear labeled as external answers with the caller;
+   7. Journal: the session is listed as "MCP session" ("Сессия MCP"); the
+      calls appear labeled as external answers with the caller;
       a Journal search for a canvas phrase finds them; a search for a phrase
       heard only in the guide finds the owning event in the heard-phrase
       group; replay speaks the guide again; generating an annotation for the
@@ -110,6 +121,8 @@ real Claude Code client.
 
 ## Acceptance criteria
 
+- [ ] An `--mcp-mode` session is titled "MCP session" / "Сессия MCP" in the
+      Journal session list; other placeholders are unchanged.
 - [ ] `PROJECT.md` records the v2.0 architecture and the amended locality
       contract; the roadmap marks v2.0 done with its follow-ups.
 - [ ] Both READMEs describe setup and limits of `--mcp-mode` with the exact

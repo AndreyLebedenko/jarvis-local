@@ -849,16 +849,16 @@ def test_feed_row_labels_an_external_answer_with_its_caller():
 
 def test_the_external_answer_source_is_branched_on_in_one_place_only():
     """One helper owns what an external answer looks like, so a second
-    `source === "mcp_canvas"` in a rendering surface could only disagree with
-    it. The detail block's own guard is the one other legitimate branch: it
-    renders the speech lines, not the label."""
+    external-source branch in a rendering surface could only disagree with it.
+    The detail block's own guard is the one other legitimate branch: it renders
+    the speech lines, not the label."""
     label = APP_JS.split("function _journalExternalAnswerLabel(")[1].split("\n}")[0]
-    assert 'source !== "mcp_canvas"' in label
+    assert "source !== MCP_CANVAS_SOURCE" in label
     assert "return plainLabel;" in label
     assert "_journalSourceLabel(source)" in label
     assert "`${label} - ${callerName}`" in label
     surfaces = APP_JS.split("function _journalSearchHitElement(")[1].split("\n}")[0]
-    assert "mcp_canvas" not in surfaces
+    assert "MCP_CANVAS_SOURCE" not in surfaces
     assert (
         "_journalExternalAnswerLabel(" in surfaces
         and "hit.caller_name" in surfaces
@@ -885,7 +885,7 @@ def test_external_answer_detail_names_the_origin_and_a_non_spoken_status():
     only when the speech was not `spoken`, so a spoken answer carries no
     redundant note."""
     body = APP_JS.split("function _journalExternalAnswerDetail(")[1].split("\n}")[0]
-    assert 'event.source !== "mcp_canvas"' in body
+    assert "event.source !== MCP_CANVAS_SOURCE" in body
     assert "event.metadata.speech_origin" in body
     assert '"journal_external_answer_origin_"' in body
     assert "event.metadata.speech_status" in body
