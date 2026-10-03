@@ -65,6 +65,8 @@ function _applyStateSnapshot(state) {
   applyDebugMode(state.debug || { enabled: false });
   applyRunMode(state.run_mode || { mode: "normal", refused: [] });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
+  applyMcpServerState(state.mcp_server);
+  applyVoiceGuideQueueState(state.voice_guide_queue);
   applyTtsState(state.tts || { enabled: true });
   applySoloSessionState(state.solo_session || { enabled: false });
   applyModelLabel(state.model);
@@ -89,6 +91,8 @@ function _applyStateDelta(payload) {
     debug: applyDebugMode,
     run_mode: applyRunMode,
     mcp: applyMcpState,
+    mcp_server: applyMcpServerState,
+    voice_guide_queue: applyVoiceGuideQueueState,
     tts: applyTtsState,
     solo_session: applySoloSessionState,
     model: applyModelLabel,
@@ -302,6 +306,89 @@ function applyMcpState(payload) {
 
   renderToolList("mcpTools", "mcpToolsEmpty", payload.tools || []);
   renderToolList("localTools", "localToolsEmpty", payload.local_tools || []);
+}
+
+// The voice-guide server and the queue in front of it are two events and one
+// block. In NORMAL run mode there is no server and no queue, so nothing is
+// built at all rather than an empty card that reads like a status.
+const UNKNOWN_MCP_SERVER = { state: "unknown", port: null, reason: null };
+let _mcpServerState = UNKNOWN_MCP_SERVER;
+let _voiceGuideQueue = null;
+
+function applyMcpServerState(payload) {
+  _mcpServerState = payload || UNKNOWN_MCP_SERVER;
+  renderVoiceGuideBlock();
+}
+
+function applyVoiceGuideQueueState(payload) {
+  _voiceGuideQueue = payload || null;
+  renderVoiceGuideBlock();
+}
+
+function renderVoiceGuideBlock() {
+  if (document.documentElement.getAttribute("data-run-mode") !== "mcp") return;
+  const server = _mcpServerState;
+  const rows = [
+    _voiceGuideRow(
+      "voice_guide_server_label",
+      uiString("voice_guide_server_" + server.state)
+    ),
+  ];
+  if (server.port !== null && server.port !== undefined) {
+    rows.push(_voiceGuideRow("voice_guide_port_label", String(server.port)));
+  }
+  if (server.state === "failed") {
+    const note = document.createElement("div");
+    note.className = "voice-guide-row voice-guide-note";
+    note.textContent = uiString("voice_guide_server_failed_note");
+    rows.push(note);
+  }
+  if (_voiceGuideQueue !== null) {
+    rows.push(
+      _voiceGuideRow("voice_guide_queue_label", _voiceGuideQueueText(_voiceGuideQueue))
+    );
+  }
+  const card = _voiceGuideCard();
+  card.replaceChildren(card.firstChild, ...rows);
+}
+
+function _voiceGuideQueueText(queue) {
+  return queue.phase === "speaking"
+    ? `${queue.length} - ${uiString("voice_guide_queue_speaking")}`
+    : String(queue.length);
+}
+
+function _voiceGuideRow(labelKey, value) {
+  const row = document.createElement("div");
+  row.className = "voice-guide-row";
+  const label = document.createElement("span");
+  label.className = "voice-guide-key";
+  label.textContent = uiString(labelKey);
+  const text = document.createElement("div");
+  text.className = "voice-guide-value";
+  text.textContent = value;
+  row.append(label, text);
+  return row;
+}
+
+function _voiceGuideCard() {
+  const existing = document.querySelector(".voice-guide-block");
+  if (existing) return existing;
+  const card = document.createElement("section");
+  card.className = "voice-guide-block";
+  const heading = document.createElement("h2");
+  heading.textContent = uiString("voice_guide_block_title");
+  card.appendChild(heading);
+  const anchor = document.querySelector(".action-row");
+  anchor.parentNode.insertBefore(card, anchor);
+  return card;
+}
+
+// Hidden drops what Jarvis is about to say out loud, the way it drops the
+// Journal; the server's own state stays, like the rest of the Status tab.
+function _clearVoiceGuideBlock() {
+  _voiceGuideQueue = null;
+  renderVoiceGuideBlock();
 }
 
 // task-ui-ux-5: the approved icon set (outline style, 24px viewBox,
@@ -771,6 +858,7 @@ function applyVisibilityMode(payload) {
     .forEach((button) => button.classList.toggle("sel", button.dataset.mode === payload.mode));
   syncRadioGroup(document.getElementById("visibilityToggle"));
   renderModules();
+  if (payload.mode === "hidden") _clearVoiceGuideBlock();
   _onJournalVisibilityChanged(payload.mode);
 }
 
@@ -2410,7 +2498,13 @@ function _journalSearchHitElement(hit, highlightMatches) {
   meta.className = "journal-msg-meta";
   const source = document.createElement("span");
   source.className = "journal-msg-source";
-  source.textContent = uiString("journal_source_assistant");
+  // A hit on an external answer carries the caller that sent it; every other
+  // hit keeps the label it has always had.
+  source.textContent = _journalExternalAnswerLabel(
+    hit.source,
+    hit.caller_name,
+    uiString("journal_source_assistant")
+  );
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(hit.timestamp);
   meta.append(source, time);
@@ -2595,7 +2689,7 @@ function _journalEventElement(event, position = null) {
   meta.className = "journal-msg-meta";
   const source = document.createElement("span");
   source.className = "journal-msg-source";
-  source.textContent = _journalSourceLabel(event.source);
+  source.textContent = _journalMessageSourceLabel(event);
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(event.timestamp);
   meta.append(source, time);
@@ -2667,6 +2761,8 @@ function _journalEventElement(event, position = null) {
   if (outcomeDetail !== null) message.appendChild(outcomeDetail);
   const spokenDerivativeDetail = _journalSpokenDerivativeDetail(event);
   if (spokenDerivativeDetail !== null) message.appendChild(spokenDerivativeDetail);
+  const externalAnswerDetail = _journalExternalAnswerDetail(event);
+  if (externalAnswerDetail !== null) message.appendChild(externalAnswerDetail);
   return message;
 }
 
@@ -3732,12 +3828,64 @@ function _journalSpokenDerivativeDetail(event) {
 }
 
 function _journalSourceLabel(source) {
-  const key = "journal_source_" + source;
+  return _journalCatalogString("journal_source_" + source, source);
+}
+
+function _journalMessageSourceLabel(event) {
+  return _journalExternalAnswerLabel(
+    event.source,
+    _journalCallerName(event),
+    _journalSourceLabel(event.source)
+  );
+}
+
+// The one place that knows what an external answer looks like: the caller
+// rides in the label. `plainLabel` is what the calling surface shows for
+// every other source.
+function _journalExternalAnswerLabel(source, callerName, plainLabel) {
+  if (source !== "mcp_canvas") return plainLabel;
+  const label = _journalSourceLabel(source);
+  return callerName ? `${label} - ${callerName}` : label;
+}
+
+function _journalCallerName(event) {
+  const caller = event.metadata?.caller;
+  if (!caller || typeof caller.name !== "string") return null;
+  return caller.name || null;
+}
+
+// Which text was spoken, and - only when it was not `spoken` - what kept
+// the user from hearing it.
+function _journalExternalAnswerDetail(event) {
+  if (event.source !== "mcp_canvas" || !event.metadata) return null;
+  const fragment = document.createDocumentFragment();
+  const origin = event.metadata.speech_origin;
+  if (typeof origin === "string" && origin) {
+    fragment.appendChild(
+      _journalProvenanceNote("journal_external_answer_origin_" + origin, origin)
+    );
+  }
+  const status = event.metadata.speech_status;
+  if (typeof status === "string" && status !== "spoken") {
+    fragment.appendChild(
+      _journalProvenanceNote("journal_external_answer_status_" + status, status)
+    );
+  }
+  return fragment.childNodes.length > 0 ? fragment : null;
+}
+
+function _journalProvenanceNote(key, fallback) {
+  const note = document.createElement("div");
+  note.className = "journal-provenance-detail";
+  note.textContent = _journalCatalogString(key, fallback);
+  return note;
+}
+
+function _journalCatalogString(key, fallback) {
   const catalog = UI_STRINGS[currentUiLanguage()] || UI_STRINGS[DEFAULT_UI_LANGUAGE];
-  // The event source is an open set by design (story-v1.5.0: later
-  // sources must not require a format change), so an unknown source
-  // renders as-is instead of throwing.
-  return Object.prototype.hasOwnProperty.call(catalog, key) ? uiString(key) : source;
+  return Object.prototype.hasOwnProperty.call(catalog, key)
+    ? uiString(key)
+    : fallback;
 }
 
 // task-journal-06: playback. One tile plays at a time - starting a tile

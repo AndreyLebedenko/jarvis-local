@@ -78,6 +78,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "processing_text": "Processing text...",
         "processing_attachment": "Processing attachment...",
         "speaking_response": "Speaking the response...",
+        "voice_guide_preparing": "Preparing an external answer...",
+        "voice_guide_speaking": "Speaking an external answer...",
         # Microphone module-health details. "not in use" (user-muted) is
         # the wording settled by story-v1.2.10-task-5-ui-cosmetic-polish.md.
         "mic_detail_listening": "listening",
@@ -187,6 +189,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "processing_text": "Обрабатываю текст...",
         "processing_attachment": "Обрабатываю вложение...",
         "speaking_response": "Произношу ответ...",
+        "voice_guide_preparing": "Готовлю внешний ответ...",
+        "voice_guide_speaking": "Озвучиваю внешний ответ...",
         "mic_detail_listening": "слушает",
         "mic_detail_muted": "не используется",
         "mic_detail_capture_failed": "захват остановлен",

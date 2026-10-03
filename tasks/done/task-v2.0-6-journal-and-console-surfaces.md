@@ -1,6 +1,6 @@
 # Task v2.0-6: Journal and Status Console surfaces
 
-**Status:** Not started.
+**Status:** Completed. (2026-10-03)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** task-v2.0-2 (event shape), task-v2.0-3
 (`VoiceGuideQueueChanged`), task-v2.0-4 (run mode in the UI state), and
@@ -81,6 +81,10 @@ prevents on the model side.
    when Error clears in `MCP` mode (for example on the next queue change or
    the next item that finishes) and whether the orb shows the guide
    speaking; take the decision to the owner before implementing.
+   Decided (owner, 2026-10-03): Error clears on the next queue change; the
+   orb shows THINKING during guide generation and SPEAKING during playback,
+   through an additive phase field on `VoiceGuideQueueChanged`. Details in
+   `tasks/plan-v2.0-6-chat-execution.md`, slice S4.
 
 ## Explicitly out of scope
 
@@ -103,15 +107,36 @@ prevents on the model side.
 
 ## Acceptance criteria
 
-- [ ] An `mcp_canvas` event is visibly labeled as an external answer with its
+- [x] An `mcp_canvas` event is visibly labeled as an external answer with its
       caller, origin, and non-`spoken` status in the feed and in search
       results.
-- [ ] Journal search (canonical and heard-phrase), annotations, and replay
+- [x] Journal search (canonical and heard-phrase), annotations, and replay
       work on `mcp_canvas` events, proven by tests.
-- [ ] The Status tab in `MCP` mode shows server state, port, and queue; no
+- [x] The Status tab in `MCP` mode shows server state, port, and queue; no
       payload ever contains the token.
-- [ ] Hidden mode suppresses the new content.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green.
+- [x] Hidden mode suppresses the new content.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green.
+
+## Resolution notes (owner, 2026-10-03)
+
+- The server block carries no failure reason: the raw reason contained the
+  token-file path and was unlocalized. The block says "failed - see the
+  event log"; the localized reason stays in task 4's ERROR system event.
+- That task-4 ERROR system event keeps showing the token-file path, so the
+  user knows which file to fix. The secret is the token, not its path.
+- `verbatim` and `caller` items pass briefly through PREPARING (THINKING)
+  while waiting for the player; no branch on origin.
+- The visual review of the rendered page is part of the task-8 handoff.
+
+## Cleanup candidates for task 7
+
+- `VoiceGuideQueueChanged` carries both `in_flight` and `phase`; `phase`
+  subsumes `in_flight` (`phase is not IDLE`). Collapse to one signal.
+- The JS feed/search code compares `source === "mcp_canvas"` as a literal
+  (task 7 item 2: one vocabulary per concept).
+- The token sentinel test in `tests/test_ui_transport.py` duplicates the
+  production subscription lines from `_wire_voice_guide_blocks()`
+  (`src/jarvis/app.py`).
 
 ## Stop conditions
 

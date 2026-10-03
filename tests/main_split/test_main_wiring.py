@@ -46,9 +46,11 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
     ReasoningLevelChanged,
 )
+from jarvis.dialog.voice_guide import VoiceGuidePhase, VoiceGuideQueueChanged
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
+from jarvis.mcp_mode.server import McpServerState, McpServerStatusChanged
 from jarvis.tools.host import (
     McpModuleStatus,
     McpModuleStatusChanged,
@@ -339,6 +341,36 @@ async def test_wire_status_console_projects_authoritative_mcp_status_changes():
             "local_tools": _builtin_tool_payloads(app),
         },
     )
+    unwire(app, subscriptions)
+
+
+@pytest.mark.asyncio
+async def test_wire_status_console_projects_the_voice_guide_server_and_queue():
+    app = _fake_app()
+    live_console = create_live_status_console(app, include_touchstrip=False)
+    transport = _FakeTransport()
+    live_console.transport = transport
+    subscriptions = wire_status_console(app, live_console, asyncio.get_running_loop())
+
+    await app.bus.publish(
+        McpServerStatusChanged,
+        McpServerStatusChanged(McpServerState.LISTENING, port=8765),
+    )
+    await app.bus.publish(
+        VoiceGuideQueueChanged,
+        VoiceGuideQueueChanged(
+            length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+        ),
+    )
+
+    assert [
+        call
+        for call in transport.calls
+        if call[0] in ("mcp_server", "voice_guide_queue")
+    ] == [
+        ("mcp_server", {"state": "listening", "port": 8765}),
+        ("voice_guide_queue", {"length": 2, "phase": "speaking"}),
+    ]
     unwire(app, subscriptions)
 
 

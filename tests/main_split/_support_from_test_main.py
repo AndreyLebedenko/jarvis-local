@@ -38,17 +38,20 @@ from jarvis.dialog.response_mode import (
 from jarvis.dialog.thinking_mode import (
     ReasoningLevel,
 )
+from jarvis.dialog.voice_guide import VoiceGuideQueueChanged
 from jarvis.journal import (
     HistoryRetrievalQuery,
     HistoryRetrievalResult,
     TurnOutcome,
 )
+from jarvis.mcp_mode.server import McpServerStatusChanged
 from jarvis.ui.contract import (
     DataLocality,
     ModuleHealth,
     RuntimeState,
     VisibilityMode,
 )
+from jarvis.ui.status_console import mcp_server_payload, voice_guide_queue_payload
 
 
 def _generation_with(
@@ -346,6 +349,12 @@ class _FakeTransport:
 
     def set_mcp_state(self, state: dict) -> None:
         self.calls.append(("mcp", state))
+
+    def set_mcp_server_state(self, event: McpServerStatusChanged) -> None:
+        self.calls.append(("mcp_server", mcp_server_payload(event)))
+
+    def set_voice_guide_queue_state(self, event: VoiceGuideQueueChanged) -> None:
+        self.calls.append(("voice_guide_queue", voice_guide_queue_payload(event)))
 
     def set_thinking_mode(self, level: ReasoningLevel) -> None:
         self.calls.append(("thinking", level))

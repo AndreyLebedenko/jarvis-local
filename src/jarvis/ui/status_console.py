@@ -32,6 +32,7 @@ from jarvis.core.solo_session import SoloSessionState
 from jarvis.core.system_log import publish_system_event
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeState
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelState
+from jarvis.dialog.voice_guide import VoiceGuideQueueChanged
 from jarvis.inputs.camera import (
     CameraCapture,
     CameraCaptureFailed,
@@ -41,6 +42,7 @@ from jarvis.inputs.camera import (
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
+from jarvis.mcp_mode.server import McpServerStatusChanged
 from jarvis.tools.builtin import CAMERA_TOOL_NAME
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
@@ -140,6 +142,20 @@ def mcp_state_payload(
             if tool.provider_kind == "builtin"
         ],
     }
+
+
+def mcp_server_payload(event: McpServerStatusChanged) -> dict:
+    """The voice-guide server block. No `reason`: it is a raw English log
+    string that names the token file's full path, and the localized reason
+    already travels as the ERROR system event of the same startup report."""
+    return {
+        "state": event.state.value,
+        "port": event.port,
+    }
+
+
+def voice_guide_queue_payload(event: VoiceGuideQueueChanged) -> dict:
+    return {"length": event.length, "phase": event.phase.value}
 
 
 def _tool_payload(tool: RegisteredTool, *, available: bool) -> dict:
@@ -262,6 +278,8 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
         snippet=hit.snippet,
         kind=hit.kind,
         canonical_text=hit.canonical_text,
+        source=hit.source,
+        caller_name=hit.caller_name,
     )
     return asdict(payload)
 

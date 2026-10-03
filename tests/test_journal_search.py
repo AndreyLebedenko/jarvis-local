@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from jarvis.journal import (
@@ -9,6 +10,7 @@ from jarvis.journal import (
     HistorySearchStatus,
     HistorySessionReadStatus,
     JournalEvent,
+    JournalEventRef,
     JournalSearchIndex,
     JournalSessionSummary,
     JournalStore,
@@ -596,6 +598,105 @@ class _StaticRetrievalService:
 
     def retrieve(self, request: object) -> object:
         return self._result
+
+
+# --- External answer labeling (task v2.0-6 card item 2)
+
+
+def _external_canvas_fixture(tmp_path: Path) -> JournalSearchIndex:
+    store = JournalStore(tmp_path / "journal")
+    store.append(
+        _event(
+            session_id="20260716-153000-ab12",
+            timestamp="2026-07-16T15:30:00+01:00",
+            role="assistant",
+            source="mcp_canvas",
+            text="Реле перегрелось после обеда.",
+            metadata={
+                "caller": {"name": "claude-code", "version": None},
+                "speech_origin": "derivative",
+                "speech_status": "spoken",
+                "spoken_derivative": "напоминаю, реле перегрелось из-за пыли",
+            },
+        )
+    )
+    index = JournalSearchIndex(store, tmp_path / "derived")
+    index.rebuild()
+    return index
+
+
+def test_canonical_search_hit_of_an_external_canvas_carries_its_caller(
+    tmp_path: Path,
+) -> None:
+    index = _external_canvas_fixture(tmp_path)
+
+    hits = index.search("перегрелось после обеда")
+
+    assert len(hits) == 1
+    assert hits[0].source == "mcp_canvas"
+    assert hits[0].caller_name == "claude-code"
+
+
+def test_locator_search_hit_of_an_external_canvas_carries_its_caller(
+    tmp_path: Path,
+) -> None:
+    index = _external_canvas_fixture(tmp_path)
+
+    hits = index.search_locator("перегрелось из-за пыли")
+
+    assert len(hits) == 1
+    assert hits[0].kind == "locator"
+    assert hits[0].source == "mcp_canvas"
+    assert hits[0].caller_name == "claude-code"
+
+
+def test_search_hits_of_jarvis_own_answers_name_their_source_and_no_caller(
+    tmp_path: Path,
+) -> None:
+    index, _ = _locator_fixture(tmp_path)
+
+    hits = index.search("Реле перегрелось после обеда")
+
+    assert [(hit.source, hit.caller_name) for hit in hits] == [("assistant", None)]
+
+
+def test_a_hit_whose_event_is_no_longer_projected_still_answers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A projection inconsistency (an FTS row without its event row) must not
+    fail the whole search: the hit comes back unlabeled instead."""
+    index = _external_canvas_fixture(tmp_path)
+    hidden = JournalEventRef("20260716-153000-ab12", 0)
+    monkeypatch.setattr(
+        index,
+        "_repository",
+        _RepositoryWithoutEvent(index.repository, hidden),
+    )
+
+    hits = index.search("перегрелось после обеда")
+
+    assert [(hit.source, hit.caller_name) for hit in hits] == [("", None)]
+
+
+class _RepositoryWithoutEvent:
+    """Drops one projected event from every batch read, leaving the FTS row
+    that still points at it."""
+
+    def __init__(self, inner: HistoryCorpusRepository, hidden: JournalEventRef):
+        self._inner = inner
+        self._hidden = hidden
+
+    def read_events(self, references):
+        read = self._inner.read_events(references)
+        return replace(
+            read,
+            events=tuple(
+                event for event in read.events if event.reference != self._hidden
+            ),
+        )
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
 
 
 def _event(
