@@ -11,6 +11,7 @@ from jarvis.core.lifecycle import (
     WarmupStarted,
 )
 from jarvis.dialog.backend import ResponseToken
+from jarvis.dialog.voice_guide import VoiceGuidePhase, VoiceGuideQueueChanged
 from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
 from jarvis.ui.runtime_state import RuntimeStateChanged, RuntimeStateTracker
 
@@ -184,3 +185,95 @@ async def test_an_mcp_waiting_tracker_rests_in_mcp_waiting_between_turns():
         RuntimeState.MCP_WAITING,
     ]
     assert recorder.events[1].substatus_key == "ready_to_listen"
+
+
+def _voice_guide_bus() -> tuple[EventBus, _Recorder]:
+    bus = EventBus()
+    RuntimeStateTracker(bus, ready_state=RuntimeState.MCP_WAITING).subscribe()
+    return bus, _Recorder(bus)
+
+
+def _queue(length: int, phase: VoiceGuidePhase) -> VoiceGuideQueueChanged:
+    return VoiceGuideQueueChanged(length=length, in_flight=length > 0, phase=phase)
+
+
+async def test_guide_phases_drive_the_orb_through_thinking_and_speaking():
+    bus, recorder = _voice_guide_bus()
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.PREPARING))
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.SPEAKING))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.THINKING,
+        RuntimeState.SPEAKING,
+    ]
+    assert [event.substatus_key for event in recorder.events] == [
+        "voice_guide_preparing",
+        "voice_guide_speaking",
+    ]
+
+
+async def test_an_emptied_queue_returns_the_orb_to_its_ready_state():
+    bus, recorder = _voice_guide_bus()
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.SPEAKING))
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(0, VoiceGuidePhase.IDLE))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.SPEAKING,
+        RuntimeState.MCP_WAITING,
+    ]
+
+
+async def test_an_interrupt_before_any_request_leaves_the_error_state():
+    """The owner decided Error clears on the next queue *change*: an interrupt
+    on an empty queue republishes what the tracker already knows, and must not
+    declare a voice-guide server that never came up healthy."""
+    bus, recorder = _voice_guide_bus()
+    await bus.publish(SystemEvent, _system_event(EventLevel.ERROR, "boom"))
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(0, VoiceGuidePhase.IDLE))
+
+    assert [event.state for event in recorder.events] == [RuntimeState.ERROR]
+
+
+async def test_a_new_accepted_request_clears_the_error_state():
+    bus, recorder = _voice_guide_bus()
+    await bus.publish(SystemEvent, _system_event(EventLevel.ERROR, "boom"))
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.PREPARING))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.ERROR,
+        RuntimeState.THINKING,
+    ]
+
+
+async def test_finishing_one_item_of_two_does_not_rest_the_orb():
+    """Otherwise the orb blinks MCP_WAITING between two items of one batch
+    instead of going straight from one guide to the next."""
+    bus, recorder = _voice_guide_bus()
+    await bus.publish(VoiceGuideQueueChanged, _queue(2, VoiceGuidePhase.PREPARING))
+    await bus.publish(VoiceGuideQueueChanged, _queue(2, VoiceGuidePhase.SPEAKING))
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.IDLE))
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.PREPARING))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.THINKING,
+        RuntimeState.SPEAKING,
+        RuntimeState.THINKING,
+    ]
+
+
+async def test_an_unchanged_queue_event_is_not_republished():
+    bus, recorder = _voice_guide_bus()
+    await bus.publish(WarmupCompleted, WarmupCompleted(succeeded=True))
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.PREPARING))
+
+    await bus.publish(VoiceGuideQueueChanged, _queue(1, VoiceGuidePhase.PREPARING))
+
+    assert [event.state for event in recorder.events] == [
+        RuntimeState.MCP_WAITING,
+        RuntimeState.THINKING,
+    ]

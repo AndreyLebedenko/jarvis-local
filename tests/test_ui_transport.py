@@ -1,16 +1,22 @@
 import asyncio
+import contextlib
+import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import aiohttp
 import pytest
 
-from jarvis.audio.replay import ReplayProgress
+from jarvis.app import _report_mcp_mode_startup_failure
+from jarvis.audio.replay import ReplayProgress, reply_speech
+from jarvis.audio.speech_language import TtsLanguageMode
 from jarvis.audio.tts_mute import TtsSpeechEnabledChanged
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_FORK_SEED_MAX_CHARS,
     DataBoundary,
+    McpModeSettings,
     MemorySettings,
     PiperTtsSettings,
     SileroTtsSettings,
@@ -32,20 +38,32 @@ from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.dialog.voice_guide import (
+    EnqueueResult,
+    VoiceGuideAccepted,
+    VoiceGuidePhase,
+    VoiceGuideQueueChanged,
+    VoiceGuideRequest,
+)
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import AttachmentPlan, AttachmentUpload
 from jarvis.journal import (
     HISTORY_SEARCH_MAX_RESULTS,
+    AnnotationBackendMetadata,
     AnnotationGenerationOutcome,
     AnnotationGenerationResult,
+    AnnotationGenerationService,
+    AnnotationMessage,
     AnnotationOverlayChanged,
     AnnotationOverlayRepository,
+    AnnotationRun,
     AnnotationSource,
     AnnotationTarget,
     ArchiveOverlayRepository,
     ConsolidationExecutor,
     ConsolidationPlanner,
     CorpusHistoryProjection,
+    HistoryCorpusRepository,
     HistoryProjectionLifecycle,
     JournalEvent,
     JournalEventAppended,
@@ -57,6 +75,7 @@ from jarvis.journal import (
     JournalStoreConsolidationSource,
     UnavailableSemanticHistoryProjection,
 )
+from jarvis.journal.external_canvas import SpeechOrigin
 from jarvis.journal.fork import (
     ForkSeedDropReport,
     ForkSessionReason,
@@ -69,6 +88,13 @@ from jarvis.journal.transcript import (
     TranscriptSource,
 )
 from jarvis.journal.transcription import TranscriptionOutcome, TranscriptionResult
+from jarvis.mcp_mode.server import (
+    McpPortUnavailableError,
+    McpServerState,
+    McpServerStatusChanged,
+    prepare_mcp_mode_server,
+)
+from jarvis.mcp_mode.token import McpTokenFileError
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileRepository,
@@ -3637,6 +3663,422 @@ async def test_annotation_generate_reports_failure(tmp_path: Path) -> None:
             assert body["detail"] == "end 9 out of range"
     finally:
         await server.stop()
+
+
+_MCP_SESSION = "20260801-150000-mc90"
+_MCP_CANVAS = "Реле перегрелось после обеда."
+_MCP_DERIVATIVE = "напоминаю, реле перегрелось из-за пыли"
+
+
+def _mcp_canvas_store(
+    tmp_path: Path, *, derivative: str | None
+) -> tuple[JournalStore, AnnotationOverlayRepository]:
+    store = JournalStore(tmp_path / "journal")
+    metadata = {
+        "caller": {"name": "claude-code", "version": None},
+        "speech_origin": "derivative" if derivative else "verbatim",
+        "speech_status": "spoken",
+    }
+    if derivative is not None:
+        metadata["spoken_derivative"] = derivative
+    store.append(
+        JournalEvent(
+            session_id=_MCP_SESSION,
+            timestamp="2026-08-01T15:00:00+01:00",
+            source="mcp_canvas",
+            role="assistant",
+            text=_MCP_CANVAS,
+            media=(),
+            transcript=None,
+            metadata=metadata,
+        )
+    )
+    overlays = AnnotationOverlayRepository(
+        tmp_path / "derived", JournalStoreEventReferenceResolver(store)
+    )
+    return store, overlays
+
+
+class _RecordingAnnotationBackend:
+    def __init__(self, text: str = "сводка сессии") -> None:
+        self.text = text
+        self.prompts: list[tuple[AnnotationMessage, ...]] = []
+
+    async def run_annotation(
+        self,
+        messages: Sequence[AnnotationMessage],
+        reasoning: ReasoningLevel = (ReasoningLevel.OFF),
+    ) -> AnnotationRun:
+        self.prompts.append(tuple(messages))
+        return AnnotationRun(
+            self.text,
+            AnnotationBackendMetadata(model="fake-model", reasoning="off"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_annotation_generation_and_edit_work_on_an_mcp_canvas_session(
+    tmp_path: Path,
+) -> None:
+    _store, overlays = _mcp_canvas_store(tmp_path, derivative=_MCP_DERIVATIVE)
+    corpus = HistoryCorpusRepository(_store, tmp_path / "derived")
+    corpus.rebuild()
+    backend = _RecordingAnnotationBackend()
+    service = AnnotationGenerationService(corpus, backend, overlays)
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_annotation_repository=overlays,
+        journal_annotation_generation_service=service,
+    )
+    info = await server.start()
+    root = f"http://127.0.0.1:{info.port}/api/journal/annotations/{_MCP_SESSION}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            generated = await session.post(f"{root}/generate?token=valid-token")
+            assert generated.status == 200
+            payload = await generated.json()
+            assert payload["outcome"] == "generated"
+            annotation_id = payload["annotation_id"]
+
+            edited = await session.put(
+                f"{root}/{annotation_id}?token=valid-token",
+                json={"text": "поправленная заметка"},
+            )
+            assert edited.status == 200
+            reread = await _get_json(
+                session, f"{root}/{annotation_id}?token=valid-token"
+            )
+    finally:
+        await server.stop()
+
+    assert reread["annotation"]["text"] == "поправленная заметка"
+    assert reread["annotation"]["source"] == "edited"
+    # The summarizer must see the external answer labeled as one, or it would
+    # read somebody else's answer as Jarvis's own claim.
+    cited = "\n".join(message.content for message in backend.prompts[0])
+    assert "assistant / mcp_canvas" in cited
+    assert _MCP_CANVAS in cited
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("derivative", "spoken"),
+    [
+        (_MCP_DERIVATIVE, _MCP_DERIVATIVE),
+        (None, _MCP_CANVAS),
+    ],
+    ids=["derivative", "verbatim"],
+)
+async def test_replay_of_an_external_answer_speaks_what_was_spoken(
+    tmp_path: Path, derivative: str | None, spoken: str
+) -> None:
+    store, _overlays = _mcp_canvas_store(tmp_path, derivative=derivative)
+    said: list[str] = []
+
+    async def handler(reference: JournalEventRef) -> str:
+        reply = reply_speech(store, reference, TtsLanguageMode.RUSSIAN)
+        assert reply is not None
+        said.append(reply.text)
+        return "started"
+
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        journal_store=store,
+        journal_reply_replay_handler=handler,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            result = await _post_json(
+                session,
+                f"http://127.0.0.1:{info.port}"
+                f"/api/journal/replies/{_MCP_SESSION}/0/replay?token=valid-token",
+            )
+    finally:
+        await server.stop()
+
+    assert result == {"outcome": "started"}
+    assert said == [spoken]
+
+
+@pytest.mark.asyncio
+async def test_voice_guide_blocks_are_pushed_by_the_transport() -> None:
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()
+            snapshot = await websocket.receive_json()
+
+            server.set_mcp_server_state(
+                McpServerStatusChanged(McpServerState.LISTENING, port=8765)
+            )
+            server_block = await websocket.receive_json()
+            server.set_voice_guide_queue_state(
+                VoiceGuideQueueChanged(
+                    length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+                )
+            )
+            queue_block = await websocket.receive_json()
+    finally:
+        await server.stop()
+
+    assert snapshot["payload"]["mcp_server"] == {"state": "unknown", "port": None}
+    assert server_block["payload"] == {
+        "key": "mcp_server",
+        "value": {"state": "listening", "port": 8765},
+    }
+    assert queue_block["payload"] == {
+        "key": "voice_guide_queue",
+        "value": {"length": 2, "phase": "speaking"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_queue_block_is_not_pushed_while_hidden() -> None:
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()
+            await websocket.receive_json()
+
+            server.set_voice_guide_queue_state(
+                VoiceGuideQueueChanged(
+                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+                )
+            )
+            with pytest.raises(TimeoutError):
+                await websocket.receive(timeout=0.05)
+
+            server.set_mcp_server_state(
+                McpServerStatusChanged(McpServerState.LISTENING, port=8765)
+            )
+            pushed = await websocket.receive_json()
+    finally:
+        await server.stop()
+
+    # The queue is what is about to be said out loud, so it follows the journal
+    # content; the server's own listening state is process status and stays.
+    assert pushed["payload"]["key"] == "mcp_server"
+
+
+@pytest.mark.asyncio
+async def test_the_current_queue_arrives_when_the_client_leaves_hidden() -> None:
+    """Hidden suppresses the push, not the state: a client that dropped the row
+    must learn the length that is current now, not the one from the moment
+    Hidden began."""
+    server = UiTransportServer(
+        EventBus(), _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()
+            await websocket.receive_json()
+
+            server.set_visibility_mode(VisibilityMode.HIDDEN)
+            await websocket.receive_json()
+            server.set_voice_guide_queue_state(
+                VoiceGuideQueueChanged(
+                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+                )
+            )
+            server.set_voice_guide_queue_state(
+                VoiceGuideQueueChanged(
+                    length=3, in_flight=True, phase=VoiceGuidePhase.PREPARING
+                )
+            )
+            with pytest.raises(TimeoutError):
+                await websocket.receive(timeout=0.05)
+
+            server.set_visibility_mode(VisibilityMode.OPEN)
+            await websocket.receive_json()
+            restored = await websocket.receive_json()
+    finally:
+        await server.stop()
+
+    assert restored["payload"] == {
+        "key": "voice_guide_queue",
+        "value": {"length": 3, "phase": "preparing"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_client_connecting_while_hidden_receives_no_queue() -> None:
+    server = UiTransportServer(
+        EventBus(),
+        _FakeControlApi(),
+        state=UiStateStore(visibility_mode=VisibilityMode.HIDDEN),
+        token_factory=lambda: "valid-token",
+    )
+    server.set_voice_guide_queue_state(
+        VoiceGuideQueueChanged(length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING)
+    )
+    info = await server.start()
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            await websocket.receive_json()
+            snapshot = await websocket.receive_json()
+    finally:
+        await server.stop()
+
+    assert "voice_guide_queue" not in snapshot["payload"]
+
+
+@pytest.mark.asyncio
+async def test_no_pushed_block_or_snapshot_ever_carries_the_mcp_token(
+    tmp_path: Path,
+) -> None:
+    token = "sentinel-mcp-token-4f2c"
+    token_file = tmp_path / "mcp_mode.token"
+    token_file.write_text(token, encoding="utf-8")
+    bus = EventBus()
+    server = UiTransportServer(
+        bus, _FakeControlApi(), token_factory=lambda: "valid-token"
+    )
+    info = await server.start()
+    # The real server, built from settings whose token file holds the sentinel,
+    # publishes the events the transport is given in production
+    # (wire_status_console, pinned by tests/main_split/test_main_wiring.py).
+    mcp_server = prepare_mcp_mode_server(
+        McpModeSettings(port=0, token_file=str(token_file)),
+        _EnqueueOnlyVoiceGuide(),
+        bus,
+    )
+    startup_failures = (
+        McpTokenFileError(token_file, "is empty"),
+        McpPortUnavailableError(8765, "address already in use"),
+    )
+
+    async def on_mcp_server_status_changed(event: McpServerStatusChanged) -> None:
+        server.set_mcp_server_state(event)
+
+    async def on_voice_guide_queue_changed(event: VoiceGuideQueueChanged) -> None:
+        server.set_voice_guide_queue_state(event)
+
+    bus.subscribe(McpServerStatusChanged, on_mcp_server_status_changed)
+    bus.subscribe(VoiceGuideQueueChanged, on_voice_guide_queue_changed)
+    task = mcp_server.start()
+    pushed: list[dict] = []
+    try:
+        # Wait for the real server through the store, not through a delta: the
+        # client below connects afterwards, so it reads the state in the
+        # snapshot instead of racing the server's own announcement.
+        await _wait_for_server_state(server, McpServerState.LISTENING)
+        async with (
+            aiohttp.ClientSession() as session,
+            session.ws_connect(info.websocket_url) as websocket,
+        ):
+            await websocket.send_json(hello_message("status-console", ["state"]))
+            pushed.append(await websocket.receive_json())
+            snapshot_message = await websocket.receive_json()
+            pushed.append(snapshot_message)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait_for(task, 5)
+            await _wait_for_server_state(server, McpServerState.STOPPED)
+            for failure in startup_failures:
+                await _report_mcp_mode_startup_failure(_BusOnly(bus), "en", failure)
+                # The block delta, then the ERROR system event the same report
+                # publishes with the localized reason.
+                pushed.append(await websocket.receive_json(timeout=5))
+                pushed.append(await websocket.receive_json(timeout=5))
+            await bus.publish(
+                VoiceGuideQueueChanged,
+                VoiceGuideQueueChanged(
+                    length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+                ),
+            )
+            pushed.append(await websocket.receive_json(timeout=5))
+        snapshot = server.state.snapshot()
+    finally:
+        if not task.done():
+            task.cancel()
+        await server.stop()
+
+    blocks = [
+        message["payload"]["value"]
+        for message in pushed
+        if message["payload"].get("key") in ("mcp_server", "voice_guide_queue")
+    ]
+    serialized_blocks = json.dumps(blocks, ensure_ascii=False)
+    snapshot_blocks = json.dumps(
+        {
+            "store": {
+                key: snapshot[key] for key in ("mcp_server", "voice_guide_queue")
+            },
+            "client": {
+                key: snapshot_message["payload"][key]
+                for key in ("mcp_server", "voice_guide_queue")
+            },
+        },
+        ensure_ascii=False,
+    )
+    for text in (serialized_blocks, snapshot_blocks):
+        assert token not in text
+        assert str(token_file) not in text
+        assert token_file.name not in text
+    assert snapshot_message["payload"]["mcp_server"] == {
+        "state": "listening",
+        "port": mcp_server.port,
+    }
+    # Each startup failure reaches the block as a state, never as its text; the
+    # second one repeats the first and is deduplicated like any other repeat.
+    assert blocks == [
+        {"state": "stopped", "port": None},
+        {"state": "failed", "port": None},
+        {"length": 1, "phase": "speaking"},
+    ]
+
+
+async def _wait_for_server_state(
+    server: UiTransportServer, state: McpServerState
+) -> None:
+    for _ in range(500):
+        if server.state.snapshot()["mcp_server"]["state"] == state.value:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"the MCP server never reached {state.value}")
+
+
+@dataclass
+class _BusOnly:
+    """What _report_mcp_mode_startup_failure reads off an App."""
+
+    bus: EventBus
+
+
+class _EnqueueOnlyVoiceGuide:
+    def enqueue(self, request: VoiceGuideRequest) -> EnqueueResult:
+        return VoiceGuideAccepted(1, SpeechOrigin.DERIVATIVE)
 
 
 _CONSOLIDATION_SESSION = "20260801-140000-ef56"

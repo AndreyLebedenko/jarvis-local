@@ -84,13 +84,24 @@ class VoiceGuideRejected:
 EnqueueResult = VoiceGuideAccepted | VoiceGuideRejected
 
 
+class VoiceGuidePhase(Enum):
+    """What the item in flight is doing. IDLE means nothing is in flight."""
+
+    IDLE = "idle"
+    PREPARING = "preparing"
+    SPEAKING = "speaking"
+
+
 @dataclass(frozen=True)
 class VoiceGuideQueueChanged:
     """Published on every queue change. `length` counts unfinished requests;
-    `in_flight` says one of them is being generated or spoken right now."""
+    `in_flight` says one of them is being generated or spoken right now.
+    `phase` is that item's finer-grained step, for a UI that shows what the
+    guide is doing rather than only that something is."""
 
     length: int
     in_flight: bool
+    phase: VoiceGuidePhase = VoiceGuidePhase.IDLE
 
 
 class GuideBackend(Protocol):
@@ -422,6 +433,7 @@ class VoiceGuideService:
         if started is ReplayOutcome.EMPTY:
             logger.warning("Voice guide text has nothing speakable")
         if isinstance(started, ReplayRun):
+            self._queue_changed()
             await started.wait()
 
     async def _wait_for_other_run(self, item: _Item) -> None:
@@ -470,9 +482,22 @@ class VoiceGuideService:
     def _queue_changed(self) -> None:
         self._wakeup.set()
         event = VoiceGuideQueueChanged(
-            length=self.queue_length, in_flight=self._current is not None
+            length=self.queue_length,
+            in_flight=self._current is not None,
+            phase=self._phase_of(self._current),
         )
         self._run_in_background(self._bus.publish(VoiceGuideQueueChanged, event))
+
+    def _phase_of(self, item: _Item | None) -> VoiceGuidePhase:
+        """IDLE with nothing in flight, SPEAKING once the player took the text,
+        PREPARING while the item is still being turned into speech. A verbatim
+        or caller item therefore reports PREPARING for exactly as long as it
+        waits for the player, which is true of it."""
+        if item is None:
+            return VoiceGuidePhase.IDLE
+        if isinstance(item.playback, ReplayRun):
+            return VoiceGuidePhase.SPEAKING
+        return VoiceGuidePhase.PREPARING
 
     def _run_in_background(self, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.get_running_loop().create_task(work)

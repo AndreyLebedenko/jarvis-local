@@ -153,6 +153,10 @@ class JournalSearchHitPayload:
     # recognized derivative fragment.
     kind: str = "canonical"
     canonical_text: str | None = None
+    # Non-None caller_name only for an external answer; the UI must not read
+    # such a hit as Jarvis's own claim.
+    source: str = ""
+    caller_name: str | None = None
 
 
 class VisibilityMode(enum.Enum):

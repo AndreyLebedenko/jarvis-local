@@ -120,7 +120,7 @@ from jarvis.dialog.thinking_mode import (
 )
 from jarvis.dialog.time_context import format_time_context
 from jarvis.dialog.tool_presentation import ToolAwareDialog, build_tool_presentation
-from jarvis.dialog.voice_guide import VoiceGuideService
+from jarvis.dialog.voice_guide import VoiceGuideQueueChanged, VoiceGuideService
 from jarvis.dialog.voice_intent import (
     build_probe_messages,
     intent_directive_from_settings,
@@ -2372,11 +2372,37 @@ def wire_status_console(
         (RuntimeStateChanged, on_runtime_state_changed),
     ]
     app.bus.subscribe(RuntimeStateChanged, on_runtime_state_changed)
+    subscriptions.extend(_wire_voice_guide_blocks(app, live_console))
     if app.mcp_host is not None:
         subscriptions.append((McpModuleStatusChanged, on_mcp_status_changed))
         app.bus.subscribe(McpModuleStatusChanged, on_mcp_status_changed)
         subscriptions.append((ToolEnablementChanged, on_tool_enablement_changed))
         app.bus.subscribe(ToolEnablementChanged, on_tool_enablement_changed)
+    return subscriptions
+
+
+def _wire_voice_guide_blocks(
+    app: App, live_console: LiveStatusConsole
+) -> list[Subscription]:
+    """Feeds the voice-guide server and queue blocks from their own events,
+    next to wire_status_console's other projections rather than inside it."""
+
+    async def on_mcp_server_status_changed(event: McpServerStatusChanged) -> None:
+        if live_console.transport is None:
+            return
+        live_console.transport.set_mcp_server_state(event)
+
+    async def on_voice_guide_queue_changed(event: VoiceGuideQueueChanged) -> None:
+        if live_console.transport is None:
+            return
+        live_console.transport.set_voice_guide_queue_state(event)
+
+    subscriptions: list[Subscription] = [
+        (McpServerStatusChanged, on_mcp_server_status_changed),
+        (VoiceGuideQueueChanged, on_voice_guide_queue_changed),
+    ]
+    for event_type, handler in subscriptions:
+        app.bus.subscribe(event_type, handler)
     return subscriptions
 
 

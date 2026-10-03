@@ -835,6 +835,91 @@ def test_journal_fork_provenance_detail_uses_text_content():
     assert "innerHTML" not in body
 
 
+def test_feed_row_labels_an_external_answer_with_its_caller():
+    """An mcp_canvas row must read as somebody else's answer: the caller rides
+    in the row's source label, read from the row's own metadata, and every
+    other source keeps the plain source label it always had."""
+    body = APP_JS.split("function _journalMessageSourceLabel(")[1].split("\n}")[0]
+    assert "_journalExternalAnswerLabel(" in body
+    assert "_journalCallerName(event)" in body
+    assert "_journalSourceLabel(event.source)" in body
+    row = APP_JS.split("function _journalEventElement(")[1].split("\nfunction ")[0]
+    assert "source.textContent = _journalMessageSourceLabel(event)" in row
+
+
+def test_the_external_answer_source_is_branched_on_in_one_place_only():
+    """One helper owns what an external answer looks like, so a second
+    `source === "mcp_canvas"` in a rendering surface could only disagree with
+    it. The detail block's own guard is the one other legitimate branch: it
+    renders the speech lines, not the label."""
+    label = APP_JS.split("function _journalExternalAnswerLabel(")[1].split("\n}")[0]
+    assert 'source !== "mcp_canvas"' in label
+    assert "return plainLabel;" in label
+    assert "_journalSourceLabel(source)" in label
+    assert "`${label} - ${callerName}`" in label
+    surfaces = APP_JS.split("function _journalSearchHitElement(")[1].split("\n}")[0]
+    assert "mcp_canvas" not in surfaces
+    assert (
+        "_journalExternalAnswerLabel(" in surfaces
+        and "hit.caller_name" in surfaces
+        and 'uiString("journal_source_assistant")' in surfaces
+    )
+
+
+def test_an_unknown_journal_vocabulary_value_renders_as_is():
+    """Sources and speech origins/statuses are open sets, so an unrecognized
+    value must render verbatim instead of throwing."""
+    body = APP_JS.split("function _journalCatalogString(")[1].split("\n}")[0]
+    assert "Object.prototype.hasOwnProperty.call(catalog, key)" in body
+    assert ": fallback;" in body
+
+
+def test_caller_name_comes_from_the_recorded_caller_metadata():
+    body = APP_JS.split("function _journalCallerName(")[1].split("\n}")[0]
+    assert "event.metadata?.caller" in body
+    assert "caller.name" in body
+
+
+def test_external_answer_detail_names_the_origin_and_a_non_spoken_status():
+    """The origin always says which text was spoken; the status line appears
+    only when the speech was not `spoken`, so a spoken answer carries no
+    redundant note."""
+    body = APP_JS.split("function _journalExternalAnswerDetail(")[1].split("\n}")[0]
+    assert 'event.source !== "mcp_canvas"' in body
+    assert "event.metadata.speech_origin" in body
+    assert '"journal_external_answer_origin_"' in body
+    assert "event.metadata.speech_status" in body
+    assert '"journal_external_answer_status_"' in body
+    assert 'status !== "spoken"' in body
+    assert "innerHTML" not in body
+
+
+def test_feed_row_appends_the_external_answer_detail():
+    body = APP_JS.split("function _journalEventElement(")[1].split("\nfunction ")[0]
+    assert "_journalExternalAnswerDetail(event)" in body
+
+
+def test_search_result_labels_an_external_answer_with_its_caller():
+    body = APP_JS.split("function _journalSearchHitElement(")[1].split("\n}")[0]
+    assert "hit.source," in body
+    assert "hit.caller_name," in body
+    assert 'uiString("journal_source_assistant")' in body
+
+
+def test_external_answer_strings_present_in_both_languages():
+    for key in (
+        "journal_source_mcp_canvas",
+        "journal_external_answer_origin_derivative",
+        "journal_external_answer_origin_verbatim",
+        "journal_external_answer_origin_caller",
+        "journal_external_answer_status_muted",
+        "journal_external_answer_status_interrupted",
+        "journal_external_answer_status_skipped",
+        "journal_external_answer_status_failed",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2
+
+
 def test_journal_spoken_derivative_detail_is_collapsed_by_default():
     """story-v1.9.0 task 3: mode 3's spoken derivative renders as a
     collapsed, expandable block under the reply - a native <details>

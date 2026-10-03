@@ -4390,7 +4390,23 @@ server-state UI facts (task 6) are not recorded here yet.
   `--green` on both surfaces, label "MCP waiting" / "MCP ожидает" from
   `ui/text.py`) where `NORMAL` mode rests in `LISTENING`:
   `RuntimeStateTracker(ready_state=...)` is the single owner, so warm-up
-  completion and turn completion both land there. No other state changes.
+  completion and turn completion both land there.
+  The guide moves it too, through the phase of `VoiceGuideQueueChanged`
+  (`IDLE` / `PREPARING` / `SPEAKING`, additive beside `in_flight`, which stays
+  for task 7 to reconcile): `PREPARING` is `THINKING` with substatus
+  `voice_guide_preparing`, `SPEAKING` is `SPEAKING` with `voice_guide_speaking`,
+  `IDLE` with an empty queue is back to the ready state. An `IDLE` event that
+  still has items queued moves nothing - the next item publishes its own phase,
+  and resting in between would blink the orb. The tracker reacts to a queue
+  *change* only: it remembers the last event (starting from an empty queue), so
+  an interrupt before any request republishes what it already knows and cannot
+  declare a server that never came up healthy. Every real change therefore
+  also leaves `ERROR`, while a voice-guide server that never came up publishes
+  nothing and `ERROR` stays there, which is honest. A failed guide item still
+  only cues the error sound. `NORMAL` mode never sees these events, so its
+  tracker is unchanged. `verbatim` and `caller` items report `PREPARING` for
+  exactly as long as they wait for the player; muted or empty speech never
+  reports `SPEAKING`.
 - **Journal replay controls act on the Journal's own run.** `App.journal_replay`
   (`ReplayRunSlot`) holds the `ReplayRun` the Journal started last; Stop,
   Pause, and Resume (separate HTTP requests) act on that run only, never on
@@ -4526,6 +4542,24 @@ server-state UI facts (task 6) are not recorded here yet.
   on the bus: `LISTENING` (with the port, once uvicorn has started),
   `STOPPED`, or `FAILED` (with the reason). It is task 6's input for the
   server-state widget.
+- **The Status Console shows both voice-guide blocks, in `MCP` run mode only.**
+  Two typed state keys, `mcp_server` (`state` / `port`) and `voice_guide_queue`
+  (`length` / `phase`), each with one payload builder
+  (`ui/status_console.py`) fed by one bus event, and one rendered block: in
+  `NORMAL` run mode there is no server and no queue, so the client creates
+  nothing at all. Both start from explicit values (`unknown`, `0` / `idle`), so
+  a snapshot never leaves a key undefined. The block carries no failure reason:
+  `McpServerStatusChanged.reason` is a raw English log string naming the token
+  file's full path, so a `FAILED` block says only "not started, the reason is
+  in the event log" and the localized reason stays where task 4 put it - the
+  `ERROR` system event of the same startup report. No block payload and no
+  snapshot carries the token or its file path.
+  `Hidden` suppresses the queue only - it counts what Jarvis is about to say
+  out loud - in the store's push *and* in the snapshot a client receives while
+  hidden; the server's own state is process status and stays, like the MCP
+  module card. The store always learns the queue, and leaving `Hidden`
+  re-pushes the value current then, so a client that dropped the row cannot
+  show a stale length.
 
 ## Documentation navigation doctrine (2026-08-30)
 

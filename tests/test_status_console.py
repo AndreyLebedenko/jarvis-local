@@ -27,6 +27,7 @@ from jarvis.dialog.thinking_mode import (
     ReasoningLevelChanged,
     ReasoningLevelState,
 )
+from jarvis.dialog.voice_guide import VoiceGuidePhase, VoiceGuideQueueChanged
 from jarvis.inputs.camera import (
     CameraCapture,
     CameraCaptureFailed,
@@ -34,7 +35,8 @@ from jarvis.inputs.camera import (
     CameraState,
     CameraStateChanged,
 )
-from jarvis.journal import JournalEvent, JournalStore
+from jarvis.journal import JournalEvent, JournalSearchHit, JournalStore
+from jarvis.mcp_mode.server import McpServerState, McpServerStatusChanged
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import (
@@ -63,7 +65,10 @@ from jarvis.ui.status_console import (
     config_values_payload,
     data_locality_payload,
     data_source_payload,
+    journal_event_payload,
+    journal_search_hit_payload,
     journal_session_payload,
+    mcp_server_payload,
     mcp_state_payload,
     microphone_option_payload,
     model_request_log_payload,
@@ -74,8 +79,9 @@ from jarvis.ui.status_console import (
     system_event_payload,
     thinking_mode_payload,
     visibility_mode_payload,
+    voice_guide_queue_payload,
 )
-from jarvis.ui.transport import ROUTES
+from jarvis.ui.transport import ROUTES, UiStateStore
 from jarvis.ui.visibility import VisibilityModeState
 
 logger = logging.getLogger("test_status_console")
@@ -138,6 +144,139 @@ def test_blank_context_session_payload_carries_new_context_title_kind(tmp_path):
 
     assert payload["title"] == "New context"
     assert payload["title_kind"] == "new_context"
+
+
+def test_external_canvas_feed_payload_carries_its_caller_and_speech():
+    payload = journal_event_payload(_external_canvas_event(), _media_url)
+
+    assert payload["source"] == "mcp_canvas"
+    assert payload["metadata"]["caller"]["name"] == "claude-code"
+    assert payload["metadata"]["speech_origin"] == "derivative"
+    assert payload["metadata"]["speech_status"] == "muted"
+
+
+def test_normal_assistant_feed_payload_carries_no_external_answer_fields():
+    payload = journal_event_payload(_assistant_event(), _media_url)
+
+    # The exact key set: an external answer needs nothing added to the feed
+    # payload - source and the recorded metadata already carry everything the
+    # row needs - so this payload's shape must not drift for normal turns.
+    assert set(payload) == {
+        "session_id",
+        "timestamp",
+        "source",
+        "role",
+        "text",
+        "media",
+        "transcript",
+        "metadata",
+    }
+    assert payload["source"] == "assistant"
+    assert payload["metadata"] == {}
+
+
+def test_external_canvas_search_hit_payload_carries_its_caller():
+    payload = journal_search_hit_payload(
+        JournalSearchHit(
+            session_id="20260719-100000-ab12",
+            timestamp="2026-07-19T10:00:00+01:00",
+            event_position=0,
+            snippet="Реле перегрелось",
+            source="mcp_canvas",
+            caller_name="claude-code",
+        )
+    )
+
+    assert payload["source"] == "mcp_canvas"
+    assert payload["caller_name"] == "claude-code"
+
+
+def test_assistant_search_hit_payload_names_no_caller():
+    payload = journal_search_hit_payload(
+        JournalSearchHit(
+            session_id="20260719-100000-ab12",
+            timestamp="2026-07-19T10:00:00+01:00",
+            event_position=0,
+            snippet="Реле перегрелось",
+            source="assistant",
+        )
+    )
+
+    assert payload["source"] == "assistant"
+    assert payload["caller_name"] is None
+
+
+def _media_url(event: JournalEvent, path: str) -> str:
+    return f"/api/journal/media/{event.session_id}/{path}"
+
+
+def _assistant_event() -> JournalEvent:
+    return JournalEvent(
+        session_id="20260719-100000-ab12",
+        timestamp="2026-07-19T10:00:00+01:00",
+        source="assistant",
+        role="assistant",
+        text="Реле перегрелось после обеда.",
+        media=[],
+        transcript=None,
+        metadata={},
+    )
+
+
+def _external_canvas_event() -> JournalEvent:
+    return JournalEvent(
+        session_id="20260719-100000-ab12",
+        timestamp="2026-07-19T10:00:00+01:00",
+        source="mcp_canvas",
+        role="assistant",
+        text="Реле перегрелось после обеда.",
+        media=[],
+        transcript=None,
+        metadata={
+            "caller": {"name": "claude-code", "version": None},
+            "speech_origin": "derivative",
+            "speech_status": "muted",
+            "spoken_derivative": "напоминаю, реле перегрелось из-за пыли",
+        },
+    )
+
+
+def test_mcp_server_payload_reports_a_listening_port():
+    payload = mcp_server_payload(
+        McpServerStatusChanged(McpServerState.LISTENING, port=8765)
+    )
+
+    assert payload == {"state": "listening", "port": 8765}
+
+
+def test_mcp_server_payload_never_carries_the_failure_reason():
+    """The reason is a raw English log string that names the token file's full
+    path; the localized detail already travels as an ERROR system event."""
+    payload = mcp_server_payload(
+        McpServerStatusChanged(
+            McpServerState.FAILED, reason="/home/user/.jarvis/mcp_mode.token"
+        )
+    )
+
+    assert payload == {"state": "failed", "port": None}
+    assert "reason" not in payload
+
+
+def test_voice_guide_queue_payload_reports_length_and_the_phase():
+    payload = voice_guide_queue_payload(
+        VoiceGuideQueueChanged(length=2, in_flight=True, phase=VoiceGuidePhase.SPEAKING)
+    )
+
+    assert payload == {"length": 2, "phase": "speaking"}
+
+
+def test_the_snapshot_carries_explicit_initial_values_for_the_voice_guide_blocks():
+    """The client renders both blocks from the snapshot before any event has
+    arrived, so a missing key would leave it reading undefined."""
+    snapshot = UiStateStore().snapshot()
+
+    assert snapshot["mcp_server"] == {"state": "unknown", "port": None}
+    assert snapshot["voice_guide_queue"] == {"length": 0, "phase": "idle"}
 
 
 def test_module_health_payload_shape():
@@ -1285,6 +1424,72 @@ def test_desktop_reasoning_level_selection_updates_only_from_the_payload():
 
     assert "REASONING_LEVELS.includes(payload.level)" in app_js
     assert "button.dataset.level === payload.level" in app_js
+
+
+def test_the_voice_guide_block_is_rendered_only_in_mcp_run_mode():
+    """In NORMAL run mode nothing is created at all: there is no voice guide
+    server and no queue, so a block would only ever be a stale truth."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    body = app_js.split("function renderVoiceGuideBlock(")[1].split("\n}")[0]
+    card = app_js.split("function _voiceGuideCard(")[1].split("\n}")[0]
+
+    assert 'data-run-mode") !== "mcp"' in body
+    assert "return;" in body
+    assert body.index("return;") < body.index("_voiceGuideCard()")
+    assert 'document.createElement("section")' in card
+
+
+def test_a_failed_voice_guide_server_points_at_the_event_log_instead_of_a_reason():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+
+    body = app_js.split("function renderVoiceGuideBlock(")[1].split("\n}")[0]
+    assert "server.reason" not in body
+    assert 'server.state === "failed"' in body
+    assert 'uiString("voice_guide_server_failed_note")' in body
+    strings_js = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+    assert strings_js.count("voice_guide_server_failed_note:") == 2
+
+
+def test_the_queue_row_reads_the_phase_from_the_payload():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    body = app_js.split("function _voiceGuideQueueText(")[1].split("\n}")[0]
+
+    assert 'queue.phase === "speaking"' in body
+    assert "queue.in_flight" not in body
+    assert 'uiString("voice_guide_queue_speaking")' in body
+
+
+def test_the_voice_guide_block_drops_the_queue_in_hidden_mode():
+    """The queue counts what Jarvis is about to say out loud, so Hidden drops
+    it the way it drops the Journal; the server's own line stays, like the rest
+    of the Status tab."""
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    visibility = app_js.split("function applyVisibilityMode(")[1].split("\n}")[0]
+
+    assert 'if (payload.mode === "hidden") _clearVoiceGuideBlock();' in visibility
+    clear = app_js.split("function _clearVoiceGuideBlock(")[1].split("\n}")[0]
+    assert "_voiceGuideQueue = null;" in clear
+    assert "renderVoiceGuideBlock()" in clear
+
+
+def test_voice_guide_strings_present_in_both_languages():
+    app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
+    strings_js = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+
+    for key in (
+        "voice_guide_block_title",
+        "voice_guide_server_label",
+        "voice_guide_port_label",
+        "voice_guide_queue_label",
+        "voice_guide_queue_speaking",
+        "voice_guide_server_unknown",
+        "voice_guide_server_listening",
+        "voice_guide_server_stopped",
+        "voice_guide_server_failed",
+        "voice_guide_server_failed_note",
+    ):
+        assert strings_js.count(key + ":") == 2, key
+    assert 'uiString("voice_guide_block_title")' in app_js
 
 
 def test_modules_panel_is_rendered_from_the_shared_module_contract():

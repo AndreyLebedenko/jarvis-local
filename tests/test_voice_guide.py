@@ -26,6 +26,7 @@ from jarvis.dialog.canvas_speech import GUIDANCE_SECTION_LABEL
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.dialog.voice_guide import (
     VoiceGuideAccepted,
+    VoiceGuidePhase,
     VoiceGuideQueueChanged,
     VoiceGuideRejected,
     VoiceGuideRejection,
@@ -560,12 +561,59 @@ async def test_bus_event_follows_every_queue_change(make_rig):
 
     rig.service.enqueue(VoiceGuideRequest("First."))
     await rig.settled(1)
-    await _until(lambda: len(rig.queue_events) == 3)
+    await _until(lambda: len(rig.queue_events) == 4)
 
     assert rig.queue_events == [
         VoiceGuideQueueChanged(length=1, in_flight=False),
-        VoiceGuideQueueChanged(length=1, in_flight=True),
+        VoiceGuideQueueChanged(
+            length=1, in_flight=True, phase=VoiceGuidePhase.PREPARING
+        ),
+        VoiceGuideQueueChanged(
+            length=1, in_flight=True, phase=VoiceGuidePhase.SPEAKING
+        ),
         VoiceGuideQueueChanged(length=0, in_flight=False),
+    ]
+
+
+async def test_a_derivative_item_reports_preparing_then_speaking(make_rig):
+    rig = make_rig(_guide("Short guide."), origin=SpeechOrigin.DERIVATIVE, held=True)
+
+    rig.service.enqueue(VoiceGuideRequest("First."))
+    await _until(lambda: rig.play.clips == ["Short guide."])
+    await _until(lambda: len(rig.queue_events) == 3)
+
+    assert [event.phase for event in rig.queue_events] == [
+        VoiceGuidePhase.IDLE,
+        VoiceGuidePhase.PREPARING,
+        VoiceGuidePhase.SPEAKING,
+    ]
+
+
+async def test_a_verbatim_item_reports_preparing_while_the_player_waits(make_rig):
+    rig = make_rig(origin=SpeechOrigin.VERBATIM, held=True)
+
+    rig.service.enqueue(VoiceGuideRequest("First."))
+    await _until(lambda: rig.play.clips == ["First."])
+    await _until(lambda: len(rig.queue_events) == 3)
+
+    assert [event.phase for event in rig.queue_events] == [
+        VoiceGuidePhase.IDLE,
+        VoiceGuidePhase.PREPARING,
+        VoiceGuidePhase.SPEAKING,
+    ]
+
+
+async def test_a_muted_guide_never_reports_speaking(make_rig):
+    rig = make_rig(origin=SpeechOrigin.VERBATIM, muted=True)
+
+    rig.service.enqueue(VoiceGuideRequest("First."))
+    await rig.settled(1)
+    await _until(lambda: len(rig.queue_events) == 3)
+
+    assert [event.phase for event in rig.queue_events] == [
+        VoiceGuidePhase.IDLE,
+        VoiceGuidePhase.PREPARING,
+        VoiceGuidePhase.IDLE,
     ]
 
 

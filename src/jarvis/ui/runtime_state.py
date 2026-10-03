@@ -22,6 +22,7 @@ from jarvis.core.lifecycle import (
     WarmupStarted,
 )
 from jarvis.dialog.backend import ResponseToken
+from jarvis.dialog.voice_guide import VoiceGuidePhase, VoiceGuideQueueChanged
 from jarvis.ui.contract import EventLevel, RuntimeState, SystemEvent
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,9 @@ class RuntimeStateChanged:
     substatus_text: str | None = None
 
 
+_EMPTY_QUEUE = VoiceGuideQueueChanged(length=0, in_flight=False)
+
+
 class RuntimeStateTracker:
     """`ready_state` is the state the orb rests in between turns: LISTENING,
     or MCP_WAITING in MCP mode."""
@@ -53,6 +57,7 @@ class RuntimeStateTracker:
         self._bus = bus
         self._ready_state = ready_state
         self._last: RuntimeStateChanged | None = None
+        self._last_queue = _EMPTY_QUEUE
 
     def subscribe(self) -> list[Subscription]:
         subscriptions: list[Subscription] = [
@@ -62,6 +67,7 @@ class RuntimeStateTracker:
             (ResponseToken, self._on_response_token),
             (TurnCompleted, self._on_turn_completed),
             (SystemEvent, self._on_system_event),
+            (VoiceGuideQueueChanged, self._on_voice_guide_queue_changed),
         ]
         for event_type, handler in subscriptions:
             self._bus.subscribe(event_type, handler)
@@ -100,6 +106,26 @@ class RuntimeStateTracker:
     async def _on_system_event(self, event: SystemEvent) -> None:
         if event.level is EventLevel.ERROR:
             await self._transition(RuntimeState.ERROR, text=event.message)
+
+    async def _on_voice_guide_queue_changed(
+        self, event: VoiceGuideQueueChanged
+    ) -> None:
+        # Only a real change counts: an interrupt on an empty queue republishes
+        # the state the tracker already has, and must not declare a voice-guide
+        # server that never came up healthy.
+        if event == self._last_queue:
+            return
+        self._last_queue = event
+        if event.phase is VoiceGuidePhase.IDLE:
+            # Items still queued: the next one publishes its own phase, and
+            # resting in between would blink the orb.
+            if event.length > 0:
+                return
+            await self._transition(self._ready_state, key="ready_to_listen")
+        elif event.phase is VoiceGuidePhase.PREPARING:
+            await self._transition(RuntimeState.THINKING, key="voice_guide_preparing")
+        else:
+            await self._transition(RuntimeState.SPEAKING, key="voice_guide_speaking")
 
     async def _transition(
         self, state: RuntimeState, key: str | None = None, text: str | None = None

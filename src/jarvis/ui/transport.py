@@ -49,6 +49,7 @@ from jarvis.core.run_mode import (
 from jarvis.core.solo_session import SoloSessionChanged
 from jarvis.dialog.response_mode import ResponseMode, ResponseModeChanged
 from jarvis.dialog.thinking_mode import ReasoningLevel, ReasoningLevelChanged
+from jarvis.dialog.voice_guide import VoiceGuideQueueChanged
 from jarvis.inputs.attachment_audio import MAX_CLIP_SECONDS, MAX_CLIPS_PER_FILE
 from jarvis.inputs.attachments import (
     MAX_ATTACHMENTS_PER_TURN,
@@ -102,6 +103,7 @@ from jarvis.journal.transcription import (
     TranscriptionResult,
     TranscriptionService,
 )
+from jarvis.mcp_mode.server import McpServerStatusChanged
 from jarvis.memory.files import (
     MemoryFileId,
     MemoryFileOverCapError,
@@ -133,6 +135,7 @@ from jarvis.ui.status_console import (
     journal_event_payload,
     journal_search_hit_payload,
     journal_session_payload,
+    mcp_server_payload,
     microphone_option_payload,
     model_request_log_payload,
     model_request_payload,
@@ -143,6 +146,7 @@ from jarvis.ui.status_console import (
     system_event_payload,
     thinking_mode_payload,
     visibility_mode_payload,
+    voice_guide_queue_payload,
 )
 from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 from jarvis.ui.visibility import VisibilityModeChanged
@@ -688,6 +692,10 @@ class UiStateStore:
             "debug": {"enabled": debug},
             "run_mode": cast(JsonObject, run_mode_payload(self._run_mode_policy)),
             "mcp": {"status": "off", "enabled": False, "tools": []},
+            # Explicit before the first event, so a client rendering the
+            # snapshot never has to read a missing key.
+            "mcp_server": {"state": "unknown", "port": None},
+            "voice_guide_queue": {"length": 0, "phase": "idle"},
             "tts": {"enabled": tts_enabled},
             "solo_session": {"enabled": solo_session_enabled},
             "model": {"label": model_label},
@@ -782,6 +790,23 @@ class UiStateStore:
 
     def set_mcp_state(self, state: JsonObject) -> JsonObject | None:
         return self._replace("mcp", state)
+
+    def set_mcp_server_state(self, event: McpServerStatusChanged) -> JsonObject | None:
+        return self._replace("mcp_server", cast(JsonObject, mcp_server_payload(event)))
+
+    def set_voice_guide_queue_state(
+        self, event: VoiceGuideQueueChanged
+    ) -> JsonObject | None:
+        return self._replace(
+            "voice_guide_queue", cast(JsonObject, voice_guide_queue_payload(event))
+        )
+
+    def republish_voice_guide_queue_state(self) -> JsonObject:
+        """The stored queue again, for a client that dropped it while Hidden."""
+        return self._set(
+            "voice_guide_queue",
+            cast(JsonObject, self._state["voice_guide_queue"]),
+        )
 
     def set_tts_state(self, enabled: bool) -> JsonObject | None:
         return self._replace("tts", {"enabled": enabled})
@@ -1060,6 +1085,17 @@ class UiTransportServer:
     def set_mcp_state(self, state: JsonObject) -> None:
         self._publish_delta(self._state.set_mcp_state(state))
 
+    def set_mcp_server_state(self, event: McpServerStatusChanged) -> None:
+        self._publish_delta(self._state.set_mcp_server_state(event))
+
+    def set_voice_guide_queue_state(self, event: VoiceGuideQueueChanged) -> None:
+        # The store always learns the queue; only the push follows the journal
+        # content, and leaving Hidden re-pushes what is current then.
+        message = self._state.set_voice_guide_queue_state(event)
+        if self._is_hidden():
+            return
+        self._publish_delta(message)
+
     def set_tts_enabled(self, enabled: bool) -> None:
         self._publish_delta(self._state.set_tts_state(enabled))
 
@@ -1081,6 +1117,8 @@ class UiTransportServer:
     def set_visibility_mode(self, mode: VisibilityMode) -> None:
         self._visibility_mode = mode
         self._publish_delta(self._state.set_visibility_mode(mode))
+        if mode is VisibilityMode.OPEN:
+            self._publish_delta(self._state.republish_voice_guide_queue_state())
 
     def _subscribe_to_bus(self) -> None:
         subscriptions: list[tuple[type[object], Callable[..., object]]] = [
@@ -2021,6 +2059,15 @@ class UiTransportServer:
     def _is_hidden(self) -> bool:
         return self._visibility_mode is VisibilityMode.HIDDEN
 
+    def _client_snapshot_message(self) -> JsonObject:
+        """The snapshot a client receives. A Hidden client gets no queue,
+        exactly as it gets no queue deltas - a client connecting mid-Hidden
+        must not learn the length the deltas are withholding."""
+        message = self._state.snapshot_message()
+        if self._is_hidden():
+            del cast(JsonObject, message["payload"])["voice_guide_queue"]
+        return message
+
     @staticmethod
     def _journal_hidden_response() -> web.Response:
         return web.json_response({"status": "hidden"})
@@ -2478,7 +2525,7 @@ class UiTransportServer:
                         },
                     ),
                 )
-                self._enqueue_message(client, self._state.snapshot_message())
+                self._enqueue_message(client, self._client_snapshot_message())
                 async for message in websocket:
                     if message.type is web.WSMsgType.TEXT:
                         self._handle_client_message(client, message.data)

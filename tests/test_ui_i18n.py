@@ -103,6 +103,7 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
             "response_mode_",
             "think_status_",
             "tts_language_mode_",
+            "voice_guide_server_",
         }
     )
     assert used <= keys

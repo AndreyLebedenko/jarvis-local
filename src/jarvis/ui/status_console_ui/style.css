@@ -430,6 +430,17 @@ body {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
 }
 .mcp-card[data-status="degraded"] { border-color: var(--amber-dim); }
+.voice-guide-block {
+  width: min(760px, 100%); padding: 14px 18px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.voice-guide-block h2 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.voice-guide-row {
+  display: flex; gap: 10px; padding: 4px 0;
+  border-top: 1px solid var(--border); font-size: 12px;
+}
+.voice-guide-key { color: var(--text-dim); min-width: 90px; }
+.voice-guide-value { color: var(--text); word-break: break-word; }
 .mcp-card[data-status="connecting"],
 .mcp-card[data-status="disconnecting"] { border-color: var(--cyan-dim); }
 .mcp-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
