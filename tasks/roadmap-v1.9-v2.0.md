@@ -228,7 +228,19 @@ Open design questions resolved (owner, 2026-09-30), detail in
 - Claude Code `Stop` hook: out of v2.0, a possible follow-up.
 
 Story/task readiness: story card exists at
-`tasks/story-v2.0-mcp-voice-guide.md` (approved 2026-09-30).
+`tasks/done/story-v2.0-mcp-voice-guide.md` (approved 2026-09-30); delivered
+2026-10-03 through task cards v2.0-1 to v2.0-8.
+
+Follow-ups carried forward:
+
+- Claude Code `Stop` hook (named out of v2.0 above).
+- Streaming the voice guide sentence by sentence: the guide pass is generated
+  in full before the first word is spoken, so the first word waits for the
+  whole pass. Measure the latency gain before changing the pipeline.
+  Measured once in the owner's release run (2026-10-03): about 30 s of
+  silence on a long canvas in `derivative` mode. The owner also asked for the
+  wait to be visible somewhere beyond the orb's "Preparing an external
+  answer..." substatus (for example elapsed time); not critical.
 
 Rejected for v2.0 (same dialog): Jarvis calling an external LLM itself,
 with local STT and a local sensitive-data gate. It would revise the

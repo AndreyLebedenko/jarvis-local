@@ -180,6 +180,7 @@ body {
    "Data locality визуально отделена от visibility mode цветом, текстом и
    расположением") while still living in the topbar together. */
 .topbar-right { display: flex; align-items: center; gap: 14px; }
+.brand-name, .topbar-right > * { white-space: nowrap; }
 
 .locality-badge {
   display: flex; align-items: center; gap: 6px;

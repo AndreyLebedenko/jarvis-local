@@ -1,12 +1,13 @@
 # Task v2.0-8: Docs and release verification
 
-**Status:** Not started.
+**Status:** Completed. (2026-10-03)
 **Story:** `tasks/story-v2.0-mcp-voice-guide.md`.
 **Depends on:** tasks v2.0-1 through v2.0-7 completed and green.
 **Executor:** the story's executor profile. Docs and a human-run handoff only.
 No production logic change; if you need one, the story is not done - report
-it instead. One owner-approved exception (2026-10-03): the MCP session
-title placeholder, "What to build" item 0.
+it instead. Owner-approved exceptions (2026-10-03): the MCP session title
+placeholder ("What to build" item 0) and the topbar width fix (completion
+notes).
 
 ## Summary
 
@@ -121,14 +122,45 @@ real Claude Code client.
 
 ## Acceptance criteria
 
-- [ ] An `--mcp-mode` session is titled "MCP session" / "Сессия MCP" in the
+- [x] An `--mcp-mode` session is titled "MCP session" / "Сессия MCP" in the
       Journal session list; other placeholders are unchanged.
-- [ ] `PROJECT.md` records the v2.0 architecture and the amended locality
+- [x] `PROJECT.md` records the v2.0 architecture and the amended locality
       contract; the roadmap marks v2.0 done with its follow-ups.
-- [ ] Both READMEs describe setup and limits of `--mcp-mode` with the exact
+- [x] Both READMEs describe setup and limits of `--mcp-mode` with the exact
       client command.
-- [ ] The handoff is self-sufficient and passes
+- [x] The handoff is self-sufficient and passes
       `tools/check_handoff_self_sufficiency.py`; automated gates are green
       and recorded in it.
-- [ ] The owner executed the handoff and reported green (story completion
+- [x] The owner executed the handoff and reported green (story completion
       gate).
+
+## Completion notes (2026-10-03)
+
+Executed through the Quoroom chat under
+`tasks/done/plan-v2.0-8-chat-execution.md`. The handoff
+(`tasks/done/v2.0-release-verification-handoff.md`, Russian translation
+beside it) went through three independent paper passes before the owner ran
+it.
+
+- Owner's run (2026-10-03): functionally green, with the call sequence
+  adapted to the situation. `derivative` mode praised; the guide pass took
+  about 30 s on a long canvas.
+- Fixed from the owner's run:
+  - the handoff and both READMEs say `.\Jarvis.cmd` in PowerShell (the
+    owner's bare `Jarvis.cmd` was not found there);
+  - the handoff explains that `speak` is an MCP tool Claude Code calls on
+    request, with ready request phrases;
+  - step 0.0: the launcher's `.venv` held mcp 1.28.1, below the
+    `mcp>=1.30` floor; the step upgrades it.
+- Second owner-approved production change (2026-10-03): the topbar wrapped
+  "РЕЖИМ MCP" and other badges at the 960 px default width. Badge text no
+  longer wraps (`style.css`), and the default window width is 1040 logical px
+  (`StatusConsoleWindow`, `src/jarvis/ui/status_console.py`), measured in
+  the browser: the Russian MCP-mode topbar needs about 1000 px of viewport.
+  Owner confirmed the topbar.
+- Explained, not changed: the `uvicorn.error` lines at INFO are uvicorn's
+  main logger name, not an error level.
+- Carried forward in the roadmap: guide sentence streaming with the measured
+  30 s, and a visible indicator of the guide wait.
+- Final gates: 3304 passed, 1 skipped; `ruff check` and
+  `ruff format --check` green.

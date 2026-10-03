@@ -16,8 +16,14 @@ tool call left the machine is labeled as such, independently of
 call reached the network). With every such capability disabled - the
 default, and the only state that exists before story-v1.4.0 lands - the
 runtime is unconditionally local, byte-identical to the pre-v1.4.0
-guarantee. Rationale: MCP integration (v1.4.0) gives Jarvis its first
-capability that can leave the machine at all; the human decision was to
+guarantee.
+`--mcp-mode` (story v2.0) adds an inbound path, not an outbound one: it serves
+one streamable-HTTP MCP endpoint on `127.0.0.1` only, behind a bearer token,
+so another assistant's answer can reach Jarvis without Jarvis reaching
+anything. Text that arrives that way is journaled locally, is labeled
+everywhere it is shown or handed to the model as another assistant's claim
+rather than Jarvis's own, and is never sent onward. Rationale: MCP integration
+(v1.4.0) gives Jarvis its first capability that can leave the machine at all; the human decision was to
 make that boundary explicit and per-component rather than erode the old
 blanket guarantee silently. Backend/model installation and non-local
 inference providers remain outside Jarvis core guarantees, as before. This
@@ -4217,12 +4223,29 @@ story cards under `tasks/done/`).
   there is no indexable prose in it and no surface to invent for it without
   a new scope decision.
 
-## Architecture v2.0 (MCP voice guide) - in progress
+## Architecture v2.0 (MCP voice guide)
 
-Facts settled by story-v2.0 tasks 2-5 (external canvas provenance, the
-voice-guide pipeline, the `--mcp-mode` composition, the MCP server and its
-`speak` tool). Task 8 completes this section; the Journal-rendering and
-server-state UI facts (task 6) are not recorded here yet.
+Facts settled by story-v2.0 tasks 1-7 (the single-instance guard, external
+canvas provenance, the voice-guide pipeline, the `--mcp-mode` composition, the
+MCP server and its `speak` tool, the Journal and Status Console surfaces, and
+the refactoring sweep that left one definition per concept).
+
+- **One Jarvis at a time, in every start mode.** `main()` takes a Windows
+  named mutex `Local\Jarvis.SingleInstance` (per logon session, global per user,
+  never per workspace) right after `parse_args()` - so `--help` and argument
+  errors still work while another instance runs - and before `run()` /
+  `run_with_status_console()`, and releases it in `finally`.
+  `src/jarvis/core/single_instance.py`: `acquire_single_instance()` returns
+  `HeldInstance | AlreadyRunning`, the Win32 calls sit behind the injectable
+  `Win32MutexApi` (ctypes `CreateMutexW` / `CloseHandle`, bound lazily so the
+  module imports off Windows), and refusal prints
+  `ALREADY_RUNNING_MESSAGE` ("Jarvis is already running. Only one instance may
+  run at a time.") to stderr, shows it in a `MessageBoxW` when
+  `--status-console` is on, and exits with
+  `ALREADY_RUNNING_EXIT_CODE` (3). `run()` itself is guard-free, so tests and
+  `manual/` scripts are never blocked by a running Jarvis. A named mutex was
+  chosen over a lock file because the OS releases it on process death: a crashed
+  Jarvis leaves no stale lock to delete.
 
 - **An external canvas is one journal event.** `role="assistant"`,
   `source="mcp_canvas"` (`MCP_CANVAS_SOURCE` in
@@ -4541,8 +4564,8 @@ server-state UI facts (task 6) are not recorded here yet.
   task's exception again.
 - **Server status is an event.** `McpServerStatusChanged(state, port, reason)`
   on the bus: `LISTENING` (with the port, once uvicorn has started),
-  `STOPPED`, or `FAILED` (with the reason). It is task 6's input for the
-  server-state widget.
+  `STOPPED`, or `FAILED` (with the reason). The Status Console block below is
+  its only UI consumer.
 - **The Status Console shows both voice-guide blocks, in `MCP` run mode only.**
   Two typed state keys, `mcp_server` (`state` / `port`) and `voice_guide_queue`
   (`length` / `phase`), each with one payload builder
@@ -4552,9 +4575,9 @@ server-state UI facts (task 6) are not recorded here yet.
   a snapshot never leaves a key undefined. The block carries no failure reason:
   `McpServerStatusChanged.reason` is a raw English log string naming the token
   file's full path, so a `FAILED` block says only "not started, the reason is
-  in the event log" and the localized reason stays where task 4 put it - the
-  `ERROR` system event of the same startup report. No block payload and no
-  snapshot carries the token or its file path.
+  in the event log" and the localized reason stays where the startup report
+  puts it - the `ERROR` system event of the same startup report. No block
+  payload and no snapshot carries the token or its file path.
   `Hidden` suppresses the queue only - it counts what Jarvis is about to say
   out loud - in the store's push *and* in the snapshot a client receives while
   hidden; the server's own state is process status and stays, like the MCP
@@ -5526,7 +5549,8 @@ Current direction:
    what they are and what they are based on; spoken derivatives may become
    locator-only search material without becoming model memory.
 3. v1.9.x prompt experiments for the Text + voice first-pass canvas contract.
-4. v2.0 MCP voice guide: `--mcp-mode` serves a localhost-only,
+4. v2.0 MCP voice guide - delivered (story-v2.0, tasks v2.0-1 through
+   v2.0-8, 2026-10-03): `--mcp-mode` serves a localhost-only,
    token-authenticated streamable-HTTP MCP server; an external client passes
    a long answer as the canvas and Jarvis speaks a derivative over it. No
    user input into the model in this mode; never concurrent with a normal

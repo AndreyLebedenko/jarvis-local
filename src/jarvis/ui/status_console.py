@@ -40,6 +40,7 @@ from jarvis.inputs.camera import (
     CameraStateChanged,
 )
 from jarvis.journal.events import JournalEvent
+from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.mcp_mode.server import McpServerStatusChanged
@@ -85,6 +86,7 @@ INDEX_HTML = UI_DIR / "index.html"
 TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
 VOICE_ONLY_SESSION_TITLE = "Voice turn"
 NEW_CONTEXT_SESSION_TITLE = "New context"
+MCP_SESSION_TITLE = "MCP session"
 
 
 def runtime_state_payload(
@@ -286,21 +288,25 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
 
 NEW_CONTEXT_TITLE_KIND = "new_context"
 VOICE_ONLY_TITLE_KIND = "voice_only"
+MCP_SESSION_TITLE_KIND = "mcp_session"
 
 
 def _journal_session_title_and_kind(
     session_id: str, store: JournalStore
 ) -> tuple[str, str]:
     """Returns the session title and its kind. A placeholder title (a blank
-    new context, or a voice-only session with no text user turn) carries a
-    non-empty kind so the client localizes it to the active UI language; a
-    real user-authored title carries an empty kind and is shown verbatim. The
-    literal titles here remain the client's fallback for an unknown kind."""
+    new context, a voice-only session with no text user turn, or an MCP-mode
+    session of external answers) carries a non-empty kind so the client
+    localizes it to the active UI language; a real user-authored title carries
+    an empty kind and is shown verbatim. The literal titles here remain the
+    client's fallback for an unknown kind."""
     for event in store.read_session(session_id).events:
         if event.source == "context" and event.metadata.get("kind") == "new_context":
             return NEW_CONTEXT_SESSION_TITLE, NEW_CONTEXT_TITLE_KIND
         if event.role == "user" and event.text.strip():
             return event.text.strip(), ""
+        if event.source == MCP_CANVAS_SOURCE:
+            return MCP_SESSION_TITLE, MCP_SESSION_TITLE_KIND
     return VOICE_ONLY_SESSION_TITLE, VOICE_ONLY_TITLE_KIND
 
 
@@ -445,7 +451,7 @@ class StatusConsoleWindow:
         window_factory: WindowFactory | None = None,
         title: str = "Jarvis - Status Console",
         url: str | Path = INDEX_HTML,
-        width: int = 960,
+        width: int = 1040,
         height: int = 900,
         min_size: tuple[int, int] = (480, 420),
         resizable: bool = True,
