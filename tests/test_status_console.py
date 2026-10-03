@@ -110,6 +110,50 @@ def test_runtime_state_payload_uses_given_substatus_over_the_default():
     assert payload["substatus"] == "TTS: device not found"
 
 
+def test_an_mcp_session_is_titled_as_its_own_placeholder(tmp_path):
+    session_id = "20260719-100000-ab12"
+    store = JournalStore(tmp_path)
+    store.append(
+        external_canvas_event(
+            session_id=session_id,
+            timestamp="2026-07-19T10:00:00+01:00",
+            speech_origin=SpeechOrigin.DERIVATIVE,
+            speech_status=SpeechStatus.SPOKEN,
+            derivative=DERIVATIVE_TEXT,
+        )
+    )
+    summary = store.list_sessions()[0]
+
+    payload = journal_session_payload(summary, store)
+
+    # An --mcp-mode session has no user turn at all, so the voice-only
+    # placeholder would name it a voice turn it never had.
+    assert payload["title"] == "MCP session"
+    assert payload["title_kind"] == "mcp_session"
+
+
+def test_a_voice_only_session_keeps_the_voice_only_placeholder(tmp_path):
+    session_id = "20260719-100000-ab12"
+    store = JournalStore(tmp_path)
+    store.append(
+        JournalEvent(
+            session_id=session_id,
+            timestamp="2026-07-19T10:00:00+01:00",
+            source="assistant",
+            role="assistant",
+            text="Ответ.",
+            media=[],
+            transcript=None,
+        )
+    )
+    summary = store.list_sessions()[0]
+
+    payload = journal_session_payload(summary, store)
+
+    assert payload["title"] == "Voice turn"
+    assert payload["title_kind"] == "voice_only"
+
+
 def test_blank_context_session_title_is_not_voice_fallback(tmp_path):
     session_id = "20260719-100000-ab12"
     store = JournalStore(tmp_path)
@@ -2381,6 +2425,26 @@ def test_status_console_default_height_fits_a_1080p_display():
     StatusConsoleWindow(window_factory=window_factory).create()
 
     assert captured["height"] == 900
+
+
+def test_status_console_default_width_fits_the_mcp_mode_topbar_on_one_line():
+    """Measured in the browser: the Russian topbar with the "РЕЖИМ MCP"
+    badge needs about 1000 px of viewport; 1040 leaves room for the frame."""
+    captured: dict[str, object] = {}
+
+    def window_factory(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    StatusConsoleWindow(window_factory=window_factory).create()
+
+    assert captured["width"] == 1040
+
+
+def test_style_css_topbar_badges_never_wrap_their_text():
+    css = (UI_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".brand-name, .topbar-right > * { white-space: nowrap; }" in css
 
 
 def test_style_css_main_column_rhythm_is_tight_enough_for_900px():

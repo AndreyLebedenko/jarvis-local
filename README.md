@@ -534,6 +534,50 @@ python -m manual.manual_check_mcp_providers --profile local
 python -m manual.manual_check_mcp_providers --profile lan
 ```
 
+## Voice guide mode (`--mcp-mode`)
+
+Jarvis can serve another assistant's answers out loud: a local MCP client (for
+example Claude Code) hands Jarvis a long answer as the canvas, and Jarvis
+speaks a short guide over it and keeps the answer in the same Journal as any
+other turn. Start it as its own process:
+
+```cmd
+Jarvis.cmd --mcp-mode
+```
+
+(From the Jarvis folder in cmd; in PowerShell, `.\Jarvis.cmd --mcp-mode`.)
+
+`Jarvis.cmd` already passes `--status-console`, so the console window opens
+with the server state and the speech queue in it. A manual
+`python -m jarvis --mcp-mode` run is headless unless you add
+`--status-console` yourself. This mode is deliberately *not* the dialog: no
+microphone, no typed chat, no clipboard or screenshot hotkeys, so Jarvis
+speaks only what the client sends. Only one Jarvis runs at a time in any mode
+(a second start is refused with a message box), so close a running Jarvis
+before starting this mode.
+
+Register the server in your MCP client once, with the two values from
+`config.toml`'s `[mcp_mode]` section (`config.example.toml` documents both):
+
+```bash
+claude mcp add -s user --transport http jarvis http://127.0.0.1:47821/mcp --header "Authorization: Bearer <token>"
+```
+
+- `47821` is the default `[mcp_mode].port`; if you changed the port in
+  `config.toml`, use yours.
+- `<token>` is the whole contents of the `[mcp_mode].token_file` file
+  (`mcp_mode.token` by default, next to `Jarvis.cmd`). The file is created on
+  the first `--mcp-mode` start; delete it to rotate the token, then update the
+  client command.
+- `-s user` registers the server for every Claude Code session. Without it
+  Claude Code stores it per folder (`-s local` is its default) and only
+  sessions started in that folder see it.
+
+The server only ever listens on `127.0.0.1`, and only answers a request that
+carries that token. It is the one MCP tool Jarvis serves,
+`speak(canvas, spoken_text?, guidance?)`; see
+[Architecture v2.0](PROJECT.md) for what it stores and how it is labeled.
+
 ## Response modes
 
 A reply full of bullets, tables, and links is hard to *listen to*, while some

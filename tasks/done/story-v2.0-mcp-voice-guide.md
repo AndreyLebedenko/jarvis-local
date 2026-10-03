@@ -1,6 +1,7 @@
 # Story v2.0: MCP voice guide (`--mcp-mode`)
 
-**Status:** Approved (owner, 2026-09-30); task cards written, none started.
+**Status:** Completed. (2026-10-03; tasks v2.0-1 to v2.0-8 in `tasks/done/`,
+owner's release run green.)
 **Created:** 2026-09-30
 **Updated:** 2026-09-30
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md` (section "v2.0 - MCP voice guide
@@ -267,30 +268,30 @@ an external LLM itself (roadmap, "Rejected for v2.0").
 
 ## Acceptance criteria
 
-- [ ] A second Jarvis start, in either mode, is refused while one is running.
+- [x] A second Jarvis start, in either mode, is refused while one is running.
       (Task 1.)
-- [ ] An `mcp_canvas` event maps to `EXTERNAL_CANVAS` with
+- [x] An `mcp_canvas` event maps to `EXTERNAL_CANVAS` with
       `{MODEL_SEARCH, JOURNAL_UI}`. It and annotations of it never reach
       automatic retrieval (lexical or semantic). `search_history` labels it as
       an external answer with the caller. A fork never presents it as the
       local model's own answer. (Task 2.)
-- [ ] Mode 3 behaves identically after the derivative-pass extraction; its
+- [x] Mode 3 behaves identically after the derivative-pass extraction; its
       existing tests pass unchanged. (Task 3.)
-- [ ] Queued `speak` items are spoken in order, one at a time. A new call
+- [x] Queued `speak` items are spoken in order, one at a time. A new call
       never interrupts the current one. Interrupt stops the current item and
       drops the queue, and every item is journaled with its outcome.
       (Task 3.)
-- [ ] In `--mcp-mode` no microphone stream is opened (the input object stays
+- [x] In `--mcp-mode` no microphone stream is opened (the input object stays
       inert; owner, 2026-10-02), no input hotkey is bound,
       and `McpHost` stays `OFF`. (Task 4.)
-- [ ] `speak` is reachable only on `127.0.0.1` with the token. It returns
+- [x] `speak` is reachable only on `127.0.0.1` with the token. It returns
       "accepted, queued" without waiting for speech, and rejects over-length
       canvases and a full queue with typed errors. (Task 5.)
-- [ ] `mcp_canvas` events are visible, searchable, annotatable, and
+- [x] `mcp_canvas` events are visible, searchable, annotatable, and
       replayable in the Journal, with the caller named. (Task 6.)
-- [ ] The sweep leaves the suite green with no acceptance-criterion
+- [x] The sweep leaves the suite green with no acceptance-criterion
       regression. (Task 7.)
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
       The Claude Code end-to-end check is a prepared, self-sufficient
       human-run handoff. `PROJECT.md` records the v2.0 architecture and the
       amended locality contract. (Task 8.)

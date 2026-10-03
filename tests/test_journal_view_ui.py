@@ -461,7 +461,18 @@ def test_placeholder_session_titles_are_localized_by_kind():
     assert 'uiString("journal_session_title_new_context")' in body
     assert 'session.title_kind === "voice_only"' in body
     assert 'uiString("journal_session_title_voice_only")' in body
+    assert 'session.title_kind === "mcp_session"' in body
+    assert 'uiString("journal_session_title_mcp_session")' in body
     assert "return session.title;" in body
+
+
+def test_every_placeholder_session_title_string_exists_in_both_languages():
+    for key in (
+        "journal_session_title_new_context",
+        "journal_session_title_voice_only",
+        "journal_session_title_mcp_session",
+    ):
+        assert STRINGS_JS.count(key + ":") == 2, key
 
 
 def test_journal_new_context_is_not_the_fork_continue_action():

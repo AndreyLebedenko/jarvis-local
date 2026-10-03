@@ -2076,15 +2076,19 @@ function _applyJournalUsage(payload) {
     uiString("journal_usage_total").replace("{size}", _formatJournalBytes(usage.total_bytes || 0));
 }
 
-// A placeholder session title (title_kind "new_context"/"voice_only") is
-// localized to the active UI language; a user-authored title (empty kind) is
-// shown verbatim. Mirrors the server's _journal_session_title_and_kind.
+// A placeholder session title (title_kind "new_context"/"voice_only"/
+// "mcp_session") is localized to the active UI language; a user-authored
+// title (empty kind) is shown verbatim. Mirrors the server's
+// _journal_session_title_and_kind.
 function _journalSessionTitle(session) {
   if (session.title_kind === "new_context") {
     return uiString("journal_session_title_new_context");
   }
   if (session.title_kind === "voice_only") {
     return uiString("journal_session_title_voice_only");
+  }
+  if (session.title_kind === "mcp_session") {
+    return uiString("journal_session_title_mcp_session");
   }
   return session.title;
 }
