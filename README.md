@@ -343,10 +343,15 @@ then closes the launcher. It does not stop an independently started Jarvis.
 **Touchstrip**, **Load at Windows start-up**, and **About**. Home is one
 existing installation containing `.venv` and this launcher update, not a
 workspace. It defaults to the launcher's installation and cannot be changed
-during an owned run. Touchstrip defaults to on, applies immediately to a
-launcher-started run, and persists. Windows startup is opt-in and starts only
+during an owned run. The Touchstrip checkbox is the saved start-up preference:
+it defaults to on, applies immediately to a launcher-started run, and persists.
+Closing the Touchstrip with its X only hides it and does not change that
+preference; the tray item **Show Touchstrip** (grayed out when no run is
+active) brings it back. Windows startup is opt-in and starts only
 the idle launcher. Preferences and startup diagnostics live under
 `%LOCALAPPDATA%\JarvisLauncher`; runtime configuration and data stay in Home.
+`runtime.log` holds the latest run's output and `runtime.previous.log` the run
+before it; `launcher.log` is capped at about 1 MB with one backup.
 
 Create a desktop shortcut with the Jarvis icon and no console window:
 

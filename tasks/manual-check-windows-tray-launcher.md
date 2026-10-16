@@ -1,6 +1,7 @@
 # Windows tray launcher: human verification
 
-**Status:** Owner verified on 2026-10-16; not run by the agent.
+**Status:** Owner verified on 2026-10-16; not run by the agent. Steps 2 and 4
+were changed afterwards (Show Touchstrip tray item) and need a human re-run.
 **Task:** `task-windows-tray-launcher.md`.
 **Base commit:** `0f4464623d6e5985f50bfcaa43cd7cbd05368a56`, plus the task diff.
 
@@ -29,7 +30,8 @@ The launcher is English; Jarvis retains its existing configured UI language.
   (`LiveStatusConsole.create_windows()` in `app.py`). No hotkey or translated
   button label is required by this handoff. The launcher remains in the tray.
 - Persistent Home/Touchstrip and startup diagnostics:
-  `%LOCALAPPDATA%\JarvisLauncher\settings.json`, `runtime.log`, `launcher.log`
+  `%LOCALAPPDATA%\JarvisLauncher\settings.json`, `runtime.log` (the run
+  before it is kept as `runtime.previous.log`), `launcher.log`
   (`SettingsStore` in `model.py`, launcher `__main__.py`, `ChildRuntime` in
   `process.py`). No earlier task's undocumented default is needed.
 
@@ -50,7 +52,8 @@ The launcher is English; Jarvis retains its existing configured UI language.
    Double-click **Jarvis Launcher** on the desktop. Expect one recognizable
    icon in the notification area (possibly behind Windows' overflow arrow),
    no console window, no Status Console, and no model/microphone startup.
-   Right-click: Assistant, MCP, separator, Settings, separator, Exit.
+   Right-click: Assistant, MCP, separator, Show Touchstrip (grayed out while
+   idle), Settings, separator, Exit.
 
 3. Open Settings. Use Browse to select `D:\AI\Jarvis`, then Save folder;
    verify the displayed canonical path. Ensure Touchstrip is checked (click
@@ -66,9 +69,12 @@ The launcher is English; Jarvis retains its existing configured UI language.
    show the styled already-running dialog and leave the running mode intact.
    Settings must disable the Home entry/Browse/Save folder during this run.
    In Settings ensure Touchstrip is unchecked: it hides immediately. Ensure
-   it is checked: the same panel returns. Close the Touchstrip X; then set
-   its checkbox unchecked and checked to show it again. Close the Status
-   Console X; wait for that runtime to finish. The tray must remain idle.
+   it is checked: the same panel returns. Close the Touchstrip X; the Settings
+   checkbox stays checked (it is the saved start-up preference). Choose
+   **Show Touchstrip** in the tray menu (enabled while a run is active): the
+   same panel returns and the checkbox and `settings.json` are unchanged.
+   Close the Status Console X; wait for that runtime to finish. The tray must
+   remain idle and Show Touchstrip grayed out again.
 
 5. In Settings ensure Touchstrip is unchecked. Start **MCP**. Expect the
    existing MCP-mode Status Console/voice-guide status, no microphone input,

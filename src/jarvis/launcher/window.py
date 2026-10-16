@@ -168,6 +168,18 @@ class SettingsWindow:
         ).pack(anchor="w")
         tk.Frame(body, bg="#1C2433", height=1).pack(fill="x", pady=20)
         self._checkbox(body, "Touchstrip", self.touchstrip, self._touchstrip)
+        tk.Label(
+            body,
+            text="Saved start-up preference; it also shows or hides a running "
+            "Touchstrip. If you closed it with its X, use Show Touchstrip in "
+            "the tray menu.",
+            bg=BG,
+            fg=DIM,
+            font=FONT,
+            wraplength=480,
+            justify="left",
+            anchor="w",
+        ).pack(anchor="w", pady=(0, 10))
         self._checkbox(
             body, "Load at Windows start-up", self.autostart, self._autostart
         )

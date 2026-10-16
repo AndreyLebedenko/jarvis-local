@@ -5,7 +5,7 @@ import pytest
 
 from jarvis.launcher.model import LaunchMode
 from jarvis.launcher.startup import RUN_KEY, RUN_VALUE, WindowsStartupStore
-from jarvis.launcher.tray import WM_RBUTTONUP, WM_TRAY, WindowsTray
+from jarvis.launcher.tray import WM_RBUTTONUP, WM_REFRESH, WM_TRAY, WindowsTray
 
 
 @pytest.fixture
@@ -70,6 +70,7 @@ def test_right_click_menu_has_the_owner_order_and_one_active_mode(mode, tmp_path
         (1, "Assistant"),
         (2, "MCP"),
         (0, ""),
+        (5, "Show Touchstrip"),
         (3, "Settings"),
         (0, ""),
         (4, "Exit"),
@@ -80,6 +81,58 @@ def test_right_click_menu_has_the_owner_order_and_one_active_mode(mode, tmp_path
     )
     assert actions == [3]
     tray._user32.DestroyMenu.assert_called_once_with(99)
+
+
+@pytest.mark.parametrize("mode", [None, LaunchMode.ASSISTANT, LaunchMode.MCP])
+def test_show_touchstrip_is_grayed_out_unless_a_runtime_is_running(mode, tmp_path):
+    tray = WindowsTray(tmp_path / "icon.ico", lambda action: None, pytest.fail)
+    tray._mode = mode
+    tray._user32 = Mock()
+    tray._user32.CreatePopupMenu.return_value = 99
+    tray._popup(42)
+    flags = {
+        call.args[2]: call.args[1] for call in tray._user32.AppendMenuW.call_args_list
+    }
+    assert bool(flags[5] & 0x0001) is (mode is None)
+    assert not any(flag & 0x0001 for item, flag in flags.items() if item != 5)
+
+
+def make_live_tray(tmp_path):
+    tray = WindowsTray(tmp_path / "icon.ico", lambda action: None, pytest.fail)
+    tray._user32 = Mock()
+    tray._hwnd = 42
+    return tray
+
+
+def test_repeated_identical_updates_post_no_additional_refresh(tmp_path):
+    tray = make_live_tray(tmp_path)
+    tray.update(LaunchMode.ASSISTANT)
+    tray.update(LaunchMode.ASSISTANT)
+    tray.update(LaunchMode.ASSISTANT)
+    tray._user32.PostMessageW.assert_called_once_with(42, WM_REFRESH, 0, 0)
+
+
+def test_the_idle_tooltip_needs_no_refresh_at_startup(tmp_path):
+    tray = make_live_tray(tmp_path)
+    tray.update(None)
+    tray._user32.PostMessageW.assert_not_called()
+
+
+def test_each_tooltip_change_posts_exactly_one_refresh(tmp_path):
+    tray = make_live_tray(tmp_path)
+    tray.update(LaunchMode.MCP)
+    tray.update(LaunchMode.MCP, exiting=True)
+    tray.update(None)
+    assert tray._user32.PostMessageW.call_count == 3
+    assert tray._tooltip == "Jarvis - waiting for a mode"
+
+
+def test_mode_is_tracked_even_when_the_tooltip_is_unchanged(tmp_path):
+    tray = make_live_tray(tmp_path)
+    tray.update(LaunchMode.MCP, exiting=True)
+    tray.update(LaunchMode.ASSISTANT, exiting=True)
+    assert tray._mode is LaunchMode.ASSISTANT
+    tray._user32.PostMessageW.assert_called_once()
 
 
 def test_dismissing_the_tray_menu_does_not_dispatch_an_action(tmp_path):

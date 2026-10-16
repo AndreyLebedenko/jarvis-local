@@ -16,10 +16,13 @@ WM_REFRESH = 0x8002
 WM_RBUTTONUP = 0x0205
 WM_CONTEXTMENU = 0x007B
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
+SHOW_TOUCHSTRIP = 5
+MF_GRAYED = 0x0001
 MENU_ITEMS = (
     (1, "Assistant"),
     (2, "MCP"),
     (0, ""),
+    (SHOW_TOUCHSTRIP, "Show Touchstrip"),
     (3, "Settings"),
     (0, ""),
     (4, "Exit"),
@@ -75,13 +78,16 @@ class WindowsTray:
 
     def update(self, mode: LaunchMode | None, *, exiting: bool = False) -> None:
         self._mode = mode
-        self._tooltip = (
+        tooltip = (
             "Jarvis - shutting down"
             if exiting
             else f"Jarvis - {mode.value.title()}"
             if mode is not None
             else "Jarvis - waiting for a mode"
         )
+        if tooltip == self._tooltip:
+            return
+        self._tooltip = tooltip
         if self._hwnd is not None:
             self._user32.PostMessageW(self._hwnd, WM_REFRESH, 0, 0)
 
@@ -317,7 +323,13 @@ class WindowsTray:
             )
             for identifier, label in MENU_ITEMS:
                 flags = (
-                    0x0800 if identifier == 0 else 0x0008 if identifier == active else 0
+                    0x0800
+                    if identifier == 0
+                    else 0x0008
+                    if identifier == active
+                    else MF_GRAYED
+                    if identifier == SHOW_TOUCHSTRIP and self._mode is None
+                    else 0
                 )
                 if not self._user32.AppendMenuW(menu, flags, identifier, label):
                     raise ctypes.WinError(ctypes.get_last_error())

@@ -1,5 +1,6 @@
 """Subprocess adapter; the runtime inherits only its private command pipe."""
 
+import contextlib
 import json
 import os
 import subprocess
@@ -17,9 +18,16 @@ def runtime_is_busy() -> bool:
     return False
 
 
+def rotate_log(log_path: Path) -> None:
+    previous = log_path.with_name(f"{log_path.stem}.previous{log_path.suffix}")
+    with contextlib.suppress(FileNotFoundError):
+        os.replace(log_path, previous)
+
+
 class ChildRuntime:
     def __init__(self, request: LaunchRequest, log_path: Path) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        rotate_log(log_path)
         environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
         with log_path.open("w", encoding="utf-8") as log:
             self._process = subprocess.Popen(
