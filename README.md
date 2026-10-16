@@ -253,7 +253,11 @@ non-default `[backend].endpoint`, point the CLI there first, for example
 Re-running `install.cmd` is safe and resumes after a failure: a failed step
 prints the command to retry, and results that already exist (config, Silero
 models) are skipped. The installer needs network access once, for setup; the
-Jarvis runtime stays local. Start Jarvis with `Jarvis.cmd` (see [Usage](#usage)).
+Jarvis runtime stays local. The installation directory is the cloned or
+unpacked repository. `JarvisLauncher.cmd` stays in its root beside
+`install.cmd`: double-click it to start the tray launcher, or open it in a
+text editor to inspect the command. The final installer summary names this
+file. `Jarvis.cmd` starts Jarvis directly (see [Usage](#usage)).
 
 ### Manual installation
 

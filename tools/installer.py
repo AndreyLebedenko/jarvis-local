@@ -29,6 +29,9 @@ EXAMPLE_CONFIG_NAME = "config.example.toml"
 SILERO_SETUP_SCRIPT = "setup_tts_model.py"
 RESUME_HINT = "Fix the problem above, then re-run install.cmd to resume."
 LAUNCH_HINT = "Start Jarvis with Jarvis.cmd"
+TRAY_LAUNCH_HINT = (
+    "Start the tray launcher with JarvisLauncher.cmd in this installation folder."
+)
 MANUAL_STEP_DETAIL = "manual step needed, see summary"
 TAGS_TIMEOUT_SECONDS = 5.0
 
@@ -245,7 +248,7 @@ def summary_lines(manual_notes: Sequence[str]) -> list[str]:
             first_line, *continuation = note.splitlines()
             lines.append(f"  - {first_line}")
             lines.extend(f"    {line}" for line in continuation)
-    lines.append(LAUNCH_HINT)
+    lines.extend([TRAY_LAUNCH_HINT, LAUNCH_HINT])
     return lines
 
 

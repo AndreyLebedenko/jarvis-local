@@ -197,7 +197,10 @@ def test_successful_install_runs_every_step_and_ends_with_launch_hint(tmp_path):
         "Cache Silero TTS models",
         "Check Piper TTS models",
     ]
-    assert lines[-1] == "Start Jarvis with Jarvis.cmd"
+    assert lines[-2:] == [
+        "Start the tray launcher with JarvisLauncher.cmd in this installation folder.",
+        "Start Jarvis with Jarvis.cmd",
+    ]
 
 
 def test_dependencies_install_before_the_package(tmp_path):
