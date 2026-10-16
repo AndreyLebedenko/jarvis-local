@@ -172,6 +172,45 @@ def test_missing_pipe_is_an_explicit_process_adapter_error(monkeypatch, tmp_path
     assert child.poll() == 3
 
 
+def launch_logging(monkeypatch, tmp_path, text):
+    def popen(command, **kwargs):
+        kwargs["stdout"].write(text)
+        return types.SimpleNamespace(stdin=io.StringIO(), poll=lambda: None)
+
+    monkeypatch.setattr("jarvis.launcher.process.subprocess.Popen", popen)
+    request = LaunchRequest(LauncherSettings(tmp_path), LaunchMode.MCP)
+    ChildRuntime(request, tmp_path / "logs" / "runtime.log")
+
+
+def test_first_launch_creates_the_log_and_no_backup(monkeypatch, tmp_path):
+    launch_logging(monkeypatch, tmp_path, "first run\n")
+    logs = tmp_path / "logs"
+    assert (logs / "runtime.log").read_text(encoding="utf-8") == "first run\n"
+    assert not (logs / "runtime.previous.log").exists()
+
+
+def test_second_launch_keeps_the_previous_run_in_the_backup(monkeypatch, tmp_path):
+    launch_logging(monkeypatch, tmp_path, "crashed run\n")
+    launch_logging(monkeypatch, tmp_path, "second run\n")
+    logs = tmp_path / "logs"
+    assert (logs / "runtime.log").read_text(encoding="utf-8") == "second run\n"
+    assert (logs / "runtime.previous.log").read_text(encoding="utf-8") == (
+        "crashed run\n"
+    )
+
+
+def test_third_launch_replaces_the_backup_and_keeps_only_one(monkeypatch, tmp_path):
+    for text in ("first\n", "second\n", "third\n"):
+        launch_logging(monkeypatch, tmp_path, text)
+    logs = tmp_path / "logs"
+    assert (logs / "runtime.log").read_text(encoding="utf-8") == "third\n"
+    assert (logs / "runtime.previous.log").read_text(encoding="utf-8") == "second\n"
+    assert sorted(path.name for path in logs.iterdir()) == [
+        "runtime.log",
+        "runtime.previous.log",
+    ]
+
+
 class Event:
     def __init__(self) -> None:
         self.handlers = []

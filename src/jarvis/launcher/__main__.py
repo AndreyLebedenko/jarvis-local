@@ -5,6 +5,7 @@ import os
 import queue
 import sys
 import tkinter as tk
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import TracebackType
 
@@ -21,10 +22,11 @@ from jarvis.launcher.model import (
 )
 from jarvis.launcher.process import ChildRuntime, runtime_is_busy
 from jarvis.launcher.startup import StartupRegistration, WindowsStartupStore
-from jarvis.launcher.tray import WindowsTray
+from jarvis.launcher.tray import SHOW_TOUCHSTRIP, WindowsTray
 from jarvis.launcher.window import ICON_PATH, SettingsWindow, dialog
 
 LAUNCHER_MUTEX = r"Local\Jarvis.Launcher.SingleInstance"
+LAUNCHER_LOG_MAX_BYTES = 1_000_000
 logger = logging.getLogger(__name__)
 
 
@@ -83,6 +85,8 @@ class LauncherApp:
                 )
             elif identifier == 3:
                 self._open_settings()
+            elif identifier == SHOW_TOUCHSTRIP:
+                self.controller.show_touchstrip()
             elif identifier == 4:
                 self.controller.request_exit()
         except (OSError, ValueError, RuntimeError) as error:
@@ -132,10 +136,17 @@ def main() -> None:
     directory = Path(os.environ["LOCALAPPDATA"]) / "JarvisLauncher"
     directory.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        filename=directory / "launcher.log",
+        handlers=[
+            RotatingFileHandler(
+                directory / "launcher.log",
+                maxBytes=LAUNCHER_LOG_MAX_BYTES,
+                backupCount=1,
+                encoding="utf-8",
+                delay=True,
+            )
+        ],
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
-        encoding="utf-8",
     )
     guard = acquire_single_instance(name=LAUNCHER_MUTEX)
     root: tk.Tk | None = None

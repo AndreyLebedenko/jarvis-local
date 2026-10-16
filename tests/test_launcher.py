@@ -206,6 +206,26 @@ def test_touchstrip_can_be_saved_while_idle(home, tmp_path):
     assert process.commands == []
 
 
+def test_show_touchstrip_reveals_it_live_without_changing_the_saved_preference(
+    home, tmp_path
+):
+    controller, process, _ = make_controller(home, tmp_path)
+    controller.set_touchstrip(False)
+    controller.start(LaunchMode.ASSISTANT)
+    controller.show_touchstrip()
+    assert process.commands == [{"command": "touchstrip", "visible": True}]
+    assert controller.settings.touchstrip is False
+    assert controller.store.load(home).touchstrip is False
+
+
+def test_show_touchstrip_without_a_running_runtime_does_nothing(home, tmp_path):
+    controller, process, requests = make_controller(home, tmp_path)
+    controller.show_touchstrip()
+    assert process.commands == []
+    assert requests == []
+    assert not controller.store.path.exists()
+
+
 def test_home_cannot_change_until_owned_runtime_exits(home, tmp_path):
     controller, process, _ = make_controller(home, tmp_path)
     controller.start(LaunchMode.ASSISTANT)

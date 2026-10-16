@@ -4228,7 +4228,10 @@ story cards under `tasks/done/`).
 `story-windows-tray-launcher.md` adds an optional stdlib-only supervisor:
 `JarvisLauncher.cmd` / `.venv\Scripts\pythonw.exe -m jarvis.launcher` starts
 idle, without importing `app.py`, models, audio, or the Status Console.
-Right-click order is Assistant, MCP, separator, Settings, separator, Exit.
+Right-click order is Assistant, MCP, separator, Show Touchstrip, Settings,
+separator, Exit. Show Touchstrip sends the same private `touchstrip` visible
+command without changing the saved preference and is grayed out (and a no-op)
+when no owned runtime is running.
 The launcher has its own `Local\Jarvis.Launcher.SingleInstance` mutex; all
 runtime starts still use the unchanged `Local\Jarvis.SingleInstance` guard
 in `main()`. Neither mode replaces or terminates an existing run.
@@ -4248,7 +4251,9 @@ shared control file. The runtime uses the existing `main()` guard and the
 existing Status Console orderly-shutdown API. EOF requests orderly shutdown
 after supervisor death. Touchstrip is created hidden when configured off;
 show/hide commands keep the same window. For launcher-owned windows, its X
-hides the touchstrip and keeps it available to Settings; the Status Console X
+hides the touchstrip and keeps it available to the tray's Show Touchstrip
+item (the saved Settings preference is not changed, and no child-to-launcher
+back channel exists); the Status Console X
 still shuts down the runtime. Exit requests shutdown and waits, without a
 timeout kill. An independently started runtime is refused, never controlled.
 
@@ -4260,8 +4265,11 @@ with no runtime mode. Settings reports enabled only for that exact command.
 with local multi-resolution icon assets. The native tray owns a Win32 message
 loop thread; Tk owns Settings and dialogs on the launcher main thread.
 `runtime.log` in the preferences directory holds the latest child's startup
-output; `launcher.log` holds launcher diagnostics. The existing `Jarvis.cmd`
-and CLI behavior remain available. Windows UI, logon, and live runtime
+output; before each launch it is rotated to `runtime.previous.log` (one
+backup, replaced each time; no size bound within one session).
+`launcher.log` holds launcher diagnostics, capped at about 1 MB with one
+backup. The tray refreshes its tooltip only when the text changes. The
+existing `Jarvis.cmd` and CLI behavior remain available. Windows UI, logon, and live runtime
 verification is human-run in `manual-check-windows-tray-launcher.md`.
 
 Owner confirmed successful manual verification of the launcher and About

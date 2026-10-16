@@ -167,6 +167,10 @@ class LauncherController:
         if self._runtime is not None:
             self._runtime[1].send({"command": "touchstrip", "visible": visible})
 
+    def show_touchstrip(self) -> None:
+        if self._runtime is not None:
+            self._runtime[1].send({"command": "touchstrip", "visible": True})
+
     def set_home(self, home: Path) -> None:
         if self._runtime is not None:
             raise RuntimeBusyError()
