@@ -347,6 +347,33 @@ level этого хода. Переключение уровня во время
 
 ## Использование
 
+Для запуска через Windows трей откройте `JarvisLauncher.cmd`. Launcher ждет
+выбора: ПКМ по иконке, затем **Assistant** или **MCP**. Если Jarvis уже
+работает, появится просьба сначала завершить текущий запуск. Закройте его
+Status Console или воспользуйтесь кнопкой завершения в ней; launcher
+останется в трее. **Exit** штатно завершает запущенный этим launcher процесс,
+затем сам launcher. Отдельно запущенный Jarvis он не останавливает.
+
+В **Settings** находятся **Jarvis Home Folder** (Browse, затем Save folder),
+**Touchstrip**, **Load at Windows start-up** и **About**. Home - одна папка
+установленного Jarvis с `.venv` и этим обновлением launcher, не workspace.
+По умолчанию это папка самого launcher; во время запущенного им режима
+смена папки недоступна. Touchstrip по умолчанию включен, меняется сразу для
+запущенного через launcher режима и сохраняется между запусками. Автозагрузка
+включается явно и запускает только ожидающий выбора launcher. Настройки
+launcher и диагностика запуска находятся в `%LOCALAPPDATA%\JarvisLauncher`;
+конфигурация и данные Jarvis остаются в Home.
+
+Создать ярлык на рабочем столе с иконкой Jarvis и без консольного окна:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\create_launcher_shortcut.ps1
+```
+
+Ярлык запускает `.venv\Scripts\pythonw.exe -m jarvis.launcher` из этой
+установки. Прямые команды ниже также доступны.
+Ручная проверка: `tasks/manual-check-windows-tray-launcher.md`.
+
 Запуск Jarvis с живым Status Console UI:
 
 ```cmd

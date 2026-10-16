@@ -328,6 +328,32 @@ only the next turn.
 
 ## Usage
 
+For the Windows tray launcher, run `JarvisLauncher.cmd`. It starts idle:
+right-click the icon and choose **Assistant** or **MCP**. Selecting a mode
+while Jarvis is running asks you to finish the current run first. Close its
+Status Console or use its Shutdown control; the launcher stays in the tray.
+**Exit** requests orderly shutdown of a runtime started by this launcher and
+then closes the launcher. It does not stop an independently started Jarvis.
+
+**Settings** contains **Jarvis Home Folder** (Browse, then Save folder),
+**Touchstrip**, **Load at Windows start-up**, and **About**. Home is one
+existing installation containing `.venv` and this launcher update, not a
+workspace. It defaults to the launcher's installation and cannot be changed
+during an owned run. Touchstrip defaults to on, applies immediately to a
+launcher-started run, and persists. Windows startup is opt-in and starts only
+the idle launcher. Preferences and startup diagnostics live under
+`%LOCALAPPDATA%\JarvisLauncher`; runtime configuration and data stay in Home.
+
+Create a desktop shortcut with the Jarvis icon and no console window:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\create_launcher_shortcut.ps1
+```
+
+The shortcut targets the installation's `.venv\Scripts\pythonw.exe -m
+jarvis.launcher`. The existing direct launch commands below remain available.
+Human verification: `tasks/manual-check-windows-tray-launcher.md`.
+
 Start Jarvis with the live Status Console UI:
 
 ```cmd
