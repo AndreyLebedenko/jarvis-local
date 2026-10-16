@@ -4223,6 +4223,51 @@ story cards under `tasks/done/`).
   there is no indexable prose in it and no surface to invent for it without
   a new scope decision.
 
+## Architecture: Windows tray launcher (2026-10-16)
+
+`story-windows-tray-launcher.md` adds an optional stdlib-only supervisor:
+`JarvisLauncher.cmd` / `.venv\Scripts\pythonw.exe -m jarvis.launcher` starts
+idle, without importing `app.py`, models, audio, or the Status Console.
+Right-click order is Assistant, MCP, separator, Settings, separator, Exit.
+The launcher has its own `Local\Jarvis.Launcher.SingleInstance` mutex; all
+runtime starts still use the unchanged `Local\Jarvis.SingleInstance` guard
+in `main()`. Neither mode replaces or terminates an existing run.
+
+Settings chooses one Jarvis Home Folder: an existing source installation
+with `.venv` and the launcher runtime module. The selected home's Python
+starts `jarvis.launcher.runtime` with that home as cwd. This is installation
+selection by the supervisor, not runtime path rebasing or workspace support;
+the pending installer/workspace story's two-root work remains pending.
+Preferences are atomically saved to
+`%LOCALAPPDATA%\JarvisLauncher\settings.json` (Home and Touchstrip, default
+Touchstrip on). Home cannot change while the owned runtime is alive.
+
+The private inherited stdin pipe accepts only touchstrip visibility and
+shutdown JSON commands. It exposes no network endpoint and requires no
+shared control file. The runtime uses the existing `main()` guard and the
+existing Status Console orderly-shutdown API. EOF requests orderly shutdown
+after supervisor death. Touchstrip is created hidden when configured off;
+show/hide commands keep the same window. For launcher-owned windows, its X
+hides the touchstrip and keeps it available to Settings; the Status Console X
+still shuts down the runtime. Exit requests shutdown and waits, without a
+timeout kill. An independently started runtime is refused, never controlled.
+
+Opt-in autostart writes only HKCU
+`Software\Microsoft\Windows\CurrentVersion\Run` value `JarvisLauncher`,
+containing the launcher's absolute `pythonw.exe -m jarvis.launcher` command,
+with no runtime mode. Settings reports enabled only for that exact command.
+`create_launcher_shortcut.ps1` creates a desktop link to the same entry point,
+with local multi-resolution icon assets. The native tray owns a Win32 message
+loop thread; Tk owns Settings and dialogs on the launcher main thread.
+`runtime.log` in the preferences directory holds the latest child's startup
+output; `launcher.log` holds launcher diagnostics. The existing `Jarvis.cmd`
+and CLI behavior remain available. Windows UI, logon, and live runtime
+verification is human-run in `manual-check-windows-tray-launcher.md`.
+
+Owner confirmed successful manual verification of the launcher and About
+repository link on 2026-10-16 and authorized commit and merge into main.
+The launcher story and delivery card are completed under `tasks/done/`.
+
 ## Architecture v2.0 (MCP voice guide)
 
 Facts settled by story-v2.0 tasks 1-7 (the single-instance guard, external

@@ -433,11 +433,23 @@ def config_values_payload(settings: Settings) -> dict:
     }
 
 
+class ClosingEvent(Protocol):
+    def __iadd__(self, callback: Callable[[], bool]) -> "ClosingEvent": ...
+
+
+class WindowEvents(Protocol):
+    closing: ClosingEvent
+
+
 class WindowLike(Protocol):
     """Shape of the pywebview window object used by StatusConsoleWindow."""
 
     def destroy(self) -> None: ...
     def load_url(self, url: str) -> None: ...
+    def show(self) -> None: ...
+    def hide(self) -> None: ...
+
+    events: WindowEvents
 
 
 WindowFactory = Callable[..., WindowLike]
@@ -465,6 +477,7 @@ class StatusConsoleWindow:
         self._height = height
         self._min_size = min_size
         self._resizable = resizable
+        self._initially_hidden = False
 
     @staticmethod
     def _default_window_factory(**kwargs) -> WindowLike:
@@ -484,9 +497,36 @@ class StatusConsoleWindow:
             height=self._height,
             min_size=self._min_size,
             resizable=self._resizable,
+            hidden=self._initially_hidden,
         )
         self._hook_native_closed(on_closed)
         return self._window
+
+    def set_initial_visibility(self, visible: bool) -> None:
+        if self._window is not None:
+            raise RuntimeError("Initial visibility must be set before create().")
+        self._initially_hidden = not visible
+
+    def set_visible(self, visible: bool) -> None:
+        if self._window is None or self._closed:
+            return
+        if visible:
+            self._window.show()
+        else:
+            self._window.hide()
+
+    def hide_on_user_close(self) -> None:
+        window = self._window
+        if window is None:
+            raise RuntimeError("create() must precede hide_on_user_close().")
+
+        def on_closing() -> bool:
+            if self._closed:
+                return True
+            window.hide()
+            return False
+
+        window.events.closing += on_closing
 
     def _hook_native_closed(self, on_closed: Callable[[], None] | None) -> None:
         """Marks this surface closed when the user closes the real window

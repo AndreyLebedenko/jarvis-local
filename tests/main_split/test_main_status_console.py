@@ -3,6 +3,7 @@ import sys
 import threading
 import time
 import types
+from unittest.mock import Mock
 
 import pytest
 from _support_from_test_main import (
@@ -218,7 +219,9 @@ def test_status_console_starts_history_lifecycle_before_transport(monkeypatch):
     assert lifecycle.start_calls == 2
 
 
-def _patch_status_console_composition(monkeypatch, app, fake_run) -> None:
+def _patch_status_console_composition(
+    monkeypatch, app, fake_run
+) -> types.SimpleNamespace:
     """Shared fixture shape for run_with_status_console() lifecycle tests:
     fake every collaborator except the engine-completion contract under
     test."""
@@ -244,6 +247,41 @@ def _patch_status_console_composition(monkeypatch, app, fake_run) -> None:
     )
     monkeypatch.setattr(main_module, "UiTransportServer", _FakeTransportServer)
     monkeypatch.setattr(main_module, "run", fake_run)
+    return fake_live_console
+
+
+@pytest.mark.parametrize("fail_engine", [False, True])
+def test_launcher_control_binds_to_the_real_shutdown_and_visibility_seams(
+    monkeypatch, fail_engine
+):
+    async def fake_run(**kwargs):
+        if fail_engine:
+            raise RuntimeError("launcher engine failure")
+
+    live = _patch_status_console_composition(monkeypatch, _fake_app(), fake_run)
+    live.touchstrip = Mock()
+    live.api = Mock()
+    live.create_controlled_windows = Mock()
+    live.close = Mock()
+    control = Mock()
+    monkeypatch.setitem(
+        sys.modules, "webview", types.SimpleNamespace(start=lambda callback: callback())
+    )
+    if fail_engine:
+        with pytest.raises(RuntimeError, match="launcher engine failure"):
+            main_module.run_with_status_console(
+                settings=Settings(), desktop_control=control
+            )
+        live.close.assert_called_once_with()
+    else:
+        main_module.run_with_status_console(
+            settings=Settings(), desktop_control=control
+        )
+        live.close.assert_not_called()
+    live.create_controlled_windows.assert_called_once_with(control)
+    control.start.assert_called_once_with(
+        live.api.request_shutdown, live.touchstrip.set_visible
+    )
 
 
 def test_run_with_status_console_waits_for_a_delayed_engine_callback(monkeypatch):

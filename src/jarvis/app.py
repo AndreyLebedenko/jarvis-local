@@ -9,6 +9,7 @@ import sys
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Protocol
 
@@ -256,6 +257,7 @@ from jarvis.ui.contract import (
     ModuleId,
     RuntimeState,
 )
+from jarvis.ui.desktop_control import DesktopControl
 from jarvis.ui.module_health import ModuleHealthTracker
 from jarvis.ui.runtime_state import RuntimeStateChanged, RuntimeStateTracker
 from jarvis.ui.status_console import (
@@ -2205,6 +2207,15 @@ class LiveStatusConsole:
         if self.touchstrip is not None:
             self.touchstrip.load_url(transport_info.touchstrip_url)
 
+    def create_controlled_windows(self, control: DesktopControl) -> None:
+        if self.touchstrip is None:
+            raise ValueError(
+                "Launcher control requires an available touchstrip window."
+            )
+        self.touchstrip.set_initial_visibility(control.touchstrip_visible)
+        self.create_windows()
+        self.touchstrip.hide_on_user_close()
+
     def close(self) -> None:
         surfaces: list[StatusConsoleWindow] = [self.console]
         if self.touchstrip is not None:
@@ -3249,6 +3260,7 @@ def run_with_status_console(
     include_touchstrip: bool = True,
     debug: bool = False,
     run_mode: RunMode = RunMode.NORMAL,
+    desktop_control: DesktopControl | None = None,
 ) -> None:
     settings = settings or load_settings()
     app = build_app(settings, run_mode=run_mode)
@@ -3313,7 +3325,10 @@ def run_with_status_console(
         journal_reply_replay_resume_handler=lambda: _resume_reply_replay(app),
         max_audio_attachment_clips=settings.attachments.max_audio_clips,
     )
-    live_console.create_windows()
+    if desktop_control is None:
+        live_console.create_windows()
+    else:
+        live_console.create_controlled_windows(desktop_control)
 
     # pywebview's start() runs its func argument in a plain thread it
     # never joins, and returns the moment the GUI loop exits (verified
@@ -3345,9 +3360,16 @@ def run_with_status_console(
             )
 
         try:
+            if desktop_control is not None and live_console.touchstrip is not None:
+                desktop_control.start(
+                    live_console.api.request_shutdown,
+                    live_console.touchstrip.set_visible,
+                )
             asyncio.run(start())
         except BaseException as exc:
             engine_done.set_exception(exc)
+            if desktop_control is not None:
+                live_console.close()
         else:
             engine_done.set_result(None)
 
@@ -3400,6 +3422,7 @@ def main(
     *,
     acquire: Callable[[], HeldInstance | AlreadyRunning] | None = None,
     show_message_box: Callable[[str], None] | None = None,
+    desktop_control: DesktopControl | None = None,
 ) -> None:
     # The guard is taken after parse_args so --help and argument errors still
     # work while another instance runs. It lives here, not in run(), so tests
@@ -3418,7 +3441,10 @@ def main(
         raise SystemExit(ALREADY_RUNNING_EXIT_CODE)
     try:
         if args.status_console:
-            run_with_status_console(
+            run_console = run_with_status_console
+            if desktop_control is not None:
+                run_console = partial(run_console, desktop_control=desktop_control)
+            run_console(
                 include_touchstrip=not args.no_touchstrip,
                 debug=args.debug,
                 run_mode=run_mode,

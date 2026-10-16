@@ -57,9 +57,11 @@ class AlreadyRunning:
 
 def acquire_single_instance(
     api: MutexApi | None = None,
+    *,
+    name: str = MUTEX_NAME,
 ) -> HeldInstance | AlreadyRunning:
     api = api if api is not None else Win32MutexApi()
-    creation = api.create(MUTEX_NAME)
+    creation = api.create(name)
     if creation.already_exists:
         api.close(creation.handle)
         return AlreadyRunning()
