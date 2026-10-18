@@ -318,6 +318,19 @@ frozen threshold.
   before the edit distance, so "4276 1234" and the same number read in
   groups of words compare equal; a wrong digit string costs one error.
   Applies to every arm alike. The thresholds are untouched.
+- **False refusals** (2026-10-18, owner decision, before the main run): the
+  sanitize prompt is not changed. Six corpus utterances consist of nothing but
+  the sensitive datum (`id_phone_words`, `id_phone_digits`, `id_card`,
+  `id_sms_code`, `id_passport`, `id_short_password`); once the datum is wiped
+  nothing is left to send, so a `refuse` verdict there is defensible and is not
+  counted as a quality failure. False refusals stay reported-only, not a
+  criterion. Because a refusal sends nothing, it is excluded from the leak and
+  preservation denominators, and an arm that refuses more looks safer on leaks.
+  The report therefore has a separate "False refusals" section per arm, split
+  into "data is the whole request" and "other"; the leak rate must be read
+  together with it. The id set lives in `manual/personal_proxy/report.py`
+  (`DATA_IS_THE_WHOLE_REQUEST`) and affects only rendering, not scoring, the
+  corpus fingerprint, or the decision rule.
 - **Stage 0 result** (2026-10-18, model digest `41c402fd...`, C-user, 12
   utterances x 2 seeds): unconstrained output was valid on 2 of 24 (13 wrapped
   in a ```json fence, 9 other non-JSON, both counted invalid by the strict

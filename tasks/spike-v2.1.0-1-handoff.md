@@ -182,6 +182,11 @@ It prints the report and writes `report.md` into the output directory. Read:
   alone failed on more than 10% of generations. Do not act on the outcome;
   report it.
 - The `FAIL` lines under each arm name the criteria that failed, with values.
+- The "False refusals" section lists, per arm, the utterances refused although
+  they should have been sent, split into those whose only content is the
+  sensitive datum (defensible) and the rest. A refusal sends nothing, so an arm
+  that refuses more looks safer on leaks; read the leak rate together with it.
+  This section is reported only and is not part of the rule.
 
 ## 6. Block R: restoration (about 20 minutes)
 

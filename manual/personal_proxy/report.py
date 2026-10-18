@@ -27,6 +27,18 @@ ARM_LABEL = {
 }
 
 
+DATA_IS_THE_WHOLE_REQUEST = frozenset(
+    {
+        "id_phone_words",
+        "id_phone_digits",
+        "id_card",
+        "id_sms_code",
+        "id_passport",
+        "id_short_password",
+    }
+)
+
+
 @dataclass(frozen=True)
 class StratumRow:
     label: str
@@ -59,6 +71,18 @@ def stratum_rows(
         )
         for label, group in sorted(buckets.items())
     ]
+
+
+def false_refusal_ids(arm: Arm, scores: list[GenerationScore]) -> list[str]:
+    return sorted(
+        f"{s.subject_id}/s{s.seed}"
+        for s in scores
+        if s.arm is arm and s.false_refusal and not s.is_control
+    )
+
+
+def _is_whole_request_data(slug: str) -> bool:
+    return slug.split("/")[0] in DATA_IS_THE_WHOLE_REQUEST
 
 
 def _fmt(value: float | None, digits: int = 3) -> str:
@@ -150,6 +174,26 @@ def render_report(
             mark = "PASS" if criterion.passed else "FAIL"
             lines.append(f"- {mark} {criterion.name}: {criterion.detail}")
     lines += ["", "## Metrics", "", *_metrics_table(metrics)]
+    lines += [
+        "",
+        "## False refusals (reported only, never part of the rule)",
+        "",
+        "A refusal sends nothing, so it is excluded from the leak and "
+        "preservation denominators: an arm that refuses more looks safer on "
+        "leaks. Read the leak rate together with these lines. Refusing an "
+        "utterance whose only content is the sensitive datum (listed as "
+        "'data is the whole request') is defensible and is not a quality "
+        "failure.",
+        "",
+    ]
+    for m in metrics:
+        slugs = false_refusal_ids(m.arm, scores)
+        whole = [s for s in slugs if _is_whole_request_data(s)]
+        other = [s for s in slugs if not _is_whole_request_data(s)]
+        lines.append(
+            f"- {m.arm.value}: {len(slugs)} total; data is the whole request: "
+            f"{len(whole)} {whole or ''}; other: {len(other)} {other or ''}"
+        )
     lines += ["", "## Failure classes", ""]
     for m in metrics:
         lines.append(f"- {m.arm.value}: {m.failure_counts or 'none'}")

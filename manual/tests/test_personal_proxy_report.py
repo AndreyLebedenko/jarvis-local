@@ -101,5 +101,42 @@ def test_report_renders_missing_values_as_na():
     assert "n/a" in text
 
 
+def test_false_refusals_are_listed_per_arm_with_seed():
+    scores = [
+        replace(_score("id_card", Arm.C_USER), false_refusal=True),
+        replace(_score("id_email", Arm.C_USER), false_refusal=True),
+        replace(_score("id_card", Arm.C_SYSTEM), false_refusal=False),
+    ]
+
+    from manual.personal_proxy.report import false_refusal_ids
+
+    assert false_refusal_ids(Arm.C_USER, scores) == ["id_card/s1", "id_email/s1"]
+    assert false_refusal_ids(Arm.C_SYSTEM, scores) == []
+
+
+def test_report_splits_false_refusals_by_whether_the_data_is_the_whole_request():
+    base = _metrics(Arm.T_PLUS_S)
+    decision = decide(base, [_combined(Arm.C_USER)])
+    scores = [
+        replace(_score("id_card", Arm.C_USER), false_refusal=True),
+        replace(_score("id_email", Arm.C_USER), false_refusal=True),
+    ]
+
+    text = render_report(
+        meta={},
+        decision=decision,
+        metrics=[base, _combined(Arm.C_USER)],
+        scores=scores,
+        duration_of=lambda _: 5.0,
+    )
+
+    assert "## False refusals" in text
+    assert (
+        "c_user: 2 total; data is the whole request: 1 ['id_card/s1']; "
+        "other: 1 ['id_email/s1']"
+    ) in text
+    assert "looks safer on leaks" in text
+
+
 def test_metrics_helper_types_line_up():
     assert isinstance(_metrics(Arm.C_USER), ArmMetrics)
