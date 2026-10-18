@@ -12,7 +12,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
 from jarvis.audio.tts import SentenceBuffer
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     LENGTH_DONE_REASON,
     Arm,
     CallRecord,

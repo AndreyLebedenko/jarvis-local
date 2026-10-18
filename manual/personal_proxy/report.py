@@ -9,9 +9,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from manual.personal_proxy_decision import Decision
-from manual.personal_proxy_records import Arm
-from manual.personal_proxy_scoring import (
+from manual.personal_proxy.decision import Decision
+from manual.personal_proxy.records import Arm
+from manual.personal_proxy.scoring import (
     ArmMetrics,
     GenerationScore,
     leak_breakdown,

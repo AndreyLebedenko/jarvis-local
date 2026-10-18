@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from manual.personal_proxy_audio import MANIFEST_NAME, WavDirectory, wav_path
-from manual.personal_proxy_corpus import CORPUS
-from manual.personal_proxy_recorder import (
+from manual.personal_proxy.audio import MANIFEST_NAME, WavDirectory, wav_path
+from manual.personal_proxy.corpus import CORPUS
+from manual.personal_proxy.recorder import (
     Choice,
     RecordingDirectoryError,
     load_entries,

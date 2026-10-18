@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from manual.personal_proxy_audio import (
+from manual.personal_proxy.audio import (
     ManifestEntry,
     WavDirectory,
     WavDirectoryError,
@@ -14,7 +14,7 @@ from manual.personal_proxy_audio import (
     wav_path,
     write_manifest,
 )
-from manual.personal_proxy_corpus import CONTROLS, CORPUS
+from manual.personal_proxy.corpus import CONTROLS, CORPUS
 
 
 def _wav(seconds=1.0, value=0.0):

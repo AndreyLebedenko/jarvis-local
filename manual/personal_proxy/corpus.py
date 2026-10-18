@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from manual.personal_proxy_text import tokenize
+from manual.personal_proxy.text import tokenize
 
 SEEDS = (19210, 4243)
 
@@ -38,7 +38,7 @@ LONG_MIN_WORDS = 38
 MIN_SHORT_UTTERANCES = 8
 MIN_LONG_UTTERANCES = 6
 
-TOPICS_FILE = Path(__file__).with_name("personal_proxy_spike_topics.txt")
+TOPICS_FILE = Path(__file__).with_name("spike_topics.txt")
 
 
 class SpanType(StrEnum):

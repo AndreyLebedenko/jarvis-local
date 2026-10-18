@@ -38,8 +38,8 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
-from manual.personal_proxy_corpus import Utterance, corpus_problems
-from manual.personal_proxy_recorder import (
+from manual.personal_proxy.corpus import Utterance, corpus_problems
+from manual.personal_proxy.recorder import (
     Choice,
     RecordingDirectoryError,
     record_corpus,

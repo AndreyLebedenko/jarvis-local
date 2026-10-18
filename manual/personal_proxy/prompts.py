@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any
 
-from manual.personal_proxy_corpus import topics_text
+from manual.personal_proxy.corpus import topics_text
 
 PLACEHOLDER_TYPES = (
     "PERSON, ORG, PHONE, EMAIL, ADDRESS, CARD, ACCOUNT, DATE, AMOUNT, SECRET, "

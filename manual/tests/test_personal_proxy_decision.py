@@ -1,13 +1,13 @@
 from dataclasses import replace
 
-from manual.personal_proxy_decision import (
+from manual.personal_proxy.decision import (
     Outcome,
     decide,
     evaluate_arm,
     speed_gain,
 )
-from manual.personal_proxy_records import Arm
-from manual.personal_proxy_scoring import ArmMetrics
+from manual.personal_proxy.records import Arm
+from manual.personal_proxy.scoring import ArmMetrics
 
 
 def _metrics(arm, **overrides):

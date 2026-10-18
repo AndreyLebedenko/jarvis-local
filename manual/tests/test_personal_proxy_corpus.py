@@ -1,6 +1,6 @@
 import pytest
 
-from manual.personal_proxy_corpus import (
+from manual.personal_proxy.corpus import (
     CORPUS,
     SEEDS,
     Category,
@@ -14,7 +14,7 @@ from manual.personal_proxy_corpus import (
     topics_text,
     utterance_by_id,
 )
-from manual.personal_proxy_text import digit_runs, tokenize
+from manual.personal_proxy.text import digit_runs, tokenize
 
 
 def test_frozen_corpus_meets_the_card():
@@ -112,7 +112,7 @@ def test_utterance_lookup_rejects_unknown_ids():
 
 
 def test_review_markdown_lists_every_utterance_span_and_the_topics():
-    from manual.personal_proxy_corpus import render_review_markdown
+    from manual.personal_proxy.corpus import render_review_markdown
 
     text = render_review_markdown()
 

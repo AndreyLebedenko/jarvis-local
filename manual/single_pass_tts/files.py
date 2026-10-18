@@ -6,10 +6,10 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from manual.single_pass_tts_corpus import REVIEW_SEED
-from manual.single_pass_tts_grader import grade_generations
-from manual.single_pass_tts_records import GenerationMetrics, load_records
-from manual.single_pass_tts_review import (
+from manual.single_pass_tts.corpus import REVIEW_SEED
+from manual.single_pass_tts.grader import grade_generations
+from manual.single_pass_tts.records import GenerationMetrics, load_records
+from manual.single_pass_tts.review import (
     ReviewAnswers,
     ReviewKey,
     ReviewPlan,

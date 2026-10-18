@@ -275,13 +275,13 @@ product question of whether the achievable recall is acceptable).
 Definitions the card left open, fixed while writing the scorer; none changes a
 frozen threshold.
 
-- **Where the code lives:** `manual/personal_proxy_*.py` (corpus, prompts,
+- **Where the code lives:** `manual/personal_proxy/` (corpus, prompts,
   parser, scorer, decision rule, report, runner, recorder flow, restoration),
   `manual/manual_check_personal_proxy_spike.py` (stage0 / run / score),
   `manual/manual_check_personal_proxy_restoration.py` (block R),
   `manual/manual_record_personal_proxy_corpus.py` (recorder), tests in
   `manual/tests/`. Review the corpus with
-  `python -m manual.personal_proxy_corpus`.
+  `python -m manual.personal_proxy.corpus`.
 - **Leak** is counted over the spans of generations that are valid and carry
   the `send` verdict (what would leave the machine). A refusal sends nothing;
   an invalid output is counted by the validity criterion, not here. A text span

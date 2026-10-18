@@ -13,21 +13,21 @@ import statistics
 from collections import Counter
 from dataclasses import dataclass
 
-from manual.personal_proxy_corpus import (
+from manual.personal_proxy.corpus import (
     Control,
     Span,
     Utterance,
     Verdict,
     utterance_by_id,
 )
-from manual.personal_proxy_parse import (
+from manual.personal_proxy.parse import (
     FailureClass,
     ParsedOutput,
     ParseFailure,
     parse_sanitize_output,
 )
-from manual.personal_proxy_records import Arm, CallStage, GenerationRecord
-from manual.personal_proxy_text import (
+from manual.personal_proxy.records import Arm, CallStage, GenerationRecord
+from manual.personal_proxy.text import (
     digit_runs,
     stem_present,
     tokenize,

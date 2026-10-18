@@ -22,7 +22,7 @@ from dataclasses import dataclass, fields
 from enum import StrEnum
 from typing import Any
 
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     Arm,
     GenerationKey,
     GenerationMetrics,

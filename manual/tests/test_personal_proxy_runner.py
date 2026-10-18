@@ -4,13 +4,13 @@ import json
 import pytest
 
 from jarvis.core.config import GenerationOptions
-from manual.personal_proxy_records import (
+from manual.personal_proxy.records import (
     Arm,
     CallRecord,
     CallStage,
     load_generations,
 )
-from manual.personal_proxy_runner import (
+from manual.personal_proxy.runner import (
     ARMS,
     CACHE_RESET_NUM_PREDICT,
     NUM_PREDICT,

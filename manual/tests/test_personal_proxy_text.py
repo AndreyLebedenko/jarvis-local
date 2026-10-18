@@ -1,4 +1,4 @@
-from manual.personal_proxy_text import (
+from manual.personal_proxy.text import (
     canonical_tokens,
     canonicalize_numbers,
     digit_runs,

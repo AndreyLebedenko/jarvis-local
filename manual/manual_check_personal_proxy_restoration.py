@@ -30,8 +30,8 @@ from manual.manual_check_personal_proxy_spike import (
     fetch_provenance,
     make_environment,
 )
-from manual.personal_proxy_records import CallRecord, CallStage
-from manual.personal_proxy_restoration import (
+from manual.personal_proxy.records import CallRecord, CallStage
+from manual.personal_proxy.restoration import (
     ITEMS,
     SEEDS,
     aggregate_restoration,
@@ -44,7 +44,7 @@ from manual.personal_proxy_restoration import (
     score_case_review,
     score_output,
 )
-from manual.personal_proxy_runner import NUM_PREDICT, PlannedRequest
+from manual.personal_proxy.runner import NUM_PREDICT, PlannedRequest
 
 DEFAULT_OUT = Path("manual_check_personal_proxy_restoration_out")
 CALLS_DIR = "calls"

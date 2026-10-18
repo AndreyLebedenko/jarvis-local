@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from manual.personal_proxy_corpus import Verdict
-from manual.personal_proxy_parse import (
+from manual.personal_proxy.corpus import Verdict
+from manual.personal_proxy.parse import (
     FailureClass,
     ParsedOutput,
     ParseFailure,

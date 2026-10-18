@@ -18,10 +18,10 @@ from manual.manual_check_personal_proxy_spike import (
     parse_args,
     redact_audio,
 )
-from manual.personal_proxy_audio import sha256_hex
-from manual.personal_proxy_prompts import COMBINED_SCHEMA
-from manual.personal_proxy_records import CallStage
-from manual.personal_proxy_runner import PlannedRequest
+from manual.personal_proxy.audio import sha256_hex
+from manual.personal_proxy.prompts import COMBINED_SCHEMA
+from manual.personal_proxy.records import CallStage
+from manual.personal_proxy.runner import PlannedRequest
 
 WAV = b"RIFFfakewavbytes"
 

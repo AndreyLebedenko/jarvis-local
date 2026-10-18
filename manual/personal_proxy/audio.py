@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from manual.personal_proxy_corpus import (
+from manual.personal_proxy.corpus import (
     CONTROL_SAMPLE_RATE,
     CORPUS,
     NOISE_RMS,

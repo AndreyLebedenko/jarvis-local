@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     Arm,
     GenerationKey,
     GenerationMetrics,
@@ -11,7 +11,7 @@ from manual.single_pass_tts_records import (
     TagOutcome,
     VoiceHygiene,
 )
-from manual.single_pass_tts_review import (
+from manual.single_pass_tts.review import (
     Decision,
     Judgement,
     PairKind,

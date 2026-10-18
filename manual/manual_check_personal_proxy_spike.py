@@ -32,29 +32,29 @@ from jarvis.core.config import TRANSCRIPTION_PROFILE, Settings, load_settings
 from jarvis.dialog.backend import OllamaBackend
 from jarvis.dialog.thinking_mode import ReasoningLevel
 from jarvis.journal.transcription import DEFAULT_TRANSCRIPTION_INSTRUCTION
-from manual.personal_proxy_audio import (
+from manual.personal_proxy.audio import (
     WavDirectory,
     WavDirectoryError,
     control_audio,
     sha256_hex,
 )
-from manual.personal_proxy_corpus import (
+from manual.personal_proxy.corpus import (
     CONTROLS,
     CORPUS,
     corpus_fingerprint,
     corpus_problems,
     topics_text,
 )
-from manual.personal_proxy_decision import decide
-from manual.personal_proxy_prompts import prompts_fingerprint
-from manual.personal_proxy_records import (
+from manual.personal_proxy.decision import decide
+from manual.personal_proxy.prompts import prompts_fingerprint
+from manual.personal_proxy.records import (
     Arm,
     CallRecord,
     GenerationRecord,
     load_generations,
 )
-from manual.personal_proxy_report import render_report
-from manual.personal_proxy_runner import (
+from manual.personal_proxy.report import render_report
+from manual.personal_proxy.runner import (
     ARMS,
     NUM_PREDICT,
     GenerationRunner,
@@ -64,7 +64,7 @@ from manual.personal_proxy_runner import (
     plan_jobs,
     run_jobs,
 )
-from manual.personal_proxy_scoring import aggregate, score_records
+from manual.personal_proxy.scoring import aggregate, score_records
 
 DEFAULT_OUT = Path("manual_check_personal_proxy_spike_out")
 DEFAULT_CONFIG = Path("config.toml")

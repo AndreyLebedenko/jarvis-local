@@ -16,15 +16,15 @@ from typing import Any, Protocol
 
 from jarvis.core.config import GenerationOptions
 from jarvis.journal.transcription import build_transcription_messages
-from manual.personal_proxy_corpus import SEEDS
-from manual.personal_proxy_prompts import (
+from manual.personal_proxy.corpus import SEEDS
+from manual.personal_proxy.prompts import (
     COMBINED_SCHEMA,
     TEXT_SCHEMA,
     combined_system_messages,
     combined_user_messages,
     sanitize_text_messages,
 )
-from manual.personal_proxy_records import (
+from manual.personal_proxy.records import (
     Arm,
     CallRecord,
     CallStage,

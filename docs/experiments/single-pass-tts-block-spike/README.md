@@ -8,13 +8,13 @@ produced them.
 The harness that generated and scored this data is maintained code, not an
 archived one-off: `manual/manual_check_single_pass_tts.py` with
 `manual/single_pass_tts_*.py`, at the commit that closes the spike. The frozen
-corpus and B contract are `manual/single_pass_tts_corpus.py`; their hash is
+corpus and B contract are `manual/single_pass_tts/corpus.py`; their hash is
 `corpus_sha256` in `run_meta.json`.
 
 ## Contents
 
 - `records.jsonl.gz`: all 224 model calls, one `CallRecord.to_json()` per
-  line (`manual/single_pass_tts_records.py`). The calls are 64 generations
+  line (`manual/single_pass_tts/records.py`). The calls are 64 generations
   (2 levels x 16 prompts x 2 seeds): `a_pass1`, `a_prod_pass2`, `b` at both
   levels, plus `a_eq_pass2` at medium. Each line holds the streamed chunk
   timeline `[t, content, thinking]`, `done_reason`, `eval_count`,
@@ -34,7 +34,7 @@ corpus and B contract are `manual/single_pass_tts_corpus.py`; their hash is
 ## Re-deriving the report
 
 ```
-python -c "import gzip, json; from manual.single_pass_tts_records import CallRecord; from manual.single_pass_tts_grader import grade_generations; from manual.single_pass_tts_review import Sitting, load_key_json, parse_answers, render_report_markdown, score; D = 'docs/experiments/single-pass-tts-block-spike'; recs = [CallRecord.from_json(json.loads(l)) for l in gzip.open(D + '/records.jsonl.gz', 'rt', encoding='utf-8')]; key = load_key_json(open(D + '/review-key.json', encoding='utf-8').read()); ans = parse_answers(open(D + '/review-production-answers.toml', encoding='utf-8').read(), key, Sitting.PRODUCTION); print(render_report_markdown(score(grade_generations(recs), key, ans)))"
+python -c "import gzip, json; from manual.single_pass_tts.records import CallRecord; from manual.single_pass_tts.grader import grade_generations; from manual.single_pass_tts_review import Sitting, load_key_json, parse_answers, render_report_markdown, score; D = 'docs/experiments/single-pass-tts-block-spike'; recs = [CallRecord.from_json(json.loads(l)) for l in gzip.open(D + '/records.jsonl.gz', 'rt', encoding='utf-8')]; key = load_key_json(open(D + '/review-key.json', encoding='utf-8').read()); ans = parse_answers(open(D + '/review-production-answers.toml', encoding='utf-8').read(), key, Sitting.PRODUCTION); print(render_report_markdown(score(grade_generations(recs), key, ans)))"
 ```
 
 At the closing commit this prints the contents of `report.md` (plus one

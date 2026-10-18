@@ -1,7 +1,7 @@
 import pytest
 
-from manual.single_pass_tts_corpus import CORPUS, SEEDS
-from manual.single_pass_tts_files import (
+from manual.single_pass_tts.corpus import CORPUS, SEEDS
+from manual.single_pass_tts.files import (
     CALLS_DIR_NAME,
     KEY_FILE_NAME,
     ReviewStepError,
@@ -11,7 +11,7 @@ from manual.single_pass_tts_files import (
     write_production_review,
     write_report,
 )
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     CallRecord,
     GenerationKey,
     Level,
@@ -19,7 +19,7 @@ from manual.single_pass_tts_records import (
     StreamChunk,
     write_record,
 )
-from manual.single_pass_tts_review import Sitting
+from manual.single_pass_tts.review import Sitting
 
 A_VOICE_SECOND = 5.0
 B_VOICE_SECOND = 2.0

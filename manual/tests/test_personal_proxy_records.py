@@ -1,4 +1,4 @@
-from manual.personal_proxy_records import (
+from manual.personal_proxy.records import (
     COLD_LOAD_SECONDS,
     Arm,
     CallRecord,

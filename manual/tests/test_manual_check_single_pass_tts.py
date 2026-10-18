@@ -29,8 +29,8 @@ from manual.manual_check_single_pass_tts import (
     is_generation_complete,
     needs_pass2,
 )
-from manual.single_pass_tts_corpus import B_CONTRACT, CORPUS, SEEDS
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.corpus import B_CONTRACT, CORPUS, SEEDS
+from manual.single_pass_tts.records import (
     CallRecord,
     GenerationKey,
     Level,

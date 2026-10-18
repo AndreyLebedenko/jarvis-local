@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from manual.personal_proxy_records import Arm
-from manual.personal_proxy_scoring import ArmMetrics
+from manual.personal_proxy.records import Arm
+from manual.personal_proxy.scoring import ArmMetrics
 
 EPSILON = 1e-9
 

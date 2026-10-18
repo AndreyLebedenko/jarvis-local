@@ -39,16 +39,16 @@ every default it relies on is cited below with its source.
   microphone is `[microphone].device` / `host_api` (both `""` = the system
   default input device, `MicrophoneSettings`).
 - Values fixed in code (the citation lets you check the current value):
-  - `SEEDS = (19210, 4243)` in `manual/personal_proxy_corpus.py`: every
+  - `SEEDS = (19210, 4243)` in `manual/personal_proxy/corpus.py`: every
     generation runs at both seeds.
-  - `NUM_PREDICT = 2048` in `manual/personal_proxy_runner.py`: the runaway
+  - `NUM_PREDICT = 2048` in `manual/personal_proxy/runner.py`: the runaway
     cap. A call that stops there counts as truncated.
   - `STAGE0_IDS` (12 utterance ids) in
     `manual/manual_check_personal_proxy_spike.py`.
 - Frozen inputs, hashed into `run_meta.json` so that editing any of them after
   the run starts is refused: the corpus and the topics text
-  (`manual/personal_proxy_corpus.py`, `manual/personal_proxy_spike_topics.txt`),
-  and the prompts and schemas (`manual/personal_proxy_prompts.py`).
+  (`manual/personal_proxy/corpus.py`, `manual/personal_proxy/spike_topics.txt`),
+  and the prompts and schemas (`manual/personal_proxy/prompts.py`).
 - Output directories, all gitignored and containing only invented data:
   `personal_proxy_corpus_wavs/` (recordings),
   `manual_check_personal_proxy_spike_out/` (main run),
@@ -76,7 +76,7 @@ every default it relies on is cited below with its source.
 ## 1. Review the corpus (you freeze it; about 10 minutes)
 
 ```
-python -m manual.personal_proxy_corpus
+python -m manual.personal_proxy.corpus
 ```
 
 It prints the 44 scripted utterances with their labeled sensitive spans, the

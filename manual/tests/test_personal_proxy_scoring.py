@@ -1,20 +1,20 @@
 import json
 
-from manual.personal_proxy_corpus import (
+from manual.personal_proxy.corpus import (
     CONTROLS,
     Span,
     SpanType,
     Verdict,
     utterance_by_id,
 )
-from manual.personal_proxy_parse import FailureClass
-from manual.personal_proxy_records import (
+from manual.personal_proxy.parse import FailureClass
+from manual.personal_proxy.records import (
     Arm,
     CallRecord,
     CallStage,
     GenerationRecord,
 )
-from manual.personal_proxy_scoring import (
+from manual.personal_proxy.scoring import (
     aggregate,
     leak_breakdown,
     leaked_spans,

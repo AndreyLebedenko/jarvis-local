@@ -46,15 +46,15 @@ from jarvis.history.working_context import (
     assemble_working_context,
 )
 from jarvis.memory.files import MemoryFileLoader, build_memory_file_specs
-from manual.single_pass_tts_corpus import B_CONTRACT, CORPUS, SEEDS, corpus_sha256
-from manual.single_pass_tts_files import (
+from manual.single_pass_tts.corpus import B_CONTRACT, CORPUS, SEEDS, corpus_sha256
+from manual.single_pass_tts.files import (
     CALLS_DIR_NAME,
     ReviewStepError,
     write_equalized_review,
     write_production_review,
     write_report,
 )
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     CallRecord,
     GenerationKey,
     Level,

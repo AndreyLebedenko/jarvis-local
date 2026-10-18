@@ -1,7 +1,7 @@
 import json
 
-from manual.personal_proxy_parse import ParsedOutput, parse_sanitize_output
-from manual.personal_proxy_prompts import (
+from manual.personal_proxy.parse import ParsedOutput, parse_sanitize_output
+from manual.personal_proxy.prompts import (
     COMBINED_SCHEMA,
     COMBINED_SYSTEM_USER_TURN,
     TEXT_SCHEMA,

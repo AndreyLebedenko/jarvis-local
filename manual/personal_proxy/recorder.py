@@ -14,7 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from manual.personal_proxy_audio import (
+from manual.personal_proxy.audio import (
     MANIFEST_NAME,
     ManifestEntry,
     sha256_hex,
@@ -22,7 +22,7 @@ from manual.personal_proxy_audio import (
     wav_path,
     write_manifest,
 )
-from manual.personal_proxy_corpus import CORPUS, Utterance, corpus_fingerprint
+from manual.personal_proxy.corpus import CORPUS, Utterance, corpus_fingerprint
 
 TAKE_TIMEOUT_SECONDS = 90.0
 TOO_SHORT_RATIO = 0.5

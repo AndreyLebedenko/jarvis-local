@@ -8,17 +8,17 @@ import asyncio
 import json
 
 from jarvis.core.config import GenerationOptions
-from manual.personal_proxy_corpus import CONTROLS, utterance_by_id
-from manual.personal_proxy_decision import Outcome, decide
-from manual.personal_proxy_records import (
+from manual.personal_proxy.corpus import CONTROLS, utterance_by_id
+from manual.personal_proxy.decision import Outcome, decide
+from manual.personal_proxy.records import (
     Arm,
     CallRecord,
     CallStage,
     load_generations,
 )
-from manual.personal_proxy_report import render_report
-from manual.personal_proxy_runner import ARMS, GenerationRunner, plan_jobs, run_jobs
-from manual.personal_proxy_scoring import aggregate, score_records
+from manual.personal_proxy.report import render_report
+from manual.personal_proxy.runner import ARMS, GenerationRunner, plan_jobs, run_jobs
+from manual.personal_proxy.scoring import aggregate, score_records
 
 SUBJECTS = ["id_short_call", "id_phone_words", "n_short_tokyo", "t_diabetes"]
 AUDIO = {subject: f"wav:{subject}".encode() for subject in SUBJECTS}

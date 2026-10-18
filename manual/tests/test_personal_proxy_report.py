@@ -1,9 +1,9 @@
 from dataclasses import replace
 
-from manual.personal_proxy_decision import decide
-from manual.personal_proxy_records import Arm
-from manual.personal_proxy_report import render_report, stratum_label, stratum_rows
-from manual.personal_proxy_scoring import ArmMetrics, GenerationScore
+from manual.personal_proxy.decision import decide
+from manual.personal_proxy.records import Arm
+from manual.personal_proxy.report import render_report, stratum_label, stratum_rows
+from manual.personal_proxy.scoring import ArmMetrics, GenerationScore
 from manual.tests.test_personal_proxy_decision import _combined, _metrics
 
 

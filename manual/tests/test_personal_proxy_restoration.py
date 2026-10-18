@@ -1,6 +1,6 @@
 import re
 
-from manual.personal_proxy_restoration import (
+from manual.personal_proxy.restoration import (
     ITEMS,
     CaseResult,
     RestorationMetrics,

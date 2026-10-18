@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 
-from manual.personal_proxy_corpus import Verdict
+from manual.personal_proxy.corpus import Verdict
 
 LENGTH_DONE_REASON = "length"
 

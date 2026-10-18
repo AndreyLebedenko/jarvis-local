@@ -16,7 +16,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from manual.personal_proxy_text import stem_present, tokenize
+from manual.personal_proxy.text import stem_present, tokenize
 
 SEEDS = (19210, 4243)
 REVIEW_RNG_SEED = 20261018

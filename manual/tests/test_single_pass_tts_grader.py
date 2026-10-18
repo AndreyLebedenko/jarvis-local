@@ -1,6 +1,6 @@
 import pytest
 
-from manual.single_pass_tts_grader import (
+from manual.single_pass_tts.grader import (
     b_canvas,
     b_voice,
     block_first_sentence_seconds,
@@ -9,7 +9,7 @@ from manual.single_pass_tts_grader import (
     pass2_first_sentence_seconds,
     voice_hygiene,
 )
-from manual.single_pass_tts_records import (
+from manual.single_pass_tts.records import (
     Arm,
     CallRecord,
     GenerationKey,
