@@ -161,7 +161,14 @@ def render_report(
     lines += ["", "## How leaked numbers were rendered", ""]
     for m in metrics:
         lines.append(f"- {m.arm.value}: {m.leak_renderings or 'none'}")
-    lines += ["", "## Audio failures by clip length", ""]
+    lines += [
+        "",
+        "## Audio failures by script length (estimated speaking time)",
+        "",
+        "Recordings under 3.0 s are padded to 3.0 s by the production capture, "
+        "so the stratum is taken from the script, not from the file length.",
+        "",
+    ]
     for m in metrics:
         rows = stratum_rows(m.arm, scores, duration_of)
         cells = ", ".join(

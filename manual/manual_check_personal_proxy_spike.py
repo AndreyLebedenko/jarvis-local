@@ -44,6 +44,7 @@ from manual.personal_proxy.corpus import (
     corpus_fingerprint,
     corpus_problems,
     topics_text,
+    utterance_by_id,
 )
 from manual.personal_proxy.decision import decide
 from manual.personal_proxy.prompts import prompts_fingerprint
@@ -357,7 +358,9 @@ def command_score(args: argparse.Namespace) -> int:
         print("No run_meta.json: nothing to score.", file=sys.stderr)
         return 2
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    wavs = WavDirectory(args.wavs)
+    if WavDirectory(args.wavs).set_hash() != meta["wav_set_hash"]:
+        print("The recordings differ from the ones the run used.", file=sys.stderr)
+        return 2
     scores = score_records(load_generations(args.out / "calls"), CONTROLS)
     metrics = [aggregate(arm, scores) for arm in ARMS]
     decision = decide(metrics[0], metrics[1:])
@@ -369,7 +372,7 @@ def command_score(args: argparse.Namespace) -> int:
         decision=decision,
         metrics=metrics,
         scores=scores,
-        duration_of=wavs.duration_for,
+        duration_of=lambda uid: utterance_by_id(uid).estimated_seconds,
     )
     (args.out / REPORT_NAME).write_text(report, encoding="utf-8")
     print(report)
