@@ -96,6 +96,51 @@ python -m manual.manual_check_transcription_prompt --out manual_check_transcript
 python -m manual.manual_check_transcription_prompt --out manual_check_transcription_json_out score --wavs personal_proxy_corpus_wavs
 ```
 
-## Result
+## Result (2026-10-19, run by the agent, 188 generations, no errors, GPU share 1.0, 8.5 min)
 
-Pending.
+Verdict by the frozen rule: **candidate (C) better**.
+
+| | A (current) | C (constrained JSON) |
+|---|---|---|
+| audio failures of 88 | 22 | 16 |
+| median WER | 0.165 | 0.111 |
+| invalid JSON | 0 | 0 |
+| median seconds per call | 0.88 | 1.25 |
+
+- Paired: failed in A only 7, in C only 1, in both 15. C is 6 failures better,
+  the threshold was 4.
+- Neither variant reaches the 10% level (8 or fewer failures of 88): C has 16.
+- Determinism: 77 of 88 variant-A transcripts are byte-identical to the main
+  run's baseline, not 88 of 88 as in spike 2; A still has the same 22
+  failures. Some drift between sessions exists, so a 4-to-6 failure margin is
+  modest.
+- What C fixed (A only): `id_email` s4243 (refusal), `id_sms_code` both seeds
+  (now keeps the words before the code), `m_short_english` s4243 (refusal),
+  `n_training_plan` both seeds (answer instead of transcription),
+  `t_divorce_court` s19210 (refusal).
+- What C broke (C only): `id_short_write` s19210 returned the expected
+  "Напиши Олегу Жукову." followed by the Russian translation of the
+  transcription instruction itself.
+- Still failing in both: `id_card` both seeds ("Политическая карта и номер ..."
+  in C where the speech is "Оплати картой, номер ..."), `id_phone_words` both
+  seeds (digits only, the words before them are lost), `m_short_call`
+  ("Майкл Браун" for "Michael Brown", scorer artifact), `m_trade_house`
+  both seeds (C invents a monologue at s4243 and refuses at s19210),
+  `n_borscht` and `n_cpu_cache` both seeds (the model still answers the
+  question inside `raw_transcript`), `n_short_translate` both seeds (only
+  "яблоко" remains).
+- Controls: A mostly refuses or comments on the missing audio. C always puts
+  invented speech into `raw_transcript` for silence, noise, and no media, for
+  example "Oh, I'm just going to be home tonight, so I'm going to stay in and
+  just relax". The schema has no way to say "no speech", so C fabricates a
+  transcript on all 6 control generations. Reported only, not part of the
+  rule, but a real risk for the privacy chain (a silent recording would reach
+  the sanitization step as a request).
+- Cost: median call time 1.25 s against 0.88 s.
+
+Reading: the constraint helps (fewer refusals, fewer answers in place of
+transcription) but is far from solving it, and it removes the model's only
+way to say that there is no speech. The 8 failures of the combined C-user arm
+in spike 1 are therefore not explained by the constraint alone; the longer
+prompt with the rules and the verdict field (which includes a "no speech"
+branch) also contributes, which this spike does not isolate.
