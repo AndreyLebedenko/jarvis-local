@@ -313,3 +313,14 @@ frozen threshold.
 - **Not sent:** `options.num_gpu` (production does not send it). GPU placement
   is read from `/api/ps` after the run and reported instead, so the variable
   the closed study found uncontrolled is at least visible.
+- **WER digit grouping** (2026-10-18, before the main run): each run of digit
+  tokens, whether read as words or written as digits, is merged into one token
+  before the edit distance, so "4276 1234" and the same number read in
+  groups of words compare equal; a wrong digit string costs one error.
+  Applies to every arm alike. The thresholds are untouched.
+- **Stage 0 result** (2026-10-18, model digest `41c402fd...`, C-user, 12
+  utterances x 2 seeds): unconstrained output was valid on 2 of 24 (13 wrapped
+  in a ```json fence, 9 other non-JSON, both counted invalid by the strict
+  parser); constrained `format` was valid on 24 of 24. Ollama accepted
+  `format` together with an audio attachment. By the frozen Stage 0 rule the
+  main run uses constrained output for every arm.

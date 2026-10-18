@@ -149,9 +149,28 @@ def stem_present(form: str, tokens: list[str]) -> bool:
     return any(token.startswith(prefix) for token in tokens)
 
 
+def wer_tokens(text: str) -> list[str]:
+    """Canonical tokens with each run of digit tokens merged into one token,
+    so "4276 1234" and "четыре два семь шесть, один два три четыре" compare
+    equal: how a number is grouped says nothing about how well it was heard."""
+    merged: list[str] = []
+    run: list[str] = []
+    for token in canonical_tokens(text):
+        if token.isdigit():
+            run.append(token)
+            continue
+        if run:
+            merged.append("".join(run))
+            run = []
+        merged.append(token)
+    if run:
+        merged.append("".join(run))
+    return merged
+
+
 def word_error_rate(reference: str, hypothesis: str) -> float:
-    ref = canonical_tokens(reference)
-    hyp = canonical_tokens(hypothesis)
+    ref = wer_tokens(reference)
+    hyp = wer_tokens(hypothesis)
     if not ref:
         return 0.0 if not hyp else 1.0
     return _edit_distance(ref, hyp) / len(ref)

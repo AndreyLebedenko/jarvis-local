@@ -85,11 +85,11 @@ def test_wer_is_zero_for_identical_text_ignoring_case_and_punctuation():
 
 
 def test_wer_counts_substitution_over_reference_length():
-    assert word_error_rate("раз два три четыре", "раз два пять четыре") == 0.25
+    assert word_error_rate("кот пёс лиса волк", "кот пёс рысь волк") == 0.25
 
 
 def test_wer_counts_missing_words_as_errors():
-    assert word_error_rate("раз два три четыре", "") == 1.0
+    assert word_error_rate("кот пёс лиса волк", "") == 1.0
 
 
 def test_wer_treats_number_words_and_digits_as_equal():
@@ -99,3 +99,27 @@ def test_wer_treats_number_words_and_digits_as_equal():
 def test_wer_of_empty_reference_depends_on_hypothesis():
     assert word_error_rate("", "") == 0.0
     assert word_error_rate("", "лишнее") == 1.0
+
+
+def test_wer_ignores_how_a_digit_string_is_grouped():
+    reference = "Оплати картой, номер: четыре два семь шесть, один два три четыре."
+
+    assert word_error_rate(reference, "Оплати картой номер 4276 1234") == 0.0
+    assert word_error_rate(reference, "Оплати картой номер 42761234") == 0.0
+
+
+def test_wer_still_counts_a_wrong_digit_string_as_one_error():
+    reference = "Оплати картой, номер: четыре два семь шесть."
+
+    assert word_error_rate(reference, "Оплати картой номер 4277") == 0.25
+
+
+def test_wer_tokens_keep_words_between_digit_runs_apart():
+    from manual.personal_proxy.text import wer_tokens
+
+    assert wer_tokens("серия сорок пять ноль два номер шесть один") == [
+        "серия",
+        "4502",
+        "номер",
+        "61",
+    ]
