@@ -31,6 +31,9 @@ examples/mcp/data/
 *.egg-info/
 manual_check_answer_revision_out/
 manual_check_single_pass_tts_out/
+manual_check_personal_proxy_spike_out/
+manual_check_personal_proxy_restoration_out/
+personal_proxy_corpus_wavs/
 /mcp_mode.token
 CLAUDE.md
 AGENTS.md
