@@ -1,5 +1,8 @@
+from dataclasses import replace
+
 from manual.personal_proxy.corpus import utterance_by_id
 from manual.personal_proxy.transcription_ab import (
+    JSON_TRANSCRIPT_SCHEMA,
     VARIANT_B_INSTRUCTION,
     PairedCounts,
     TranscriptScore,
@@ -8,6 +11,7 @@ from manual.personal_proxy.transcription_ab import (
     Verdict,
     aggregate,
     decide,
+    extract_transcript,
     paired_counts,
     reference_text,
     render_report,
@@ -59,14 +63,14 @@ def test_an_answer_instead_of_a_transcript_is_a_failure():
 def test_better_needs_four_fewer_failures_and_no_wer_regression():
     a = _metrics(Variant.A, 24)
 
-    assert decide(a, _metrics(Variant.B, 20)) is Verdict.B_BETTER
+    assert decide(a, _metrics(Variant.B, 20)) is Verdict.CANDIDATE_BETTER
     assert decide(a, _metrics(Variant.B, 21)) is Verdict.NO_DIFFERENCE
 
 
 def test_worse_needs_four_more_failures():
     a = _metrics(Variant.A, 10)
 
-    assert decide(a, _metrics(Variant.B, 14)) is Verdict.B_WORSE
+    assert decide(a, _metrics(Variant.B, 14)) is Verdict.CANDIDATE_WORSE
     assert decide(a, _metrics(Variant.B, 13)) is Verdict.NO_DIFFERENCE
 
 
@@ -79,7 +83,9 @@ def test_fewer_failures_with_a_wer_regression_goes_to_the_owner():
 def test_a_wer_margin_of_exactly_two_hundredths_still_counts_as_better():
     a = _metrics(Variant.A, 24, median_wer=0.10)
 
-    assert decide(a, _metrics(Variant.B, 10, median_wer=0.12)) is Verdict.B_BETTER
+    assert (
+        decide(a, _metrics(Variant.B, 10, median_wer=0.12)) is Verdict.CANDIDATE_BETTER
+    )
 
 
 def test_aggregate_counts_one_variant_only():
@@ -105,7 +111,9 @@ def test_paired_counts_split_failures_by_variant():
         _score(Variant.B, "z", 1, failure=True),
     ]
 
-    assert paired_counts(scores) == PairedCounts(a_only=1, b_only=1, both=1)
+    assert paired_counts(scores) == PairedCounts(
+        baseline_only=1, candidate_only=1, both=1
+    )
 
 
 def test_variant_b_is_the_owner_wording_with_corrected_english():
@@ -133,3 +141,82 @@ def test_report_gives_expected_and_actual_for_each_failure_and_is_ascii_framed()
     assert "actual:   864219" in text
     assert "Determinism check: 80/88" in text
     assert "control_silence" in text
+
+
+def test_a_plain_response_is_its_own_transcript():
+    assert extract_transcript(Variant.A, "позвони Марине") == "позвони Марине"
+
+
+def test_a_json_response_yields_the_raw_transcript_field():
+    assert (
+        extract_transcript(Variant.C, '{"raw_transcript": "позвони Марине"}')
+        == "позвони Марине"
+    )
+
+
+def test_a_json_response_with_extra_field_missing_field_or_prose_is_invalid():
+    assert extract_transcript(Variant.C, '{"raw_transcript": "x", "a": 1}') is None
+    assert extract_transcript(Variant.C, '{"text": "x"}') is None
+    assert extract_transcript(Variant.C, '{"raw_transcript": 5}') is None
+    assert extract_transcript(Variant.C, "позвони Марине") is None
+    assert extract_transcript(Variant.C, '["raw_transcript"]') is None
+
+
+def test_an_invalid_json_response_scores_as_a_failure_with_wer_one():
+    score = score_transcript(Variant.C, utterance_by_id("id_email"), 1, "not json")
+
+    assert (score.valid, score.audio_failure, score.wer) == (False, True, 1.0)
+    assert score.transcript == "not json"
+
+
+def test_a_json_transcript_is_scored_on_the_field_value():
+    score = score_transcript(
+        Variant.C,
+        utterance_by_id("id_short_call"),
+        1,
+        '{"raw_transcript": "Позвони Марине Крыловой."}',
+        seconds=0.8,
+    )
+
+    assert (score.valid, score.audio_failure, score.wer) == (True, False, 0.0)
+    assert score.seconds == 0.8
+
+
+def test_the_schema_requires_the_single_string_field():
+    assert JSON_TRANSCRIPT_SCHEMA["required"] == ["raw_transcript"]
+    assert list(JSON_TRANSCRIPT_SCHEMA["properties"]) == ["raw_transcript"]
+
+
+def test_aggregate_reports_invalid_outputs_and_median_seconds():
+    scores = [
+        replace(_score(Variant.C, failure=True), valid=False, seconds=1.0),
+        replace(_score(Variant.C), seconds=3.0),
+    ]
+
+    metrics = aggregate(Variant.C, scores)
+
+    assert (metrics.invalid, metrics.median_seconds) == (1, 2.0)
+
+
+def test_report_compares_a_against_the_chosen_candidate():
+    scores = [
+        score_transcript(Variant.A, utterance_by_id("id_sms_code"), 1, "864219"),
+        score_transcript(
+            Variant.C,
+            utterance_by_id("id_sms_code"),
+            1,
+            '{"raw_transcript": "Код из смс 864219."}',
+        ),
+    ]
+
+    text = render_report(
+        meta={},
+        scores=scores,
+        controls={},
+        identical_to_main_run=None,
+        candidate=Variant.C,
+    )
+
+    assert "C (constrained JSON)" in text
+    assert "Audio failures, c_json_raw_transcript" in text
+    assert "Paired: failed in A only 1, in the candidate only 0" in text

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Harness of tasks/spike-v2.1.0-2-transcription-prompt.md.
 
-Compares the current transcription instruction (A) with the owner's reworded
-one (B) on the recordings of spike v2.1.0-1. Talks to the live local Ollama
+Compares the current transcription request (A) with a candidate on the
+recordings of spike v2.1.0-1: B is the reworded instruction (spike v2.1.0-2),
+C is the same instruction with a constrained-JSON `format` (spike v2.1.0-3,
+tasks/spike-v2.1.0-3-json-transcription.md). Talks to the live local Ollama
 endpoint. Subcommands:
 
-  python -m manual.manual_check_transcription_prompt --out DIR run --wavs WAVS
+  python -m manual.manual_check_transcription_prompt --out DIR run
+      --candidate b|c --wavs WAVS
   python -m manual.manual_check_transcription_prompt --out DIR score --wavs WAVS
 
 `--out` goes before the subcommand. Both variants send the production request
@@ -54,10 +57,12 @@ from manual.personal_proxy.runner import (
     ensure_run_meta,
 )
 from manual.personal_proxy.transcription_ab import (
+    JSON_TRANSCRIPT_SCHEMA,
     KNOWN_RECORDING_DEVIATIONS,
     VARIANT_B_INSTRUCTION,
     TranscriptScore,
     Variant,
+    extract_transcript,
     render_report,
     score_transcript,
 )
@@ -66,20 +71,22 @@ DEFAULT_OUT = Path("manual_check_transcription_prompt_out")
 DEFAULT_MAIN_RUN_CALLS = Path("manual_check_personal_proxy_spike_out") / "calls"
 META_NAME = "run_meta.json"
 REPORT_NAME = "report.md"
-VARIANTS = (Variant.A, Variant.B)
+CANDIDATES = {"b": Variant.B, "c": Variant.C}
 
 
 def call_path(calls_dir: Path, variant: Variant, subject_id: str, seed: int) -> Path:
     return calls_dir / f"{variant.value}-{subject_id}-s{seed}.json"
 
 
-def plan_jobs(subject_ids: list[str]) -> list[tuple[Variant, str, int]]:
+def plan_jobs(
+    subject_ids: list[str], variants: tuple[Variant, ...]
+) -> list[tuple[Variant, str, int]]:
     """Seed by seed, subject by subject, alternating which variant goes first
     so a slow drift in the machine does not always fall on the same variant."""
     jobs: list[tuple[Variant, str, int]] = []
     for seed in SEEDS:
         for index, subject_id in enumerate(subject_ids):
-            order = VARIANTS if index % 2 == 0 else VARIANTS[::-1]
+            order = variants if index % 2 == 0 else variants[::-1]
             jobs.extend((variant, subject_id, seed) for variant in order)
     return jobs
 
@@ -89,6 +96,7 @@ def transcription_request(
     audio: bytes | None,
     options: GenerationOptions,
     seed: int,
+    response_format: dict[str, Any] | None = None,
 ) -> PlannedRequest:
     return PlannedRequest(
         CallStage.TRANSCRIBE,
@@ -98,6 +106,7 @@ def transcription_request(
         ),
         audio,
         replace(options, seed=seed, num_predict=NUM_PREDICT),
+        response_format,
     )
 
 
@@ -110,6 +119,8 @@ def write_call(path: Path, document: dict[str, Any]) -> None:
 
 
 async def command_run(args: argparse.Namespace) -> int:
+    candidate = CANDIDATES[args.candidate]
+    variants = (Variant.A, candidate)
     wavs = WavDirectory(args.wavs)
     settings, client, backend, options, instruction_a = make_environment(args)
     provenance = await fetch_provenance(client, settings.backend.model)
@@ -121,7 +132,9 @@ async def command_run(args: argparse.Namespace) -> int:
         "effective_options": options.as_request_options(),
         "num_predict_cap": NUM_PREDICT,
         "instruction_a": instruction_a,
+        "candidate": candidate.value,
         "instruction_b": VARIANT_B_INSTRUCTION,
+        "json_schema": JSON_TRANSCRIPT_SCHEMA,
         "recording_deviations": {
             k: list(v) for k, v in KNOWN_RECORDING_DEVIATIONS.items()
         },
@@ -129,13 +142,18 @@ async def command_run(args: argparse.Namespace) -> int:
         "wav_set_hash": wavs.set_hash(),
     }
     ensure_run_meta(args.out / META_NAME, meta)
-    instructions = {Variant.A: instruction_a, Variant.B: VARIANT_B_INSTRUCTION}
+    instructions = {
+        Variant.A: instruction_a,
+        Variant.B: VARIANT_B_INSTRUCTION,
+        Variant.C: instruction_a,
+    }
+    formats = {Variant.C: JSON_TRANSCRIPT_SCHEMA}
     caller = OllamaModelCaller(backend, client)
     lookup = audio_lookup(wavs)
     subject_ids = [u.utterance_id for u in CORPUS] + [c.control_id for c in CONTROLS]
     calls_dir = args.out / "calls"
     calls_dir.mkdir(parents=True, exist_ok=True)
-    jobs = plan_jobs(subject_ids)
+    jobs = plan_jobs(subject_ids, variants)
     print(
         f"{len(jobs)} generations planned; model {settings.backend.model}", flush=True
     )
@@ -168,7 +186,11 @@ async def command_run(args: argparse.Namespace) -> int:
         )
         record = await caller(
             transcription_request(
-                instructions[variant], lookup(subject_id), options, seed
+                instructions[variant],
+                lookup(subject_id),
+                options,
+                seed,
+                formats.get(variant),
             )
         )
         write_call(
@@ -197,8 +219,10 @@ async def command_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def load_transcripts(calls_dir: Path) -> dict[tuple[Variant, str, int], str]:
-    found: dict[tuple[Variant, str, int], str] = {}
+def load_transcripts(
+    calls_dir: Path,
+) -> dict[tuple[Variant, str, int], tuple[str, float]]:
+    found: dict[tuple[Variant, str, int], tuple[str, float]] = {}
     for path in sorted(calls_dir.glob("*.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
         key = (
@@ -206,7 +230,8 @@ def load_transcripts(calls_dir: Path) -> dict[tuple[Variant, str, int], str]:
             document["subject_id"],
             document["seed"],
         )
-        found[key] = document["call"]["response_text"]
+        call = document["call"]
+        found[key] = (call["response_text"], call["total_seconds"])
     return found
 
 
@@ -231,17 +256,25 @@ def command_score(args: argparse.Namespace) -> int:
         return 2
     transcripts = load_transcripts(args.out / "calls")
     scores: list[TranscriptScore] = []
-    controls: dict[Variant, dict[str, list[str]]] = {v: {} for v in VARIANTS}
+    candidate = Variant(meta.get("candidate", Variant.B.value))
+    controls: dict[Variant, dict[str, list[str]]] = {
+        v: {} for v in (Variant.A, candidate)
+    }
     corpus_ids = {u.utterance_id for u in CORPUS}
-    for (variant, subject_id, seed), transcript in sorted(
+    for (variant, subject_id, seed), (response, seconds) in sorted(
         transcripts.items(), key=lambda item: (item[0][0], item[0][1], item[0][2])
     ):
         if subject_id in corpus_ids:
             scores.append(
-                score_transcript(variant, utterance_by_id(subject_id), seed, transcript)
+                score_transcript(
+                    variant, utterance_by_id(subject_id), seed, response, seconds
+                )
             )
         else:
-            controls[variant].setdefault(subject_id, []).append(transcript)
+            shown = extract_transcript(variant, response)
+            controls[variant].setdefault(subject_id, []).append(
+                response if shown is None else shown
+            )
     baseline = main_run_baseline_transcripts(args.main_run_calls)
     pairs = [
         (baseline[(s.subject_id, s.seed)], s.transcript)
@@ -255,7 +288,11 @@ def command_score(args: argparse.Namespace) -> int:
     if placement_path.exists():
         meta["placement_after_run"] = json.loads(placement_path.read_text("utf-8"))
     report = render_report(
-        meta=meta, scores=scores, controls=controls, identical_to_main_run=identical
+        meta=meta,
+        scores=scores,
+        controls=controls,
+        identical_to_main_run=identical,
+        candidate=candidate,
     )
     (args.out / REPORT_NAME).write_text(report, encoding="utf-8")
     print(report)
@@ -270,7 +307,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     for name in ("run", "score"):
         sub = commands.add_parser(name)
         sub.add_argument("--wavs", type=Path, required=True)
-        if name == "score":
+        if name == "run":
+            sub.add_argument("--candidate", choices=sorted(CANDIDATES), required=True)
+        else:
             sub.add_argument(
                 "--main-run-calls", type=Path, default=DEFAULT_MAIN_RUN_CALLS
             )

@@ -95,7 +95,7 @@ records the exception). The change is a prompt text only, no microphone and
 no hotkeys are involved. Commands:
 
 ```
-python -m manual.manual_check_transcription_prompt --out manual_check_transcription_prompt_out run --wavs personal_proxy_corpus_wavs
+python -m manual.manual_check_transcription_prompt --out manual_check_transcription_prompt_out run --candidate b --wavs personal_proxy_corpus_wavs
 python -m manual.manual_check_transcription_prompt --out manual_check_transcription_prompt_out score --wavs personal_proxy_corpus_wavs
 ```
 
