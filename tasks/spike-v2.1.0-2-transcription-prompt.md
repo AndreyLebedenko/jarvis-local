@@ -99,6 +99,41 @@ python -m manual.manual_check_transcription_prompt --out manual_check_transcript
 python -m manual.manual_check_transcription_prompt --out manual_check_transcription_prompt_out score --wavs personal_proxy_corpus_wavs
 ```
 
-## Result
+## Result (2026-10-18, run by the agent, 188 generations, no errors, GPU share 1.0)
 
-Pending.
+Verdict by the frozen rule: **B worse**.
+
+| | A (current) | B (attached audio) |
+|---|---|---|
+| audio failures of 88 | 22 | 26 |
+| median WER | 0.163 | 0.200 |
+
+- Paired: failed in A only 7, in B only 11, in both 15. The margin is exactly
+  the threshold of 4.
+- Determinism: all 88 variant-A transcripts are byte-identical to the main
+  run's baseline transcripts, so the seeds give reproducible results and the
+  difference below is a property of the wording, not run-to-run noise.
+- What B fixed (A only): the four "answers instead of transcribing" cases
+  `n_borscht` and `n_cpu_cache` at both seeds, `id_phone_words` at both seeds
+  (now keeps the words before the number), and `t_divorce_court` s19210.
+- What B broke (B only): the model says the recording is missing. 13 of 88
+  B outputs (6 of 88 for A) are refusal-style text; typical actual values:
+  `[Audio file not provided]` for `id_passport` s19210 and `m_github` s19210,
+  "I cannot fulfill this request because there is no audio recording attached
+  to your message" for `id_short_write` s19210 and `m_short_english` s19210,
+  "The provided audio contains no speech" for `id_short_password` s19210. Two
+  `t_orientation` outputs claim there is no recording. `m_northwind_long`
+  gained a hallucinated greeting word ("Привет, Майкл") at both seeds.
+- Controls: under B the silence, noise, and no-media controls answer "please
+  provide the audio recording" instead of the invented sentences A sometimes
+  produced ("The fact that they are in the same room ..."). Both are
+  non-empty text, so both count as fabrication in the sanitize chain.
+- Neither wording is near the 10% stop level of spike 1: A 22/88 (25%), B
+  26/88 (29.5%).
+
+Reading: stating in the user turn that audio is attached makes the model
+check for the attachment and, at some seeds, report that it is missing. This
+is consistent with the closed request-shape reports (wording of the current
+turn moves audio attention). Not tested here: the constrained-JSON
+`raw_transcript` field that the combined C-user arm used and that had 8
+audio failures in spike 1.
