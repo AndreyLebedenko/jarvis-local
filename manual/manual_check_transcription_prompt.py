@@ -8,7 +8,7 @@ tasks/spike-v2.1.0-3-json-transcription.md). Talks to the live local Ollama
 endpoint. Subcommands:
 
   python -m manual.manual_check_transcription_prompt --out DIR run
-      --candidate b|c --wavs WAVS
+      --candidate b|c|d --wavs WAVS
   python -m manual.manual_check_transcription_prompt --out DIR score --wavs WAVS
 
 `--out` goes before the subcommand. Both variants send the production request
@@ -57,13 +57,15 @@ from manual.personal_proxy.runner import (
     ensure_run_meta,
 )
 from manual.personal_proxy.transcription_ab import (
+    JSON_SPEECH_SCHEMA,
     JSON_TRANSCRIPT_SCHEMA,
     KNOWN_RECORDING_DEVIATIONS,
     VARIANT_B_INSTRUCTION,
+    ControlScore,
     TranscriptScore,
     Variant,
-    extract_transcript,
     render_report,
+    score_control,
     score_transcript,
 )
 
@@ -71,7 +73,7 @@ DEFAULT_OUT = Path("manual_check_transcription_prompt_out")
 DEFAULT_MAIN_RUN_CALLS = Path("manual_check_personal_proxy_spike_out") / "calls"
 META_NAME = "run_meta.json"
 REPORT_NAME = "report.md"
-CANDIDATES = {"b": Variant.B, "c": Variant.C}
+CANDIDATES = {"b": Variant.B, "c": Variant.C, "d": Variant.D}
 
 
 def call_path(calls_dir: Path, variant: Variant, subject_id: str, seed: int) -> Path:
@@ -135,6 +137,7 @@ async def command_run(args: argparse.Namespace) -> int:
         "candidate": candidate.value,
         "instruction_b": VARIANT_B_INSTRUCTION,
         "json_schema": JSON_TRANSCRIPT_SCHEMA,
+        "json_speech_schema": JSON_SPEECH_SCHEMA,
         "recording_deviations": {
             k: list(v) for k, v in KNOWN_RECORDING_DEVIATIONS.items()
         },
@@ -146,8 +149,12 @@ async def command_run(args: argparse.Namespace) -> int:
         Variant.A: instruction_a,
         Variant.B: VARIANT_B_INSTRUCTION,
         Variant.C: instruction_a,
+        Variant.D: instruction_a,
     }
-    formats = {Variant.C: JSON_TRANSCRIPT_SCHEMA}
+    formats = {
+        Variant.C: JSON_TRANSCRIPT_SCHEMA,
+        Variant.D: JSON_SPEECH_SCHEMA,
+    }
     caller = OllamaModelCaller(backend, client)
     lookup = audio_lookup(wavs)
     subject_ids = [u.utterance_id for u in CORPUS] + [c.control_id for c in CONTROLS]
@@ -257,9 +264,7 @@ def command_score(args: argparse.Namespace) -> int:
     transcripts = load_transcripts(args.out / "calls")
     scores: list[TranscriptScore] = []
     candidate = Variant(meta.get("candidate", Variant.B.value))
-    controls: dict[Variant, dict[str, list[str]]] = {
-        v: {} for v in (Variant.A, candidate)
-    }
+    controls: list[ControlScore] = []
     corpus_ids = {u.utterance_id for u in CORPUS}
     for (variant, subject_id, seed), (response, seconds) in sorted(
         transcripts.items(), key=lambda item: (item[0][0], item[0][1], item[0][2])
@@ -271,10 +276,7 @@ def command_score(args: argparse.Namespace) -> int:
                 )
             )
         else:
-            shown = extract_transcript(variant, response)
-            controls[variant].setdefault(subject_id, []).append(
-                response if shown is None else shown
-            )
+            controls.append(score_control(variant, subject_id, seed, response))
     baseline = main_run_baseline_transcripts(args.main_run_calls)
     pairs = [
         (baseline[(s.subject_id, s.seed)], s.transcript)

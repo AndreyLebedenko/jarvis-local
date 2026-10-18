@@ -73,8 +73,12 @@ class GenerationScore:
     cold: bool
 
 
+def matches_audio_refusal(text: str) -> bool:
+    return _REFUSAL_PATTERNS.search(text) is not None
+
+
 def looks_like_audio_failure(raw_transcript: str, reference: str) -> bool:
-    if _REFUSAL_PATTERNS.search(raw_transcript):
+    if matches_audio_refusal(raw_transcript):
         return True
     return word_error_rate(reference, raw_transcript) > AUDIO_FAILURE_WER
 

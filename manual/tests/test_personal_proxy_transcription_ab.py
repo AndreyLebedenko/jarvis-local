@@ -2,19 +2,24 @@ from dataclasses import replace
 
 from manual.personal_proxy.corpus import utterance_by_id
 from manual.personal_proxy.transcription_ab import (
+    JSON_SPEECH_SCHEMA,
     JSON_TRANSCRIPT_SCHEMA,
     VARIANT_B_INSTRUCTION,
+    Overall,
     PairedCounts,
     TranscriptScore,
     Variant,
     VariantMetrics,
     Verdict,
     aggregate,
+    control_criterion_passes,
     decide,
     extract_transcript,
+    overall,
     paired_counts,
     reference_text,
     render_report,
+    score_control,
     score_transcript,
 )
 
@@ -132,15 +137,15 @@ def test_report_gives_expected_and_actual_for_each_failure_and_is_ascii_framed()
     text = render_report(
         meta={"model": "m"},
         scores=scores,
-        controls={Variant.A: {"control_silence": ["", "x"]}},
+        controls=[score_control(Variant.A, "ctl_silence", 1, "x")],
         identical_to_main_run=(80, 88),
     )
 
-    assert "Verdict: **NO_DIFFERENCE**" in text
+    assert "Utterance verdict: **NO_DIFFERENCE**" in text
     assert "expected: Код из смс" in text
     assert "actual:   864219" in text
     assert "Determinism check: 80/88" in text
-    assert "control_silence" in text
+    assert "ctl_silence" in text
 
 
 def test_a_plain_response_is_its_own_transcript():
@@ -212,7 +217,7 @@ def test_report_compares_a_against_the_chosen_candidate():
     text = render_report(
         meta={},
         scores=scores,
-        controls={},
+        controls=[],
         identical_to_main_run=None,
         candidate=Variant.C,
     )
@@ -220,3 +225,129 @@ def test_report_compares_a_against_the_chosen_candidate():
     assert "C (constrained JSON)" in text
     assert "Audio failures, c_json_raw_transcript" in text
     assert "Paired: failed in A only 1, in the candidate only 0" in text
+
+
+D_NO_SPEECH = '{"speech_present": false, "raw_transcript": ""}'
+
+
+def test_d_response_must_be_exactly_the_two_typed_fields():
+    ok = '{"speech_present": true, "raw_transcript": "привет"}'
+
+    assert extract_transcript(Variant.D, ok) == "привет"
+    assert extract_transcript(Variant.D, '{"raw_transcript": "x"}') is None
+    assert (
+        extract_transcript(
+            Variant.D, '{"speech_present": "yes", "raw_transcript": "x"}'
+        )
+        is None
+    )
+    assert (
+        extract_transcript(
+            Variant.D, '{"speech_present": true, "raw_transcript": "x", "z": 1}'
+        )
+        is None
+    )
+    assert extract_transcript(Variant.D, "plain text") is None
+
+
+def test_the_speech_schema_lists_the_flag_before_the_transcript():
+    assert list(JSON_SPEECH_SCHEMA["properties"]) == [
+        "speech_present",
+        "raw_transcript",
+    ]
+    assert JSON_SPEECH_SCHEMA["properties"]["speech_present"] == {"type": "boolean"}
+    assert JSON_SPEECH_SCHEMA["required"] == ["speech_present", "raw_transcript"]
+
+
+def test_claiming_no_speech_on_a_real_utterance_is_an_audio_failure():
+    score = score_transcript(
+        Variant.D,
+        utterance_by_id("id_short_call"),
+        1,
+        '{"speech_present": false, "raw_transcript": "Позвони Марине Крыловой."}',
+    )
+
+    assert score.audio_failure
+    assert score.speech_present is False
+    assert score.wer == 0.0
+
+
+def test_a_correct_d_response_to_an_utterance_is_not_a_failure():
+    score = score_transcript(
+        Variant.D,
+        utterance_by_id("id_short_call"),
+        1,
+        '{"speech_present": true, "raw_transcript": "Позвони Марине Крыловой."}',
+    )
+
+    assert not score.audio_failure
+
+
+def test_d_control_is_clean_only_with_no_speech_and_an_empty_transcript():
+    assert score_control(Variant.D, "ctl_silence", 1, D_NO_SPEECH).clean
+    assert not score_control(
+        Variant.D,
+        "ctl_silence",
+        1,
+        '{"speech_present": true, "raw_transcript": ""}',
+    ).clean
+    assert not score_control(
+        Variant.D,
+        "ctl_silence",
+        1,
+        '{"speech_present": false, "raw_transcript": "hello there"}',
+    ).clean
+    invalid = score_control(Variant.D, "ctl_silence", 1, "not json")
+    assert (invalid.clean, invalid.valid) == (False, False)
+
+
+def test_plain_control_is_clean_when_empty_or_saying_it_cannot_hear():
+    assert score_control(Variant.A, "ctl_noise", 1, "  ").clean
+    assert score_control(
+        Variant.A, "ctl_noise", 1, "Please provide the audio file."
+    ).clean
+    assert not score_control(
+        Variant.A, "ctl_noise", 1, "I am going home tonight."
+    ).clean
+
+
+def test_the_control_criterion_needs_every_candidate_control_clean():
+    clean = score_control(Variant.D, "ctl_silence", 1, D_NO_SPEECH)
+    dirty = score_control(
+        Variant.D, "ctl_noise", 1, '{"speech_present": true, "raw_transcript": "x"}'
+    )
+
+    assert control_criterion_passes(Variant.D, [clean, clean])
+    assert not control_criterion_passes(Variant.D, [clean, dirty])
+    assert not control_criterion_passes(Variant.D, [])
+
+
+def test_overall_advances_only_when_better_and_controls_pass():
+    assert overall(Verdict.CANDIDATE_BETTER, True) is Overall.ADVANCE
+    assert overall(Verdict.CANDIDATE_BETTER, False) is Overall.DO_NOT_ADVANCE
+    assert overall(Verdict.CANDIDATE_WORSE, True) is Overall.DO_NOT_ADVANCE
+    assert overall(Verdict.NO_DIFFERENCE, True) is Overall.OWNER
+    assert overall(Verdict.OWNER, True) is Overall.OWNER
+    assert overall(Verdict.NO_DIFFERENCE, False) is Overall.DO_NOT_ADVANCE
+
+
+def test_report_shows_the_control_criterion_and_the_overall_verdict():
+    controls = [
+        score_control(Variant.A, "ctl_silence", 1, "invented sentence"),
+        score_control(Variant.D, "ctl_silence", 1, D_NO_SPEECH),
+    ]
+
+    text = render_report(
+        meta={},
+        scores=[],
+        controls=controls,
+        identical_to_main_run=None,
+        candidate=Variant.D,
+    )
+
+    assert (
+        "Control criterion (candidate, all clean required): **PASS** (1/1 clean; A 0/1)"
+        in text
+    )
+    assert "Overall: **OWNER**" in text
+    assert "SPEECH REPORTED" in text
