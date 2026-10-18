@@ -39,13 +39,22 @@ ignored:
    (`PROJECT.md`, runtime locality contract). Core orchestration and the local
    Ollama backend stay unconditionally local.
 2. **A bare Gemma-class transcription pass is "recorded as unreliable".**
-   The roadmap cites `PROJECT.md`; the only fidelity record found there is the
-   day-0 check ("model transcribed Russian speech verbatim") plus the standing
-   manual `manual_check_transcription_service`. The roadmap's claim is not
-   substantiated by a record the author of this card could find. The owner's
-   decision to merge transcription and sanitization into one Gemma pass is
-   therefore treated as a hypothesis, and task 1 is a measured spike with a
-   frozen decision rule and a defined fallback.
+   Substantiated by the closed bug reports
+   `2026-09-01-request-shape-suppresses-audio-attention.md` and
+   `2026-08-04-transcription-model-refuses-audio.md`: audio attention on
+   Gemma 4 12B depends on the request shape (a system prompt, tool
+   declarations, and the current-turn wording each degraded transcription of
+   the same clips), very short clips are fragile, and the only best-measured
+   shape is the bare request with the English verbatim instruction, which was
+   still usable on only 3/5 clips for the Q8_0 variants. (An earlier draft of
+   this card said the roadmap's claim could not be substantiated; that was
+   wrong, the records are in the bug reports, not in `PROJECT.md`.) A combined
+   transcribe-and-sanitize call needs exactly the long instruction those
+   studies found risky. The owner's decision to merge transcription and
+   sanitization into one Gemma pass is therefore a hypothesis against the
+   prior, and task 1 is a measured spike with a frozen decision rule and a
+   defined fallback (two steps: the existing bare transcription, then a
+   text-only sanitize pass).
 3. **It needs an API-key store.** v1 reads the key from an environment
    variable and never from `config.toml`. `tasks/backlog/secret-storage.md`
    stays a separate, unblocked backlog item.
