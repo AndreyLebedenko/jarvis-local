@@ -117,6 +117,53 @@ python -m manual.manual_check_transcription_prompt --out manual_check_transcript
 python -m manual.manual_check_transcription_prompt --out manual_check_transcription_speech_out score --wavs personal_proxy_corpus_wavs
 ```
 
-## Result
+## Result (2026-10-19, run by the agent, 188 generations, no errors, GPU share 1.0)
 
-Pending.
+Overall by the frozen rule: **do not advance**.
+
+- Utterance verdict: **no difference** (22 audio failures for A, 25 for D; the
+  threshold was a difference of 4).
+- Control criterion: **fail**. D was clean on 0 of 6 control generations; A on
+  3 of 6.
+
+| | A (current) | D (JSON, two fields) |
+|---|---|---|
+| audio failures of 88 | 22 | 25 |
+| median WER | 0.165 | 0.101 |
+| invalid JSON | 0 | 1 |
+| median seconds per call | 0.73 | 1.43 |
+
+- Paired: failed in A only 9, in D only 12, in both 13. Neither reaches the 10%
+  level. Determinism: 77 of 88 variant-A transcripts are byte-identical to the
+  main run's baseline.
+- **The flag does not discriminate.** On the 87 valid utterance outputs
+  `speech_present` was `false` for 13, all of them at seed 19210 and none at
+  seed 4243. Twelve of those 13 have a good transcript (for example
+  `id_phone_digits` WER 0.00, `n_git_long` 0.02, `t_hypertension_long` 0.02,
+  `q_pathologist_long` 0.04); they are counted as failures only because the flag
+  says there is no speech. On the controls `speech_present` was `true` in all 5
+  valid outputs (the sixth, `ctl_silence` s19210, is invalid JSON whose
+  `speech_present` is also `true`), with invented text each time, for example
+  "Yeah, I'm thinking about going to a concert" for no media at all and "I think
+  it's a good idea to go out and get some food" for digital silence.
+  `ctl_noise` s4243 wrote "The recording is silent." with the flag `true`.
+- **Exploratory, not part of the frozen rule:** if the flag is ignored, D has 12
+  failures by the main-run definition plus 1 invalid output, against 22 for A
+  and 16 for C (spike 3). The transcript field alone carries the gain of the
+  constraint; the flag adds nothing and costs 12 false failures.
+- What D still fails with a bad transcript: `id_card` s4243, `id_phone_words`
+  s19210, `id_sms_code` s4243, `m_short_call` s4243 (an invented English
+  paragraph) and s19210 (transliteration artifact), `m_short_english` s4243,
+  `m_trade_house` both seeds (invented monologues; one is invalid JSON),
+  `n_borscht` both seeds (an answer at s4243; the instruction echoed back at
+  s19210), `n_cpu_cache` s19210 (an answer), `n_short_translate` both seeds.
+- Cost: median call time 1.43 s against 0.73 s.
+
+Reading: the model, which is shown the key names only through its own forced
+output, does not use `speech_present` as the instruction intended. The flag
+tracks the seed rather than the audio. The constraint alone is the useful part
+(spike 3). Whether a prompt that names and explains the fields would make the
+flag meaningful is untested. The control criterion is a smoke test of six
+generations; the production capture feeds the model only chunks that the voice
+activity detector accepted, so silence normally never reaches it (an inference
+from the architecture, not measured here).
