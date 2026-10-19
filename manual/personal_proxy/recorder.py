@@ -83,12 +83,14 @@ def take_advice(seconds: float, utterance: Utterance) -> str | None:
     return None
 
 
-def load_entries(directory: Path) -> dict[str, ManifestEntry]:
+def load_entries(
+    directory: Path, fingerprint: str | None = None
+) -> dict[str, ManifestEntry]:
     path = directory / MANIFEST_NAME
     if not path.exists():
         return {}
     document = json.loads(path.read_text(encoding="utf-8"))
-    if document["corpus_fingerprint"] != corpus_fingerprint():
+    if document["corpus_fingerprint"] != (fingerprint or corpus_fingerprint()):
         raise RecordingDirectoryError(
             f"{directory} holds recordings of a different corpus; use a new directory"
         )
@@ -99,11 +101,13 @@ def load_entries(directory: Path) -> dict[str, ManifestEntry]:
 
 
 def pending(
-    entries: dict[str, ManifestEntry], redo: set[str] | None = None
+    entries: dict[str, ManifestEntry],
+    redo: set[str] | None = None,
+    corpus: tuple[Utterance, ...] = CORPUS,
 ) -> list[Utterance]:
     redo = redo or set()
     return [
-        u for u in CORPUS if u.utterance_id not in entries or u.utterance_id in redo
+        u for u in corpus if u.utterance_id not in entries or u.utterance_id in redo
     ]
 
 
@@ -113,22 +117,24 @@ async def record_corpus(
     directory: Path,
     *,
     redo: set[str] | None = None,
+    corpus: tuple[Utterance, ...] = CORPUS,
+    fingerprint: str | None = None,
 ) -> RecordSummary:
     directory.mkdir(parents=True, exist_ok=True)
-    entries = load_entries(directory)
-    todo = pending(entries, redo)
+    entries = load_entries(directory, fingerprint)
+    todo = pending(entries, redo, corpus)
     recorded = 0
     for index, utterance in enumerate(todo, start=1):
         wav = await _record_one(source, interaction, index, len(todo), utterance)
         if wav is None:
-            return RecordSummary(recorded, len(CORPUS) - len(todo), quit_early=True)
+            return RecordSummary(recorded, len(corpus) - len(todo), quit_early=True)
         wav_path(directory, utterance.utterance_id).write_bytes(wav)
         entries[utterance.utterance_id] = ManifestEntry(
             utterance.utterance_id, sha256_hex(wav), len(wav), wav_duration_seconds(wav)
         )
-        write_manifest(directory, list(entries.values()))
+        write_manifest(directory, list(entries.values()), fingerprint)
         recorded += 1
-    return RecordSummary(recorded, len(CORPUS) - len(todo), quit_early=False)
+    return RecordSummary(recorded, len(corpus) - len(todo), quit_early=False)
 
 
 async def _record_one(

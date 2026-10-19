@@ -6,7 +6,9 @@
   python -m manual.manual_check_confidence_signals --out DIR run --wavs WAVS
   python -m manual.manual_check_confidence_signals --out DIR score --wavs WAVS
 
-`--out` goes before the subcommand. `words` needs the Whisper environment; `run`
+`--corpus v2` (spike v2.1.0-9) selects the second corpus
+(tasks/spike-v2.1.0-9-confidence-fresh-corpus.md). `--corpus` and `--out` go
+before the subcommand. `words` needs the Whisper environment; `run`
 talks to the live local Ollama endpoint; `score` is offline.
 """
 
@@ -17,6 +19,7 @@ import json
 import sys
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -51,13 +54,19 @@ from manual.personal_proxy.confidence_report import (
     Signals,
     compute_signals,
     evaluate,
+    render_hypothesis,
     render_report,
 )
 from manual.personal_proxy.corpus import (
     CORPUS,
     SEEDS,
+    Utterance,
     corpus_fingerprint,
-    utterance_by_id,
+)
+from manual.personal_proxy.corpus_v2 import (
+    CORPUS_V2,
+    corpus_v2_fingerprint,
+    voice_of,
 )
 from manual.personal_proxy.verification import (
     ERROR_HINT,
@@ -67,7 +76,43 @@ from manual.personal_proxy.verification import (
 
 DEFAULT_OUT = Path("manual_check_confidence_out")
 REPORT_NAME = "report.md"
-CORPUS_IDS = {u.utterance_id for u in CORPUS}
+
+
+@dataclass(frozen=True)
+class CorpusSetup:
+    utterances: tuple[Utterance, ...]
+    fingerprint: str | None
+    first: bool
+
+    def ids(self) -> set[str]:
+        return {u.utterance_id for u in self.utterances}
+
+    def lookup(self, subject_id: str) -> Utterance | None:
+        for u in self.utterances:
+            if u.utterance_id == subject_id:
+                return u
+        return None
+
+    def directory(self, wavs: Path) -> WavDirectory:
+        return WavDirectory(wavs, self.utterances, self.fingerprint)
+
+    def audio(self, wavs: Path) -> dict[str, bytes]:
+        directory = self.directory(wavs)
+        if self.first:
+            return subject_audio(directory)
+        return {
+            u.utterance_id: directory.audio_for(u.utterance_id) for u in self.utterances
+        }
+
+
+def setup_for(args: argparse.Namespace) -> CorpusSetup:
+    if args.corpus == "v2":
+        return CorpusSetup(CORPUS_V2, corpus_v2_fingerprint(), False)
+    return CorpusSetup(CORPUS, None, True)
+
+
+def engine_text(out: Path, subject_id: str) -> str:
+    return read_words(out, subject_id)["text"]
 
 
 def words_path(out: Path, subject_id: str) -> Path:
@@ -96,8 +141,8 @@ def command_words(args: argparse.Namespace) -> int:
         transcribe_with_confidence,
     )
 
-    wavs = WavDirectory(args.wavs)
-    audio = subject_audio(wavs)
+    setup = setup_for(args)
+    audio = setup.audio(args.wavs)
     engine = WhisperEngine("ru", "cuda", "float16")
     engine.load()
     (args.out / "words").mkdir(parents=True, exist_ok=True)
@@ -105,7 +150,11 @@ def command_words(args: argparse.Namespace) -> int:
     for subject_id, data in audio.items():
         samples, _ = decode(data)
         detailed = transcribe_with_confidence(engine, samples)
-        expected = whisper_transcript(args.whisper_calls, subject_id, SEEDS[0])
+        expected = (
+            whisper_transcript(args.whisper_calls, subject_id, SEEDS[0])
+            if setup.first
+            else detailed["text"]
+        )
         if not same_text(detailed["text"], expected):
             mismatches.append((subject_id, expected, detailed["text"]))
         write_json(words_path(args.out, subject_id), detailed)
@@ -127,8 +176,8 @@ def command_run(args: argparse.Namespace) -> int:
 
     reference = json.loads(args.reference_request.read_text(encoding="utf-8"))
     base_options = reference["call"]["request"]["options"]
-    wavs = WavDirectory(args.wavs)
-    audio = subject_audio(wavs)
+    setup = setup_for(args)
+    audio = setup.audio(args.wavs)
     for name in ("samples", "judge"):
         (args.out / name).mkdir(parents=True, exist_ok=True)
     write_json(
@@ -138,8 +187,8 @@ def command_run(args: argparse.Namespace) -> int:
             "base_options": run_options(base_options, args.num_ctx, None),
             "weak_word_probability": WEAK_WORD_PROBABILITY,
             "hint": ERROR_HINT,
-            "corpus_fingerprint": corpus_fingerprint(),
-            "wav_set_hash": wavs.set_hash(),
+            "corpus_fingerprint": setup.fingerprint or corpus_fingerprint(),
+            "wav_set_hash": setup.directory(args.wavs).set_hash(),
         },
     )
     ran = 0
@@ -158,7 +207,7 @@ def command_run(args: argparse.Namespace) -> int:
         for subject_id, data in audio.items():
             document = read_words(args.out, subject_id)
             marked = weak_word_marks(word_pairs(document))
-            source = whisper_transcript(args.whisper_calls, subject_id, SEEDS[0])
+            source = document["text"]
             for key in SAMPLE_KEYS:
                 temperature, seed = key
                 options = run_options(base_options, args.num_ctx, temperature)
@@ -229,14 +278,15 @@ def _load_judges(
     return found
 
 
-def _signals_for(subject_id: str, args: argparse.Namespace) -> tuple[Signals, int]:
+def _signals_for(
+    subject_id: str, args: argparse.Namespace, setup: CorpusSetup
+) -> tuple[Signals, int]:
     document = read_words(args.out, subject_id)
     judges = _load_judges(args.out, subject_id)
-    utterance = utterance_by_id(subject_id) if subject_id in CORPUS_IDS else None
     signals = compute_signals(
         subject_id,
-        utterance,
-        whisper_transcript(args.whisper_calls, subject_id, SEEDS[0]),
+        setup.lookup(subject_id),
+        document["text"],
         word_pairs(document),
         document["segments"],
         _load_samples(args.out, subject_id),
@@ -246,24 +296,30 @@ def _signals_for(subject_id: str, args: argparse.Namespace) -> tuple[Signals, in
     return signals, sum(1 for j in judges.values() if j is None)
 
 
-def _marks_effect(args: argparse.Namespace) -> list[str]:
+def _marks_effect(args: argparse.Namespace, setup: CorpusSetup) -> list[str]:
     triples = []
-    for subject_id in sorted(CORPUS_IDS):
-        source = whisper_transcript(args.whisper_calls, subject_id, SEEDS[0])
-        samples = _load_samples(args.out, subject_id)
+    for utterance in setup.utterances:
+        source = engine_text(args.out, utterance.utterance_id)
+        samples = _load_samples(args.out, utterance.utterance_id)
         for seed in SEEDS:
-            triples.append(
-                (utterance_by_id(subject_id), source, samples[(BASE_KEY[0], seed)])
-            )
+            triples.append((utterance, source, samples[(BASE_KEY[0], seed)]))
     metrics = score_transcripts([(u, o) for u, _, o in triples])
     fixed, broken = paired_spans(triples)
+    whisper_alone = score_transcripts([(u, s) for u, s, _ in triples])
     return [
         f"audio failures {metrics.audio_failures} of {metrics.generations} "
-        "(spike 7 X at 0.618: 5 of 88; Whisper alone: 4 of 88)",
+        f"(Whisper alone: {whisper_alone.audio_failures})",
         f"span fidelity {metrics.overall_fidelity:.3f} "
-        "(spike 7 X: 0.896; Whisper alone: 0.854)",
-        f"spans fixed {fixed}, broken {broken} (spike 7 X: 4 fixed, 0 broken)",
+        f"(Whisper alone: {whisper_alone.overall_fidelity:.3f})",
+        f"spans fixed {fixed}, broken {broken}",
     ]
+
+
+def _voice_groups(recordings: list[Signals]) -> dict[str, list[Signals]]:
+    groups: dict[str, list[Signals]] = {}
+    for r in recordings:
+        groups.setdefault(f"voice {voice_of(r.subject_id)}", []).append(r)
+    return groups
 
 
 def command_score(args: argparse.Namespace) -> int:
@@ -272,21 +328,25 @@ def command_score(args: argparse.Namespace) -> int:
         print("No run_meta.json: nothing to score.", file=sys.stderr)
         return 2
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    if WavDirectory(args.wavs).set_hash() != meta["wav_set_hash"]:
+    setup = setup_for(args)
+    if setup.directory(args.wavs).set_hash() != meta["wav_set_hash"]:
         print("The recordings differ from the ones the run used.", file=sys.stderr)
         return 2
+    corpus_ids = setup.ids()
     recordings, controls, unparsed = [], [], 0
     for subject_id in sorted(read_ids(args.out)):
-        signals, missing = _signals_for(subject_id, args)
+        signals, missing = _signals_for(subject_id, args, setup)
         unparsed += missing
-        (recordings if subject_id in CORPUS_IDS else controls).append(signals)
+        (recordings if subject_id in corpus_ids else controls).append(signals)
+    groups = None if setup.first else _voice_groups(recordings)
     report = render_report(
         recordings,
         controls,
         evaluate(recordings, controls),
         unparsed,
-        _marks_effect(args),
+        _marks_effect(args, setup),
     )
+    report += "\n" + "\n".join(render_hypothesis(recordings, groups)) + "\n"
     name = (
         REPORT_NAME if args.label_rule == "frozen" else f"report-{args.label_rule}.md"
     )
@@ -301,6 +361,7 @@ def read_ids(out: Path) -> list[str]:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--corpus", choices=("v1", "v2"), default="v1")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("words", "run", "score"):

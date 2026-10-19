@@ -183,3 +183,92 @@ def render_report(
     lines += [f"- {line}" for line in marks_effect]
     lines += ["", "## Per recording", "", *_per_recording_lines(recordings)]
     return "\n".join(lines) + "\n"
+
+
+HYPOTHESIS_RULES = (("S2", 0.6), ("J3", 1.0))
+SINGLE_RULES = (("S1", 4.0), ("S2", 0.6), ("J3", 1.0))
+HOLDS_RECALL = 0.8
+HOLDS_FALSE_REFUSALS = 0.2
+FAILS_RECALL = 0.6
+FAILS_FALSE_REFUSALS = 0.35
+MIN_BAD_FOR_CONCLUSION = 5
+
+
+@dataclass(frozen=True)
+class Flagging:
+    caught: int
+    bad: int
+    wrongly: int
+    good: int
+
+    @property
+    def recall(self) -> float:
+        return self.caught / self.bad if self.bad else 0.0
+
+    @property
+    def false_refusals(self) -> float:
+        return self.wrongly / self.good if self.good else 0.0
+
+
+def flagged_by(signals: Signals, rules: tuple[tuple[str, float], ...]) -> bool:
+    return any(signals.scores[name] >= threshold for name, threshold in rules)
+
+
+def flagging(
+    recordings: list[Signals], rules: tuple[tuple[str, float], ...]
+) -> Flagging:
+    bad = [r for r in recordings if r.bad]
+    good = [r for r in recordings if not r.bad]
+    return Flagging(
+        sum(flagged_by(r, rules) for r in bad),
+        len(bad),
+        sum(flagged_by(r, rules) for r in good),
+        len(good),
+    )
+
+
+def hypothesis_verdict(h: Flagging, trivial_false_refusals: float) -> str:
+    if h.bad < MIN_BAD_FOR_CONCLUSION:
+        return "nothing concluded (fewer than 5 bad recordings)"
+    if h.recall >= HOLDS_RECALL and (
+        h.false_refusals <= HOLDS_FALSE_REFUSALS
+        and h.false_refusals < trivial_false_refusals
+    ):
+        return "H holds"
+    if h.recall < FAILS_RECALL or h.false_refusals > FAILS_FALSE_REFUSALS:
+        return "H fails"
+    return "inconclusive"
+
+
+def _rate(label: str, f: Flagging) -> str:
+    return f"- {label}: recall {f.caught}/{f.bad}, false refusals {f.wrongly}/{f.good}"
+
+
+def render_hypothesis(
+    recordings: list[Signals], groups: dict[str, list[Signals]] | None = None
+) -> list[str]:
+    trivial = trivial_point(recordings)
+    h = flagging(recordings, HYPOTHESIS_RULES)
+    verdict = hypothesis_verdict(h, trivial.false_refusals)
+    lines = [
+        "## Hypothesis H: S2 >= 0.6 or J3 >= 1",
+        "",
+        _rate("H", h) + f"; trivial baseline T false refusals "
+        f"{trivial.false_refusals:.2f}",
+        f"- **verdict by the frozen rule: {verdict}**",
+    ]
+    for label, rules in (
+        ("S1 >= 4 alone", SINGLE_RULES[:1]),
+        ("S2 >= 0.6 alone", SINGLE_RULES[1:2]),
+        ("J3 >= 1 alone", SINGLE_RULES[2:]),
+    ):
+        lines.append(_rate(label, flagging(recordings, rules)))
+    for label, members in (groups or {}).items():
+        lines.append(_rate(label, flagging(members, HYPOTHESIS_RULES)))
+    missed = [
+        r.subject_id
+        for r in recordings
+        if r.bad and not flagged_by(r, HYPOTHESIS_RULES)
+    ]
+    lines.append(f"- bad recordings H misses: {', '.join(missed) or 'none'}")
+    return lines

@@ -117,3 +117,65 @@ def test_report_names_the_verdict_and_the_bad_recordings():
     assert "Fewer than 5 bad" in report
     assert "- a: caught by" in report
     assert "| S1 |" in report
+
+
+def test_hypothesis_flags_on_instability_or_listed_fragments_only():
+    from manual.personal_proxy.confidence_report import HYPOTHESIS_RULES, flagged_by
+
+    assert flagged_by(_signals("a", True, S2=0.6), HYPOTHESIS_RULES)
+    assert flagged_by(_signals("a", True, J3=1.0), HYPOTHESIS_RULES)
+    assert not flagged_by(_signals("a", True, S2=0.5, S1=9.0), HYPOTHESIS_RULES)
+
+
+def _batch(bad_flagged, bad_total, good_flagged, good_total):
+    flagged = {"S2": 1.0}
+    rows = [
+        _signals(f"b{i}", True, T=1.0, **(flagged if i < bad_flagged else {}))
+        for i in range(bad_total)
+    ]
+    rows += [
+        _signals(f"g{i}", False, T=1.0, **(flagged if i < good_flagged else {}))
+        for i in range(good_total)
+    ]
+    return rows
+
+
+def test_hypothesis_holds_with_high_recall_and_few_false_refusals():
+    from manual.personal_proxy.confidence_report import flagging, hypothesis_verdict
+
+    rows = _batch(5, 6, 2, 20)
+    h = flagging(rows, (("S2", 0.6),))
+
+    assert hypothesis_verdict(h, trivial_false_refusals=0.9) == "H holds"
+
+
+def test_hypothesis_fails_with_low_recall():
+    from manual.personal_proxy.confidence_report import flagging, hypothesis_verdict
+
+    h = flagging(_batch(2, 6, 0, 20), (("S2", 0.6),))
+
+    assert hypothesis_verdict(h, 0.9) == "H fails"
+
+
+def test_hypothesis_is_inconclusive_between_the_two_bounds():
+    from manual.personal_proxy.confidence_report import flagging, hypothesis_verdict
+
+    h = flagging(_batch(4, 6, 2, 20), (("S2", 0.6),))
+
+    assert hypothesis_verdict(h, 0.9) == "inconclusive"
+
+
+def test_hypothesis_needs_five_bad_recordings_to_conclude():
+    from manual.personal_proxy.confidence_report import flagging, hypothesis_verdict
+
+    h = flagging(_batch(4, 4, 0, 20), (("S2", 0.6),))
+
+    assert hypothesis_verdict(h, 0.9).startswith("nothing concluded")
+
+
+def test_hypothesis_must_beat_the_trivial_baseline():
+    from manual.personal_proxy.confidence_report import flagging, hypothesis_verdict
+
+    h = flagging(_batch(6, 6, 3, 20), (("S2", 0.6),))
+
+    assert hypothesis_verdict(h, trivial_false_refusals=0.1) != "H holds"

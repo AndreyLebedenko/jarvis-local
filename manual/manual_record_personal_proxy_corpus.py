@@ -38,7 +38,13 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import load_settings
-from manual.personal_proxy.corpus import Utterance, corpus_problems
+from manual.personal_proxy.corpus import CORPUS, Utterance, corpus_problems
+from manual.personal_proxy.corpus_v2 import (
+    OWNER_VOICE,
+    corpus_v2_fingerprint,
+    corpus_v2_problems,
+    utterances_of_voice,
+)
 from manual.personal_proxy.recorder import (
     Choice,
     RecordingDirectoryError,
@@ -46,6 +52,7 @@ from manual.personal_proxy.recorder import (
 )
 
 DEFAULT_OUT = Path("personal_proxy_corpus_wavs")
+DEFAULT_OUT_V2 = Path("personal_proxy_corpus_v2_wavs")
 DEFAULT_CONFIG = Path("config.toml")
 _CHOICES = {"": Choice.ACCEPT, "r": Choice.REDO, "p": Choice.PLAY, "q": Choice.QUIT}
 
@@ -120,7 +127,12 @@ async def run_recorder(args: argparse.Namespace) -> int:
     loop_task = asyncio.create_task(audio_input.run_microphone_loop())
     try:
         summary = await record_corpus(
-            source, TerminalInteraction(), args.out, redo=set(args.redo)
+            source,
+            TerminalInteraction(),
+            args.out,
+            redo=set(args.redo),
+            corpus=recording_corpus(args),
+            fingerprint=recording_fingerprint(args),
         )
     finally:
         await audio_input.stop()
@@ -135,17 +147,31 @@ async def run_recorder(args: argparse.Namespace) -> int:
     return 0
 
 
+def recording_corpus(args: argparse.Namespace) -> tuple[Utterance, ...]:
+    if args.corpus == "v2":
+        return utterances_of_voice(OWNER_VOICE)
+    return CORPUS
+
+
+def recording_fingerprint(args: argparse.Namespace) -> str | None:
+    return corpus_v2_fingerprint() if args.corpus == "v2" else None
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--corpus", choices=("v1", "v2"), default="v1")
+    parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--redo", action="append", default=[], metavar="UTTERANCE_ID")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.out is None:
+        args.out = DEFAULT_OUT_V2 if args.corpus == "v2" else DEFAULT_OUT
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    problems = corpus_problems()
+    problems = corpus_v2_problems() if args.corpus == "v2" else corpus_problems()
     if problems:
         print("The frozen corpus is inconsistent:\n  " + "\n  ".join(problems))
         return 2

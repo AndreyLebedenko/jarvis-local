@@ -186,3 +186,34 @@ def test_a_directory_of_another_corpus_is_refused(tmp_path):
 
     with pytest.raises(RecordingDirectoryError):
         load_entries(tmp_path)
+
+
+def test_a_second_corpus_records_only_its_voice_and_keeps_other_entries(tmp_path):
+    from manual.personal_proxy.audio import ManifestEntry, write_manifest
+    from manual.personal_proxy.corpus_v2 import (
+        CORPUS_V2,
+        OWNER_VOICE,
+        corpus_v2_fingerprint,
+        utterances_of_voice,
+    )
+
+    fingerprint = corpus_v2_fingerprint()
+    other = next(u for u in CORPUS_V2 if u.utterance_id.endswith("__baya"))
+    tmp_path.mkdir(exist_ok=True)
+    write_manifest(
+        tmp_path, [ManifestEntry(other.utterance_id, "x" * 64, 1, 1.0)], fingerprint
+    )
+    owner = utterances_of_voice(OWNER_VOICE)
+
+    summary = _record(
+        FakeSource([]),
+        FakeInteraction([]),
+        tmp_path,
+        corpus=owner,
+        fingerprint=fingerprint,
+    )
+
+    entries = load_entries(tmp_path, fingerprint)
+    assert summary.recorded == len(owner)
+    assert other.utterance_id in entries
+    assert {u.utterance_id for u in owner} <= set(entries)

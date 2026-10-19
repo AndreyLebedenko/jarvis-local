@@ -16,3 +16,26 @@ def test_sample_files_are_named_by_subject_temperature_and_seed():
     assert (
         harness.sample_name("id_email", (0.618, 19210)) == "id_email-t0.618-s19210.json"
     )
+
+
+def test_second_corpus_setup_knows_its_ids_and_uses_its_own_fingerprint():
+    import argparse
+
+    from manual.personal_proxy.corpus_v2 import corpus_v2_fingerprint
+
+    setup = harness.setup_for(argparse.Namespace(corpus="v2"))
+
+    assert "v2_card__baya" in setup.ids()
+    assert setup.lookup("v2_card__baya").utterance_id == "v2_card__baya"
+    assert setup.lookup("id_email") is None
+    assert setup.fingerprint == corpus_v2_fingerprint()
+    assert not setup.first
+
+
+def test_first_corpus_setup_keeps_the_controls_path():
+    import argparse
+
+    setup = harness.setup_for(argparse.Namespace(corpus="v1"))
+
+    assert setup.first
+    assert setup.lookup("id_email") is not None

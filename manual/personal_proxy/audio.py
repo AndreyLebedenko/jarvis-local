@@ -23,6 +23,7 @@ from manual.personal_proxy.corpus import (
     NOISE_SEED,
     Control,
     ControlKind,
+    Utterance,
     corpus_fingerprint,
 )
 
@@ -67,10 +68,12 @@ class ManifestEntry:
     duration_seconds: float
 
 
-def write_manifest(directory: Path, entries: list[ManifestEntry]) -> Path:
+def write_manifest(
+    directory: Path, entries: list[ManifestEntry], fingerprint: str | None = None
+) -> Path:
     path = directory / MANIFEST_NAME
     document = {
-        "corpus_fingerprint": corpus_fingerprint(),
+        "corpus_fingerprint": fingerprint or corpus_fingerprint(),
         "entries": {
             entry.utterance_id: {
                 "sha256": entry.sha256,
@@ -92,17 +95,23 @@ class WavDirectory:
     """A verified recording directory: every corpus utterance present and
     matching the manifest, recorded against the same frozen corpus."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        corpus: tuple[Utterance, ...] = CORPUS,
+        fingerprint: str | None = None,
+    ) -> None:
         self._directory = directory
+        self._fingerprint = fingerprint or corpus_fingerprint()
         self._manifest = self._read_manifest()
-        self._audio = {u.utterance_id: self._load(u.utterance_id) for u in CORPUS}
+        self._audio = {u.utterance_id: self._load(u.utterance_id) for u in corpus}
 
     def _read_manifest(self) -> dict:
         path = self._directory / MANIFEST_NAME
         if not path.exists():
             raise WavDirectoryError(f"no {MANIFEST_NAME} in {self._directory}")
         document = json.loads(path.read_text(encoding="utf-8"))
-        if document["corpus_fingerprint"] != corpus_fingerprint():
+        if document["corpus_fingerprint"] != self._fingerprint:
             raise WavDirectoryError(
                 "the recordings were made against a different corpus; record again"
             )
