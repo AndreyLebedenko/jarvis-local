@@ -3,7 +3,7 @@
 **Status:** Approved by the owner, 2026-10-18 (including `--personal-proxy`
 as a launch flag); pipeline and interaction revised by the owner, 2026-10-19
 (see "Revisions of 2026-10-19"). No task card is started; the task-card
-sequence is not yet re-cut.
+sequence was re-cut on 2026-10-19.
 **Created:** 2026-10-18
 **Updated:** 2026-10-19
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md`. This story reverses the item
@@ -105,8 +105,8 @@ that roadmap section; this card does not edit the roadmap.
 ## Revisions of 2026-10-19 (owner, after spikes 1-10)
 
 The 2026-10-18 text of this card is kept as written; where this section differs
-from it, this section wins. The task-card sequence below is the 2026-10-18
-version and is re-cut in a later step.
+from it, this section wins. The task-card sequence, the acceptance
+criteria, and the stop conditions below were re-cut on 2026-10-19.
 
 1. **Pipeline (settled constraint 2 is superseded).** The task 1 stop
    condition fired: the bare Gemma transcription and the combined pass did not
@@ -149,7 +149,7 @@ version and is re-cut in a later step.
    little. The evidence is thin (7 errors, one phrase in three voices); the
    trigger and its threshold are confirmed in the task that builds the pipeline,
    with a labeled evaluation in its handoff.
-5. **Consequences for the task cards (the owner confirms the re-cut):** task 1 is
+5. **Consequences for the task cards (applied in the re-cut of 2026-10-19):** task 1 is
    done as spikes v2.1.0-1 to -10; a new task for the speech-to-text and check
    stage (a new runtime dependency set with its CI and locality statement, the
    GPU memory budget, a speech-presence guard before the engine); task 4 becomes
@@ -259,120 +259,177 @@ version and is re-cut in a later step.
 
 ## Task-card sequence
 
-1. **Spike: combined transcription and sanitization on Gemma.** (Size: M.)
-   Human-run measurement, with a corpus the owner records (Russian utterances
-   containing names, numbers, addresses, organizations, plus utterances with
-   none) and labels. Compares the combined pass against the two-step baseline
-   (existing `TranscriptionService`, then a text sanitize pass) on: sensitive
-   span recall, damage to non-sensitive words, structured-output validity rate,
-   restoration-pass correctness on Russian cases, and latency. The decision
-   rule and thresholds are frozen in the spike card before the run (precedent:
-   `spike-single-pass-tts-block.md`). Output: a recorded decision (combined,
-   or two-step) in `PROJECT.md`. Boundary: no production code except the
-   measurement script under `manual/` and its pure-logic scoring helpers.
+Re-cut on 2026-10-19 after spikes v2.1.0-1 to -10 (see "Revisions of 2026-10-19").
+Tasks 2, 6, 7, and 11 are the 2026-10-18 tasks 3, 5, 6, and 9 unchanged; the
+others are changed or new. Cards for tasks 1-12 do not exist yet.
 
-2. **Locality contract and capability.** (Size: S-M.) Amend the runtime
+0. **Spikes (done) and one more.** The old task 1 is replaced by the records
+   `tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-10-ask-policy.md`. **Spike
+   v2.1.0-11 (Size: S, before task 5):** measure the text-only sanitize pass on
+   `gemma4:12b` INT4 at `num_ctx` 8192, on the Whisper transcripts and checked
+   transcripts of both recorded corpora (span recall, damage to non-sensitive
+   words, structured-output validity), with the rule frozen in its card before the
+   run. Offline harness under `manual/`; no production code.
+
+1. **Locality contract, capability, and config.** (Size: S-M.) Amend the runtime
    locality contract in `PROJECT.md` with the external-inference capability
    (explicit, off by default, reported on the data-source axis). Add the
    `[personal_proxy]` config section (endpoint, model, key env var name,
-   dry-run flag, topics file path, timeouts) with parsing and validation; the
+   dry-run flag, topics file path, timeouts) and the settings of the new stages:
+   speech-to-text engine (model, device, language), the weak-word probability
+   (0.5), the confirmation timeout, the doubt trigger threshold. The
    `--personal-proxy` flag in `parse_args()` (`app.py`); `DataLocality.EXTERNAL`
    wiring to the transport and Status Console. Boundary: no pipeline.
 
-3. **Outbound gate.** (Size: M.) Pure logic: the single outbound-payload
-   builder and the deterministic gate (patterns, Luhn, mapping original and
-   stem check, topics-text check), blocking results with category and
-   position. Fully unit-tested with fixtures. Boundary: no model, no HTTP.
+2. **Outbound gate.** (Size: M.) Pure logic: the single outbound-payload builder
+   and the deterministic gate (patterns, Luhn, mapping original and stem check,
+   topics-text check), blocking results with category and position. Fully
+   unit-tested with fixtures. Boundary: no model, no HTTP.
 
-4. **Sanitize pass.** (Size: M.) The profile and prompt (a new generation
-   profile beside `voice_guide`, reasoning off), the topics file loader, the
-   structured-output parser and validator, verdict handling, fail-closed on any
-   malformed output. Tested with a fake backend. Shape follows task 1's
-   decision. Boundary: no external client, no restoration.
+3. **Speech-to-text stage.** (Size: M-L.) A Whisper large-v3-turbo engine
+   (faster-whisper, GPU `float16`, `language="ru"`, beam 5, no built-in VAD) behind
+   a small protocol, returning the text, every word with its probability, and the
+   segments' `avg_logprob`, `no_speech_prob`, and `compression_ratio`. The
+   dependencies live in an optional `requirements-stt.txt` with lazy imports; the
+   main `requirements.txt` and CI are unchanged and tests use a fake engine. A
+   one-time weights setup script mirroring `setup_tts_model.py` (needs the
+   network once; the runtime stays offline). A speech-presence guard before the
+   engine so that silence and noise never reach it (spike 8: no confidence
+   signal separates them; Whisper invents text on them). Boundary: no Gemma, no
+   pipeline.
 
-5. **External client.** (Size: S-M.) The OpenAI-compatible request/response
-   code, key from the environment variable, timeout, typed errors, nothing
-   logged. Tested against a loopback fake HTTP server (CI-safe; no real
-   network, no secrets). Boundary: no pipeline.
+4. **Transcript check stage.** (Size: M.) Promote the spike code to `src/`: the
+   Gemma sample (the recording, the transcript with `[?]` after words under the
+   probability threshold, the error hint, `gemma4:12b`, `num_ctx` 8192,
+   temperature 0.618) and the judge (constrained JSON: the uncertain fragments;
+   the confidence number is not used), producing the checked transcript and the
+   doubt list. A parse or call failure falls back to the Whisper text plus a
+   doubt, never a retry loop and never a send. Tested with a fake backend.
+   Boundary: no sanitization.
 
-6. **Restoration pass.** (Size: M.) Placeholder detection, per-sentence
+5. **Sanitize pass (text only).** (Size: M.) The profile and prompt (a new
+   generation profile beside `voice_guide`, reasoning off), the topics file loader,
+   the structured-output parser and validator (`verdict`, `sanitized_text`,
+   `mapping`), verdict handling, fail-closed on any malformed output. Its input is
+   the checked transcript. The shape follows spike v2.1.0-11. Tested with a fake
+   backend. Boundary: no external client, no restoration.
+
+6. **External client.** (Size: S-M.) The OpenAI-compatible request/response code,
+   key from the environment variable, timeout, typed errors, nothing logged.
+   Tested against a loopback fake HTTP server (CI-safe; no real network, no
+   secrets). Boundary: no pipeline.
+
+7. **Restoration pass.** (Size: M.) Placeholder detection, per-sentence
    restoration through the local model, deterministic validation, the
    substitution fallback with the metadata mark, sentence-boundary buffering.
    Tested with a fake backend. Boundary: no external client.
 
-7. **Pipeline composition and dry-run.** (Size: M-L.) `PersonalProxyService`
-   wiring tasks 3-6 behind `--personal-proxy`; mic input as in normal mode;
-   `text_voice` presentation; dry-run showing raw transcript, sanitized text,
-   mapping, verdict, gate result, and the exact payload; block feedback spoken
-   and shown. The card lists every `HotkeySettings` field and says bound or
-   not. Tested with fakes end to end. Boundary: no journal changes.
+8. **Confirmation exchange.** (Size: L.) **Starts with a short design card**
+   answering who listens for the answer while `PersonalProxyService` lives outside
+   the turn lifecycle, and how a spoken "yes" is kept apart from ordinary input
+   (stop condition below). Then: the decision to ask (the doubt trigger of
+   spike v2.1.0-10, confirmed with a labeled evaluation), a small state machine,
+   the Text+Voice exchange (the whole heard text in the chat; the voice names the
+   doubts), answers spoken or typed, the timeout, fail-closed (only a clear "yes"
+   sends; no answer, unclear, or "no" sends nothing and offers to correct by text
+   or dictate again), and the two chat blocks: what was heard and decided, and
+   exactly what went out. The card lists every `HotkeySettings` field and says
+   bound or not. Tested with fakes. Boundary: no journal changes.
 
-8. **Journal, provenance, and Status Console surfaces.** (Size: M.)
-   Journal events for the request/answer pair with external provenance
-   (automatic-retrieval exclusion enforced at the existing single chokepoint,
-   `select_automatic_retrieval_passages()`), `search_history` labeling, fork
-   behavior, Status Console state (mode, locality label, dry-run indicator,
-   last block reason). Boundary: no new Journal features.
+9. **Pipeline composition and dry-run.** (Size: M-L.) `PersonalProxyService`
+   wiring tasks 2-8 behind `--personal-proxy`; mic input as in normal mode;
+   `text_voice` presentation; dry-run showing the Whisper text, the checked
+   transcript, the doubts and whether it would ask, the sanitized text, the
+   mapping, the verdict, the gate result, and the exact payload; block feedback
+   spoken and shown. Tested with fakes end to end. Boundary: no journal changes.
 
-9. **Refactoring and optimization sweep.** (Size: S-M.) Behavior-preserving
-   consolidation of this story's code and tests. Boundary: this story's code
-   only.
+10. **Journal, provenance, and Status Console surfaces.** (Size: M.) Journal
+    events for the request/answer pair with external provenance
+    (automatic-retrieval exclusion enforced at the existing single chokepoint,
+    `select_automatic_retrieval_passages()`), `search_history` labeling, fork
+    behavior, Status Console state (mode, locality label, dry-run indicator,
+    last block reason). The chat journal holds the heard text whole; the logs hold
+    only what goes out, with placeholders (a test that the logs never contain the
+    heard text). Boundary: no new Journal features.
 
-10. **Docs and release verification.** (Size: M.) `PROJECT.md`: architecture
-    section for v2.1.0 and the spike decision. Renumber the roadmap's "v2.1 -
-    Canvas-guided voice" section. User-facing setup: the endpoint, the key
-    environment variable, the topics file. A human-run handoff per the Testing
-    protocol (self-sufficient, with every hotkey/config key/command named with
-    a source reference): dry-run on the spike corpus, a real send, a block
-    case for each gate category, a refusal on a topics-file topic, restoration
-    on Russian cases, and the Journal/Status Console labels. A recall report
-    on the labeled corpus is part of the handoff output. Gates:
-    `python -m pytest`, `ruff check`, `ruff format --check`, and
+11. **Refactoring and optimization sweep.** (Size: S-M.) Behavior-preserving
+    consolidation of this story's code and tests. Boundary: this story's code
+    only.
+
+12. **Docs and release verification.** (Size: M.) `PROJECT.md`: architecture
+    section for v2.1.0 (the spike facts are already recorded there). Renumber the
+    roadmap's "v2.1 - Canvas-guided voice" section. User-facing setup: the
+    endpoint, the key environment variable, the topics file, the optional
+    speech-to-text dependencies and the weights setup. A human-run handoff per the
+    Testing protocol (self-sufficient, with every hotkey/config key/command named
+    with a source reference): dry-run on the recorded corpora, a real send, a block
+    case for each gate category, a refusal on a topics-file topic, restoration on
+    Russian cases, a request that makes the system ask (yes, no, timeout), silence
+    that sends nothing, and the Journal/Status Console labels. A recall report on
+    the labeled corpora is part of the handoff output. Gates: `python -m pytest`,
+    `ruff check`, `ruff format --check`, and
     `tools/check_handoff_self_sufficiency.py`.
 
 ## Acceptance criteria
 
-- [ ] The spike's frozen rule produced a recorded decision (combined or
-      two-step) in `PROJECT.md`. (Task 1.)
-- [ ] The locality contract names the external-inference capability; with it
-      off (default) the runtime is byte-identical to v2.0 behavior; a turn
-      answered externally reports `DataLocality.EXTERNAL`. (Task 2.)
-- [ ] Every outbound request goes through one builder and the gate; a unit
-      test fails if a new input source reaches the builder. A block names its
-      category and position and never contains the value. (Task 3.)
+- [ ] The spike records and the decision (a dedicated engine first) are in
+      `PROJECT.md` (done 2026-10-19); the text-only sanitize pass on INT4 has a
+      recorded result. (Spike v2.1.0-11.)
+- [ ] The locality contract names the external-inference capability; with it off
+      (default) the runtime is byte-identical to v2.0 behavior; a turn answered
+      externally reports `DataLocality.EXTERNAL`. (Task 1.)
+- [ ] Every outbound request goes through one builder and the gate; a unit test
+      fails if a new input source reaches the builder. A block names its category
+      and position and never contains the value. (Task 2.)
+- [ ] The speech-to-text stage returns word probabilities; silence and noise do
+      not reach the engine or the checker; without the optional dependencies the
+      main runtime and CI are unchanged. (Task 3.)
+- [ ] The check stage returns a checked transcript and a doubt list; any failure
+      falls back to the Whisper text with a doubt and sends nothing by itself.
+      (Task 4.)
 - [ ] A malformed or unparseable sanitize result sends nothing. A topics-file
-      match produces `refuse`. (Task 4.)
+      match produces `refuse`. (Task 5.)
 - [ ] The API key is read only from the environment; it, the payload, and the
-      response body never appear in logs or events. (Task 5.)
-- [ ] The restoration pass touches only sentences with placeholders, and a
-      failed validation falls back to substitution with the mark. (Task 6.)
-- [ ] With dry-run on, nothing is sent and the full intermediate state is
-      shown; with it off, the cleaned request is sent and the restored answer
-      is presented in `text_voice`. No audio, image, history, memory, or
-      `--mcp-mode` text is ever in the payload. (Task 7.)
-- [ ] The external answer is journaled with external provenance, excluded
-      from automatic retrieval, and labeled in search and in the Status
-      Console. (Task 8.)
-- [ ] The sweep leaves the suite green. (Task 9.)
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green;
-      the end-to-end check and the recall report are a prepared,
-      self-sufficient human-run handoff; docs state the honest limits.
-      (Task 10.)
+      response body never appear in logs or events. (Task 6.)
+- [ ] The restoration pass touches only sentences with placeholders, and a failed
+      validation falls back to substitution with the mark. (Task 7.)
+- [ ] With a doubt, the exchange shows the whole heard text and names the doubts
+      by voice; only a clear "yes", spoken or typed, sends; no answer, unclear
+      answer, or "no" sends nothing; without a doubt the request is sent without a
+      question; the "went out" block equals the actual payload (a test). (Task 8.)
+- [ ] With dry-run on, nothing is sent and the full intermediate state is shown;
+      with it off, the cleaned request is sent and the restored answer is
+      presented in `text_voice`. No audio, image, history, memory, or `--mcp-mode`
+      text is ever in the payload. (Task 9.)
+- [ ] The external answer is journaled with external provenance, excluded from
+      automatic retrieval, and labeled in search and in the Status Console; the
+      logs never contain the heard text. (Task 10.)
+- [ ] The sweep leaves the suite green. (Task 11.)
+- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green; the
+      end-to-end check and the recall report are a prepared, self-sufficient
+      human-run handoff; docs state the honest limits. (Task 12.)
 
 ## Stop conditions
 
-- Stop if the task 1 spike fails its frozen rule: re-plan to the two-step
-  shape and confirm with the owner (0.4). Do not switch silently.
-- Stop if the outbound payload cannot be built at a single chokepoint, so
-  that the gate would need to be applied at several call sites (0.3).
+- Stop if the outbound payload cannot be built at a single chokepoint, so that
+  the gate would need to be applied at several call sites (0.3).
 - Stop if the pipeline turns out to need `Orchestrator`'s turn state, the same
   shape problem as story-v2.0 task 3 (0.3, 0.4).
+- Stop if the confirmation exchange needs the `Orchestrator` turn state or blocks
+  the microphone loop, or a spoken "yes" cannot be kept apart from ordinary input
+  (task 8's design card; 0.3, 0.4).
+- Stop if the speech-to-text dependencies cannot be kept out of the main
+  `requirements.txt` and out of CI (0.9).
+- Stop if the spike v2.1.0-11 text-only sanitize pass on INT4 fails its frozen
+  rule: the model or the pass shape is a product decision, not a tuning loop
+  (0.4, 0.7).
 - Stop if the restoration pass alters the external answer beyond restoring the
-  details (validation cannot detect the change) in the task 1 or task 6 runs:
-  the "through Gemma" decision then needs revisiting with the owner.
-- Stop if recall on the labeled corpus is too low for the owner to accept the
-  mode as a default-capable feature; that is a product decision, not a tuning
-  loop (0.7).
-- Stop if any path is found by which journal, memory, or retrieval text can
-  reach the outbound builder without passing the gate (a confirmed leak path
-  is fixed in the current task, never deferred).
+  details (validation cannot detect the change): the "through Gemma" decision then
+  needs revisiting with the owner.
+- Stop if recall on the labeled corpora, or the share of requests that the system
+  asks about (the owner's budget: about 1 in 4 for sensitive and complex requests),
+  is not acceptable to the owner for the mode as a default-capable feature; that
+  is a product decision, not a tuning loop (0.7).
+- Stop if any path is found by which journal, memory, or retrieval text can reach
+  the outbound builder without passing the gate (a confirmed leak path is fixed in
+  the current task, never deferred).
