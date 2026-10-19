@@ -135,6 +135,73 @@ downloaded after the owner's explicit yes. Commands:
 python -m manual.manual_check_stt_engines --out manual_check_stt_engines_out score --wavs personal_proxy_corpus_wavs
 ```
 
-## Result
+## Result (2026-10-19, run by the agent; weights downloaded with the owner's yes)
 
-Pending.
+Outcome by the frozen rule: **Whisper** (`whisper_ru`: faster-whisper 1.2.1,
+large-v3-turbo, GPU float16, language `ru`).
+
+| | Gemma A (spike 2) | GigaAM v3 (GPU) | Whisper ru (GPU) |
+|---|---|---|---|
+| audio failures of 88 | 22 | 8 | 4 |
+| median WER | 0.163 | 0.000 | 0.000 |
+| span fidelity, overall | 0.792 | 0.708 | 0.854 |
+| numeric / email / person / other | 23/24, 4/6, 24/34, 25/32 | 16/24, 4/6, 24/34, 24/32 | 22/24, 4/6, 26/34, 30/32 |
+| warm seconds per recording, median | - | 0.06 | 0.25 |
+| GPU memory added (load / peak) | - | +1.97 / +2.29 GiB | +2.20 / +2.43 GiB |
+
+- GigaAM: accuracy passes (8 is the limit), **fidelity fails** (0.708 against
+  0.792), so it is not adequate. Whisper is adequate on all three criteria.
+- Both engines ran on the RTX 5070 Ti (Blackwell): faster-whisper 1.2.1 with
+  CTranslate2 4.8.3 and the cuBLAS/cuDNN 12 wheels, and onnx-asr 0.12.0 with
+  ONNX Runtime GPU 1.31.0 and the CUDA 13 wheels
+  (`pip install "onnxruntime-gpu[cuda,cudnn]"`). Load time 2.2 s each.
+- Whisper's failures are two utterances at both passes: `m_short_call`
+  (transliteration artifact: "Позвони Майкл Браун." for the script "Michael
+  Brown") and `m_trade_house` (an email spelled "info собака trade-house точка
+  ru" comes out glued: "инфособакотрейдэшхаус.ру"). Its fidelity misses: the
+  org "ООО Альфатрейд" heard as "Альфтеррейт", the Latin names of the English
+  utterances written in Cyrillic, and one wrong phone number
+  (`id_two_people_phone`: "8 912 345 607 89" for "...шестьдесят семь
+  восемьдесят девять").
+- GigaAM's failures: `id_passport` truncated to "Паспорт серия 450" (the
+  number is lost), `id_bank_transfer_long` account heard as 7012345678 (digits
+  dropped), `id_delivery_long` phone missing, `id_two_people_phone` as
+  891234560789, `m_github` mixed Cyrillic and Latin garbage ("Дмитрий Андрov"),
+  `m_short_english` "Сэндеп to Виктор Петренко", `m_trade_house`, `m_short_call`.
+- Controls (reported only): GigaAM returns an empty string on all 4 silence and
+  noise generations. Whisper invents text on all 4: "Продолжение следует..."
+  with `language="ru"`, "Thank you." with automatic language detection. The
+  production capture feeds only VAD-accepted chunks, so this is a guard to add,
+  not measured here.
+- `whisper_auto` equals `whisper_ru` on failures and fidelity (4 of 88, 0.854).
+
+**Coexistence with Gemma 12B (frozen criterion 3 passed for both).** With the
+production options (`num_ctx` 65536, q8 KV cache) Gemma alone uses about 14.5
+GiB of the 16 GiB; Ollama's GPU share stayed 1.0 for both engines and each
+engine ran at its isolated speed (Whisper 0.22 s, GigaAM 0.07 s). But the next
+Gemma text request took 0.61 s (Whisper) and 0.69 s (GigaAM) against 0.17 s
+before, and the machine's GPU memory was near full (15.5 to 15.7 GiB).
+
+**Exploratory, not part of the rule:** six alternating STT / Gemma cycles, as in
+the real pipeline, show a swap cost for both GPU engines:
+
+| | STT alone | STT in cycles | Gemma alone | Gemma in cycles |
+|---|---|---|---|---|
+| Whisper ru (GPU) | 0.25 s | 1.15 s | 0.17 s | 1.10 s |
+| GigaAM (GPU) | 0.06 s | 0.96 s | 0.17 s | 1.30 s |
+| GigaAM int8 (CPU) | 0.14 s | 0.11 s | 0.18 s | 0.21 s |
+| Whisper int8 (CPU) | 3.72 s | 5.01 s | 0.18 s | 0.29 s |
+
+Two GPU-resident models cost about one extra second on each switch. Whisper on
+the CPU is accurate (same 4 failures and fidelity as on the GPU) but 3.7 to 5.1
+s per recording, over the 3.0 s limit. GigaAM int8 on the CPU is fast and does
+not disturb Gemma, but has 6 failures and fidelity 0.729, below the baseline.
+
+Reading: the dedicated engine removes the failure mode of spikes 1 to 4
+(Whisper 4 failures of 88, the two that remain are a transliteration artifact
+and an email spelled out letter by letter). The price is GPU memory pressure
+next to Gemma at `num_ctx` 65536. Untested levers: a smaller `num_ctx` for the
+text-only sanitization step, a Whisper small variant, or `OLLAMA_KEEP_ALIVE`
+changes. `requirements.txt` is not changed; the engines live in the gitignored
+`.venv-stt-whisper` and `.venv-stt-gigaam`, and their weights in the Hugging
+Face cache (about 2.9 GB).

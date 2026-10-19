@@ -79,6 +79,7 @@ COEXIST_IDS = (
     "id_letter_long",
 )
 GEMMA_PROBE = "Say one short sentence."
+CYCLES = 6
 REPORT_NAME = "report.md"
 
 
@@ -247,6 +248,16 @@ def command_coexist(args: argparse.Namespace) -> int:
         result["gpu_used_with_both_mib"] = gpu_memory_used_mib()
         result["gpu_share_after"] = _gpu_share(client, model)
         result["gemma_seconds_after"] = round(_gemma_seconds(client, payload), 3)
+        result["cycles"] = []
+        if result["engine_error"] is None:
+            for uid in COEXIST_IDS[:CYCLES]:
+                samples, _ = decode(audio[uid])
+                begin = time.perf_counter()
+                runner.transcribe(samples)
+                stt_seconds = time.perf_counter() - begin
+                result["cycles"].append(
+                    [round(stt_seconds, 3), round(_gemma_seconds(client, payload), 3)]
+                )
         _ollama_post(
             client, "/api/generate", {"model": model, "prompt": "", "keep_alive": 0}
         )
@@ -303,6 +314,7 @@ def load_coexistence(
             isolated,
             d.get("gemma_seconds_before"),
             d.get("gemma_seconds_after"),
+            tuple((c[0], c[1]) for c in d.get("cycles", [])),
         )
     return found
 

@@ -174,6 +174,7 @@ class Coexistence:
     isolated_median_seconds: float | None
     gemma_seconds_before: float | None
     gemma_seconds_after: float | None
+    cycles: tuple[tuple[float, float], ...] = ()
 
 
 def resource_ok(co: Coexistence | None) -> bool:
@@ -302,6 +303,18 @@ def _metrics_table(
     return table + ["| " + " | ".join([name, *cells]) + " |" for name, cells in rows]
 
 
+def _cycles_text(co: Coexistence) -> str:
+    if not co.cycles:
+        return ""
+    stt = [c[0] for c in co.cycles]
+    gemma = [c[1] for c in co.cycles]
+    return (
+        f"; alternating STT/Gemma cycles ({len(co.cycles)}): STT median "
+        f"{median(stt):.2f} s, Gemma median {median(gemma):.2f} s, Gemma max "
+        f"{max(gemma):.2f} s"
+    )
+
+
 def _coexistence_lines(coexistence: list[Coexistence]) -> list[str]:
     if not coexistence:
         return ["not run"]
@@ -311,7 +324,7 @@ def _coexistence_lines(coexistence: list[Coexistence]) -> list[str]:
         f"{_fmt(co.engine_median_seconds, 2)} s (isolated "
         f"{_fmt(co.isolated_median_seconds, 2)} s); Gemma text request "
         f"{_fmt(co.gemma_seconds_before, 2)} s -> "
-        f"{_fmt(co.gemma_seconds_after, 2)} s"
+        f"{_fmt(co.gemma_seconds_after, 2)} s" + _cycles_text(co)
         for co in coexistence
     ]
 
