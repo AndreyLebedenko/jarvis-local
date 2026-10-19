@@ -42,3 +42,6 @@ CLAUDE.md
 AGENTS.md
 /graphify-out/
 /.claude/
+.venv-stt-whisper/
+.venv-stt-gigaam/
+manual_check_stt_engines_out/
