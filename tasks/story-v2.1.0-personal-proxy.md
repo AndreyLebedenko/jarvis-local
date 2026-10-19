@@ -1,9 +1,11 @@
 # Story v2.1.0: Personal proxy (external model behind a local sensitive-data gate)
 
 **Status:** Approved by the owner, 2026-10-18 (including `--personal-proxy`
-as a launch flag). No task card is started.
+as a launch flag); pipeline and interaction revised by the owner, 2026-10-19
+(see "Revisions of 2026-10-19"). No task card is started; the task-card
+sequence is not yet re-cut.
 **Created:** 2026-10-18
-**Updated:** 2026-10-18
+**Updated:** 2026-10-19
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md`. This story reverses the item
 "Rejected for v2.0" in that file (see "Reversal of a recorded rejection").
 **Predecessors:** `tasks/done/story-v2.0-mcp-voice-guide.md` (done) shipped the
@@ -99,6 +101,61 @@ that roadmap section; this card does not edit the roadmap.
    correct grammar (Russian cases).
 7. **Single request in v1.** No multi-turn dialog with the external model.
 8. **Output is `text_voice`.**
+
+## Revisions of 2026-10-19 (owner, after spikes 1-10)
+
+The 2026-10-18 text of this card is kept as written; where this section differs
+from it, this section wins. The task-card sequence below is the 2026-10-18
+version and is re-cut in a later step.
+
+1. **Pipeline (settled constraint 2 is superseded).** The task 1 stop
+   condition fired: the bare Gemma transcription and the combined pass did not
+   meet their frozen rules (`tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md`
+   to `tasks/spike-v2.1.0-4-speech-present.md`). The owner decided to put a
+   dedicated engine first: speech-to-text (Whisper large-v3-turbo through
+   faster-whisper, on the GPU, `language="ru"`), then a local Gemma check of the
+   transcript against the recording (a corrected transcript, then a judge that
+   lists the doubtful fragments), then a text-only sanitize pass, the outbound
+   gate, the external request, and restoration. Measured facts (spikes
+   v2.1.0-5 to -10): Whisper has 4 failures of 88 and span fidelity 0.854
+   (bare Gemma: 22 and 0.792); GigaAM v3 is rejected on fidelity 0.708; Whisper
+   fits the GPU next to `gemma4:12b` (INT4, 7.6 GB) at `num_ctx` 8192 with no
+   swap cost (about 12.7 GB used of 16.3); Gemma with the recording repairs
+   spoken e-mail addresses and some digits but sometimes rewrites (it invented an
+   address, it translated a request), and the temperature from 0 to 1 does not
+   change that; silence and noise are separated by no confidence signal and
+   need a guard before the engine.
+2. **Interaction (owner's design).** In `text_voice`: (a) the chat always
+   records what the engine heard, whole and without placeholders, and what it
+   decided; (b) when there is a reason to doubt, a separate Text+Voice exchange
+   asks for confirmation: the text shows the whole heard transcript, the voice
+   names what to check; (c) with no reason to doubt, the request is sent without a
+   question (settled constraint 5 stands: send by default); (d) a separate block
+   in the chat always records exactly what went out. The ask budget is about 1
+   request in 4 for sensitive and complex requests. Fail-closed: no answer
+   within the timeout, an unclear answer, or "no" sends nothing and offers to
+   correct by text or to dictate again; only a clear "yes", spoken or typed, sends.
+3. **Where values may live (amends the design decision "A block reports category
+   and position, not the value, so logs, the Journal, and the Status Console never
+   become a store of the secrets the gate found").** The chat journal holds the
+   heard text whole: it is the user's own words, and what the user chooses to
+   record is theirs. The logs hold only what goes out, with placeholders. The
+   gate's block messages and the Status Console keep reporting the category and
+   the position without the value.
+4. **Doubt trigger (a candidate, not frozen).** From spike v2.1.0-10: the judge's
+   list of doubtful fragments for one Gemma sample asks on 13 of 60 sensitive
+   recordings (22%), covers 7 of 7 real errors, and names the wrong fragment in
+   5 of 7; the disagreement of six samples and Whisper's word probabilities add
+   little. The evidence is thin (7 errors, one phrase in three voices); the
+   trigger and its threshold are confirmed in the task that builds the pipeline,
+   with a labeled evaluation in its handoff.
+5. **Consequences for the task cards (the owner confirms the re-cut):** task 1 is
+   done as spikes v2.1.0-1 to -10; a new task for the speech-to-text and check
+   stage (a new runtime dependency set with its CI and locality statement, the
+   GPU memory budget, a speech-presence guard before the engine); task 4 becomes
+   the text-only sanitize pass; a new task for the confirmation exchange (state,
+   timeout, spoken and typed answers); task 7 composes the new stages; task 2 adds
+   the new config fields; task 10 records all of this in `PROJECT.md`.
 
 ## Design decisions (proposed here, confirmed by card approval)
 

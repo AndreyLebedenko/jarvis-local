@@ -5589,6 +5589,52 @@ interleaved blocks therefore needs its own measurement at the reasoning
 levels actually used. It cannot be inferred from the token count of the voice
 text.
 
+## v2.1.0 speech recognition and confidence spikes (2026-10-19)
+
+Records of the spikes behind `tasks/story-v2.1.0-personal-proxy.md`: cards
+`tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-10-ask-policy.md`.
+
+Owner decisions:
+
+- The first step of the personal-proxy pipeline is a dedicated speech-to-text
+  engine, not a Gemma pass: Whisper large-v3-turbo (faster-whisper,
+  `language="ru"`, GPU), then a local Gemma check of the transcript against the
+  recording, then a text-only sanitize pass, then the outbound gate. The bare
+  Gemma transcription (22 failures of 88) and its rewordings did not meet the
+  frozen rule in spikes 1-4.
+- The chat records what the engine heard, whole, and what went out as a
+  separate block; a confirmation exchange (Text+Voice) is asked for only when
+  there is a reason to doubt, about 1 request in 4 at most for sensitive and
+  complex requests; no clear "yes" sends nothing. The chat journal holds the
+  heard text whole; the logs hold only what goes out, with placeholders.
+
+Verified facts (one speaker, one room, a corpus of invented identities):
+
+- Whisper: 4 failures of 88, span fidelity 0.854, 0.25 s per recording on the
+  GPU. GigaAM v3: 8 failures, fidelity 0.708, 0.06 s; rejected on fidelity.
+  Whisper on the CPU is accurate but 3.7 to 5.1 s per recording.
+- Next to `gemma4:12b-it-q8_0` at `num_ctx` 65536 the GPU is nearly full and
+  each switch between the engine and Gemma costs about one second. Next to
+  `gemma4:12b` (INT4, 7.6 GB) at `num_ctx` 8192 both engines fit (about 12.7 GB
+  used of 16.3 GB) with no swap cost: Gemma 0.12 s, Whisper 0.20 s.
+- Gemma with the recording and the Whisper transcript repairs spoken e-mail
+  addresses and some digits (fidelity 0.854 -> 0.896; 0.944 -> 0.986 on the
+  second corpus) but also rewrites: it invented a second address and translated a
+  Russian request into English. The temperature from 0 to 1 does not change this.
+  Without the recording Gemma changes nothing.
+- No confidence signal separates silence and noise from speech: Whisper's
+  `no_speech_prob` is 0 on every recording with the language forced, the judge
+  reports full confidence on the silence control, and Whisper invents text on
+  silence (the Russian phrase for "to be continued"). A guard before the engine is needed.
+- Doubt trigger candidate: the judge's list of doubtful fragments for one sample
+  asked on 22% of the sensitive recordings, covered 7 of 7 real errors and named
+  the wrong fragment in 5 of 7. The evidence is thin (7 errors, three of them
+  one phrase in three voices) and the labels were revised after the data was
+  seen.
+
+Honest limits: the corpora are 44 and 30 recordings of invented identities,
+one speaker and two Silero voices; thresholds were taken from the first corpus.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old
