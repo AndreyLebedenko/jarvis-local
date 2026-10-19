@@ -34,7 +34,7 @@ ERROR_HINT = (
     "especially foreign ones, are respelled or changed, including Latin names "
     "written in Cyrillic; on silence or noise it may invent a phrase."
 )
-_RULES = (
+RULES = (
     "Fix only what is evidently wrong. Do not add, remove, paraphrase, translate, "
     "or interpret anything. Output only the corrected transcript, nothing else. "
     "If there is no speech, output nothing."
@@ -65,7 +65,7 @@ def build_prompt(variant: Variant, transcript: str) -> str:
             "A speech-to-text engine produced the transcript below from a "
             "recording you cannot hear. Check the transcript."
         )
-    return f"{head}\n\n{ERROR_HINT}\n\n{_RULES}\n\nTranscript:\n{transcript}"
+    return f"{head}\n\n{ERROR_HINT}\n\n{RULES}\n\nTranscript:\n{transcript}"
 
 
 def build_payload(

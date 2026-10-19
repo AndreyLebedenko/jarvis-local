@@ -47,3 +47,4 @@ AGENTS.md
 manual_check_stt_engines_out/
 manual_check_stt_engines_gemma_int4_out/
 manual_check_stt_verification*_out/
+manual_check_confidence_out/

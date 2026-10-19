@@ -125,3 +125,85 @@ python -m manual.manual_check_confidence_signals --out manual_check_confidence_o
 
 `words` stops with an error if a word-level transcript differs from spike 5's
 text. `run` resumes: existing call files are skipped.
+
+## Result (2026-10-19, run by the agent on the owner's instruction)
+
+Whisper word data: 46 recordings, text identical to spike 5's in all 46. Then
+276 samples and 276 judge calls (`gemma4:12b`, `num_ctx` 8192, no unparsable
+judge answer). Report: `manual_check_confidence_out/report.md` (gitignored).
+
+**Verdict by the frozen rule: no signal discriminates.** 7 of 44 recordings are
+bad, 37 good; the trivial baseline T refuses on every bad one and on 65% of
+the good ones.
+
+| signal | best threshold | recall | false refusals |
+|---|---|---|---|
+| S1 Whisper vs sample | 4 | 0.29 | 0.03 |
+| S2 instability | 0.6 | 0.43 | 0.05 |
+| S3a weakest sensitive word | 0.135 | 0.57 | 0.35 |
+| S3b `no_speech_prob` | 0 | 1.00 | 1.00 |
+| S3c worst `avg_logprob` | 0.106 | 1.00 | 0.59 |
+| S5 validators | 0 | 1.00 | 1.00 |
+| J1 judge confidence | 0.05 | 0.43 | 0.11 |
+| J2 lowest confidence of six | 0.1 | 0.43 | 0.11 |
+| J3 listed uncertain fragments | 1 | 0.43 | 0.11 |
+
+Signals that are precise (S1, S2, J) catch at most 3 of 7; signals that catch
+all (S3b, S3c, S5) do so only at thresholds that refuse nearly everyone.
+
+What the 7 bad recordings are (expected / actual):
+
+- **Real errors (4):** `n_short_translate` (Russian request became English;
+  caught by S1, S2, S5); `m_trade_house` (a second address invented, the domain
+  wrong; S1, S2, J1-J3); `id_two_people_phone` (spoken 8 912 345 67 89, got
+  "60 78 9"; S3a, J1-J3); `id_letter_long` (organization "Альфатрейд" heard as
+  "Альфтеррейт"; S2, S3a, J1-J3).
+- **Label artifacts of the frozen rule (3):** `id_email` (output
+  `ivan.petrov@primer.com` is correct, but its Cyrillic share fell below half
+  of the Whisper text's, so the language-switch test marked it bad);
+  `m_short_call` and `m_northwind_long` (English names spoken, written in
+  Cyrillic by Whisper and kept by Gemma, so the Latin forms of the labeled
+  spans are not found, while the names are intact for a sanitizer). These three
+  are the ones no precise signal catches.
+
+Per signal:
+
+- **Judge confidence is not informative:** mean 0.95 on bad and 0.99 on good
+  recordings; it says "fully confident" on the silence control. The listed
+  fragments (J3) carry the little signal there is: listed on 3 of 7 bad (3 of
+  the 4 real) and on 4 of 37 good (`m_github`, `q_accountant`,
+  `q_pathologist_long`, `t_hypertension_long`, all places where Whisper really
+  had an unrepaired mistake).
+- **`no_speech_prob` is 0.000 on every recording, including the silence and noise
+  controls**, with `language="ru"` forced and no VAD; S3b is useless as
+  configured. The controls separate on no signal: S3c is 0.075 (silence) and 0.180
+  (noise), within the range of speech (0.05 to 0.56); the judge's confidence is 1.0.
+- **Whisper word probabilities (S3a) catch the digit and name errors**
+  (`id_two_people_phone` 0.18, `id_letter_long` 0.69, `m_short_call` 0.13) but
+  flag 35% of the good recordings, many for ordinary names with weak probability.
+- **Validators (S5)** flag nothing in the corpus at the base sample: the
+  broken-length and broken-address checks never fire, because the errors that
+  matter are wrong digits of the right length and a plausible address.
+- **Effect of the `[?]` marks:** against spike 7's X (no marks) at the same
+  temperature: 6 failures of 88 (5), fidelity 0.875 (0.896), spans fixed 2 (4),
+  broken 0. The marks did not help the samples; if anything they helped less.
+
+Post hoc, not part of the rule (read as a hypothesis, 4 real bad recordings is
+fewer than the 5 the card requires): the union "S1 >= 4 or J3 >= 1" flags all 4
+real errors and 4 of the 37 good recordings (0.11: `m_github`,
+`q_accountant`, `q_pathologist_long`, `t_hypertension_long`). It was chosen after looking at the
+data and is not evidence.
+
+Deviation from the card: "the share of uncertain fragments that sit on a bad
+fragment" was replaced by the count of recordings where the judge listed
+anything (above); the pairwise agreement is the "caught by" list in the report.
+
+Reading: with Whisper plus a Gemma checker, none of the cheap signals alone
+gives a usable "not sure enough, type it" decision on this corpus; the judge's
+list of doubtful fragments and the disagreement between Whisper and the sample
+are the two that point at real errors and have few false refusals, and they
+catch different recordings. Silence and noise need a gate before the engine
+(speech detection or energy), not a confidence signal. The frozen label rule
+produced three artifacts and should be revised (a Latin transliteration of a
+spoken address is not a language switch; a name written in Cyrillic is not
+lost) before any further spike reuses it.

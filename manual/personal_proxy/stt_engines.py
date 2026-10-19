@@ -69,6 +69,37 @@ class WhisperEngine:
         return " ".join(segment.text.strip() for segment in segments).strip()
 
 
+def transcribe_with_confidence(engine: WhisperEngine, samples: np.ndarray) -> dict:
+    """The spike 5 decoding with word timestamps on, so every word carries its
+    probability; the text must equal `WhisperEngine.transcribe`'s."""
+    segments, _ = engine._model.transcribe(
+        samples,
+        language=engine.language,
+        beam_size=5,
+        temperature=0.0,
+        condition_on_previous_text=False,
+        vad_filter=False,
+        word_timestamps=True,
+    )
+    found = list(segments)
+    return {
+        "text": " ".join(s.text.strip() for s in found).strip(),
+        "words": [
+            {"word": w.word, "probability": w.probability}
+            for s in found
+            for w in (s.words or [])
+        ],
+        "segments": [
+            {
+                "avg_logprob": s.avg_logprob,
+                "no_speech_prob": s.no_speech_prob,
+                "compression_ratio": s.compression_ratio,
+            }
+            for s in found
+        ],
+    }
+
+
 @dataclass
 class GigaamEngine:
     device: str

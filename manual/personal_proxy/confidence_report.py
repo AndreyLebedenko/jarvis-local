@@ -1,0 +1,181 @@
+"""Signals per recording, their evaluation by the frozen rule, and the report of
+spike v2.1.0-8 (tasks/spike-v2.1.0-8-confidence-signals.md). Pure: it works on
+the data the harness has read."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from statistics import mean
+from typing import Any
+
+from manual.personal_proxy.confidence import (
+    JudgeResult,
+    OperatingPoint,
+    discriminates,
+    invalid_items,
+    is_bad,
+    mean_pairwise_difference,
+    min_sensitive_probability,
+    operating_points,
+    projection,
+    symmetric_difference,
+)
+from manual.personal_proxy.corpus import SEEDS, Utterance
+
+TEMPERATURES = (0.418, 0.618, 0.818)
+BASE_KEY = (0.618, SEEDS[0])
+SAMPLE_KEYS = tuple((t, s) for t in TEMPERATURES for s in SEEDS)
+ENGINE_SIGNALS = ("S1", "S2", "S3a", "S3b", "S3c", "S5", "J1", "J2", "J3")
+CONTROL_SIGNALS = ("S3b", "S3c")
+SampleKey = tuple[float, int]
+
+
+@dataclass(frozen=True)
+class Signals:
+    subject_id: str
+    bad: bool | None
+    scores: dict[str, float]
+
+
+def _confidence(judge: JudgeResult | None) -> float:
+    return 0.0 if judge is None else judge.confidence
+
+
+def compute_signals(
+    subject_id: str,
+    utterance: Utterance | None,
+    whisper_text: str,
+    words: list[tuple[str, float]],
+    segments: list[dict[str, Any]],
+    samples: dict[SampleKey, str],
+    judges: dict[SampleKey, JudgeResult | None],
+) -> Signals:
+    base = samples[BASE_KEY]
+    sample_projections = [
+        projection(samples[k], literal_emails=True) for k in SAMPLE_KEYS
+    ]
+    base_projection = projection(base)
+    base_judge = judges[BASE_KEY]
+    scores = {
+        "S1": float(symmetric_difference(projection(whisper_text), base_projection)),
+        "S2": mean_pairwise_difference(sample_projections),
+        "S3a": 1.0 - min_sensitive_probability(words),
+        "S3b": max((s["no_speech_prob"] for s in segments), default=0.0),
+        "S3c": -min((s["avg_logprob"] for s in segments), default=0.0),
+        "S5": float(invalid_items(base)),
+        "J1": 1.0 - _confidence(base_judge),
+        "J2": 1.0 - min(_confidence(judges[k]) for k in SAMPLE_KEYS),
+        "J3": float(0 if base_judge is None else len(base_judge.fragments)),
+        "T": 1.0 if base_projection else 0.0,
+    }
+    bad = None if utterance is None else is_bad(utterance, whisper_text, base)
+    return Signals(subject_id, bad, scores)
+
+
+@dataclass(frozen=True)
+class Evaluation:
+    name: str
+    points: list[OperatingPoint]
+    best: OperatingPoint
+    discriminating: bool
+
+
+def trivial_point(recordings: list[Signals]) -> OperatingPoint:
+    scores = [r.scores["T"] for r in recordings]
+    return operating_points(scores, [r.bad is True for r in recordings])[-1]
+
+
+def evaluate(recordings: list[Signals], controls: list[Signals]) -> list[Evaluation]:
+    bad = [r.bad is True for r in recordings]
+    trivial = trivial_point(recordings)
+    found = []
+    for name in ENGINE_SIGNALS:
+        points = operating_points([r.scores[name] for r in recordings], bad)
+        control_scores = (
+            [c.scores[name] for c in controls] if name in CONTROL_SIGNALS else None
+        )
+        best = max(points, key=lambda p: p.recall - p.false_refusals)
+        found.append(
+            Evaluation(
+                name,
+                points,
+                best,
+                discriminates(points, trivial.false_refusals, control_scores),
+            )
+        )
+    return found
+
+
+def _row(e: Evaluation) -> str:
+    verdict = "discriminates" if e.discriminating else "does not"
+    b = e.best
+    return (
+        f"| {e.name} | {verdict} | {b.threshold:.3f} | {b.recall:.2f} | "
+        f"{b.false_refusals:.2f} |"
+    )
+
+
+def _judge_lines(bad: list[Signals], good: list[Signals], unparsed: int) -> list[str]:
+    lines = []
+    for name, group in (("bad", bad), ("good", good)):
+        if group:
+            avg = mean(1.0 - r.scores["J1"] for r in group)
+            listed = sum(1 for r in group if r.scores["J3"] > 0)
+            lines.append(
+                f"- {name}: mean confidence {avg:.2f}, "
+                f"listed uncertain fragments in {listed} of {len(group)}"
+            )
+    lines.append(f"- unparsable judge answers: {unparsed}")
+    return lines
+
+
+def _per_recording_lines(recordings: list[Signals]) -> list[str]:
+    lines = [
+        "| id | bad | " + " | ".join(ENGINE_SIGNALS) + " |",
+        "|---|---|" + "---|" * len(ENGINE_SIGNALS),
+    ]
+    for r in recordings:
+        cells = " | ".join(f"{r.scores[n]:.2f}" for n in ENGINE_SIGNALS)
+        lines.append(f"| {r.subject_id} | {'BAD' if r.bad else ''} | {cells} |")
+    return lines
+
+
+def render_report(
+    recordings: list[Signals],
+    controls: list[Signals],
+    evaluations: list[Evaluation],
+    judge_unparsed: int,
+    marks_effect: list[str],
+) -> str:
+    bad = [r for r in recordings if r.bad]
+    good = [r for r in recordings if not r.bad]
+    trivial = trivial_point(recordings)
+    warning = "Fewer than 5 bad: nothing is concluded." if len(bad) < 5 else ""
+    lines = [
+        "# Spike v2.1.0-8: confidence signals",
+        "",
+        f"Recordings {len(recordings)}: bad {len(bad)}, good {len(good)}. {warning}",
+        f"Trivial baseline T: recall {trivial.recall:.2f}, "
+        f"false refusals {trivial.false_refusals:.2f}.",
+        "",
+        "| signal | verdict | best t | recall | false refusals |",
+        "|---|---|---|---|---|",
+        *(_row(e) for e in evaluations),
+        "",
+        "## Bad recordings and who catches them (at each signal's best t)",
+        "",
+    ]
+    best = {e.name: e.best.threshold for e in evaluations}
+    for r in bad:
+        caught = [n for n in ENGINE_SIGNALS if r.scores[n] >= best[n]]
+        lines.append(f"- {r.subject_id}: caught by {', '.join(caught) or 'nobody'}")
+    lines += ["", "## Controls (silence and noise)", ""]
+    for c in controls:
+        flagged = [n for n in CONTROL_SIGNALS if c.scores[n] >= best[n]]
+        values = ", ".join(f"{n}={c.scores[n]:.3f}" for n in ENGINE_SIGNALS)
+        lines.append(f"- {c.subject_id}: flagged by {flagged or 'nobody'}; {values}")
+    lines += ["", "## Judge", "", *_judge_lines(bad, good, judge_unparsed)]
+    lines += ["", "## Effect of the [?] marks (base temperature, both seeds)", ""]
+    lines += [f"- {line}" for line in marks_effect]
+    lines += ["", "## Per recording", "", *_per_recording_lines(recordings)]
+    return "\n".join(lines) + "\n"
