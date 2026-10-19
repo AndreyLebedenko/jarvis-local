@@ -130,3 +130,118 @@ spike 8):
 python -m manual.manual_check_confidence_signals --corpus v2 --out manual_check_confidence_v2_out run --wavs personal_proxy_corpus_v2_wavs
 python -m manual.manual_check_confidence_signals --corpus v2 --out manual_check_confidence_v2_out score --wavs personal_proxy_corpus_v2_wavs --label-rule names_in_any_alphabet
 ```
+
+## Result (2026-10-19, run by the agent on the owner's instruction)
+
+The owner recorded the ten phrases (the directory verified as 30 recordings).
+Whisper with word data on all 30, then 180 samples and 180 judge calls; no
+unparsable judge answer. Report: `manual_check_confidence_v2_out/report-*.md`
+(gitignored). Scored with `--label-rule names_in_any_alphabet`.
+
+**Verdict by the frozen rule: nothing concluded.** Only 1 of 30 recordings is
+bad (`v2_email_underscore__owner`), against the 5 the card requires. The new
+corpus was not hard enough for Whisper plus the Gemma check: the labeled
+spans are recognized in 29 of 30.
+
+What was measured anyway (read as description, not as a test of H):
+
+- H (`S2 >= 0.6` or `J3 >= 1`) caught the one bad recording and flagged 9 of the
+  29 good ones (0.31, above the 0.2 bound). S1 at 4 flagged only the bad one;
+  S2 alone 5 of 29, J3 alone 6 of 29. By voice: owner 1 of 9 good flagged, `baya` 3
+  of 10, `eugene` 5 of 10.
+- Whisper alone against Gemma with the recording, base temperature, both seeds
+  (60 generations): audio failures 6 against 4; span fidelity 0.944 against 0.986;
+  spans fixed 3, broken 0. This repeats spike 7: Gemma with audio repairs and
+  does not damage.
+
+What the recordings show (reference / Whisper / base sample):
+
+- **Digits Whisper got wrong and Gemma repaired from the audio:** the card
+  number in the owner's and `eugene`'s voices (spoken 5200 4681 9000 7772; Whisper
+  `5200-4681-900-7772`, 15 digits; the sample `...-9000-7772`); the tax number
+  prefix ("Могин", "Мой ин" became "Мой ИНН"). On these the judge listed doubts
+  (J3 = 1 for the card), so H flags a recording whose final text is right.
+- **A systematic failure, in all three voices: the underscore address.**
+  Spoken "алекс точка смирнов подчёркивание девяносто два собака почта точка ру"
+  (the intended `alex.smirnov_92@pochta.ru`); Whisper wrote
+  `alex.smirnov-92-sobacapochta.ru`, `...92sobakopochta.ru`,
+  `...92sobakopochta.ru` with `.`; the samples
+  `alex.smirnov@92.собака_почта.ru` (owner), `alex.smirnov@92sobakopochta.ru`
+  (`eugene`), `alex.smirnov.92@sobakapochta.ru` (`baya`). None is correct. The label
+  marks only the owner's as bad (`invented_address` does not fire; the span's
+  stems "alex", "smirnov" are present in all three), so **2 of the 3 real
+  errors are good by the label**. The spans check stems and digit keys, not the
+  correctness of a domain.
+- **Plain misses of the check:** `v2_phone_grouped__eugene`: Whisper `Плюс 7 916...`,
+  the sample rewrote the digits back into words ("Плюс семь девятьсот
+  шестнадцать..."): the span is still found, but the text was rewritten without
+  need. `Slack` became "слаг" or "Слэк" in two voices.
+
+Post hoc, same data, not a test (3 real address errors instead of 1): H flags
+all three, and 7 of the other 27 (0.26). Of those seven, three (the card number in two
+voices, the rare surname in the `baya` voice) are recordings where Whisper's text
+was wrong and Gemma repaired it, so the flag was justified by the engine's
+uncertainty although the final text was right; the other four are doubts or
+rewrites on texts that were already right (`partner_company__eugene`,
+`phone_grouped__eugene`, `slack_login__baya`, `slack_login__eugene`).
+
+The owner's remark during recording: the end-of-take cut is very close to the
+last sound and sometimes clips the last fractions of a second. In the ten
+owner recordings every phrase's last word is present in Whisper's text, so no
+damage is visible here; ten takes cannot show how often the last syllable is lost.
+
+Reading: the second corpus does not test the hypothesis, because Whisper plus
+the Gemma check rarely fail on it; the hard case that remains is the spelled-out
+address with an underscore. A new spike for H needs phrases that make the
+system fail, or a larger set of address-like phrases, and labels that check the
+assembled address, not only stems.
+
+## Stricter label (post hoc, 2026-10-19, owner's request; recorded data only)
+
+The frozen verdict above stands ("nothing concluded": 1 bad of 30). The owner
+asked to check the assembled address as a whole and to recompute both corpora.
+New label rule `addresses_assembled` (`manual/personal_proxy/address_labels.py`):
+on top of `names_in_any_alphabet`, a phrase that spells an address is bad when
+its output carries neither a right assembled address nor the spoken form
+unchanged, or carries a second address. The right addresses are listed per
+phrase (`ivan.petrov@primer.com` or `...@example.com`, `info@trade-house.ru`,
+`dvolkov@gmail.com`, `alex.smirnov_92@pochta.ru`), five phrases in all. The rule
+replaces the `invented_address` heuristic for those phrases, because Whisper
+writes the marker as "sobaca" or "sobako", which the heuristic did not know. It was
+written after both corpora were measured; H and its thresholds are unchanged.
+
+| corpus | bad | good | H: recall / false refusals | frozen rule verdict |
+|---|---|---|---|---|
+| first (44) | 5 | 39 | 5/5, 4/39 = 0.10 | H holds |
+| second (30) | 3 | 27 | 3/3, 7/27 = 0.26 | nothing concluded (3 bad) |
+| both (74) | 8 | 66 | 8/8, 11/66 = 0.17 | H holds |
+
+Pooled, by signal: J1, J2, J3 discriminate (recall 0.88 at 0.11 false refusals);
+S1 reaches 0.75 at 0.00 and S2 0.62 at 0.09 and do not; S3a, S3b, S3c, S5 do not.
+H alone: S2 5/8 with 6 false, J3 7/8 with 7 false, S1 at 4 catches 4/8 with none
+false. The five bad recordings of the first corpus are `id_letter_long`,
+`id_two_people_phone`, `m_github` (its address `dvolkov.sobaka@...`, newly bad),
+`m_trade_house`, `n_short_translate`; the three of the second are the underscore
+address in the three voices.
+
+Why "H holds" here is weak evidence:
+
+- The first corpus is where H was chosen; its 5/5 is the fit, not a test.
+- The second corpus is the test, and it has 3 bad recordings (below the 5 the card
+  requires) that are one phrase in three voices, so it is one independent
+  case; its false refusals (0.26) exceed the 0.2 bound.
+- The label rule was changed after the data was seen. The pooled 8 are about 6
+  distinct errors.
+
+Where the false refusals come from (second corpus, 7 of 27): three are recordings
+where Whisper was wrong and Gemma repaired it, four are doubts or rewrites on a
+text that was already right. The flag is useful in the first three and a
+nuisance in the other four.
+
+Reading: the judge's list of doubtful fragments (J3) is the most useful single
+signal on both corpora (7 of 8 at 7 false refusals); the instability of the samples
+(S2) adds the one error the judge misses. Nothing here is a validated threshold.
+A trustworthy test needs more address- and digit-heavy phrases on which Whisper
+fails, a label fixed before the run, and the answer to a product question the data
+cannot give: whether a flag should refuse, or ask the owner to confirm the
+listed fragments by voice.

@@ -355,6 +355,24 @@ def command_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_pooled(args: argparse.Namespace) -> int:
+    recordings: list[Signals] = []
+    by_corpus: dict[str, list[Signals]] = {"corpus v1": [], "corpus v2": []}
+    for corpus, out in (("v1", args.v1_out), ("v2", args.v2_out)):
+        scoped = argparse.Namespace(corpus=corpus, out=out, label_rule=args.label_rule)
+        setup = setup_for(scoped)
+        for subject_id in sorted(setup.ids()):
+            signals, _ = _signals_for(subject_id, scoped, setup)
+            recordings.append(signals)
+            by_corpus[f"corpus {corpus}"].append(signals)
+    report = render_report(recordings, [], evaluate(recordings, []), 0, [])
+    report += "\n" + "\n".join(render_hypothesis(recordings, by_corpus)) + "\n"
+    target = args.out / f"pooled-{args.label_rule}.md"
+    target.write_text(report, encoding="utf-8")
+    print(report)
+    return 0
+
+
 def read_ids(out: Path) -> list[str]:
     return [p.stem for p in (out / "words").glob("*.json")]
 
@@ -364,6 +382,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--corpus", choices=("v1", "v2"), default="v1")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     commands = parser.add_subparsers(dest="command", required=True)
+    pooled = commands.add_parser("pooled")
+    pooled.add_argument("--v1-out", type=Path, default=DEFAULT_OUT)
+    pooled.add_argument("--v2-out", type=Path, required=True)
+    pooled.add_argument(
+        "--label-rule", choices=[r.value for r in LabelRule], default="frozen"
+    )
     for name in ("words", "run", "score"):
         sub = commands.add_parser(name)
         sub.add_argument("--wavs", type=Path, required=True)
@@ -385,7 +409,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
-    handlers = {"words": command_words, "run": command_run, "score": command_score}
+    handlers = {
+        "words": command_words,
+        "run": command_run,
+        "score": command_score,
+        "pooled": command_pooled,
+    }
     try:
         return handlers[args.command](args)
     except WavDirectoryError as error:

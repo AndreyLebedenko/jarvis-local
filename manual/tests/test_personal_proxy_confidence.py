@@ -229,3 +229,26 @@ def test_names_rule_still_counts_a_lost_digit_span():
         "Анна Лебедева просила перезвонить Игорю Мельникову по номеру 8 912 345 60 78.",
         LabelRule.NAMES_IN_ANY_ALPHABET,
     )
+
+
+def test_assembled_rule_rejects_a_wrong_domain_that_the_stem_check_accepts():
+    from manual.personal_proxy.confidence import LabelRule
+    from manual.personal_proxy.corpus_v2 import utterance_v2_by_id
+
+    utterance = utterance_v2_by_id("v2_email_underscore__eugene")
+    whisper = "Отправь файл на почту alex.smirnov-92sobakopochta.ru"
+    output = "Отправь файл на почту alex.smirnov@92sobakopochta.ru"
+
+    assert not is_bad(utterance, whisper, output, LabelRule.NAMES_IN_ANY_ALPHABET)
+    assert is_bad(utterance, whisper, output, LabelRule.ADDRESSES_ASSEMBLED)
+
+
+def test_assembled_rule_accepts_the_right_address():
+    from manual.personal_proxy.confidence import LabelRule
+    from manual.personal_proxy.corpus_v2 import utterance_v2_by_id
+
+    utterance = utterance_v2_by_id("v2_email_underscore__owner")
+    whisper = "Отправь файл на почту alex.smirnov-92-sobacapochta.ru"
+    output = "Отправь файл на почту alex.smirnov_92@pochta.ru"
+
+    assert not is_bad(utterance, whisper, output, LabelRule.ADDRESSES_ASSEMBLED)

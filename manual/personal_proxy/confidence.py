@@ -14,6 +14,7 @@ from enum import StrEnum
 from itertools import combinations
 from typing import Any
 
+from manual.personal_proxy.address_labels import address_is_right
 from manual.personal_proxy.corpus import Span, SpanType, Utterance
 from manual.personal_proxy.scoring import leaked_spans
 from manual.personal_proxy.verification import (
@@ -158,10 +159,11 @@ class LabelRule(StrEnum):
     FROZEN = "frozen"
     ADDRESSES_ARE_LATIN = "addresses_are_latin"
     NAMES_IN_ANY_ALPHABET = "names_in_any_alphabet"
+    ADDRESSES_ASSEMBLED = "addresses_assembled"
 
 
 def _scored_spans(utterance: Utterance, rule: LabelRule) -> tuple[Span, ...]:
-    if rule is not LabelRule.NAMES_IN_ANY_ALPHABET:
+    if rule in (LabelRule.FROZEN, LabelRule.ADDRESSES_ARE_LATIN):
         return utterance.spans
     return tuple(
         s
@@ -191,7 +193,17 @@ def is_bad(
         output_share = _cyrillic_share(_without_addresses(output))
         whisper_share = _cyrillic_share(_without_addresses(whisper_text))
     switched = output_share < CYRILLIC_SHARE_DROP * whisper_share
-    return lost or invented_address(whisper_text, output) or switched
+    return lost or switched or _address_is_bad(utterance, whisper_text, output, rule)
+
+
+def _address_is_bad(
+    utterance: Utterance, whisper_text: str, output: str, rule: LabelRule
+) -> bool:
+    if rule is LabelRule.ADDRESSES_ASSEMBLED:
+        verdict = address_is_right(utterance.utterance_id, output)
+        if verdict is not None:
+            return not verdict
+    return invented_address(whisper_text, output)
 
 
 @dataclass(frozen=True)
