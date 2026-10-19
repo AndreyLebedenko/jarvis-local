@@ -147,7 +147,7 @@ large-v3-turbo, GPU float16, language `ru`).
 | span fidelity, overall | 0.792 | 0.708 | 0.854 |
 | numeric / email / person / other | 23/24, 4/6, 24/34, 25/32 | 16/24, 4/6, 24/34, 24/32 | 22/24, 4/6, 26/34, 30/32 |
 | warm seconds per recording, median | - | 0.06 | 0.25 |
-| GPU memory added (load / peak) | - | +1.97 / +2.29 GiB | +2.20 / +2.43 GiB |
+| GPU memory added (load / peak) | - | +1974 / +2290 MiB | +2202 / +2430 MiB |
 
 - GigaAM: accuracy passes (8 is the limit), **fidelity fails** (0.708 against
   0.792), so it is not adequate. Whisper is adequate on all three criteria.
@@ -176,11 +176,12 @@ large-v3-turbo, GPU float16, language `ru`).
 - `whisper_auto` equals `whisper_ru` on failures and fidelity (4 of 88, 0.854).
 
 **Coexistence with Gemma 12B (frozen criterion 3 passed for both).** With the
-production options (`num_ctx` 65536, q8 KV cache) Gemma alone uses about 14.5
-GiB of the 16 GiB; Ollama's GPU share stayed 1.0 for both engines and each
+production options (`num_ctx` 65536, q8 KV cache) the machine's GPU memory with
+Gemma alone is 14,477 MiB of 16,303 MiB (about 1.5 GB of it belongs to other
+programs); Ollama's GPU share stayed 1.0 for both engines and each
 engine ran at its isolated speed (Whisper 0.22 s, GigaAM 0.07 s). But the next
 Gemma text request took 0.61 s (Whisper) and 0.69 s (GigaAM) against 0.17 s
-before, and the machine's GPU memory was near full (15.5 to 15.7 GiB).
+before, and the machine's GPU memory with both loaded was near full (15,534 and 15,726 MiB).
 
 **Exploratory, not part of the rule:** six alternating STT / Gemma cycles, as in
 the real pipeline, show a swap cost for both GPU engines:
