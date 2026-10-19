@@ -179,3 +179,53 @@ def test_signal_must_also_flag_the_controls_when_they_are_given():
 
     assert discriminates(points, 0.5, control_scores=[0.9, 0.85])
     assert not discriminates(points, 0.5, control_scores=[0.9, 0.1])
+
+
+def test_revised_rule_does_not_count_a_latin_address_as_a_language_switch():
+    from manual.personal_proxy.confidence import LabelRule
+
+    utterance = utterance_by_id("id_email")
+    whisper = "Пиши на почту иван.петров.собака.пример.ком"
+
+    output = "Пиши на почту ivan.petrov@primer.com"
+
+    assert is_bad(utterance, whisper, output)
+    assert not is_bad(utterance, whisper, output, LabelRule.ADDRESSES_ARE_LATIN)
+
+
+def test_revised_rule_still_catches_a_translation():
+    from manual.personal_proxy.confidence import LabelRule
+
+    utterance = utterance_by_id("n_short_translate")
+    whisper = reference_text(utterance)
+
+    assert is_bad(
+        utterance,
+        whisper,
+        'Translate the word "apple" into English.',
+        LabelRule.ADDRESSES_ARE_LATIN,
+    )
+
+
+def test_names_rule_does_not_count_a_latin_name_written_in_cyrillic_as_lost():
+    from manual.personal_proxy.confidence import LabelRule
+
+    utterance = utterance_by_id("m_short_call")
+    whisper = "Позвони Майкл Браун."
+
+    assert is_bad(utterance, whisper, whisper, LabelRule.ADDRESSES_ARE_LATIN)
+    assert not is_bad(utterance, whisper, whisper, LabelRule.NAMES_IN_ANY_ALPHABET)
+
+
+def test_names_rule_still_counts_a_lost_digit_span():
+    from manual.personal_proxy.confidence import LabelRule
+
+    utterance = utterance_by_id("id_two_people_phone")
+    whisper = reference_text(utterance)
+
+    assert is_bad(
+        utterance,
+        whisper,
+        "Анна Лебедева просила перезвонить Игорю Мельникову по номеру 8 912 345 60 78.",
+        LabelRule.NAMES_IN_ANY_ALPHABET,
+    )

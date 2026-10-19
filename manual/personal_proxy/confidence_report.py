@@ -10,6 +10,7 @@ from typing import Any
 
 from manual.personal_proxy.confidence import (
     JudgeResult,
+    LabelRule,
     OperatingPoint,
     discriminates,
     invalid_items,
@@ -49,6 +50,7 @@ def compute_signals(
     segments: list[dict[str, Any]],
     samples: dict[SampleKey, str],
     judges: dict[SampleKey, JudgeResult | None],
+    label_rule: LabelRule = LabelRule.FROZEN,
 ) -> Signals:
     base = samples[BASE_KEY]
     sample_projections = [
@@ -68,7 +70,9 @@ def compute_signals(
         "J3": float(0 if base_judge is None else len(base_judge.fragments)),
         "T": 1.0 if base_projection else 0.0,
     }
-    bad = None if utterance is None else is_bad(utterance, whisper_text, base)
+    bad = (
+        None if utterance is None else is_bad(utterance, whisper_text, base, label_rule)
+    )
     return Signals(subject_id, bad, scores)
 
 

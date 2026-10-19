@@ -39,6 +39,7 @@ from manual.personal_proxy.audio import WavDirectory, WavDirectoryError
 from manual.personal_proxy.confidence import (
     WEAK_WORD_PROBABILITY,
     JudgeResult,
+    LabelRule,
     build_judge_payload,
     build_sample_payload,
     parse_judge,
@@ -240,6 +241,7 @@ def _signals_for(subject_id: str, args: argparse.Namespace) -> tuple[Signals, in
         document["segments"],
         _load_samples(args.out, subject_id),
         judges,
+        LabelRule(args.label_rule),
     )
     return signals, sum(1 for j in judges.values() if j is None)
 
@@ -285,7 +287,10 @@ def command_score(args: argparse.Namespace) -> int:
         unparsed,
         _marks_effect(args),
     )
-    (args.out / REPORT_NAME).write_text(report, encoding="utf-8")
+    name = (
+        REPORT_NAME if args.label_rule == "frozen" else f"report-{args.label_rule}.md"
+    )
+    (args.out / name).write_text(report, encoding="utf-8")
     print(report)
     return 0
 
@@ -302,6 +307,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         sub = commands.add_parser(name)
         sub.add_argument("--wavs", type=Path, required=True)
         sub.add_argument("--whisper-calls", type=Path, default=DEFAULT_WHISPER_CALLS)
+        if name == "score":
+            sub.add_argument(
+                "--label-rule", choices=[r.value for r in LabelRule], default="frozen"
+            )
         if name == "run":
             sub.add_argument("--endpoint", default="http://localhost:11434")
             sub.add_argument("--model", default=DEFAULT_MODEL)

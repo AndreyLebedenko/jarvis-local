@@ -207,3 +207,31 @@ catch different recordings. Silence and noise need a gate before the engine
 produced three artifacts and should be revised (a Latin transliteration of a
 spoken address is not a language switch; a name written in Cyrillic is not
 lost) before any further spike reuses it.
+
+## Relabeling (post hoc, 2026-10-19, same data, owner's remark)
+
+The owner's remark: a spoken e-mail address is always written in Latin, so it
+must not count as a language switch; the check is about how plausible the
+combination of texts is given the audio, not about comparing texts. The labels
+were recomputed with two revised rules (`score --label-rule`; nothing is run
+again, the samples and judge answers are the recorded ones):
+
+- `addresses_are_latin`: tokens with `@` are ignored in the Cyrillic-share test.
+- `names_in_any_alphabet`: also, person spans whose labeled forms are Latin only
+  (English-spoken names) are not scored, because Whisper writes them in Cyrillic.
+  This second rule is the agent's choice, not the owner's.
+
+| label rule | bad | good | best of S1 / S2 / J1-J3 (recall at false refusals) | discriminates |
+|---|---|---|---|---|
+| frozen | 7 | 37 | 0.29 / 0.43 / 0.43 at 0.03-0.11 | none |
+| addresses_are_latin | 6 | 38 | 0.33 / 0.50 / 0.50 at 0.03-0.11 | none |
+| names_in_any_alphabet | 4 | 40 | 0.50 / 0.75 / 0.75 at 0.03-0.10 | none (4 bad: nothing concluded) |
+
+With the corrected labels the four real errors (`n_short_translate`,
+`m_trade_house`, `id_two_people_phone`, `id_letter_long`) are caught by S2
+(instability) and by the judge's list of doubtful fragments (J3) at 3 of 4, with
+5% and 10% false refusals; S1 catches 2 of 4. They catch different recordings:
+S2 and S1 miss `id_two_people_phone` (Whisper and every sample agree on the same
+wrong digits), the judge catches it. S3a, S3c, S3b and S5 stay useless as
+configured. The frozen rule still says "does not", since 3 of 4 is 0.75 against
+the 0.8 required and the four is below the 5 the card requires.

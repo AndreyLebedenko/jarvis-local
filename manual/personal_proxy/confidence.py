@@ -10,10 +10,11 @@ import base64
 import json
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 from itertools import combinations
 from typing import Any
 
-from manual.personal_proxy.corpus import Utterance
+from manual.personal_proxy.corpus import Span, SpanType, Utterance
 from manual.personal_proxy.scoring import leaked_spans
 from manual.personal_proxy.verification import (
     ERROR_HINT,
@@ -149,11 +150,47 @@ def _cyrillic_share(text: str) -> float:
     return len(_CYRILLIC.findall(text)) / len(letters)
 
 
-def is_bad(utterance: Utterance, whisper_text: str, output: str) -> bool:
-    lost = len(leaked_spans(utterance.spans, output)) < len(utterance.spans)
-    switched = _cyrillic_share(output) < CYRILLIC_SHARE_DROP * _cyrillic_share(
-        whisper_text
+def _without_addresses(text: str) -> str:
+    return " ".join(t for t in text.split() if "@" not in t)
+
+
+class LabelRule(StrEnum):
+    FROZEN = "frozen"
+    ADDRESSES_ARE_LATIN = "addresses_are_latin"
+    NAMES_IN_ANY_ALPHABET = "names_in_any_alphabet"
+
+
+def _scored_spans(utterance: Utterance, rule: LabelRule) -> tuple[Span, ...]:
+    if rule is not LabelRule.NAMES_IN_ANY_ALPHABET:
+        return utterance.spans
+    return tuple(
+        s
+        for s in utterance.spans
+        if not (s.type is SpanType.PERSON and _is_latin_only(s))
     )
+
+
+def _is_latin_only(span: Span) -> bool:
+    return bool(span.forms) and not _CYRILLIC.search("".join(span.forms))
+
+
+def is_bad(
+    utterance: Utterance,
+    whisper_text: str,
+    output: str,
+    rule: LabelRule = LabelRule.FROZEN,
+) -> bool:
+    spans = _scored_spans(utterance, rule)
+    lost = len(leaked_spans(spans, output)) < len(spans)
+    if rule is LabelRule.FROZEN:
+        output_share, whisper_share = (
+            _cyrillic_share(output),
+            _cyrillic_share(whisper_text),
+        )
+    else:
+        output_share = _cyrillic_share(_without_addresses(output))
+        whisper_share = _cyrillic_share(_without_addresses(whisper_text))
+    switched = output_share < CYRILLIC_SHARE_DROP * whisper_share
     return lost or invented_address(whisper_text, output) or switched
 
 
