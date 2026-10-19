@@ -148,3 +148,16 @@ def decide(whisper: Metrics, audio: Metrics, text: Metrics) -> Verdict:
     if without >= with_audio - TEXT_ONLY_TIE_MARGIN + _EPSILON:
         return Verdict.BETTER_WITHOUT_AUDIO
     return Verdict.BETTER
+
+
+ADDRESS_MARKERS = ("собак", "sobak", "@")
+
+
+def invented_address(source: str, output: str) -> bool:
+    """More addresses in the output than the source has markers for."""
+    markers = sum(source.lower().count(m) for m in ADDRESS_MARKERS)
+    return output.count("@") > markers
+
+
+def rewrite_distance(source: str, output: str) -> float:
+    return word_error_rate(source, output)

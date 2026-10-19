@@ -46,4 +46,4 @@ AGENTS.md
 .venv-stt-gigaam/
 manual_check_stt_engines_out/
 manual_check_stt_engines_gemma_int4_out/
-manual_check_stt_verification_out/
+manual_check_stt_verification*_out/

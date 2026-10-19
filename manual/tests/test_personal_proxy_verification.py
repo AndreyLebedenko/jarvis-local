@@ -134,3 +134,56 @@ def test_harness_plan_alternates_variant_order_and_covers_both_seeds():
     assert jobs[0][0] is Variant.AUDIO
     assert jobs[2][0] is Variant.TEXT
     assert {seed for _, _, seed in jobs} == set(SEEDS)
+
+
+def test_run_options_override_temperature_and_context_and_drop_seed():
+    from manual import manual_check_stt_verification as harness
+
+    reference = {"temperature": 0.618, "seed": 5, "num_predict": 9, "top_k": 50}
+
+    options = harness.run_options(reference, num_ctx=8192, temperature=0.2)
+
+    assert options == {"temperature": 0.2, "top_k": 50, "num_ctx": 8192}
+
+
+def test_run_options_keep_reference_temperature_without_override():
+    from manual import manual_check_stt_verification as harness
+
+    options = harness.run_options({"temperature": 0.618}, 8192, None)
+
+    assert options["temperature"] == 0.618
+
+
+def test_invented_address_is_an_at_sign_with_no_source_for_it():
+    from manual.personal_proxy.verification import invented_address
+
+    assert invented_address("на адрес Марина Кузнецова", "на адрес m.k@mail.ru")
+
+
+def test_spoken_address_converted_to_canonical_form_is_not_invented():
+    from manual.personal_proxy.verification import invented_address
+
+    assert not invented_address("почту dvolkov собака gmail", "почту dvolkov@gmail.com")
+    assert not invented_address("почту a@b.ru", "почту a@b.ru")
+
+
+def test_rewrite_distance_is_zero_for_unchanged_text_and_positive_for_changed():
+    from manual.personal_proxy.verification import rewrite_distance
+
+    assert rewrite_distance("одно два три", "одно два три") == 0.0
+    assert rewrite_distance("одно два три", "одно пять три") > 0.0
+
+
+def test_latin_spoken_marker_counts_as_source_for_one_address():
+    from manual.personal_proxy.verification import invented_address
+
+    assert not invented_address("dvolkovsobaka.gmail.com", "dvolkov@gmail.com")
+
+
+def test_a_second_address_without_its_own_marker_is_invented():
+    from manual.personal_proxy.verification import invented_address
+
+    source = "от инфособакотрейдэшхаус.ру на адрес Марина Кузнецова"
+
+    assert invented_address(source, "от info@trade-house.ru на адрес marina@mail.ru")
+    assert not invented_address(source, "от info@trade-house.ru на адрес Марина")

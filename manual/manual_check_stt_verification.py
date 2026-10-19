@@ -42,7 +42,9 @@ from manual.personal_proxy.verification import (
     Variant,
     build_payload,
     decide,
+    invented_address,
     paired_spans,
+    rewrite_distance,
     score_transcripts,
 )
 
@@ -52,6 +54,7 @@ DEFAULT_MODEL = "gemma4:12b"
 DEFAULT_NUM_CTX = 8192
 WARMUP_PROMPT = "Say one short sentence."
 REPORT_NAME = "report.md"
+REWRITE_THRESHOLD = 0.3
 
 
 def whisper_transcript(calls_dir: Path, subject_id: str, seed: int) -> str:
@@ -84,13 +87,24 @@ def plan_jobs(subject_ids: list[str]) -> list[tuple[Variant, str, int]]:
     return jobs
 
 
+def run_options(
+    reference_options: dict[str, Any], num_ctx: int, temperature: float | None
+) -> dict[str, Any]:
+    options = {**reference_options, "num_ctx": num_ctx}
+    if temperature is not None:
+        options["temperature"] = temperature
+    options.pop("seed", None)
+    options.pop("num_predict", None)
+    return options
+
+
 def command_run(args: argparse.Namespace) -> int:
     import httpx
 
     reference = json.loads(args.reference_request.read_text(encoding="utf-8"))
-    options = {**reference["call"]["request"]["options"], "num_ctx": args.num_ctx}
-    options.pop("seed", None)
-    options.pop("num_predict", None)
+    options = run_options(
+        reference["call"]["request"]["options"], args.num_ctx, args.temperature
+    )
     wavs = WavDirectory(args.wavs)
     audio = subject_audio(wavs)
     calls_dir = args.out / "calls"
@@ -284,10 +298,59 @@ def command_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _variant_stats(
+    by_variant: ByVariant, variant: Variant, whisper_calls: Path
+) -> dict[str, Any]:
+    calls = by_variant[variant]
+    keys = sorted(k for k in calls if k[0] in CORPUS_IDS)
+    utterances = [utterance_by_id(s) for s, _ in keys]
+    sources = [whisper_transcript(whisper_calls, s, n) for s, n in keys]
+    outputs = [calls[k]["response_text"] for k in keys]
+    metrics = score_transcripts(list(zip(utterances, outputs, strict=True)))
+    fixed, broken = paired_spans(list(zip(utterances, sources, outputs, strict=True)))
+    controls = [c for k, c in calls.items() if k[0] not in CORPUS_IDS]
+    pairs = list(zip(sources, outputs, strict=True))
+    return {
+        "failures": metrics.audio_failures,
+        "fidelity": metrics.overall_fidelity,
+        "fixed": fixed,
+        "broken": broken,
+        "invented": sum(invented_address(s, o) for s, o in pairs),
+        "rewritten": sum(rewrite_distance(s, o) > REWRITE_THRESHOLD for s, o in pairs),
+        "controls_clean": sum(control_is_clean(c["response_text"]) for c in controls),
+        "controls": len(controls),
+    }
+
+
+def command_compare(args: argparse.Namespace) -> int:
+    head = (
+        "| temperature | variant | failures | fidelity | fixed | broken | "
+        "invented address | rewritten >0.3 | clean controls |"
+    )
+    lines = [head, "|---|---|---|---|---|---|---|---|---|"]
+    for item in args.runs:
+        label, _, directory = item.partition("=")
+        by_variant = _by_variant(load_calls(Path(directory) / "calls"))
+        for variant in Variant:
+            st = _variant_stats(by_variant, variant, args.whisper_calls)
+            lines.append(
+                f"| {label} | {variant.value} | {st['failures']} | "
+                f"{st['fidelity']:.3f} | {st['fixed']} | {st['broken']} | "
+                f"{st['invented']} | {st['rewritten']} | "
+                f"{st['controls_clean']}/{st['controls']} |"
+            )
+    for line in lines:
+        print(line)
+    return 0
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     commands = parser.add_subparsers(dest="command", required=True)
+    compare = commands.add_parser("compare")
+    compare.add_argument("runs", nargs="+", help="label=output_dir")
+    compare.add_argument("--whisper-calls", type=Path, default=DEFAULT_WHISPER_CALLS)
     for name in ("run", "score"):
         sub = commands.add_parser(name)
         sub.add_argument("--wavs", type=Path, required=True)
@@ -296,6 +359,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             sub.add_argument("--endpoint", default="http://localhost:11434")
             sub.add_argument("--model", default=DEFAULT_MODEL)
             sub.add_argument("--num-ctx", type=int, default=DEFAULT_NUM_CTX)
+            sub.add_argument("--temperature", type=float, default=None)
             sub.add_argument(
                 "--reference-request", type=Path, default=DEFAULT_REFERENCE_REQUEST
             )
@@ -306,6 +370,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     try:
+        if args.command == "compare":
+            return command_compare(args)
         if args.command == "score":
             return command_score(args)
         return command_run(args)

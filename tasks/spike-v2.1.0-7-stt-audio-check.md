@@ -1,6 +1,6 @@
 # Spike v2.1.0-7: Gemma checks a Whisper transcript against the recording
 
-Status: In progress. Rule frozen 2026-10-19, before any run.
+Status: Result recorded 2026-10-19 (rule frozen before any run).
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spike 5
 (Whisper large-v3-turbo wins as the first step) and spike 6 (it runs on the GPU
@@ -76,9 +76,12 @@ statistics. The paired spans are there for borderline outcomes.
 
 ## Honest limits
 
-- One speaker, one room, 44 utterances, invented identities. The corpus has 96
-  labeled spans per pass (192 over two seeds), so one span is about 0.005 of
-  fidelity and the 0.03 gain is about 6 spans.
+- One speaker, one room, 44 utterances, invented identities. The corpus has 48
+  labeled spans per pass, 96 over two seeds. One span is about 0.010 of fidelity,
+  so the 0.03 gain is 3 spans. Whisper's transcript is deterministic, so the two
+  seeds repeat the same input: they do not make the spans independent, and 4
+  fixed spans are about 2 distinct fixes. (The first version of this card
+  miscounted the spans as 192; corrected after the run.)
 - INT4 Gemma's hearing may differ from the q8 model of spikes 1-4; this spike
   does not separate model quantization from the task change.
 - Fidelity is lenient for names (stem match): a respelled name that keeps its
@@ -102,3 +105,110 @@ python -m manual.manual_check_stt_verification --out manual_check_stt_verificati
 
 `run` resumes: existing call files are skipped. `score` writes `report.md` in the
 output directory.
+
+## Result (2026-10-19, run by the agent on the owner's instruction)
+
+`gemma4:12b`, `num_ctx` 8192; 184 generations; report in
+`manual_check_stt_verification_out/report.md` (gitignored).
+
+| | audio failures | median WER | span fidelity | numeric / email / person / other |
+|---|---|---|---|---|
+| W: Whisper alone | 4 of 88 | 0.000 | 0.854 (82/96) | 22/24, 4/6, 26/34, 30/32 |
+| X: text + audio | 5 of 88 | 0.000 | 0.896 (86/96) | 22/24, 6/6, 28/34, 30/32 |
+| Z: text only | 4 of 88 | 0.000 | 0.854 (82/96) | 22/24, 4/6, 26/34, 30/32 |
+
+Verdict by the frozen rule: **better** (gain 0.042 >= 0.03, failures 5 <= 6, and
+Z equals W, so the gain comes from the recording, not from the hint). Paired
+spans: X fixed 4, broke 0; Z fixed 0, broke 0. Cost: median 0.50 s per call
+(Z 0.44 s); the largest prompt is 987 tokens of 8192, so the recording is cheap
+in context; no call was cut off.
+
+What the 4 fixed spans are: the spoken e-mail addresses ("иван точка петров
+собака пример точка ком" came out as `ivan.petrov@primer.com`; `dvolkov
+собака gmail точка com` as `dvolkov.sobaka@gmail.com`) and two person spans.
+Other real fixes of Whisper's mistakes that the metric does not count: "Роттендам"
+-> "Роттердам", "кубернетис" -> "Kubernetes", "если я с вами ищу лекарства" ->
+"если я совмещаю лекарства", "То он должен" -> "Оно должно".
+
+Deviations (expected / actual, severity):
+
+- **Invented content.** `m_trade_house`: spoken "на адрес Marina Kuznetsova" (a
+  name); X wrote `marina.kuznecova@mail.ru`, an address that was never spoken.
+  The domain was also wrong at both seeds: `info@sobakatrade-house.ru` and
+  `info@sabakotrade-house.ru` instead of `info@trade-house.ru` (the word
+  "собака" glued into the domain). Severity: refuses nothing, adds a fabricated
+  sensitive-looking span; safe for sanitization (more to mask), wrong for
+  restoration and for the answer's meaning.
+- **Changed meaning.** `n_short_translate` (seed 4243): Whisper right ("Переведи
+  на английский слово яблоко."), X wrote `Translate the word "apple" into
+  English.` Severity: one real new failure, and it violates "do not translate".
+- **Damaged correct text.** `t_mother_medication`: "Мама принимает" -> "Мама
+  принимают" (both seeds). `q_accountant`: Whisper's "Кенешма" (spoken Кинешма)
+  became "Кин-Черма" / "Кин-Чермэнь", further from the truth (both lost by the
+  metric). Severity: only noise in the metric, but it shows Gemma guesses a
+  place name instead of leaving it.
+- **Digits not fixed.** `id_two_people_phone`: spoken 8 912 345 67 89; Whisper
+  "607 89", X "60 78 9"; both wrong, so the phone span stays lost. Severity:
+  Gemma does not repair digits from the recording.
+- **Silence hallucination not removed.** All four silence and noise controls
+  (two seeds) stay "Продолжение следует..." in X and in Z, although X hears
+  silence. Severity: the guard against Whisper's invented text must be
+  elsewhere (VAD, `no_speech` probability, a length-of-audio check).
+- **Metric artifact.** `id_email` counts as an audio failure for X at both seeds
+  (WER 0.70) because the output is the canonical address and the reference
+  spells "точка/собака". The output is semantically right. Failures 5 of 88 are
+  therefore: `id_email` x2 (format artifact), `m_short_call` x2 (Whisper's
+  transliteration, unchanged), `n_short_translate` x1 (real); X no longer
+  fails `m_trade_house`.
+
+Reading: the recording lets Gemma restore spoken e-mail addresses, which is
+Whisper's weakest span type, at 0.5 s per call, and the control shows the gain is
+audio-driven. It also lets Gemma rewrite: it fabricated one address and changed
+one sentence in 88 generations, and "fix only what is evidently wrong" did not
+stop it. The evidence is thin (about 2 distinct fixes). Untested levers: a
+stricter instruction, a rule that rejects outputs whose word count or tokens
+drift from the Whisper text beyond e-mail normalization, and a q8 Gemma.
+
+## Temperature sweep (2026-10-19, run by the agent on the owner's request)
+
+The run above used the production transcription temperature 0.618. The same
+184 generations were repeated at 0, 0.1, 0.2, 0.8, 0.9, and 1 (`run
+--temperature T`, one output directory each; `compare` builds the table). At
+temperature 0 the seed has no effect, so the two seeds are one generation twice.
+"Invented address" counts outputs with more `@` than the source has markers
+(`собак`, `sobak`, `@`); "rewritten" counts outputs whose WER against the Whisper
+text exceeds 0.3 (it includes the spoken-address to `a@b.c` conversions).
+
+| temperature | variant | failures | fidelity | fixed | broken | invented address | rewritten | clean controls |
+|---|---|---|---|---|---|---|---|---|
+| 0 | X | 6 | 0.896 | 4 | 0 | 2 | 6 | 0/4 |
+| 0.1 | X | 6 | 0.896 | 4 | 0 | 2 | 6 | 0/4 |
+| 0.2 | X | 5 | 0.896 | 4 | 0 | 2 | 5 | 0/4 |
+| 0.618 | X | 5 | 0.896 | 4 | 0 | 2 | 5 | 0/4 |
+| 0.8 | X | 5 | 0.896 | 4 | 0 | 2 | 5 | 0/4 |
+| 0.9 | X | 6 | 0.885 | 3 | 0 | 2 | 5 | 0/4 |
+| 1 | X | 5 | 0.896 | 4 | 0 | 2 | 5 | 0/4 |
+| any of the six | Z | 4 | 0.854 | 0 | 0 | 0 | 6 | 0/4 |
+
+Reading:
+
+- **Temperature is not the lever.** Fidelity and fixed spans are the same from 0
+  to 1 except one lost span at 0.9; Z (text only) is identical at every
+  temperature.
+- **The harmful rewrites are not sampling noise.** At 0 and 0.1 the translation
+  of `n_short_translate` ("Переведи на английский слово яблоко." becomes
+  `Translate the word "apple" into English.`) happens at both seeds, so it is
+  greedy behavior: it is the 6th failure at 0 and 0.1. From 0.2 up only seed 4243
+  does it. `marina.kuznecova@mail.ru` is invented at every temperature (the
+  second address after `info@...trade-house.ru`); the domain of the first address
+  differs by seed (`sobakatrade-house`, `akatrade-house`, `kohouse`), never
+  correct.
+- **High temperature adds noise, not fixes:** at 0.8 and above mixed alphabets
+  appear (`marina.kuzneцова@mail.ru`), at 1 a truncated address
+  (`marina.kuznecova@.`), and at 0.9 `m_trade_house` becomes a failure at seed 4243.
+- **Controls:** the silence and noise controls stay "Продолжение следует..."
+  at every temperature, for X and Z.
+
+Consequence: lowering the temperature does not remove the two harmful behaviors;
+a stricter instruction or a mechanical filter (reject outputs that add
+addresses or change language) is what remains to test.
