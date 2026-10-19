@@ -135,3 +135,40 @@ def test_the_job_order_covers_passes_and_skips_the_no_media_control():
 
     assert any(control_audio(c) is None for c in CONTROLS)
     assert harness.PASSES == (1, 2)
+
+
+REFERENCE_REQUEST = {
+    "model": "gemma4:12b-it-q8_0",
+    "options": {
+        "num_ctx": 65536,
+        "kv_cache_type": "q8_0",
+        "seed": 7,
+        "num_predict": 2048,
+    },
+}
+
+
+def test_probe_payload_keeps_reference_model_and_options_without_overrides():
+    payload = harness.gemma_probe_payload(REFERENCE_REQUEST, model=None, num_ctx=None)
+
+    assert payload["model"] == "gemma4:12b-it-q8_0"
+    assert payload["options"]["num_ctx"] == 65536
+    assert payload["options"]["kv_cache_type"] == "q8_0"
+
+
+def test_probe_payload_overrides_model_and_context_size():
+    payload = harness.gemma_probe_payload(
+        REFERENCE_REQUEST, model="gemma4:12b", num_ctx=8192
+    )
+
+    assert payload["model"] == "gemma4:12b"
+    assert payload["options"]["num_ctx"] == 8192
+    assert payload["options"]["kv_cache_type"] == "q8_0"
+
+
+def test_probe_payload_is_short_and_deterministic():
+    payload = harness.gemma_probe_payload(REFERENCE_REQUEST, model=None, num_ctx=None)
+
+    assert payload["options"]["seed"] == 1
+    assert payload["options"]["num_predict"] == 32
+    assert payload["stream"] is False

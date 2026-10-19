@@ -203,6 +203,21 @@ def _gemma_seconds(client: Any, payload: dict[str, Any]) -> float:
     return time.perf_counter() - begin
 
 
+def gemma_probe_payload(
+    reference_request: dict[str, Any], model: str | None, num_ctx: int | None
+) -> dict[str, Any]:
+    options = {**reference_request["options"], "seed": 1, "num_predict": 32}
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
+    return {
+        "model": model or reference_request["model"],
+        "messages": [{"role": "user", "content": GEMMA_PROBE}],
+        "stream": False,
+        "think": False,
+        "options": options,
+    }
+
+
 def command_coexist(args: argparse.Namespace) -> int:
     import httpx
 
@@ -210,20 +225,18 @@ def command_coexist(args: argparse.Namespace) -> int:
 
     engine = Engine(args.engine)
     reference = json.loads(args.reference_request.read_text(encoding="utf-8"))
-    request = reference["call"]["request"]
-    model = request["model"]
-    options = {**request["options"], "seed": 1, "num_predict": 32}
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": GEMMA_PROBE}],
-        "stream": False,
-        "think": False,
-        "options": options,
-    }
+    payload = gemma_probe_payload(
+        reference["call"]["request"], args.model, args.num_ctx
+    )
+    model = payload["model"]
     wavs = WavDirectory(args.wavs)
     audio = {uid: wavs.audio_for(uid) for uid in COEXIST_IDS}
     endpoint = args.endpoint
-    result: dict[str, Any] = {"engine": engine.value, "model": model}
+    result: dict[str, Any] = {
+        "engine": engine.value,
+        "model": model,
+        "options": payload["options"],
+    }
     with httpx.Client(base_url=endpoint) as client:
         _gemma_seconds(client, payload)
         result["gemma_seconds_before"] = round(_gemma_seconds(client, payload), 3)
@@ -428,6 +441,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             )
         if name == "coexist":
             sub.add_argument("--endpoint", default="http://localhost:11434")
+            sub.add_argument("--model", default=None)
+            sub.add_argument("--num-ctx", type=int, default=None)
             sub.add_argument(
                 "--reference-request", type=Path, default=DEFAULT_REFERENCE_REQUEST
             )
