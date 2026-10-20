@@ -1,6 +1,6 @@
 # Task v2.1.0-2: outbound payload builder and gate
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 2 (Size: M), and its design
 decisions "Gate scope is the whole outbound payload", "A block reports category and
@@ -68,15 +68,45 @@ pass. `manual/` is not changed.
 
 ## Acceptance criteria
 
-- [ ] Every outbound request is built through the single builder; a test fails when
+- [x] Every outbound request is built through the single builder; a test fails when
       an input source is added or when a non-listed text reaches the payload.
-- [ ] Each pattern category blocks on a positive fixture and passes a negative one
+- [x] Each pattern category blocks on a positive fixture and passes a negative one
       (ordinary numbers, dates, short digit groups, plain prose).
-- [ ] A mapping original present exactly, or in another declension, blocks; a
+- [x] A mapping original present exactly, or in another declension, blocks; a
       placeholder-only payload passes.
-- [ ] A topics-file line inside the payload blocks; an empty topics text blocks
+- [x] A topics-file line inside the payload blocks; an empty topics text blocks
       nothing.
-- [ ] A block carries category and position only; no value appears in findings,
+- [x] A block carries category and position only; no value appears in findings,
       their `repr`, or exceptions (a test per category).
-- [ ] Gate errors fail closed.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] Gate errors fail closed.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-20)
+
+Accepted by the owner after four review rounds (two independent subagent reviewers,
+then GLM as the second opinion; each round's confirmed findings were fixed test
+first). Suite: 4165 passed, 1 skipped; ruff clean. Code: `src/jarvis/personal_proxy/`
+(`payload.py` builder, `gate.py`, `normalize.py` with an offset map, `detectors/`,
+`original_values.py`, `topic_lines.py`, `text.py` promoted from the spikes).
+
+Added beyond the card, by review: Unicode normalization before detection (spaces,
+dashes, zero-width, NFKC, NFC) with findings mapped back to original offsets; a
+20000-character message cap and a topics cap (blocks, GATE_ERROR with a stage, never
+exception text); payload constructible only through the builder; system-message
+mapping check by whole token only; tokens inside placeholders ignored by the
+mapping check.
+
+Documented limits (not defects, to carry into the docs of task 12):
+
+- Names of three letters (Юля, Яна, Лев) do not match other declensions (the
+  spike's prefix heuristic, owner decision); transliteration and mixed-script
+  homoglyphs pass.
+- Unusual e-mail forms (quoted local parts) and separators CGJ, VS16, Hangul filler,
+  Braille blank pass; a payload can be forged only by deliberate misuse.
+- Passwords are matched after the markers password, pass, passphrase, passcode,
+  api key, pwd, парол*; pin, secret, token are not markers (too common as words).
+- Blocked on purpose: English "pass", hex strings of key length, digit runs of 9+
+  digits (including big numbers in prose), two lines with 4+ digits each and 9+
+  in total, "пароль" followed by a line break and an ordinary word.
+- Lowercase English addresses are caught only after an address cue or at the start of
+  a sentence; Russian addresses need a street marker and a house number.

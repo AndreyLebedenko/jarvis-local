@@ -283,7 +283,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    `--personal-proxy` flag in `parse_args()` (`app.py`); `DataLocality.EXTERNAL`
    wiring to the transport and Status Console. Boundary: no pipeline.
 
-2. **Outbound gate.** (Size: M.) Pure logic: the single outbound-payload builder
+2. **Outbound gate.** (Size: M. Done 2026-10-20, `tasks/done/task-v2.1.0-2-outbound-gate.md`.) Pure logic: the single outbound-payload builder
    and the deterministic gate (patterns, Luhn, mapping original and stem check,
    topics-text check), blocking results with category and position. Fully
    unit-tested with fixtures. Boundary: no model, no HTTP.
@@ -385,7 +385,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       (default) the runtime is byte-identical to v2.0 behavior; the seam for
       reporting a turn as `DataLocality.EXTERNAL` exists (done 2026-10-20; the
       call is wired by task 9). (Task 1.)
-- [ ] Every outbound request goes through one builder and the gate; a unit test
+- [x] Every outbound request goes through one builder and the gate; a unit test
       fails if a new input source reaches the builder. A block names its category
       and position and never contains the value. (Task 2.)
 - [ ] The speech-to-text stage returns word probabilities; silence and noise do
