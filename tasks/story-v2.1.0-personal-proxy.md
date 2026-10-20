@@ -288,7 +288,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    topics-text check), blocking results with category and position. Fully
    unit-tested with fixtures. Boundary: no model, no HTTP.
 
-3. **Speech-to-text stage.** (Size: M-L.) A Whisper large-v3-turbo engine
+3. **Speech-to-text stage.** (Size: M-L. Done 2026-10-20, `tasks/done/task-v2.1.0-3-stt-stage.md`.) A Whisper large-v3-turbo engine
    (faster-whisper, GPU `float16`, `language="ru"`, beam 5, no built-in VAD) behind
    a small protocol, returning the text, every word with its probability, and the
    segments' `avg_logprob`, `no_speech_prob`, and `compression_ratio`. The
@@ -388,7 +388,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
 - [x] Every outbound request goes through one builder and the gate; a unit test
       fails if a new input source reaches the builder. A block names its category
       and position and never contains the value. (Task 2.)
-- [ ] The speech-to-text stage returns word probabilities; silence and noise do
+- [x] The speech-to-text stage returns word probabilities; silence and noise do
       not reach the engine or the checker; without the optional dependencies the
       main runtime and CI are unchanged. (Task 3.)
 - [ ] The check stage returns a checked transcript and a doubt list; any failure

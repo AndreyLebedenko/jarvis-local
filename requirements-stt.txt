@@ -1,0 +1,11 @@
+# OPTIONAL: speech recognition for --personal-proxy (Whisper large-v3-turbo
+# through faster-whisper). The normal runtime, requirements.txt and CI do not
+# need it; install it only on the machine that runs --personal-proxy:
+#   pip install -r requirements-stt.txt
+# then fetch the weights once (needs the network): python setup_stt_model.py
+# Versions are those of the v2.1.0 speech spikes. The nvidia-* wheels supply
+# the CUDA 12 libraries CTranslate2 needs on the GPU (stt_device = "cuda").
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+nvidia-cublas-cu12>=12.9,<13
+nvidia-cudnn-cu12>=9.2,<10

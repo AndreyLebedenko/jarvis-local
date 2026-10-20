@@ -1,6 +1,6 @@
 # Task v2.1.0-3: speech-to-text stage
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 3 (Size: M-L). Facts: spikes
 v2.1.0-5, -6, -8 (`tasks/done/`) and `PROJECT.md` section "v2.1.0 speech recognition
@@ -78,13 +78,37 @@ utterances and print the speech seconds per clip, so the owner can see whether
 
 ## Acceptance criteria
 
-- [ ] The engine protocol returns text, per-word probabilities, and per-segment
+- [x] The engine protocol returns text, per-word probabilities, and per-segment
       `avg_logprob`, `no_speech_prob`, `compression_ratio`.
-- [ ] Silence and noise (no or too little speech) never reach the engine: a test with
+- [x] Silence and noise (no or too little speech) never reach the engine: a test with
       a fake engine asserts it is not called.
-- [ ] Without the optional dependencies the package imports, the main runtime and
+- [x] Without the optional dependencies the package imports, the main runtime and
       `requirements.txt` and CI are unchanged; a missing dependency or weights raises
       a typed, actionable error; no code path downloads weights at runtime.
-- [ ] `stt_min_speech_seconds` is documented, validated, and labeled as unmeasured.
-- [ ] The human-run handoff exists and is self-sufficient.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] `stt_min_speech_seconds` is documented, validated, and labeled as unmeasured.
+- [x] The human-run handoff exists and is self-sufficient.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-20)
+
+Accepted by the owner. Developer subagent; an independent reviewer found four
+defects (a CUDA/DLL failure reported as missing weights, DLL search only in
+`purelib`, clip format not validated, untyped errors from the probability source),
+all fixed test first. Suite: 4227 passed, 1 skipped; ruff clean.
+
+Handoff run by the agent on the owner's request (2026-10-20, GPU, weights from the
+local cache; `requirements-stt.txt` installed into the main interpreter with the
+owner's yes): step 2 (guard) both controls 0.00 s of speech, least speech in any of
+the 44 real utterances 1.54 s, so the unmeasured default `stt_min_speech_seconds`
+= 0.3 sits clear of both; step 3 (five recordings through the guarded function on
+CUDA): correct Russian text, 0.23-0.37 s per short recording and 0.93-1.43 s per
+long one (22-28 s of audio), model load 5.7 s, controls never reach the engine.
+Not done: step 1.3 (`setup_stt_model.py`, the weights were already cached), step 4
+(offline proof, needs the network switched off), the CPU variant of step 3.
+
+Notes for later tasks: all segments of one decoding window share `avg_logprob` and
+`compression_ratio` (eight identical lines on a 28 s recording), so these signals
+are per window, not per segment, in practice. Weak words seen: "-01234" in an
+account number p=0.69, "тысяч" p=0.64, "-1234" in a card number p=0.83. The guard
+counts windows at or above the threshold with no hysteresis; music or other
+speech-like noise counts as speech.

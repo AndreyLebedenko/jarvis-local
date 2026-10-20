@@ -5652,6 +5652,16 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   (passport, SMS code, password) instead of replacing them, and sometimes gives
   an unrelated reason. The Gemma check adds little for this pass (arm W leak
   0.050).
+- Speech-to-text stage (story v2.1.0 task 3, `src/jarvis/personal_proxy/`): Whisper
+  large-v3-turbo through faster-whisper behind a `SpeechEngine` protocol, loaded
+  from local files only (the runtime never downloads weights; `setup_stt_model.py`
+  does, once). It lives in the optional `requirements-stt.txt`; imports are lazy,
+  so the main requirements and CI are unchanged. A speech-presence guard (the
+  project's Silero VAD, `[vad].threshold`, at least
+  `[personal_proxy].stt_min_speech_seconds` = 0.3 of speech) keeps silence and
+  noise from the engine; on the spike controls it finds 0.00 s and on the 44
+  utterances at least 1.54 s. The guard does not reject music or other
+  speech-like noise. Run on the GPU: 0.23-1.43 s per recording.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

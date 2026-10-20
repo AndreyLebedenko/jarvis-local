@@ -555,6 +555,7 @@ class PersonalProxySettings:
     stt_device: str = "cuda"
     stt_language: str = "ru"
     stt_weak_word_probability: float = 0.5
+    stt_min_speech_seconds: float = 0.3
 
 
 @dataclass(frozen=True)
@@ -1722,6 +1723,7 @@ _PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS = (
     "connect_timeout_seconds",
     "confirmation_timeout_seconds",
     "doubt_min_listed",
+    "stt_min_speech_seconds",
 )
 _PERSONAL_PROXY_NON_EMPTY_FIELDS = ("topics_file", "stt_model", "stt_language")
 

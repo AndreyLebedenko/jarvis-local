@@ -48,6 +48,7 @@ def test_section_defaults():
         stt_device="cuda",
         stt_language="ru",
         stt_weak_word_probability=0.5,
+        stt_min_speech_seconds=0.3,
     )
 
 
@@ -69,6 +70,7 @@ def test_section_parses_from_config(tmp_path):
         stt_device = "cpu"
         stt_language = "en"
         stt_weak_word_probability = 0.25
+        stt_min_speech_seconds = 0.8
         """,
     )
 
@@ -86,6 +88,7 @@ def test_section_parses_from_config(tmp_path):
         stt_device="cpu",
         stt_language="en",
         stt_weak_word_probability=0.25,
+        stt_min_speech_seconds=0.8,
     )
 
 
@@ -107,6 +110,11 @@ def test_section_parses_from_config(tmp_path):
             r"\[personal_proxy\]\.confirmation_timeout_seconds",
         ),
         ("doubt_min_listed = 0", r"\[personal_proxy\]\.doubt_min_listed"),
+        ("stt_min_speech_seconds = 0", r"\[personal_proxy\]\.stt_min_speech_seconds"),
+        (
+            "stt_min_speech_seconds = -0.5",
+            r"\[personal_proxy\]\.stt_min_speech_seconds",
+        ),
         ('stt_model = ""', r"\[personal_proxy\]\.stt_model"),
         ('stt_device = "tpu"', r"\[personal_proxy\]\.stt_device"),
         ('stt_language = " "', r"\[personal_proxy\]\.stt_language"),
@@ -181,6 +189,7 @@ def test_a_wrongly_typed_endpoint_is_rejected_without_echoing_it(tmp_path):
         "connect_timeout_seconds",
         "confirmation_timeout_seconds",
         "stt_weak_word_probability",
+        "stt_min_speech_seconds",
     ],
 )
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
@@ -203,3 +212,15 @@ def test_the_example_config_loads_and_matches_the_defaults(tmp_path):
     settings = load_settings(EXAMPLE_CONFIG_PATH, ui_path=tmp_path / "none.toml")
 
     assert settings.personal_proxy == PersonalProxySettings()
+
+
+def test_the_minimum_speech_is_labeled_unmeasured_in_the_example_config():
+    example = EXAMPLE_CONFIG_PATH.read_text(encoding="utf-8")
+    before_key = example.split("stt_min_speech_seconds = ", 1)[0]
+    comment_lines = []
+    for line in reversed(before_key.splitlines()):
+        if not line.startswith("#"):
+            break
+        comment_lines.append(line)
+
+    assert "UNMEASURED" in " ".join(comment_lines)

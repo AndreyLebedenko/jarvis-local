@@ -709,3 +709,10 @@ stt_language = "ru"
 # engine may have misheard it). 0.5 is the story's starting value; 0
 # never flags a word, 1 flags every word not recognized with certainty.
 stt_weak_word_probability = 0.5
+# Least seconds of speech (by the same Silero VAD and [vad].threshold as the
+# microphone capture) a recording must hold before the engine is given it;
+# anything with less is "no speech" and is never transcribed, because the
+# engine invents text on silence and noise. 0.3 is an UNMEASURED starting
+# value: it has not yet been checked against recorded silence, noise and real
+# utterances (the human-run check in manual/stt-stage-handoff.md does that).
+stt_min_speech_seconds = 0.3
