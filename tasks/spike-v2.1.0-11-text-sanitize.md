@@ -1,6 +1,7 @@
 # Spike v2.1.0-11: text-only sanitize pass on INT4
 
-Status: Open (rule frozen before the first run).
+Status: Result recorded 2026-10-20. Decision: the owner accepted the result
+(go with one accepted deviation); see "Result".
 
 ## Question
 
@@ -89,3 +90,49 @@ agreement of the leak set.
   spikes 6-9 (`gemma4:12b`, 7.6 GB).
 - Stop if the recorded inputs (`words/`, `samples/`) are missing or their
   corpus fingerprints differ from `run_meta.json`.
+
+## Result (recorded 2026-10-20)
+
+All 296 generations were run on 2026-10-19 and scored offline on 2026-10-20
+(`python -m manual.manual_check_text_sanitize score`). Arm G, both corpora and
+both seeds pooled:
+
+| criterion | value | limit | passed |
+|---|---|---|---|
+| validity | 1.000 | >= 0.97 | yes |
+| leak rate (recognisable spans) | 6/115 = 0.052 | <= 0.107 | yes |
+| mapping error rate | 4/109 = 0.037 | <= 0.29 | yes |
+| meaning preservation | 0.865 | >= 0.603 | yes |
+| false refusals | 31/132 = 23.5% | <= 15% | no |
+| missed refusals | 0 | <= 1 | yes |
+
+The close condition (validity below 90% or leak above 0.15) did not trigger. The
+only failed criterion went to the owner, who accepted it on 2026-10-20: the
+sanitize pass is kept as designed on INT4 at `num_ctx` 8192, and the frozen rule
+is not edited after the result.
+
+The false refusals (verdict `refuse` where the corpus expects `send`; expected
+`refuse` only for category TOPIC, `Utterance.expected_verdict`):
+
+- direct identifiers refused instead of replaced with placeholders: passport
+  (`GOV_ID`), SMS code and password (`SECRET`) - 2 of 2 generations for
+  `id_passport`, `id_sms_code`, `id_short_password`, and every `v2_passport`
+  recording;
+- refusals under an unrelated reason: birth date and doctor/clinic as "medical
+  condition", salary, TIN and card number as "personal debt";
+- some refusals do not repeat across the two seeds (card number 1 of 2).
+
+Per corpus: v1 14/72 = 19.4% (baseline 14.8%), v2 17/60 = 28%.
+
+Leaks: 6 of 115, all quasi-identifiers in free text, identical on both seeds and
+none on v2: "единственный анестезиолог в Сосновке", "судьёй в Арбитражном суде
+Тулы", "отделении рентгенологии в Первой городской больнице Омска".
+
+Reported, outside the rule: arm W (no Gemma check) leaks 6/119 = 0.050, false
+refusals 26/132, preservation 0.896, so the Gemma check adds little for this
+pass. Lost spans (gone before the pass; cannot leak): 12 in G, 18 in W. Time per
+call: median 5.0 s, p90 5.6 s in both arms. No parse failures.
+
+Limits: the baseline of spike 1 used another model, context, and input, so the
+comparison reads the pass plus its input. The corpora are invented identities of
+one speaker and two synthetic voices.

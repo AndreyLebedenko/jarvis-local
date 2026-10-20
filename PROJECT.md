@@ -5592,7 +5592,7 @@ text.
 ## v2.1.0 speech recognition and confidence spikes (2026-10-19)
 
 Records of the spikes behind `tasks/story-v2.1.0-personal-proxy.md`: cards
-`tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-10-ask-policy.md`.
+`tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-11-text-sanitize.md`.
 
 Owner decisions:
 
@@ -5631,6 +5631,13 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   the wrong fragment in 5 of 7. The evidence is thin (7 errors, three of them
   one phrase in three voices) and the labels were revised after the data was
   seen.
+- Text-only sanitize pass on `gemma4:12b` INT4 at `num_ctx` 8192 over Whisper
+  text, optionally checked (spike v2.1.0-11, 296 generations): validity 1.000,
+  leak 0.052, mapping error 0.037, preservation 0.865; false refusals 23.5%
+  (limit 15%), accepted by the owner. The pass refuses direct identifiers
+  (passport, SMS code, password) instead of replacing them, and sometimes gives
+  an unrelated reason. The Gemma check adds little for this pass (arm W leak
+  0.050).
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

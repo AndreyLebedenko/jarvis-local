@@ -5,7 +5,7 @@ as a launch flag); pipeline and interaction revised by the owner, 2026-10-19
 (see "Revisions of 2026-10-19"). No task card is started; the task-card
 sequence was re-cut on 2026-10-19.
 **Created:** 2026-10-18
-**Updated:** 2026-10-19
+**Updated:** 2026-10-20
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md`. This story reverses the item
 "Rejected for v2.0" in that file (see "Reversal of a recorded rejection").
 **Predecessors:** `tasks/done/story-v2.0-mcp-voice-guide.md` (done) shipped the
@@ -263,13 +263,15 @@ Re-cut on 2026-10-19 after spikes v2.1.0-1 to -10 (see "Revisions of 2026-10-19"
 Tasks 2, 6, 7, and 11 are the 2026-10-18 tasks 3, 5, 6, and 9 unchanged; the
 others are changed or new. Cards for tasks 1-12 do not exist yet.
 
-0. **Spikes (done) and one more.** The old task 1 is replaced by the records
+0. **Spikes (done).** The old task 1 is replaced by the records
    `tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-10-ask-policy.md`. **Spike
    v2.1.0-11 (Size: S, before task 5):** measure the text-only sanitize pass on
    `gemma4:12b` INT4 at `num_ctx` 8192, on the Whisper transcripts and checked
    transcripts of both recorded corpora (span recall, damage to non-sensitive
    words, structured-output validity), with the rule frozen in its card before the
-   run. Offline harness under `manual/`; no production code.
+   run. Offline harness under `manual/`; no production code. **Done 2026-10-20:**
+   go with one accepted deviation (false refusals 23.5% against the 15% limit;
+   the owner accepted it); see `tasks/spike-v2.1.0-11-text-sanitize.md`.
 
 1. **Locality contract, capability, and config.** (Size: S-M.) Amend the runtime
    locality contract in `PROJECT.md` with the external-inference capability
@@ -372,9 +374,9 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
 
 ## Acceptance criteria
 
-- [ ] The spike records and the decision (a dedicated engine first) are in
+- [x] The spike records and the decision (a dedicated engine first) are in
       `PROJECT.md` (done 2026-10-19); the text-only sanitize pass on INT4 has a
-      recorded result. (Spike v2.1.0-11.)
+      recorded result (done 2026-10-20). (Spike v2.1.0-11.)
 - [ ] The locality contract names the external-inference capability; with it off
       (default) the runtime is byte-identical to v2.0 behavior; a turn answered
       externally reports `DataLocality.EXTERNAL`. (Task 1.)
