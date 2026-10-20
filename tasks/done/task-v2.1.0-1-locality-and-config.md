@@ -1,6 +1,6 @@
 # Task v2.1.0-1: locality contract, capability flag, and config
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 1 (Size: S-M).
 
@@ -67,16 +67,25 @@ Out of scope: any pipeline stage, the HTTP client, the gate, the STT engine,
 
 ## Acceptance criteria
 
-- [ ] `PROJECT.md` names the capability and states the two guarantees (off by
+- [x] `PROJECT.md` names the capability and states the two guarantees (off by
       default; byte-identical to v2.0 without the flag).
-- [ ] Without `--personal-proxy` nothing changes: existing tests pass untouched;
+- [x] Without `--personal-proxy` nothing changes: existing tests pass untouched;
       a test shows the default `PersonalProxySettings` and a missing section do not
       enable anything.
-- [ ] `--personal-proxy` with `--mcp-mode` fails at `parse_args`; without
+- [x] `--personal-proxy` with `--mcp-mode` fails at `parse_args`; without
       `--status-console` fails at `parse_args`; with an empty `endpoint` or `model`
       the run ends with a clear error and no component starts.
-- [ ] Every `[personal_proxy]` key is documented in `config.example.toml`; every
+- [x] Every `[personal_proxy]` key is documented in `config.example.toml`; every
       invalid value is rejected naming the key; no field holds an API key.
-- [ ] The locality seam reports `EXTERNAL` inside the scope, `LOCAL` after it
+- [x] The locality seam reports `EXTERNAL` inside the scope, `LOCAL` after it
       (including after an exception); no production caller.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-20)
+
+Accepted by the owner. Developer subagent implemented it; an independent reviewer
+found three defects in the validation (endpoint parsing and secrets in the URL,
+nan/inf timeouts, test gaps), all fixed. Suite: 3821 passed, 1 skipped; ruff
+clean. Extra validation beyond the card: `api_key_env` must look like a variable
+name, `stt_device` is `cuda` or `cpu`. Open note for task 9: the locality seam is
+not safe for nested or overlapping turns.

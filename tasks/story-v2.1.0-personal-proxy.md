@@ -273,7 +273,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    go with one accepted deviation (false refusals 23.5% against the 15% limit;
    the owner accepted it); see `tasks/done/spike-v2.1.0-11-text-sanitize.md`.
 
-1. **Locality contract, capability, and config.** (Size: S-M.) Amend the runtime
+1. **Locality contract, capability, and config.** (Size: S-M. Done 2026-10-20, `tasks/done/task-v2.1.0-1-locality-and-config.md`.) Amend the runtime
    locality contract in `PROJECT.md` with the external-inference capability
    (explicit, off by default, reported on the data-source axis). Add the
    `[personal_proxy]` config section (endpoint, model, key env var name,
@@ -344,6 +344,10 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    transcript, the doubts and whether it would ask, the sanitized text, the
    mapping, the verdict, the gate result, and the exact payload; block feedback
    spoken and shown. Tested with fakes end to end. Boundary: no journal changes.
+   Calls the locality seam of task 1 (`personal_proxy/locality.py`,
+   `external_locality`), which is not safe for nested or overlapping turns (an
+   inner exit sets `LOCAL` under an active outer scope): the turn lifecycle here
+   must keep one external turn at a time, or the seam must be reworked.
 
 10. **Journal, provenance, and Status Console surfaces.** (Size: M.) Journal
     events for the request/answer pair with external provenance
@@ -377,9 +381,10 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
 - [x] The spike records and the decision (a dedicated engine first) are in
       `PROJECT.md` (done 2026-10-19); the text-only sanitize pass on INT4 has a
       recorded result (done 2026-10-20). (Spike v2.1.0-11.)
-- [ ] The locality contract names the external-inference capability; with it off
-      (default) the runtime is byte-identical to v2.0 behavior; a turn answered
-      externally reports `DataLocality.EXTERNAL`. (Task 1.)
+- [x] The locality contract names the external-inference capability; with it off
+      (default) the runtime is byte-identical to v2.0 behavior; the seam for
+      reporting a turn as `DataLocality.EXTERNAL` exists (done 2026-10-20; the
+      call is wired by task 9). (Task 1.)
 - [ ] Every outbound request goes through one builder and the gate; a unit test
       fails if a new input source reaches the builder. A block names its category
       and position and never contains the value. (Task 2.)

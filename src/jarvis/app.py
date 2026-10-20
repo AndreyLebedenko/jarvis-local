@@ -241,6 +241,10 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.personal_proxy.startup import (
+    PersonalProxyNotConfiguredError,
+    require_configured,
+)
 from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
 from jarvis.tools.history import HistoryToolProvider
 from jarvis.tools.host import (
@@ -2939,6 +2943,7 @@ async def warm_up(
 
 
 MCP_MODE_STARTUP_FAILED_EXIT_CODE = 4
+PERSONAL_PROXY_STARTUP_FAILED_EXIT_CODE = 5
 MCP_MODE_STARTUP_ERRORS = (McpTokenFileError, McpPortUnavailableError)
 _MCP_MODE_EVENT_SOURCE = "MCP_MODE"
 
@@ -3407,7 +3412,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "no input hotkeys; Jarvis only speaks what an MCP client sends"
         ),
     )
+    parser.add_argument(
+        "--personal-proxy",
+        action="store_true",
+        help=(
+            "let a sanitized spoken request be answered by the external model "
+            "configured in [personal_proxy]; requires --status-console, "
+            "cannot be combined with --mcp-mode"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.personal_proxy and args.mcp_mode:
+        parser.error("--personal-proxy and --mcp-mode cannot be combined")
+    if args.personal_proxy and not args.status_console:
+        parser.error("--personal-proxy requires --status-console")
     if args.debug and not args.status_console:
         # The console banner is the consent surface: debug lifts the
         # content rule that both logs otherwise keep, so a run that
@@ -3429,6 +3447,9 @@ def main(
     # and manual scripts that call run()/build_app() are never blocked.
     args = parse_args(argv)
     run_mode = RunMode.MCP if args.mcp_mode else RunMode.NORMAL
+    launch_settings = (
+        _validated_personal_proxy_settings() if args.personal_proxy else {}
+    )
     # Seams resolve at call time, not as def-time defaults, so tests can
     # monkeypatch the module names; a default would stay bound to the real one.
     guard = (acquire or acquire_single_instance)()
@@ -3448,11 +3469,22 @@ def main(
                 include_touchstrip=not args.no_touchstrip,
                 debug=args.debug,
                 run_mode=run_mode,
+                **launch_settings,
             )
         else:
             _run_headless(run_mode)
     finally:
         guard.release()
+
+
+def _validated_personal_proxy_settings() -> dict[str, Settings]:
+    settings = load_settings()
+    try:
+        require_configured(settings.personal_proxy)
+    except PersonalProxyNotConfiguredError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(PERSONAL_PROXY_STARTUP_FAILED_EXIT_CODE) from error
+    return {"settings": settings}
 
 
 def _run_headless(run_mode: RunMode) -> None:

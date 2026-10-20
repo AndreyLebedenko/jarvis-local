@@ -655,3 +655,57 @@ max_spoken_text_chars = 8000
 # Most unfinished calls at once, the one being spoken included; a call over
 # it is refused with a typed error. Calls are spoken one at a time, in order.
 queue_capacity = 8
+
+[personal_proxy]
+# Used only when Jarvis is started with --personal-proxy (requires
+# --status-console, cannot be combined with --mcp-mode). In that mode a
+# spoken request is transcribed and sanitized locally, and only the cleaned
+# text may be sent to the external OpenAI-compatible model configured here.
+# Everything else, including the whole of Jarvis's own dialog, stays local.
+# Without the flag this section has no effect and nothing leaves the machine.
+#
+# Full URL of the OpenAI-compatible chat completions endpoint (http or https).
+# Empty by default so that nothing can be sent until you choose a provider:
+# --personal-proxy refuses to start while endpoint or model is empty.
+endpoint = ""
+# Model name the provider expects in the request. Empty for the same reason.
+model = ""
+# The NAME of the environment variable that holds the API key. The key itself
+# is never a config value, so it cannot end up in this file or in a log. Set
+# the variable in the environment that starts Jarvis.
+api_key_env = "JARVIS_PERSONAL_PROXY_KEY"
+# true: run the whole pipeline but send nothing; the cleaned text is shown and
+# journaled instead. Safe default: turn it off only after you have looked at
+# what would have been sent.
+dry_run = true
+# Plain-text list of topics you never want sent out, one per line, kept
+# locally. A relative path is relative to the working directory, like
+# [journal].root (Jarvis.cmd runs from the project folder). Never commit it:
+# the default is in .gitignore.
+topics_file = "personal_proxy_topics.txt"
+# Seconds to wait for the whole external answer. Generous because a long
+# answer streams for a while; a request over it fails with a typed error.
+request_timeout_seconds = 60
+# Seconds to wait for the connection to open. Short: an unreachable provider
+# should fail quickly, not freeze a spoken request.
+connect_timeout_seconds = 10
+# Seconds you have to confirm a request that the checks flagged before it is
+# treated as declined. Long enough to read it, short enough that a forgotten
+# prompt does not hold the turn open.
+confirmation_timeout_seconds = 20
+# Fewest doubts the judge must list in a transcript to ask you for
+# confirmation. 1 means any listed doubt asks. A starting value, to be
+# confirmed against recorded data before the pipeline relies on it.
+doubt_min_listed = 1
+# Speech-to-text for the spoken request: the engine model chosen in the
+# v2.1.0 spikes for Russian speech at a speed that fits a voice turn.
+stt_model = "large-v3-turbo"
+# "cuda" (the default GPU) or "cpu".
+stt_device = "cuda"
+# Language of the speech, passed to the engine instead of auto-detection,
+# which is less reliable on short utterances.
+stt_language = "ru"
+# A recognized word with a probability below this is treated as doubtful (the
+# engine may have misheard it). 0.5 is the story's starting value; 0
+# never flags a word, 1 flags every word not recognized with certainty.
+stt_weak_word_probability = 0.5

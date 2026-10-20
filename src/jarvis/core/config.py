@@ -35,11 +35,13 @@ Architecture v1.2.4 section - "Do not implement live reconfiguration").
 
 import enum
 import json
+import math
 import re
 import tomllib
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path, PureWindowsPath
 from typing import Any, get_args, get_origin
+from urllib.parse import urlsplit
 
 DEFAULT_CONFIG_PATH = Path("config.toml")
 DEFAULT_UI_CONFIG_PATH = Path("config.ui.toml")
@@ -528,6 +530,33 @@ class McpModeSettings:
     queue_capacity: int = 8
 
 
+PERSONAL_PROXY_STT_DEVICES = ("cuda", "cpu")
+_ENV_VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+@dataclass(frozen=True)
+class PersonalProxySettings:
+    """`--personal-proxy`, where a sanitized text may be answered by an external
+    OpenAI-compatible model. The defaults enable nothing: with an empty
+    endpoint or model the flag refuses to start. The key itself is never a
+    setting, only the name of the environment variable that holds it;
+    config.example.toml documents every default and why it was chosen."""
+
+    endpoint: str = ""
+    model: str = ""
+    api_key_env: str = "JARVIS_PERSONAL_PROXY_KEY"
+    dry_run: bool = True
+    topics_file: str = "personal_proxy_topics.txt"
+    request_timeout_seconds: float = 60
+    connect_timeout_seconds: float = 10
+    confirmation_timeout_seconds: float = 20
+    doubt_min_listed: int = 1
+    stt_model: str = "large-v3-turbo"
+    stt_device: str = "cuda"
+    stt_language: str = "ru"
+    stt_weak_word_probability: float = 0.5
+
+
 @dataclass(frozen=True)
 class MicrophoneSettings:
     # "" means "use sounddevice's default input device" (audio_in.py's
@@ -985,6 +1014,7 @@ class Settings:
     response: ResponseSettings = field(default_factory=ResponseSettings)
     mcp: McpSettings = field(default_factory=McpSettings)
     mcp_mode: McpModeSettings = field(default_factory=McpModeSettings)
+    personal_proxy: PersonalProxySettings = field(default_factory=PersonalProxySettings)
     history: HistorySettings = field(default_factory=HistorySettings)
     journal: JournalSettings = field(default_factory=JournalSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
@@ -1009,6 +1039,7 @@ _SECTIONS: dict[str, type] = {
     "response": ResponseSettings,
     "mcp": McpSettings,
     "mcp_mode": McpModeSettings,
+    "personal_proxy": PersonalProxySettings,
     "history": HistorySettings,
     "journal": JournalSettings,
     "logging": LoggingSettings,
@@ -1661,6 +1692,78 @@ def _build_mcp_mode_section(
     return settings
 
 
+def _require_safe_endpoint(section_name: str, endpoint: str) -> None:
+    """Empty is allowed. Never echoes the value: a key may sit inside it."""
+    if not endpoint:
+        return
+    problem = _endpoint_problem(endpoint)
+    if problem:
+        raise ConfigError(f"[{section_name}].endpoint {problem}")
+
+
+def _endpoint_problem(endpoint: str) -> str | None:
+    try:
+        parts = urlsplit(endpoint)
+        hostname = parts.hostname
+        has_userinfo = parts.username is not None or parts.password is not None
+    except ValueError:
+        return "is not a valid URL"
+    if parts.scheme not in ("http", "https") or not hostname:
+        return "must be an http(s) URL with a host, or empty"
+    if has_userinfo:
+        return "must not contain a user name or password"
+    if parts.query:
+        return "must not contain a query string"
+    return None
+
+
+_PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS = (
+    "request_timeout_seconds",
+    "connect_timeout_seconds",
+    "confirmation_timeout_seconds",
+    "doubt_min_listed",
+)
+_PERSONAL_PROXY_NON_EMPTY_FIELDS = ("topics_file", "stt_model", "stt_language")
+
+
+def _build_personal_proxy_section(
+    section_name: str, raw: dict[str, Any]
+) -> "PersonalProxySettings":
+    if "endpoint" in raw and not isinstance(raw["endpoint"], str):
+        # The generic type error echoes the value; an endpoint may carry a key.
+        raise ConfigError(f"[{section_name}].endpoint must be str")
+    settings = _build_plain_section(section_name, PersonalProxySettings, raw)
+    _require_safe_endpoint(section_name, settings.endpoint)
+    if not _ENV_VAR_NAME.fullmatch(settings.api_key_env):
+        # The value is not echoed: a key pasted here must not reach a log.
+        raise ConfigError(
+            f"[{section_name}].api_key_env must be the NAME of an environment "
+            "variable (letters, digits, underscore), never the key itself"
+        )
+    for name in _PERSONAL_PROXY_NON_EMPTY_FIELDS:
+        if not getattr(settings, name).strip():
+            raise ConfigError(f"[{section_name}].{name} must not be empty")
+    for name in _PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS:
+        value = getattr(settings, name)
+        if not math.isfinite(value) or value <= 0:
+            raise ConfigError(
+                f"[{section_name}].{name} must be a finite positive number, "
+                f"got {value!r}"
+            )
+    if settings.stt_device not in PERSONAL_PROXY_STT_DEVICES:
+        supported = ", ".join(PERSONAL_PROXY_STT_DEVICES)
+        raise ConfigError(
+            f"[{section_name}].stt_device must be one of: {supported}; "
+            f"got {settings.stt_device!r}"
+        )
+    if not 0.0 <= settings.stt_weak_word_probability <= 1.0:
+        raise ConfigError(
+            f"[{section_name}].stt_weak_word_probability must be within "
+            f"[0, 1], got {settings.stt_weak_word_probability!r}"
+        )
+    return settings
+
+
 def _build_mcp_section(section_name: str, raw: dict[str, object]) -> "McpSettings":
     known_fields = {
         "enabled",
@@ -2148,6 +2251,7 @@ _SECTION_BUILDERS: dict[type, Any] = {
     FilesSettings: _build_files_section,
     McpSettings: _build_mcp_section,
     McpModeSettings: _build_mcp_mode_section,
+    PersonalProxySettings: _build_personal_proxy_section,
     MemorySettings: _build_memory_section,
     LoggingSettings: _build_logging_section,
     HistorySettings: _build_history_section,

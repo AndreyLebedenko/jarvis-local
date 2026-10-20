@@ -38,6 +38,7 @@ manual_check_transcription_json_out/
 manual_check_transcription_speech_out/
 personal_proxy_corpus_wavs/
 /mcp_mode.token
+/personal_proxy_topics.txt
 CLAUDE.md
 AGENTS.md
 /graphify-out/

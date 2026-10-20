@@ -17,6 +17,20 @@ call reached the network). With every such capability disabled - the
 default, and the only state that exists before story-v1.4.0 lands - the
 runtime is unconditionally local, byte-identical to the pre-v1.4.0
 guarantee.
+`--personal-proxy` (story v2.1.0) is the second such capability and the first
+that sends text out: a spoken request is transcribed and sanitized locally,
+and only the sanitized text may go to the external OpenAI-compatible endpoint
+configured in `[personal_proxy]`. Jarvis's orchestration, conversation state,
+and Ollama inference stay local exactly as above. It exists only when the run
+is started with the explicit `--personal-proxy` flag (requires
+`--status-console`, excludes `--mcp-mode`) and `[personal_proxy].endpoint` and
+`model` are set; a missing endpoint or model ends startup with an error, never
+a silent fall back to local. It is off by default and is not a persistent
+setting, so a restart without the flag is local again. A turn answered
+externally is reported as `DataLocality.EXTERNAL`; every other turn stays
+`LOCAL`. The reporting seam exists (`personal_proxy/locality.py`) but its
+call is wired by a later task (v2.1.0 task 9); until then the indicator stays
+`LOCAL`. Without the flag the runtime is byte-identical to the v2.0 behavior.
 `--mcp-mode` (story v2.0) adds an inbound path, not an outbound one: it serves
 one streamable-HTTP MCP endpoint on `127.0.0.1` only, behind a bearer token,
 so another assistant's answer can reach Jarvis without Jarvis reaching
