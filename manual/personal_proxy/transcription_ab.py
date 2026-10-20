@@ -1,8 +1,8 @@
 """Pure logic of the transcription A/B spikes v2.1.0-2 and v2.1.0-3.
 
 Scoring, the frozen decision rule, and the report; no Ollama here. The cards
-are tasks/spike-v2.1.0-2-transcription-prompt.md (A against a reworded
-instruction B) and tasks/spike-v2.1.0-3-json-transcription.md (A against a
+are tasks/done/spike-v2.1.0-2-transcription-prompt.md (A against a reworded
+instruction B) and tasks/done/spike-v2.1.0-3-json-transcription.md (A against a
 constrained-JSON request C).
 """
 

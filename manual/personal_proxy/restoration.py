@@ -1,4 +1,4 @@
-"""Block R of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""Block R of tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 Restoration puts the original values back into an external answer. It is text
 only, so it is measured separately from the audio arms: a set of 30 synthetic

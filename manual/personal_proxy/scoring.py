@@ -1,8 +1,8 @@
 """Per-generation scoring and per-arm aggregation for the personal-proxy spike.
 
 Pure logic over GenerationRecord files and the frozen corpus. The measures and
-their definitions are those of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md,
-"Measurements".
+their definitions are those of
+tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md, "Measurements".
 """
 
 from __future__ import annotations

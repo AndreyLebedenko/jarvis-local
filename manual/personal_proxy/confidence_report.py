@@ -1,5 +1,5 @@
 """Signals per recording, their evaluation by the frozen rule, and the report of
-spike v2.1.0-8 (tasks/spike-v2.1.0-8-confidence-signals.md). Pure: it works on
+spike v2.1.0-8 (tasks/done/spike-v2.1.0-8-confidence-signals.md). Pure: it works on
 the data the harness has read."""
 
 from __future__ import annotations

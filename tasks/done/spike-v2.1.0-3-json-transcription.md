@@ -1,12 +1,12 @@
 # Spike v2.1.0-3: transcription through constrained JSON
 
-Status: In progress. Rule frozen 2026-10-18, before any run.
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows
-`tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md` (the two-step baseline
+`tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md` (the two-step baseline
 fails on 24 of 88 generations; the combined C-user arm, which asked for a
 constrained JSON object, had 8) and
-`tasks/spike-v2.1.0-2-transcription-prompt.md` (rewording the instruction made
+`tasks/done/spike-v2.1.0-2-transcription-prompt.md` (rewording the instruction made
 it worse: 26 of 88 against 22).
 
 ## Question

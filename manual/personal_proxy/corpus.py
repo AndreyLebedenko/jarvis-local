@@ -1,4 +1,4 @@
-"""Frozen inputs of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""Frozen inputs of tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 The scripted corpus (44 utterances read aloud by the owner), its labeled
 sensitive spans, the expected verdicts, the controls, and the test topics

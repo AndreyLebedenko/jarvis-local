@@ -1,7 +1,10 @@
 # Spike v2.1.0-1: combined transcribe-and-sanitize pass on Gemma
 
-**Status:** In progress. Harness prepared (2026-10-18); next is the
-human-run `tasks/spike-v2.1.0-1-handoff.md` (recording, then the runs).
+**Status:** Run complete, closed 2026-10-20. The measured outcome is not written
+up in this card (it keeps the design and the Stage 0 result); it is summarised in
+`PROJECT.md` (v2.1.0 spikes) and in the story's "Revisions of 2026-10-19".
+Originally: harness prepared 2026-10-18, human-run
+`tasks/done/spike-v2.1.0-1-handoff.md` (recording, then the runs).
 The decision rule, thresholds, corpus size (44 utterances plus controls), and
 the WAV production method (a recorder through the production capture path)
 were confirmed and frozen by the owner on 2026-10-18. The corpus script

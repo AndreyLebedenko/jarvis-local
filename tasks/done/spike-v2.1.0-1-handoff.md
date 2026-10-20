@@ -3,7 +3,7 @@
 Executable from its own text, per Testing protocol item 4 (`CLAUDE.md`
 "Testing protocol"). Run by a human against live Ollama and the microphone;
 the agent prepared it and stops. Card:
-`tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md`.
+`tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md`.
 
 What this produces: a corpus of 44 recordings made through the production
 capture path, raw generations for the three arms of the card, a report that

@@ -1,6 +1,6 @@
 # Spike v2.1.0-5: dedicated speech-to-text engine
 
-Status: In progress. Rule frozen 2026-10-19, before any run.
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spikes 1-4. The
 two-step baseline's first step (bare Gemma transcription) fails on 22 of 88

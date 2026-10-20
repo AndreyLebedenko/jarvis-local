@@ -110,8 +110,8 @@ criteria, and the stop conditions below were re-cut on 2026-10-19.
 
 1. **Pipeline (settled constraint 2 is superseded).** The task 1 stop
    condition fired: the bare Gemma transcription and the combined pass did not
-   meet their frozen rules (`tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md`
-   to `tasks/spike-v2.1.0-4-speech-present.md`). The owner decided to put a
+   meet their frozen rules (`tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md`
+   to `tasks/done/spike-v2.1.0-4-speech-present.md`). The owner decided to put a
    dedicated engine first: speech-to-text (Whisper large-v3-turbo through
    faster-whisper, on the GPU, `language="ru"`), then a local Gemma check of the
    transcript against the recording (a corrected transcript, then a judge that
@@ -264,14 +264,14 @@ Tasks 2, 6, 7, and 11 are the 2026-10-18 tasks 3, 5, 6, and 9 unchanged; the
 others are changed or new. Cards for tasks 1-12 do not exist yet.
 
 0. **Spikes (done).** The old task 1 is replaced by the records
-   `tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-10-ask-policy.md`. **Spike
+   `tasks/done/spike-v2.1.0-1-*` to `tasks/done/spike-v2.1.0-10-ask-policy.md`. **Spike
    v2.1.0-11 (Size: S, before task 5):** measure the text-only sanitize pass on
    `gemma4:12b` INT4 at `num_ctx` 8192, on the Whisper transcripts and checked
    transcripts of both recorded corpora (span recall, damage to non-sensitive
    words, structured-output validity), with the rule frozen in its card before the
    run. Offline harness under `manual/`; no production code. **Done 2026-10-20:**
    go with one accepted deviation (false refusals 23.5% against the 15% limit;
-   the owner accepted it); see `tasks/spike-v2.1.0-11-text-sanitize.md`.
+   the owner accepted it); see `tasks/done/spike-v2.1.0-11-text-sanitize.md`.
 
 1. **Locality contract, capability, and config.** (Size: S-M.) Amend the runtime
    locality contract in `PROJECT.md` with the external-inference capability

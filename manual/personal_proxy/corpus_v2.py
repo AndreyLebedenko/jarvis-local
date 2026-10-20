@@ -1,4 +1,4 @@
-"""Frozen inputs of tasks/spike-v2.1.0-9-confidence-fresh-corpus.md.
+"""Frozen inputs of tasks/done/spike-v2.1.0-9-confidence-fresh-corpus.md.
 
 Ten new utterances with critical and hard-to-recognize content (digit groups,
 spelled addresses, identifiers, English names inside Russian speech), each in

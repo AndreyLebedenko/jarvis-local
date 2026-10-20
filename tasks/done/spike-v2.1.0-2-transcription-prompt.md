@@ -1,9 +1,9 @@
 # Spike v2.1.0-2: transcription instruction wording
 
-Status: In progress. Rule frozen 2026-10-18, before any run.
+Status: Result recorded 2026-10-18 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows
-`tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md`, whose main run found
+`tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md`, whose main run found
 that the production transcription step (the two-step baseline) fails on
 24 of 88 generations (27.3%), mostly by answering the request instead of
 transcribing it, dropping the words before a number, or refusing.

@@ -1,9 +1,9 @@
 # Spike v2.1.0-4: constrained JSON with a speech-present flag
 
-Status: In progress. Rule frozen 2026-10-19, before any run.
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows
-`tasks/spike-v2.1.0-3-json-transcription.md`: a constrained JSON with one field
+`tasks/done/spike-v2.1.0-3-json-transcription.md`: a constrained JSON with one field
 `raw_transcript` cut audio failures from 22 to 16 of 88 and the median WER from
 0.165 to 0.111, but it left the model no way to say that there is no speech, and
 on silence, noise, and no media it invented a transcript in all 6 control

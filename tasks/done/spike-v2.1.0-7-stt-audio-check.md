@@ -1,6 +1,6 @@
 # Spike v2.1.0-7: Gemma checks a Whisper transcript against the recording
 
-Status: Result recorded 2026-10-19 (rule frozen before any run).
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spike 5
 (Whisper large-v3-turbo wins as the first step) and spike 6 (it runs on the GPU

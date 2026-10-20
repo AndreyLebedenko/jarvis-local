@@ -1,4 +1,5 @@
-"""The frozen decision rule of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""The frozen decision rule of
+tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 Thresholds are the owner's, frozen 2026-10-18; do not tune them after a run.
 Each combined arm is compared with the two-step baseline arm.

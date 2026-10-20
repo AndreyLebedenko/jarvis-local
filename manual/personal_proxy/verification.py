@@ -1,7 +1,7 @@
 """Pure logic of spike v2.1.0-7: Gemma checks a Whisper transcript against audio.
 
 Prompt, request, scoring, and the frozen decision rule; no Ollama here. The
-card is tasks/spike-v2.1.0-7-stt-audio-check.md.
+card is tasks/done/spike-v2.1.0-7-stt-audio-check.md.
 """
 
 from __future__ import annotations

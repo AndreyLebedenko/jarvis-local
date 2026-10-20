@@ -1,9 +1,9 @@
 # Spike v2.1.0-8: confidence signals for the speech-to-text step
 
-Status: In progress. Rule frozen 2026-10-19, before any run.
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spike 7
-(`tasks/spike-v2.1.0-7-stt-audio-check.md`): Gemma with the recording repairs
+(`tasks/done/spike-v2.1.0-7-stt-audio-check.md`): Gemma with the recording repairs
 spoken e-mail addresses, but it also invents content (a second address that was
 never spoken, a Russian request turned into English) and does not repair digits;
 temperature does not remove this. The owner's requirement (2026-10-19): the

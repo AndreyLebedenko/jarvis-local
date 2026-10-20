@@ -5592,7 +5592,7 @@ text.
 ## v2.1.0 speech recognition and confidence spikes (2026-10-19)
 
 Records of the spikes behind `tasks/story-v2.1.0-personal-proxy.md`: cards
-`tasks/spike-v2.1.0-1-*` to `tasks/spike-v2.1.0-11-text-sanitize.md`.
+`tasks/done/spike-v2.1.0-1-*` to `tasks/done/spike-v2.1.0-11-text-sanitize.md`.
 
 Owner decisions:
 

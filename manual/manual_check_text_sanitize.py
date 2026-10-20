@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harness of tasks/spike-v2.1.0-11-text-sanitize.md.
+"""Harness of tasks/done/spike-v2.1.0-11-text-sanitize.md.
 
   python -m manual.manual_check_text_sanitize run --v2-out DIR
   python -m manual.manual_check_text_sanitize score --v2-out DIR

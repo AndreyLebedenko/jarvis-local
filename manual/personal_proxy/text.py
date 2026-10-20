@@ -1,4 +1,4 @@
-"""Text primitives of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""Text primitives of tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 Pure functions shared by the scorer: normalization, tokenization, Russian
 number-word canonicalization, word error rate, and the declension-tolerant

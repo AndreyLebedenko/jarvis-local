@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harness of tasks/spike-v2.1.0-5-stt-engines.md.
+"""Harness of tasks/done/spike-v2.1.0-5-stt-engines.md.
 
 Compares dedicated speech-to-text engines on the recordings of spike
 v2.1.0-1. `run` and `coexist` need an engine package and therefore run in the

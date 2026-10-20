@@ -1,10 +1,10 @@
 # Spike v2.1.0-9: the confidence hypothesis on a fresh corpus
 
-Status: In progress. Rule frozen 2026-10-19, before the owner's recordings and
-before any measurement on this corpus.
+Status: Result recorded 2026-10-19 (rule frozen before the owner's recordings and
+before any measurement on this corpus). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spike 8
-(`tasks/spike-v2.1.0-8-confidence-signals.md`): on the first corpus no signal
+(`tasks/done/spike-v2.1.0-8-confidence-signals.md`): on the first corpus no signal
 met the rule, but after the labels were corrected the instability of the
 Gemma samples (S2) and the judge's list of doubtful fragments (J3) each caught
 3 of the 4 real errors at 5% and 10% false refusals, and together all 4 at 11%.

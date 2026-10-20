@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline analysis of when to ask the owner for confirmation (follow-up of spike
-v2.1.0-9, tasks/spike-v2.1.0-10-ask-policy.md). Reads the recorded data of the
+v2.1.0-9, tasks/done/spike-v2.1.0-10-ask-policy.md). Reads the recorded data of the
 two corpora; runs nothing live.
 
   python -m manual.manual_check_ask_policy --v1-out DIR --v2-out DIR

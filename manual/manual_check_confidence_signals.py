@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harness of tasks/spike-v2.1.0-8-confidence-signals.md.
+"""Harness of tasks/done/spike-v2.1.0-8-confidence-signals.md.
 
   .venv-stt-whisper\\Scripts\\python.exe -m manual.manual_check_confidence_signals
       --out DIR words --wavs WAVS
@@ -7,7 +7,7 @@
   python -m manual.manual_check_confidence_signals --out DIR score --wavs WAVS
 
 `--corpus v2` (spike v2.1.0-9) selects the second corpus
-(tasks/spike-v2.1.0-9-confidence-fresh-corpus.md). `--corpus` and `--out` go
+(tasks/done/spike-v2.1.0-9-confidence-fresh-corpus.md). `--corpus` and `--out` go
 before the subcommand. `words` needs the Whisper environment; `run`
 talks to the live local Ollama endpoint; `score` is offline.
 """

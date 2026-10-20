@@ -1,7 +1,7 @@
 """Pure scoring, decision rule, and report of the STT engine spike v2.1.0-5.
 
 No engine and no Ollama here; the card is
-tasks/spike-v2.1.0-5-stt-engines.md.
+tasks/done/spike-v2.1.0-5-stt-engines.md.
 """
 
 from __future__ import annotations

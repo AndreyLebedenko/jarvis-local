@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Human-run harness of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""Human-run harness of tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 Talks to the live local Ollama endpoint, so it is run by the human under the
 repository testing protocol; the agent only prepares it. Subcommands:
@@ -9,7 +9,7 @@ repository testing protocol; the agent only prepares it. Subcommands:
   python -m manual.manual_check_personal_proxy_spike --out DIR score --wavs WAVS
 
 `--out` goes before the subcommand. The exact steps, with expected output, are
-in tasks/spike-v2.1.0-1-handoff.md.
+in tasks/done/spike-v2.1.0-1-handoff.md.
 """
 
 from __future__ import annotations

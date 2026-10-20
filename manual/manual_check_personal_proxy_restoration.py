@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Human-run block R of tasks/spike-v2.1.0-1-combined-transcribe-sanitize.md.
+"""Human-run block R of tasks/done/spike-v2.1.0-1-combined-transcribe-sanitize.md.
 
 Text-only restoration of original values into an external answer by the local
 model. Needs the live Ollama endpoint, so the human runs it. Subcommands:
@@ -10,7 +10,7 @@ model. Needs the live Ollama endpoint, so the human runs it. Subcommands:
 
 `run` calls the model, `review` writes the blind sheet you fill in, `score`
 applies the card's rule. The exact steps are in
-tasks/spike-v2.1.0-1-handoff.md.
+tasks/done/spike-v2.1.0-1-handoff.md.
 """
 
 from __future__ import annotations

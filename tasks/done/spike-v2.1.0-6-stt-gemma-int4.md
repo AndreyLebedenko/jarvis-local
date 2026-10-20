@@ -1,9 +1,9 @@
 # Spike v2.1.0-6: STT engines on the GPU next to Gemma 12B INT4 at num_ctx 8192
 
-Status: Result recorded 2026-10-19 (rule frozen before any run).
+Status: Result recorded 2026-10-19 (rule frozen before any run). Closed 2026-10-20.
 
 Parent story: `tasks/story-v2.1.0-personal-proxy.md`. Follows spike 5
-(`tasks/spike-v2.1.0-5-stt-engines.md`), which picked Whisper on accuracy but
+(`tasks/done/spike-v2.1.0-5-stt-engines.md`), which picked Whisper on accuracy but
 found GPU memory pressure and a swap cost of about one second per switch next to
 `gemma4:12b-it-q8_0` at `num_ctx` 65536. The owner decided on 2026-10-19 to try
 both engines on the GPU next to a lighter Gemma first:

@@ -1,7 +1,7 @@
 """Pure logic of spike v2.1.0-8: confidence signals for the speech-to-text step.
 
 Marks, requests, projections, signals, labels, and the frozen classifier rule; no
-Ollama and no engine here. The card is tasks/spike-v2.1.0-8-confidence-signals.md.
+Ollama and no engine here. The card is tasks/done/spike-v2.1.0-8-confidence-signals.md.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harness of tasks/spike-v2.1.0-7-stt-audio-check.md.
+"""Harness of tasks/done/spike-v2.1.0-7-stt-audio-check.md.
 
 Gemma gets a Whisper transcript (from spike v2.1.0-5) with the recording (X) or
 without it (Z) and returns a corrected transcript. Talks to the live local

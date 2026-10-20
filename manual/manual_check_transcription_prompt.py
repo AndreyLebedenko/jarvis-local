@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Harness of tasks/spike-v2.1.0-2-transcription-prompt.md.
+"""Harness of tasks/done/spike-v2.1.0-2-transcription-prompt.md.
 
 Compares the current transcription request (A) with a candidate on the
 recordings of spike v2.1.0-1: B is the reworded instruction (spike v2.1.0-2),
 C is the same instruction with a constrained-JSON `format` (spike v2.1.0-3,
-tasks/spike-v2.1.0-3-json-transcription.md). Talks to the live local Ollama
+tasks/done/spike-v2.1.0-3-json-transcription.md). Talks to the live local Ollama
 endpoint. Subcommands:
 
   python -m manual.manual_check_transcription_prompt --out DIR run
