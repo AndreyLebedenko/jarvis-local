@@ -215,3 +215,15 @@ async def test_the_generation_table_does_not_reach_the_check_requests():
     assert options["top_k"] == 50
     assert "seed" not in options
     assert "stop" not in options
+
+
+async def test_a_text_only_request_with_a_system_message_sends_no_images():
+    sent = []
+
+    await _backend(_recording(sent)).complete(_request(audio_base64="", system="rules"))
+
+    body = json.loads(sent[0].content)
+    assert body["messages"] == [
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "check this"},
+    ]

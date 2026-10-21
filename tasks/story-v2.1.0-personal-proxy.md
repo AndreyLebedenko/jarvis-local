@@ -309,7 +309,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    doubt, never a retry loop and never a send. Tested with a fake backend.
    Boundary: no sanitization.
 
-5. **Sanitize pass (text only).** (Size: M.) The profile and prompt (a new
+5. **Sanitize pass (text only).** (Size: M. Done 2026-10-21, `tasks/done/task-v2.1.0-5-sanitize-pass.md`.) The profile and prompt (a new
    generation profile beside `voice_guide`, reasoning off), the topics file loader,
    the structured-output parser and validator (`verdict`, `sanitized_text`,
    `mapping`), verdict handling, fail-closed on any malformed output. Its input is
@@ -397,7 +397,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
 - [x] The check stage returns a checked transcript and a doubt list; any failure
       falls back to the Whisper text with a doubt and sends nothing by itself.
       (Task 4.)
-- [ ] A malformed or unparseable sanitize result sends nothing. A topics-file
+- [x] A malformed or unparseable sanitize result sends nothing. A topics-file
       match produces `refuse`. (Task 5.)
 - [ ] The API key is read only from the environment; it, the payload, and the
       response body never appear in logs or events. (Task 6.)

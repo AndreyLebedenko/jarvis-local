@@ -5674,6 +5674,15 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   Any failure falls back to the Whisper text plus a doubt, with no retry. The
   adapter reuses the existing Ollama backend. Exception to "nothing from the
   transcript is logged": the opt-in debug transcript would record these prompts.
+- Sanitize pass (story v2.1.0 task 5, `src/jarvis/personal_proxy/`): the spike 11
+  prompt and schema, text only, over the checked transcript, through the same
+  backend seam and the same `check_*` settings (a test keeps the production text
+  equal to the spike's). The reply is parsed strictly (no salvage); any malformed
+  reply, empty text, bad placeholder key, or backend error is a typed fail-closed
+  failure; a `refuse` drops the text and mapping. The topics file is local-only,
+  capped at 8000 characters, and goes only into the system prompt (the opt-in debug
+  transcript would record it too). The stage does not check that a `send` replaced
+  anything: the outbound gate's mapping check does.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

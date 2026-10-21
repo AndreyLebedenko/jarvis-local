@@ -717,22 +717,24 @@ stt_weak_word_probability = 0.5
 # utterances (the human-run check in manual/stt-stage-handoff.md does that).
 stt_min_speech_seconds = 0.3
 # Local model that checks the transcript against the recording (a corrected
-# transcript, then a list of fragments it doubts). The INT4 build, because
+# transcript, then a list of fragments it doubts) and then sanitizes the
+# checked transcript (typed placeholders, or a refusal). The INT4 build, because
 # next to the speech engine it fits the GPU with no model-swap cost (spike
 # v2.1.0-6: about 12.7 GB used of 16.3 GB with the 8192 context below).
 check_model = "gemma4:12b"
-# Context window of the check requests. 8192 is what the spikes measured; a
-# larger one grows the model's memory and can push the speech engine out of
-# the GPU. Changing it makes Ollama reload the model.
+# Context window of the check and sanitize requests. 8192 is what the spikes
+# measured; a larger one grows the model's memory and can push the speech
+# engine out of the GPU. Changing it makes Ollama reload the model.
 check_num_ctx = 8192
-# Sampling temperature of the correcting pass only; the judge pass always uses
-# 0. Spike v2.1.0-7 saw the same rewrites at every temperature from 0 to 1, so
-# this is not a safety setting: the rewrite guard is. 0.618 is the value the
-# spikes ran at.
+# Sampling temperature of the correcting pass and of the sanitize pass; the
+# judge pass always uses 0. Spike v2.1.0-7 saw the same rewrites at every
+# temperature from 0 to 1, so this is not a safety setting: the rewrite guard
+# is. 0.618 is the value the spikes ran at.
 check_temperature = 0.618
-# Sampling of the check requests (the corrected sample and the judge), set here
-# so the stage does not depend on [generation]. The values are those of the
-# v2.1.0 spike runs (manual_check_confidence_out/run_meta.json, spike cards
+# Sampling of the check and sanitize requests (the corrected sample, the judge,
+# the sanitize pass), set here so the stage does not depend on [generation].
+# The values are those of the v2.1.0 spike runs
+# (manual_check_confidence_out/run_meta.json, spike cards
 # tasks/done/spike-v2.1.0-8-confidence-signals.md and -9): the project's
 # sampling at the time, which the measured results belong to.
 check_top_p = 0.9

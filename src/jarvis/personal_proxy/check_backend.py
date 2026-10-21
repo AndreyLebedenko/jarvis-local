@@ -14,10 +14,13 @@ class BackendReplyError(Exception):
 
 @dataclass(frozen=True)
 class ChatRequest:
+    """An empty `audio_base64` is a text-only request: no `images` are sent."""
+
     prompt: str = field(repr=False)
     audio_base64: str = field(repr=False)
     options: GenerationOptions
     response_format: dict[str, Any] | None = None
+    system: str | None = field(default=None, repr=False)
 
 
 class CheckBackend(Protocol):

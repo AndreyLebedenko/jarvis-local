@@ -1,6 +1,6 @@
 # Task v2.1.0-5: sanitize pass (text only)
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 5 (Size: M). Facts: spike
 v2.1.0-11 (`tasks/done/spike-v2.1.0-11-text-sanitize.md`, the prompts, schema, parser
@@ -84,11 +84,43 @@ CLAUDE.md Testing protocol 4, and check it with
 
 ## Acceptance criteria
 
-- [ ] The stage returns a validated `SanitizeResult` or a typed fail-closed failure;
+- [x] The stage returns a validated `SanitizeResult` or a typed fail-closed failure;
       nothing malformed is ever returned as a `send`.
-- [ ] A topics-file match is a `refuse`; the topics text never leaves the sanitize
+- [x] A topics-file match is a `refuse`; the topics text never leaves the sanitize
       prompt (no log, repr, result, or error).
-- [ ] No new HTTP client, no new config key, no generation profile; the options equal
+- [x] No new HTTP client, no new config key, no generation profile; the options equal
       spike 11's.
-- [ ] The production prompt and schema match the spike's frozen text (a test says so).
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] The production prompt and schema match the spike's frozen text (a test says so).
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-21)
+
+Accepted by the owner. Developer subagent; an independent reviewer found no path
+from malformed model output to a `send`, and these defects, all fixed test first:
+untyped `RecursionError` and `ValueError` (int digit limit) from the JSON decoder,
+text of only zero-width characters accepted as a request, a BOM before the JSON
+read as prose, duplicate JSON keys (last won), a mutable `mapping`, no size cap on
+the topics file, an untyped error for a NUL in the path. Suite: 4433 passed, 1
+skipped; ruff clean.
+
+Seam change: `ChatRequest` has an optional `system` message; an empty
+`audio_base64` means a text-only request and the Ollama adapter then sends no
+`images`. A truncated reply never reaches the parser in production: the adapter
+raises on `done_reason` length, so it surfaces as `backend_failed`.
+
+Decisions and limits:
+- The stage does not check that a `send` replaced anything (no mapping value in the
+  sanitized text, every key present in it). The outbound gate (task 2, mapping
+  check) owns that; duplicating it here would only add false failures. A `send` with
+  no replacements is accepted by this stage and stopped by the gate.
+- The topics file is capped at 8000 characters (Ollama silently truncates at
+  `num_ctx` 8192). The default path is relative to the working directory: started
+  from another folder, an existing default file is not found and there are no topics,
+  without a signal. Anchoring it to the config directory is a later change.
+- The opt-in debug transcript would record the sanitize prompt with the topics text,
+  as it records the check-stage prompts; known exception, in `PROJECT.md`.
+- No live handoff for the production function: spike 11's harness runs the spike
+  copies of the prompts, and a test keeps the production text equal to them. A live
+  check on recorded transcripts needs a new `manual/` script.
+- A refusal's `reason` is model text (bounded to 200 characters, hidden from `repr`);
+  it can echo a topic line.

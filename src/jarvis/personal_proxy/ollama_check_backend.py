@@ -72,9 +72,12 @@ class OllamaCheckBackend:
         )
         parts: list[str] = []
         finished = False
+        messages = [{"role": "user", "content": request.prompt}]
+        if request.system is not None:
+            messages.insert(0, {"role": "system", "content": request.system})
         stream = backend.iter_chat(
-            [{"role": "user", "content": request.prompt}],
-            [request.audio_base64],
+            messages,
+            [request.audio_base64] if request.audio_base64 else None,
             options=self._sampling.overridden_by(request.options),
         )
         try:
