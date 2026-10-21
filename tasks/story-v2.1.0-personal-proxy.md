@@ -316,7 +316,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    the checked transcript. The shape follows spike v2.1.0-11. Tested with a fake
    backend. Boundary: no external client, no restoration.
 
-6. **External client.** (Size: S-M.) The OpenAI-compatible request/response code,
+6. **External client.** (Size: S-M. Done 2026-10-21, `tasks/done/task-v2.1.0-6-external-client.md`.) The OpenAI-compatible request/response code,
    key from the environment variable, timeout, typed errors, nothing logged.
    Tested against a loopback fake HTTP server (CI-safe; no real network, no
    secrets). Boundary: no pipeline.
@@ -399,7 +399,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       (Task 4.)
 - [x] A malformed or unparseable sanitize result sends nothing. A topics-file
       match produces `refuse`. (Task 5.)
-- [ ] The API key is read only from the environment; it, the payload, and the
+- [x] The API key is read only from the environment; it, the payload, and the
       response body never appear in logs or events. (Task 6.)
 - [ ] The restoration pass touches only sentences with placeholders, and a failed
       validation falls back to substitution with the mark. (Task 7.)

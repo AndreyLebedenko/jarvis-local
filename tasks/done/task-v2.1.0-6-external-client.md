@@ -1,6 +1,6 @@
 # Task v2.1.0-6: external client
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 6 (Size: S-M). Follows task 1 (the
 `[personal_proxy]` settings and the locality seam) and task 2 (`OutboundPayload`, the
@@ -77,13 +77,44 @@ content, restoration, the gate.
 
 ## Acceptance criteria
 
-- [ ] Only an `OutboundPayload` can be sent; the request body holds `model`, `messages`,
+- [x] Only an `OutboundPayload` can be sent; the request body holds `model`, `messages`,
       `stream` and nothing else.
-- [ ] The key is read from the named environment variable per call and appears nowhere
+- [x] The key is read from the named environment variable per call and appears nowhere
       (repr, exception, log, result).
-- [ ] A non-https, non-loopback endpoint, a missing key, a redirect, a non-2xx status, a
+- [x] A non-https, non-loopback endpoint, a missing key, a redirect, a non-2xx status, a
       bad or truncated stream and a timeout are each a typed error without content.
-- [ ] The whole call is bounded by `request_timeout_seconds`.
-- [ ] Nothing is logged; the request log and the debug transcript are not used.
-- [ ] No retry, no new dependency, tests use no real network.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] The whole call is bounded by `request_timeout_seconds`.
+- [x] Nothing is logged; the request log and the debug transcript are not used.
+- [x] No retry, no new dependency, tests use no real network.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-21)
+
+Accepted by the owner. Developer subagent; an independent reviewer found no key or
+text leak through repr, exception chains, redirects, or endpoint-rule bypasses, and
+these defects, all fixed: raw `UnicodeEncodeError` carrying the key (non-ASCII key) or
+the whole body (lone surrogate); `OutboundPayload` subclasses accepted; no response
+size cap (an endless line or a gzip bomb took 650-800 MB); an `error` event at HTTP 200
+read as success; a BOM silently dropping the first event; untyped `RecursionError`;
+the key and payload alive in traceback frame locals; weak tests (`trust_env` and the
+deadline untested). Suite: 4548 passed, 1 skipped; ruff clean.
+
+Declared deviations from the card, accepted:
+- `trust_env=False`: environment proxies and netrc are not used, so the key and text
+  cannot be rerouted; a provider behind a corporate proxy or a private CA cannot be
+  reached. Documented in `config.example.toml`.
+- Logging: httpx logs the full URL at INFO. A `logging.Filter` on the `httpx` logger
+  drops records only while a context variable marks the client's own call; no logger
+  level is changed and other httpx users keep logging. `httpcore` DEBUG records (host
+  and port, no key or text) are outside the filter if the owner enables DEBUG.
+- Added error kinds beyond the card: key invalid, bad request, too large, unexpected.
+  Caps: 64 KiB per line, 200000 answer characters, `Accept-Encoding: identity`.
+
+Notes for later tasks:
+- Task 7/9: any exception from `stream()` means the text already yielded is
+  incomplete and must be discarded by the consumer.
+- Not covered: real TLS (only the transport rule is tested), multi-line `data:` events
+  (each line is its own event), the response body can remain in a frame local when an
+  error is raised (the traceback check covers the key and request text only).
+- `*.localhost` hosts count as loopback per the card; one resolving externally is an
+  accepted spec risk.

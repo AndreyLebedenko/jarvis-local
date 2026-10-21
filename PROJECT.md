@@ -5683,6 +5683,15 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   capped at 8000 characters, and goes only into the system prompt (the opt-in debug
   transcript would record it too). The stage does not check that a `send` replaced
   anything: the outbound gate's mapping check does.
+- External client (story v2.1.0 task 6, `src/jarvis/personal_proxy/external_*.py`): the
+  only code that talks to the provider. It sends one `OutboundPayload` (exact type) as
+  `{model, messages, stream}` to `[personal_proxy].endpoint` with a Bearer key read from
+  the named environment variable per call, and streams the SSE answer as text deltas.
+  The key and text go only over https or loopback http; redirects, environment
+  proxies and netrc are not used; the whole call has an overall deadline; the line and
+  answer sizes are capped; there is no retry. Every failure is a typed error with no
+  content, and any error means the text already yielded is incomplete. The client logs
+  nothing (a filter silences httpx's own URL line during its call).
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

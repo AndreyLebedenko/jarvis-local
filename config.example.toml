@@ -664,7 +664,10 @@ queue_capacity = 8
 # Everything else, including the whole of Jarvis's own dialog, stays local.
 # Without the flag this section has no effect and nothing leaves the machine.
 #
-# Full URL of the OpenAI-compatible chat completions endpoint (http or https).
+# Full URL of the OpenAI-compatible chat completions endpoint. It must be https,
+# or http on this machine (localhost, 127.0.0.1, ::1): the key and the text are
+# never sent unencrypted over a network. Redirects are not followed, and no
+# proxy from the environment and no netrc file is used for this call.
 # Empty by default so that nothing can be sent until you choose a provider:
 # --personal-proxy refuses to start while endpoint or model is empty.
 endpoint = ""
@@ -683,8 +686,9 @@ dry_run = true
 # [journal].root (Jarvis.cmd runs from the project folder). Never commit it:
 # the default is in .gitignore.
 topics_file = "personal_proxy_topics.txt"
-# Seconds to wait for the whole external answer. Generous because a long
-# answer streams for a while; a request over it fails with a typed error.
+# Overall deadline in seconds for the whole external call, the streamed answer
+# included. Generous because a long answer streams for a while; a request over
+# it fails with a typed error.
 request_timeout_seconds = 60
 # Seconds to wait for the connection to open. Short: an unreachable provider
 # should fail quickly, not freeze a spoken request.
