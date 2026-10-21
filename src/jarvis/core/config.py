@@ -556,6 +556,13 @@ class PersonalProxySettings:
     stt_language: str = "ru"
     stt_weak_word_probability: float = 0.5
     stt_min_speech_seconds: float = 0.3
+    check_model: str = "gemma4:12b"
+    check_num_ctx: int = 8192
+    check_temperature: float = 0.618
+    check_top_p: float = 0.9
+    check_top_k: int = 50
+    check_min_p: float = 0.05
+    check_repeat_penalty: float = 1.025
 
 
 @dataclass(frozen=True)
@@ -1724,8 +1731,37 @@ _PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS = (
     "confirmation_timeout_seconds",
     "doubt_min_listed",
     "stt_min_speech_seconds",
+    "check_num_ctx",
+    "check_top_k",
+    "check_top_p",
+    "check_repeat_penalty",
 )
-_PERSONAL_PROXY_NON_EMPTY_FIELDS = ("topics_file", "stt_model", "stt_language")
+_PERSONAL_PROXY_NON_EMPTY_FIELDS = (
+    "topics_file",
+    "stt_model",
+    "stt_language",
+    "check_model",
+)
+
+
+def _require_check_sampling_ranges(
+    section_name: str, settings: "PersonalProxySettings"
+) -> None:
+    if not math.isfinite(settings.check_temperature) or settings.check_temperature < 0:
+        raise ConfigError(
+            f"[{section_name}].check_temperature must be a finite number "
+            f"of at least 0, got {settings.check_temperature!r}"
+        )
+    if not 0.0 <= settings.check_min_p < 1.0:
+        raise ConfigError(
+            f"[{section_name}].check_min_p must be within [0, 1), "
+            f"got {settings.check_min_p!r}"
+        )
+    if settings.check_top_p > 1.0:
+        raise ConfigError(
+            f"[{section_name}].check_top_p must be within (0, 1], "
+            f"got {settings.check_top_p!r}"
+        )
 
 
 def _build_personal_proxy_section(
@@ -1763,6 +1799,7 @@ def _build_personal_proxy_section(
             f"[{section_name}].stt_weak_word_probability must be within "
             f"[0, 1], got {settings.stt_weak_word_probability!r}"
         )
+    _require_check_sampling_ranges(section_name, settings)
     return settings
 
 

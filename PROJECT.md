@@ -5662,6 +5662,18 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   noise from the engine; on the spike controls it finds 0.00 s and on the 44
   utterances at least 1.54 s. The guard does not reject music or other
   speech-like noise. Run on the GPU: 0.23-1.43 s per recording.
+- Transcript check stage (story v2.1.0 task 4, `src/jarvis/personal_proxy/`): a
+  Gemma `gemma4:12b` sample (the recording in the `images` field, the Whisper text
+  with `[?]` after words under p 0.5) and a judge (temperature 0, seed 1,
+  constrained JSON; its confidence number is parsed but not used) give a checked
+  transcript and a typed doubt list; `would_ask` follows
+  `[personal_proxy].doubt_min_listed`. Sampling comes only from explicit
+  `[personal_proxy].check_*` settings (num_ctx 8192, temperature 0.618, top_p 0.9,
+  top_k 50, min_p 0.05, repeat_penalty 1.025). Two deterministic rewrite-guard rules
+  (an invented `@`, a Cyrillic share drop below half) fall back to the Whisper text.
+  Any failure falls back to the Whisper text plus a doubt, with no retry. The
+  adapter reuses the existing Ollama backend. Exception to "nothing from the
+  transcript is logged": the opt-in debug transcript would record these prompts.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

@@ -1,6 +1,6 @@
 # Task v2.1.0-4: transcript check stage
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 4 (Size: M), and "Revisions of
 2026-10-19", items 1, 2, 4. Facts: spikes v2.1.0-7, -8, -9, -10 (`tasks/done/`) and
@@ -85,12 +85,41 @@ is seen working. Preparing it must not run it. Check it with
 
 ## Acceptance criteria
 
-- [ ] The stage returns the checked transcript and the doubt list; `would_ask`
+- [x] The stage returns the checked transcript and the doubt list; `would_ask`
       follows `doubt_min_listed`.
-- [ ] Any failure falls back to the Whisper text with a doubt of the matching kind,
+- [x] Any failure falls back to the Whisper text with a doubt of the matching kind,
       with no retry and nothing sent.
-- [ ] Both rewrite rules trip on the spike's known cases and not on ordinary text.
-- [ ] The audio goes in `images`; no new HTTP client; no text in logs or failure
+- [x] Both rewrite rules trip on the spike's known cases and not on ordinary text.
+- [x] The audio goes in `images`; no new HTTP client; no text in logs or failure
       results.
-- [ ] The human-run handoff exists and is self-sufficient.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] The human-run handoff exists and is self-sufficient.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-21)
+
+Accepted by the owner. Developer subagent; an independent reviewer found real
+defects (a leftover `[?]` in the checked text, `would_ask` failing open, an
+unhandled `RecursionError`, a truncated stream accepted as complete, sampling
+options drifting between the sample and the judge), all fixed test first. At the
+owner's request the sampling options became explicit settings: `check_top_p`,
+`check_top_k`, `check_min_p`, `check_repeat_penalty` in `[personal_proxy]` (values
+from the spikes' `run_meta.json`), used by both the sample and the judge; the
+`[generation]` table does not reach the request. Suite: 4357 passed, 1 skipped;
+ruff clean.
+
+Not run: the human handoff `manual/transcript-check-handoff.md` (needs live Ollama
+and `ollama pull gemma4:12b`; `flash_attention` and `kv_cache_type` come from
+`[backend]` and the runner must set them as in the spikes). One full-suite run by
+the developer hung for over 10 minutes and was not reproduced (rerun: 128 s); if it
+recurs it needs investigation as an environment issue.
+
+Notes for later tasks:
+- Task 9: the adapter needs an httpx client with a generous read timeout, because
+  `num_ctx` 8192 differs from the 65536 of the normal backend and Ollama reloads the
+  model on the first call.
+- The opt-in debug transcript would record the check-stage prompts (the transcript
+  text); this is a known exception to "nothing derived from the transcript is
+  logged" and is recorded in `PROJECT.md`.
+- Documented limits: the rewrite guard is two deterministic rules (an invented `@`
+  against the address markers, and a Cyrillic share drop below half); it does not
+  catch other rewrites, and a legitimate repair that switches alphabet can trip it.

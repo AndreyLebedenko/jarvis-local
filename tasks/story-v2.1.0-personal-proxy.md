@@ -300,7 +300,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    signal separates them; Whisper invents text on them). Boundary: no Gemma, no
    pipeline.
 
-4. **Transcript check stage.** (Size: M.) Promote the spike code to `src/`: the
+4. **Transcript check stage.** (Size: M. Done 2026-10-21, `tasks/done/task-v2.1.0-4-check-stage.md`.) Promote the spike code to `src/`: the
    Gemma sample (the recording, the transcript with `[?]` after words under the
    probability threshold, the error hint, `gemma4:12b`, `num_ctx` 8192,
    temperature 0.618) and the judge (constrained JSON: the uncertain fragments;
@@ -348,6 +348,9 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    `external_locality`), which is not safe for nested or overlapping turns (an
    inner exit sets `LOCAL` under an active outer scope): the turn lifecycle here
    must keep one external turn at a time, or the seam must be reworked.
+   The check-stage adapter needs an httpx client with a generous read timeout
+   (`check_num_ctx` 8192 differs from the normal backend's 65536, so Ollama reloads
+   the model on the first call).
 
 10. **Journal, provenance, and Status Console surfaces.** (Size: M.) Journal
     events for the request/answer pair with external provenance
@@ -391,7 +394,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
 - [x] The speech-to-text stage returns word probabilities; silence and noise do
       not reach the engine or the checker; without the optional dependencies the
       main runtime and CI are unchanged. (Task 3.)
-- [ ] The check stage returns a checked transcript and a doubt list; any failure
+- [x] The check stage returns a checked transcript and a doubt list; any failure
       falls back to the Whisper text with a doubt and sends nothing by itself.
       (Task 4.)
 - [ ] A malformed or unparseable sanitize result sends nothing. A topics-file

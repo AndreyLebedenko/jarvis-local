@@ -49,6 +49,13 @@ def test_section_defaults():
         stt_language="ru",
         stt_weak_word_probability=0.5,
         stt_min_speech_seconds=0.3,
+        check_model="gemma4:12b",
+        check_num_ctx=8192,
+        check_temperature=0.618,
+        check_top_p=0.9,
+        check_top_k=50,
+        check_min_p=0.05,
+        check_repeat_penalty=1.025,
     )
 
 
@@ -71,6 +78,13 @@ def test_section_parses_from_config(tmp_path):
         stt_language = "en"
         stt_weak_word_probability = 0.25
         stt_min_speech_seconds = 0.8
+        check_model = "other:7b"
+        check_num_ctx = 4096
+        check_temperature = 0
+        check_top_p = 1
+        check_top_k = 20
+        check_min_p = 0
+        check_repeat_penalty = 1.5
         """,
     )
 
@@ -89,6 +103,13 @@ def test_section_parses_from_config(tmp_path):
         stt_language="en",
         stt_weak_word_probability=0.25,
         stt_min_speech_seconds=0.8,
+        check_model="other:7b",
+        check_num_ctx=4096,
+        check_temperature=0,
+        check_top_p=1,
+        check_top_k=20,
+        check_min_p=0,
+        check_repeat_penalty=1.5,
     )
 
 
@@ -126,6 +147,18 @@ def test_section_parses_from_config(tmp_path):
             "stt_weak_word_probability = -0.1",
             r"\[personal_proxy\]\.stt_weak_word_probability",
         ),
+        ('check_model = " "', r"\[personal_proxy\]\.check_model"),
+        ("check_num_ctx = 0", r"\[personal_proxy\]\.check_num_ctx"),
+        ("check_num_ctx = 8192.5", r"check_num_ctx must be int"),
+        ("check_temperature = -0.1", r"\[personal_proxy\]\.check_temperature"),
+        ("check_top_p = 0", r"\[personal_proxy\]\.check_top_p"),
+        ("check_top_p = 1.1", r"\[personal_proxy\]\.check_top_p"),
+        ("check_top_k = 0", r"\[personal_proxy\]\.check_top_k"),
+        ("check_top_k = true", r"\[personal_proxy\]\.check_top_k"),
+        ("check_top_k = 2.5", r"check_top_k must be int"),
+        ("check_min_p = -0.1", r"\[personal_proxy\]\.check_min_p"),
+        ("check_min_p = 1", r"\[personal_proxy\]\.check_min_p"),
+        ("check_repeat_penalty = 0", r"\[personal_proxy\]\.check_repeat_penalty"),
         ("dry_run = 1", r"\[personal_proxy\]\.dry_run must be bool"),
         ("request_timeout_seconds = true", r"request_timeout_seconds must be float"),
         ('api_key = "secret"', "Unknown key"),
@@ -190,6 +223,10 @@ def test_a_wrongly_typed_endpoint_is_rejected_without_echoing_it(tmp_path):
         "confirmation_timeout_seconds",
         "stt_weak_word_probability",
         "stt_min_speech_seconds",
+        "check_temperature",
+        "check_top_p",
+        "check_min_p",
+        "check_repeat_penalty",
     ],
 )
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
