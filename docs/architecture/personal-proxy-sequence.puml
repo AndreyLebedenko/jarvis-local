@@ -1,0 +1,112 @@
+@startuml
+title Jarvis --personal-proxy: ask an external LLM by voice, without the voice or the identifying details leaving the machine
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam noteFontSize 11
+autonumber
+
+actor User
+box "LOCAL MACHINE (nothing here touches the network except Ollama on localhost)" #EAF4EA
+  participant "Mic / App" as App
+  participant "Speech guard\n(silence / noise filter)" as Guard
+  participant "Whisper STT\nfaster-whisper, GPU" as STT
+  participant "Gemma check\nlocal Ollama\nsample + judge" as Check
+  participant "Gemma sanitize\ntext only, reasoning off" as San
+  participant "Topics file\n(plain text, local only)" as Topics
+  participant "Payload builder\n(single chokepoint)" as Build
+  participant "Outbound gate\ndeterministic, blocking" as Gate
+  participant "Confirmation\nexchange" as Conf
+  participant "Restoration\nGemma + validator" as Rest
+  participant "Chat / Journal" as Chat
+end box
+box "NETWORK (explicit capability: launch flag + configured endpoint)" #FBEAEA
+  participant "External LLM\nOpenAI-compatible API" as Ext
+end box
+
+== 1. Capture and transcription (audio never leaves the machine) ==
+User -> App: asks a question by voice
+App -> Guard: audio clip
+alt silence or noise
+  Guard --> App: drop clip
+  note right of Guard: Whisper invents text on noise,\nso the clip never reaches it.\nNothing is sent.
+else speech present
+  Guard -> STT: clip
+  STT --> Check: text + per-word probabilities
+end
+
+== 2. Check the transcript against the recording ==
+Check -> Check: Gemma hears the clip again,\nweak words marked [?]
+Check -> Check: judge lists doubtful fragments
+alt call or parse failure
+  Check --> San: Whisper text + a doubt (fail safe, never a retry loop, never a send)
+else ok
+  Check --> San: checked transcript + doubt list
+end
+
+== 3. Sanitize (text only) ==
+Topics --> San: sensitive topics
+San -> San: replace identifying details\nwith typed placeholders\n<PERSON_1>, <ORG_2> ...
+alt malformed or unparseable output
+  San --> User: nothing sent (fail closed)
+else verdict = refuse (whole topic is sensitive)
+  San --> User: refused, reason given, nothing sent
+else verdict = send
+  San --> Conf: sanitized_text + mapping (placeholder -> original)
+end
+note over San, Conf: mapping stays local. Originals are never sent.
+
+== 4. Confirmation (only when there is a reason to doubt) ==
+alt doubts exist (budget: about 1 request in 4)
+  Conf -> Chat: show the WHOLE heard text
+  Conf -> User: voice names what to check
+  alt clear "yes", spoken or typed
+    User --> Conf: yes
+  else "no", unclear answer, or timeout
+    User --> Conf: no / unclear / silence
+    Conf --> User: nothing sent, offer to correct by text or dictate again
+  end
+else no doubts
+  note over Conf: sent without a question (send by default)
+end
+
+== 5. Outbound gate (last step before the network) ==
+Conf -> Build: sanitized_text only\n(no audio, images, history, memory,\nor --mcp-mode text)
+Build -> Gate: complete outbound payload
+Gate -> Gate: (a) patterns: email, phone, card+Luhn,\nIBAN, digit runs, key/password shapes, addresses
+Gate -> Gate: (b) no original value from mapping\n(exact or stem) appears in payload
+Gate -> Gate: (c) no topics-file text appears in payload
+alt blocked
+  Gate --> User: category + position (never the value), nothing sent
+else dry-run enabled
+  Gate --> Chat: show exact payload and intermediate state, nothing sent
+else passed
+  Gate --> Ext: HTTPS request, API key from env var\n(key, payload, response never logged)
+  Chat <-- Gate: record "what went out" (equals the real payload)
+end
+
+== 6. External answer and local restoration ==
+loop streamed chunks
+  Ext --> Rest: answer chunks (with placeholders)
+  Rest -> Rest: buffer to sentence boundaries
+  alt sentence has no placeholder
+    Rest --> Chat: pass through, no model call
+  else sentence has placeholders
+    Rest -> Rest: local Gemma restores originals\nwith correct grammar (Russian cases)
+    alt validation passes
+      Rest --> Chat: restored sentence
+    else validation fails (placeholder left, or value missing)
+      Rest --> Chat: plain substitution, marked as rough
+    end
+  end
+end
+
+== 7. Present and record ==
+Chat --> User: Text + Voice answer, labeled "external model"
+Chat -> Chat: journal: raw voice, heard text, sanitized request,\nverdict, restored answer (external provenance,\nexcluded from automatic retrieval)
+
+note across
+  Honest limit: the sanitizer and the gate REDUCE the chance of a leak, they do not prove its absence.
+  Quasi-identifiers (harmless facts that together identify someone) are not detectable by either.
+  What the external provider does with the cleaned text is outside Jarvis's control.
+end note
+@enduml

@@ -6,6 +6,10 @@ This directory contains two complementary views:
   dependency map.
 - `request-flow.puml` follows one request through input, orchestration,
   optional MCP tool dispatch, Ollama, journaling, TTS, and UI projection.
+- `personal-proxy-sequence.puml` follows one spoken request through the
+  `--personal-proxy` mode (story v2.1.0): speech guard, local transcription and
+  check, sanitize, confirmation, outbound gate, external model, and local
+  restoration. It shows what stays on the machine and where the network starts.
 
 The exhaustive symbol-level graph remains available in
 `graphify-out/graph.html`; it is generated developer data and is not committed.

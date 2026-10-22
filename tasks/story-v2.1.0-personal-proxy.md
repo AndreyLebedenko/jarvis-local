@@ -28,6 +28,8 @@ external model over an API, receives the answer, restores the removed details
 locally, and presents it in Text+Voice mode. The audio never leaves the
 machine.
 
+The sequence diagram of the whole mode is `docs/architecture/personal-proxy-sequence.puml`.
+
 ## Reversal of a recorded rejection
 
 The v2.0 roadmap rejected "Jarvis calling an external LLM itself, with local
