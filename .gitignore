@@ -33,6 +33,7 @@ manual_check_answer_revision_out/
 manual_check_single_pass_tts_out/
 manual_check_personal_proxy_spike_out/
 manual_check_personal_proxy_restoration_out/
+manual_check_restoration_stage_out/
 manual_check_transcription_prompt_out/
 manual_check_transcription_json_out/
 manual_check_transcription_speech_out/

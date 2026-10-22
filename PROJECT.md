@@ -5692,6 +5692,19 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   answer sizes are capped; there is no retry. Every failure is a typed error with no
   content, and any error means the text already yielded is incomplete. The client logs
   nothing (a filter silences httpx's own URL line during its call).
+- Restoration pass (story v2.1.0 task 7, `src/jarvis/personal_proxy/restoration*.py`): the
+  external answer is cut into sentences; a sentence without a known placeholder passes
+  unchanged with no model call. A sentence with one goes to the local model, which
+  restores the original values in the right Russian case; a deterministic check
+  (template alignment: the text outside the values must equal the sentence exactly, each
+  slot must be a form of its original) accepts the result or the plain substitution of
+  the base-form originals is used. Block R on the production configuration (INT4,
+  `num_ctx` 8192): validation 0.933, alteration 0.000, case benefit 17 of 18 (owner's
+  three-level blind review), so the model branch is kept. The stage reads the external
+  stream independently of restoration, has a 15 s limit per model call (a timeout falls
+  back to substitution), and never proofreads sentences without placeholders. Known:
+  Latin names, reshaped digits and first-letter-changing declensions fall back to
+  substitution.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

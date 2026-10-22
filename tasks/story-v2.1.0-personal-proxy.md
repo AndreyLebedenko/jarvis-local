@@ -321,7 +321,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    Tested against a loopback fake HTTP server (CI-safe; no real network, no
    secrets). Boundary: no pipeline.
 
-7. **Restoration pass.** (Size: M.) Placeholder detection, per-sentence
+7. **Restoration pass.** (Size: M. Done 2026-10-22, `tasks/done/task-v2.1.0-7-restoration-pass.md`.) Placeholder detection, per-sentence
    restoration through the local model, deterministic validation, the
    substitution fallback with the metadata mark, sentence-boundary buffering.
    Tested with a fake backend. Boundary: no external client.
@@ -348,6 +348,8 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    `external_locality`), which is not safe for nested or overlapping turns (an
    inner exit sets `LOCAL` under an active outer scope): the turn lifecycle here
    must keep one external turn at a time, or the seam must be reworked.
+   The restoration stage needs a warm-up before its first call (a cold load at
+   `num_ctx` 8192 took 52 s against its 15 s limit), or a longer limit for it.
    The check-stage adapter needs an httpx client with a generous read timeout
    (`check_num_ctx` 8192 differs from the normal backend's 65536, so Ollama reloads
    the model on the first call).
@@ -401,7 +403,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       match produces `refuse`. (Task 5.)
 - [x] The API key is read only from the environment; it, the payload, and the
       response body never appear in logs or events. (Task 6.)
-- [ ] The restoration pass touches only sentences with placeholders, and a failed
+- [x] The restoration pass touches only sentences with placeholders, and a failed
       validation falls back to substitution with the mark. (Task 7.)
 - [ ] With a doubt, the exchange shows the whole heard text and names the doubts
       by voice; only a clear "yes", spoken or typed, sends; no answer, unclear

@@ -1,6 +1,6 @@
 # Task v2.1.0-7: restoration pass
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 7 (Size: M) and the design decision
 "Restoration pass". Facts: block R of spike v2.1.0-1
@@ -102,13 +102,78 @@ run it.
 
 ## Acceptance criteria
 
-- [ ] Sentences without a placeholder pass through with no model call; a placeholder
+- [x] Sentences without a placeholder pass through with no model call; a placeholder
       split across chunks is handled.
-- [ ] Every restored sentence passes the three deterministic checks or is the plain
+- [x] Every restored sentence passes the three deterministic checks or is the plain
       substitution; nothing is dropped, blocked, or retried.
-- [ ] No text from the answer, mapping, or restored sentences in logs, reprs, or errors;
+- [x] No text from the answer, mapping, or restored sentences in logs, reprs, or errors;
       the input error propagates unchanged with the partial sentence discarded.
-- [ ] No new setting, no new client; the options are the `check_*` ones.
-- [ ] The block R handoff exists, is self-sufficient, and the automatic part of its rule
+- [x] No new setting, no new client; the options are the `check_*` ones.
+- [x] The block R handoff exists, is self-sufficient, and the automatic part of its rule
       is measured on the production configuration (the blind case review is the owner's).
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-22)
+
+Accepted by the owner. Developer subagent; two independent review rounds.
+
+Round 1 found the first validator too weak (it dropped digits and value words from the
+outside-text comparison and checked phone and e-mail tokens as an unordered bag), which
+let a model alter the answer: changed digits, duplicated or moved values, swapped
+values, reordered phones, markdown, quotes. The validator became template alignment:
+the sentence is cut at its known placeholders, the reply must equal the remaining text
+exactly, and each slot must hold a form of that placeholder's original. Also from round
+1: the reader is decoupled from restoration (a producer task and an in-order queue), the
+backend call has a 15 s limit that falls back to substitution, the sentence buffer is
+bounded (a newline or 4000 pending characters ends a sentence), and the unresolved flag
+uses the gate's broad placeholder pattern. Round 2 found: a stem match accepting other
+words (`Anna` -> `Annotatsiya`, truncated e-mails), a hang when the input raised
+`CancelledError`, a placeholder cut at the cap inside a long unspaced token, a
+behaviour change in the shared TTS `SentenceBuffer`, and twelve surviving mutants. All
+fixed test first. Suite: 4740 passed, 1 skipped; ruff clean.
+
+Change outside the card: `src/jarvis/audio/tts.py` `SentenceBuffer` was rescanning its
+whole buffer on every `feed` (180000 characters of abbreviations took about 110 s).
+`feed` now resumes from `_scanned_to` and `_word_before` scans one word backwards. The
+behaviour is unchanged, including the old newline quirk, proved by regression tests and
+a differential run against the old class (150000 random chunkings, no difference).
+
+Block R measured on the production configuration (2026-10-22, `gemma4:12b` Q4_K_M,
+`num_ctx` 8192, flash attention and q8_0 KV cache from `[backend]`, 30 items x 2 seeds,
+the stage's own function; handoff `manual/restoration-stage-handoff.md`, run by the
+agent on the owner's request): validation pass rate 56/60 = 0.933 (rule: at least 0.90);
+alteration rate 0.000 (rule: at most 0.05); case correctness 17 of 18 items where the
+plain substitution was not ok are restored ok and validated by the model = 0.944 (rule:
+at least 0.80). Decision: KEEP the model branch. Median 0.88 s per sentence, maximum
+6.8 s. The four fallbacks are the two English names (`Michael Brown`, `Sophie Laurent`)
+in both seeds: the model transliterated them into Cyrillic, the stage requires Latin
+words verbatim, the substitution keeps them intact.
+
+Owner decisions on the review scale (2026-10-22): the blind sheet uses three levels:
+`bad` the case is critically wrong, `ok` fully right, empty or `mid` the meaning comes
+through but worse than ok. A substitution counts as wrong when it is not `ok`; the model
+beats it when its output is `ok` and the stage validated it. This replaces the spike's
+two-level ok/bad for this run. Item r26 (a copy of `<PERSON_1>` and `<PERSON_2>`) is
+ambiguous (a copy of them, genitive, or a copy to them, dative; the spike named it
+dative); it was marked bad for the nominative and mid for the genitive.
+
+Documented limits:
+- A different name that shares the stem and fits the length cap can pass (Oleg ->
+  Olesya); a name whose declension changes its first letters (Lev -> Lva, Yan -> Yanu)
+  always falls back to substitution; so do Latin names written in Cyrillic and any
+  reshaped phone, card or e-mail.
+- Only sentences containing a known placeholder are examined; every other sentence of
+  the answer passes unchanged. The stage does not proofread the external answer.
+- A sentence over 8 placeholders or 1000 characters is substituted without the model.
+
+Notes for later tasks:
+- Task 9: the first model call after a cold load at `num_ctx` 8192 took 52 s on this
+  machine against the stage's 15 s limit, so the first restoration would silently fall
+  back to substitution. The pipeline needs a warm-up before the first call, or a longer
+  limit for it. The stage reads the external stream independently of restoration, so a
+  slow restoration no longer starves the external client's deadline, but the queue is
+  bounded by the answer cap only.
+- Task 9: any exception from the stage means the answer is incomplete; sentences
+  already yielded stay valid.
+- The opt-in debug transcript records the restoration prompts (the sentence and the
+  original values), as for the other local stages.

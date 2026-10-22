@@ -173,18 +173,18 @@ _ABBREVIATIONS = {
 _SENTENCE_FINAL_PRONOUNS = {"я", "i"}
 
 _BOUNDARY_RE = re.compile(r"[.!?]+(?=\s)")
-_TRAILING_WORD_RE = re.compile(r"\S+$")
 _LEADING_NON_WORD_RE = re.compile(r"^\W+")
 
 
 class SentenceBuffer:
     def __init__(self) -> None:
         self._buffer = ""
+        self._scanned_to = 0
 
     def feed(self, text: str) -> list[str]:
         self._buffer += text
         sentences = []
-        search_start = 0
+        search_start = self._scanned_to
         while True:
             match = _BOUNDARY_RE.search(self._buffer, search_start)
             if match is None:
@@ -195,11 +195,13 @@ class SentenceBuffer:
             sentences.append(self._buffer[: match.end()].strip())
             self._buffer = self._buffer[match.end() :]
             search_start = 0
+        self._scanned_to = max(search_start, len(self._buffer.rstrip(".!?")))
         return sentences
 
     def flush(self) -> str | None:
         sentence = self._buffer.strip()
         self._buffer = ""
+        self._scanned_to = 0
         return sentence or None
 
     def _is_abbreviation(self, punctuation: re.Match[str]) -> bool:
@@ -216,10 +218,15 @@ class SentenceBuffer:
         )
 
     def _word_before(self, punctuation_start: int) -> str:
-        word_match = _TRAILING_WORD_RE.search(self._buffer[:punctuation_start])
-        if word_match is None:
-            return ""
-        word = _LEADING_NON_WORD_RE.sub("", word_match.group())
+        # One newline right before the punctuation is skipped, as `\S+$` did:
+        # `$` also matches before a final newline.
+        word_end = punctuation_start
+        if word_end > 0 and self._buffer[word_end - 1] == "\n":
+            word_end -= 1
+        word_start = word_end
+        while word_start > 0 and not self._buffer[word_start - 1].isspace():
+            word_start -= 1
+        word = _LEADING_NON_WORD_RE.sub("", self._buffer[word_start:word_end])
         return word.strip(".").lower()
 
 

@@ -1,5 +1,7 @@
 import asyncio
 import io
+import random
+import re
 import wave
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -7,6 +9,10 @@ from types import SimpleNamespace
 import pytest
 
 from jarvis.audio.tts import (
+    _ABBREVIATIONS,
+    _BOUNDARY_RE,
+    _LEADING_NON_WORD_RE,
+    _SENTENCE_FINAL_PRONOUNS,
     BilingualTtsEngine,
     LazyAsyncLoad,
     OrderedPlayback,
@@ -1859,3 +1865,96 @@ async def test_second_turn_starts_fresh_after_english_text():
     await tts.wait_for_pending()
 
     assert engine.seen == [("Unclosed tail", "en"), ("Снова по-русски.", "ru")]
+
+
+# --- SentenceBuffer: behaviour of the original implementation -------------
+
+_ORIGINAL_TRAILING_WORD_RE = re.compile(r"\S+$")
+
+
+class _OriginalSentenceBuffer:
+    """The SentenceBuffer as it was before its rescans were made incremental."""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+
+    def feed(self, text: str) -> list[str]:
+        self._buffer += text
+        sentences = []
+        search_start = 0
+        while True:
+            match = _BOUNDARY_RE.search(self._buffer, search_start)
+            if match is None:
+                break
+            if self._is_abbreviation(match):
+                search_start = match.end()
+                continue
+            sentences.append(self._buffer[: match.end()].strip())
+            self._buffer = self._buffer[match.end() :]
+            search_start = 0
+        return sentences
+
+    def flush(self) -> str | None:
+        sentence = self._buffer.strip()
+        self._buffer = ""
+        return sentence or None
+
+    def _is_abbreviation(self, punctuation: re.Match[str]) -> bool:
+        word = self._word_before(punctuation.start())
+        if word in _ABBREVIATIONS:
+            return True
+        return (
+            punctuation.group() == "."
+            and len(word) == 1
+            and word.isalpha()
+            and word not in _SENTENCE_FINAL_PRONOUNS
+        )
+
+    def _word_before(self, punctuation_start: int) -> str:
+        word_match = _ORIGINAL_TRAILING_WORD_RE.search(self._buffer[:punctuation_start])
+        if word_match is None:
+            return ""
+        word = _LEADING_NON_WORD_RE.sub("", word_match.group())
+        return word.strip(".").lower()
+
+
+def _fed(buffer_class, chunks):
+    buffer = buffer_class()
+    return [buffer.feed(chunk) for chunk in chunks], buffer.flush()
+
+
+def test_the_word_before_a_trailing_newline_still_counts_as_the_word_before():
+    # The original `\S+$` matches before one final newline: that word stays an
+    # abbreviation, so the ellipsis after it is not a boundary.
+    buffer = SentenceBuffer()
+
+    assert buffer.feed("Итого руб.\n... дальше ") == []
+    assert buffer.flush() == "Итого руб.\n... дальше"
+
+
+def test_an_abbreviation_split_across_chunks_with_a_newline_is_not_a_boundary():
+    assert _fed(SentenceBuffer, ["им", ".\n", "? "]) == ([[], [], []], "им.\n?")
+
+
+def test_a_dot_after_an_abbreviation_and_a_newline_stays_pending():
+    buffer = SentenceBuffer()
+
+    assert buffer.feed("см.\n.") == []
+    assert buffer.flush() == "см.\n."
+
+
+def test_the_sentence_buffer_matches_the_original_on_random_chunks():
+    pieces = [
+        "им", "см", "руб", "г", "я", "Привет", "дальше", "x", " ", "  ", ".", "..",
+        "!", "?", "\n", "\t", ".\n", " \n", "\n\n", ". ", "? ", "т.е", "3.14",
+    ]  # fmt: skip
+    rng = random.Random(20261022)
+
+    for _ in range(3000):
+        chunks = [
+            "".join(rng.choice(pieces) for _ in range(rng.randint(1, 4)))
+            for _ in range(rng.randint(1, 8))
+        ]
+        assert _fed(SentenceBuffer, chunks) == _fed(_OriginalSentenceBuffer, chunks), (
+            chunks
+        )

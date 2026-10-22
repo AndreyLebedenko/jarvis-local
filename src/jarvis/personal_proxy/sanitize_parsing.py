@@ -5,9 +5,8 @@ rule below, is a typed failure and the request is not sent."""
 from __future__ import annotations
 
 import json
-import re
 
-from jarvis.personal_proxy.sanitize_prompts import PLACEHOLDER_TYPES
+from jarvis.personal_proxy.placeholders import PLACEHOLDER
 from jarvis.personal_proxy.sanitize_result import (
     MAX_REASON_LENGTH,
     SanitizeFailure,
@@ -20,7 +19,6 @@ from jarvis.personal_proxy.visible_text import has_visible_text
 LENGTH_DONE_REASON = "length"
 _BYTE_ORDER_MARK = "﻿"
 _REQUIRED_FIELDS = ("verdict", "reason", "sanitized_text", "mapping")
-_PLACEHOLDER = re.compile(rf"<(?:{'|'.join(PLACEHOLDER_TYPES)})_[1-9][0-9]*>")
 
 
 def parse_sanitize_output(
@@ -107,7 +105,7 @@ def _validated_send(
 ) -> SanitizeResult | SanitizeFailure:
     if not has_visible_text(sanitized_text):
         return SanitizeFailure(SanitizeFailureClass.EMPTY_SANITIZED_TEXT)
-    if not all(_PLACEHOLDER.fullmatch(key) for key in mapping):
+    if not all(PLACEHOLDER.fullmatch(key) for key in mapping):
         return SanitizeFailure(SanitizeFailureClass.BAD_PLACEHOLDER)
     if not all(value.strip() for value in mapping.values()):
         return SanitizeFailure(SanitizeFailureClass.EMPTY_MAPPING_VALUE)
