@@ -340,7 +340,32 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    exactly what went out. The card lists every `HotkeySettings` field and says
    bound or not. Tested with fakes. Boundary: no journal changes.
 
-9. **Pipeline composition and dry-run.** (Size: M-L.) `PersonalProxyService`
+9. **Pipeline composition and dry-run.** Split by the owner on 2026-10-22 into 9a and 9b
+   after the wiring research (the application wiring touches `app.py`, `run_mode.py`,
+   the transport, the JS and the UI strings, which is a task of its own).
+
+   **9a. PersonalProxyService.** (Size: M-L, card `tasks/task-v2.1.0-9a-proxy-service.md`.)
+   Pure asyncio logic over ports and injected stage callables: the router and the
+   one-request-at-a-time worker, the whole pipeline, dry run, block feedback, the answer
+   presentation (each restored sentence shown and spoken verbatim), the locality seam around
+   the external stream. End to end with fakes. No `app.py`.
+
+   **9b. Application wiring.** (Size: L, card written after 9a.) `RunMode.PERSONAL_PROXY`
+   with its verdict table and UI badge; subscriptions (only the proxy handler gets speech;
+   the debug utterance recorder decision); the dock text submitter routed to the proxy;
+   hotkeys bound in this mode (interrupt, shutdown, mic sleep; capture, clipboard,
+   thinking and response-mode inert); the real adapters (microphone gate with the
+   resume cooldown, speaker over `ReplayPlayer`, the guarded STT with a WAV-to-clip step,
+   the chat sink as a transient `proxy_block` state key with JS and strings and a Hidden
+   guard, the locality reporter); a second httpx client for the local check and
+   restoration backends (read timeout at least 120 s, closed at shutdown); the stage
+   warm-up instead of the main model's (Whisper load, the 8192 variant); startup
+   validation (Whisper dependencies and weights, topics file, API key variable, endpoint
+   rule, Ollama and the check model) reported with the window kept open, as the MCP mode
+   does; start, interrupt and close ordering; tests mirroring `test_main_mcp_mode.py`
+   including a hotkey-verdict coverage test; a self-sufficient human-run handoff.
+
+   Original text of task 9 (kept; the pieces are divided as above): `PersonalProxyService`
    wiring tasks 2-8 behind `--personal-proxy`; mic input as in normal mode;
    `text_voice` presentation; dry-run showing the Whisper text, the checked
    transcript, the doubts and whether it would ask, the sanitized text, the
