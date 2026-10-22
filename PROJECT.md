@@ -5720,6 +5720,16 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   (`doubt_min_listed` = 1) asks on 13 of 60 labeled recordings and covers 7 of 8 real
   errors on the production check; it names the wrong fragment on 3 of 8 (the e-mail cases
   carry no fragment). The adapters and the chat blocks' real display are tasks 9 and 10.
+- Personal proxy service (story v2.1.0 task 9a, `src/jarvis/personal_proxy/proxy_service.py`
+  and `request_pipeline.py`): composes the stages over injected callables and ports, with no
+  `app.py`, `Orchestrator` or Journal dependency. A router sends every item either to the
+  pending confirmation exchange or to a bounded FIFO; one worker runs one request at a time,
+  so the locality seam (EXTERNAL only around the external stream) is never overlapped. The
+  payload holds only the fixed system prompt and the sanitized text, and the stream gets
+  the exact object the gate allowed. Every failure posts a content-free notice and sends
+  nothing; dry run skips the question, posts the full state and stops. The restored answer
+  is shown and spoken sentence by sentence verbatim, with speech control tags stripped. The
+  application wiring is task 9b.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

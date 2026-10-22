@@ -262,14 +262,28 @@ class ConfirmationExchange:
     async def _resume_microphone(self) -> None:
         # Swallowed here so it cannot replace a CancelledError or the failure
         # already in flight; _ask raises it afterwards when nothing else is.
-        try:
-            resumed = await self._bounded(
-                FailureStage.MICROPHONE, self._microphone.resume()
-            )
-        except Exception:
-            resumed = False
+        # The resume itself runs to its end even if this task is cancelled
+        # meanwhile (a half-done resume can leave the microphone off); the
+        # cancellation is raised again afterwards.
+        resume = asyncio.ensure_future(self._microphone.resume())
+        resume.add_done_callback(lambda done: done.cancelled() or done.exception())
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                resumed = await self._resumed_within_limit(resume)
+                break
+            except asyncio.CancelledError as error:
+                cancellation = cancellation or error
         if not resumed:
             self._resume_failed = True
+        if cancellation is not None:
+            raise cancellation
+
+    async def _resumed_within_limit(self, resume: asyncio.Future) -> bool:
+        try:
+            return await self._bounded(FailureStage.MICROPHONE, asyncio.shield(resume))
+        except Exception:
+            return False
 
     def _stop_speaker(self) -> None:
         try:

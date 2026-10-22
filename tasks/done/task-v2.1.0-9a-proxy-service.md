@@ -1,6 +1,6 @@
 # Task v2.1.0-9a: PersonalProxyService (pipeline composition, dry-run)
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 9 (split by the owner on 2026-10-22 into
 9a, this card, and 9b, the application wiring), and "Revisions of 2026-10-19" item 2.
@@ -12,7 +12,7 @@ exist behind small interfaces) and uses the notes of `tasks/done/task-v2.1.0-8-c
 
 `PersonalProxyService` composes the stages into one pipeline for one request at a time:
 input (an utterance or typed text) -> speech guard and transcription -> transcript check ->
-sanitize -> (confirmation when there is a doubt) -> payload and gate -> dry-run stop or the
+sanitize -> (confirmation when there is a doubt; not in dry run) -> payload and gate -> dry-run stop or the
 external request -> restoration -> presentation. It is plain asyncio logic over ports and
 injected stage callables, so a complete run is tested with fakes. It does not touch
 `app.py`, the `Orchestrator`, the microphone loop, the Journal, the UI or any setting.
@@ -69,8 +69,11 @@ at a time and the locality seam (not safe for overlapping scopes) is safe.
 2. `sanitize(checked)`. A `SanitizeFailure` posts a notice (the failure class, no content) and
    ends the request. A `refuse` verdict posts a notice with the refusal reason (local chat
    only) and ends it.
-3. `HeardBlock` always goes to the chat: with a doubt (`should_ask`) the exchange posts it and
-   asks; without one the service posts it with `SEND_WITHOUT_QUESTION`. A request whose
+3. Outside dry run, `HeardBlock` always goes to the chat: with a doubt (`should_ask`) the
+   exchange posts it and asks; without one the service posts it with
+   `SEND_WITHOUT_QUESTION`. In dry run (owner decision of 2026-10-22) the confirmation is
+   skipped altogether: no question, no exchange, no `HeardBlock` (the `DryRunBlock` carries
+   the heard and checked text and `would_ask`). A request whose
    outcome is anything but `CONFIRMED` posts the offer text (task 8), spoken and shown, and
    ends: nothing is built or sent. An empty heard text is never sent.
 4. Payload: `build_outbound_payload(DEFAULT_SYSTEM_PROMPT, sanitized_text)` (`payload.py`) and
@@ -78,9 +81,9 @@ at a time and the locality seam (not safe for overlapping scopes) is safe.
    categories and positions (never a value), spoken and shown, and ends the request.
 5. Dry run (`settings.dry_run`): post a `DryRunBlock` with the full intermediate state (the
    Whisper text, the checked text, the doubts and whether it would ask, the sanitized text,
-   the mapping, the verdict, the gate result, the exact payload messages) and stop. It is
-   shown in the chat only; it holds personal values and is never logged or spoken beyond a
-   short fixed sentence ("dry run, nothing was sent").
+   the mapping, the verdict, the gate result, the exact payload messages) and stop. The
+   step comes straight after the sanitize step: dry run never asks and never speaks. It is
+   shown in the chat only; it holds personal values and is never logged or spoken.
 6. Send: post the `SentBlock` built from the payload object, then open the stream under
    `external_locality(reporter)` (EXTERNAL from the first byte request to the end of the
    stream or an error; restoration and speech after the stream are local). `restore(...)`
@@ -108,7 +111,7 @@ cancels a pending exchange, stops the speaker, resumes the microphone if paused,
 the tasks. `warm_up()` calls the injected warm-up once before the first request and may be
 called by 9b earlier.
 
-**Texts.** All fixed user-facing strings (notices, spoken block feedback, dry-run sentence)
+**Texts.** All fixed user-facing strings (notices and spoken block feedback)
 in Russian and English by the `language` provider, in one module, with a test that both
 catalogs have the same keys. No f-string of anything but a category name or an enum value.
 
@@ -134,7 +137,8 @@ service writes no log line at all except through typed notice blocks (a `caplog`
 3. Tests with fakes, end to end (pure logic, no sleeping; use seams): voice request without a
    doubt sent and answered; voice with a doubt then yes / no / unclear / timeout / typed yes /
    interrupt; typed request; no speech; empty transcript; topics refusal; malformed sanitize;
-   gate block (phone number in the sanitized text); dry run; external error before and during
+   gate block (phone number in the sanitized text); dry run (with and without a doubt: no
+   question, no exchange, microphone untouched, `would_ask` in the block); external error before and during
    the stream; restoration fallback sentences; unresolved placeholder; items arriving during
    an exchange and during a request; full FIFO; `close()` during a request; interrupt before
    and after the stream opened; microphone paused and resumed around the answer speech and
@@ -145,15 +149,53 @@ Journal, startup validation, model warm-up of the real backends, persistence of 
 
 ## Acceptance criteria
 
-- [ ] A complete run from an utterance to the spoken answer works with fakes for every stage,
+- [x] A complete run from an utterance to the spoken answer works with fakes for every stage,
       with the invariants (a)-(h) tested.
-- [ ] Every failure path posts a content-free notice and sends nothing; cancellation
+- [x] Every failure path posts a content-free notice and sends nothing; cancellation
       propagates; the worker survives an internal error.
-- [ ] One external request at a time; the locality is EXTERNAL only around the external
+- [x] One external request at a time; the locality is EXTERNAL only around the external
       stream.
-- [ ] Dry run posts the full intermediate state, sends nothing, and the details are never
-      logged.
-- [ ] The payload holds only the fixed system prompt and the sanitized text.
-- [ ] No `app.py`, `Orchestrator`, microphone loop, Journal, UI or setting change; no log
+- [x] Dry run posts the full intermediate state without asking or speaking, sends nothing,
+      and the details are never logged.
+- [x] The payload holds only the fixed system prompt and the sanitized text.
+- [x] No `app.py`, `Orchestrator`, microphone loop, Journal, UI or setting change; no log
       line from the service.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+
+## Outcome (2026-10-22)
+
+Accepted by the owner. Developer subagent; one independent review round, which found
+nothing that sends what must not be sent; its ten items (hung waits, double cancel in the
+microphone resume, interrupt from another thread, unclosed deltas, tag recombination,
+weak tests, surviving mutants) were fixed test first. Owner decision after review: dry run
+does not run the confirmation exchange and speaks nothing; it posts the `DryRunBlock`
+(with `would_ask`) after the gate and stops. Suite: 5270 passed, 1 skipped; ruff clean.
+
+Deviations from the card, accepted: `NoticeBlock` carries a local-only `reason` (the model's
+topics refusal text, never spoken or logged); notices are spoken or silent (`NO_SPEECH`,
+`BAD_AUDIO`, `BUSY`, `INTERRUPTED`, `SPEECH_FAILED`, `MICROPHONE_FAILED` are silent, so a
+bad-audio or busy request is dropped without a sound); `StageAnswerTranscriber` lives in the
+service; a `ConfirmationExchange` is created per request; `topics_text` is a constructor
+argument; `gate`, `open_stream` and `restore` are called synchronously, the others are async;
+`warm_up` retries after a failure; `InboxFullError`; an `idle` property; `CheckSource.TYPED`;
+the shielded microphone resume was also fixed in `confirmation_exchange.py`; the private
+`_is_english` became the public `is_english`. Dry run speaks nothing (the card first said a
+fixed sentence).
+
+Documented limits:
+- The answer is spoken verbatim, so Markdown and lists are read as written. Speech control
+  tags are stripped, but a split into three parts can still recombine, so the speaker
+  adapter must parse every call on its own (stated in the port contract).
+- Only the microphone resume has a time bound. A hung chat sink or speaker holds its request
+  until `interrupt()` or `close()`.
+- Several failures are silent (list above).
+
+Notes for later tasks:
+- Task 9b: the speaker adapter must wait while `ReplayPlayer` is BUSY (the port has no BUSY; a
+  raise degrades to text with the microphone paused until the resume); `interrupt()` is safe
+  from other threads but should still be called on the app loop; clips are WAV 16 kHz mono
+  PCM_16; `topics_text` goes to both the sanitize stage and the service; call `warm_up()`
+  before the first request (cold load of the restoration model took 52 s against its 15 s
+  limit); the opt-in debug transcript would record stage prompts.
+- Task 10: persist the blocks; the Journal and provenance surfaces.

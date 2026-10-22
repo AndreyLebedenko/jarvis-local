@@ -344,7 +344,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    after the wiring research (the application wiring touches `app.py`, `run_mode.py`,
    the transport, the JS and the UI strings, which is a task of its own).
 
-   **9a. PersonalProxyService.** (Size: M-L, card `tasks/task-v2.1.0-9a-proxy-service.md`.)
+   **9a. PersonalProxyService.** (Size: M-L. Done 2026-10-22, `tasks/done/task-v2.1.0-9a-proxy-service.md`.)
    Pure asyncio logic over ports and injected stage callables: the router and the
    one-request-at-a-time worker, the whole pipeline, dry run, block feedback, the answer
    presentation (each restored sentence shown and spoken verbatim), the locality seam around

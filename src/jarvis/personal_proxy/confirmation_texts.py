@@ -44,7 +44,7 @@ _EN = {
 }
 
 
-def _is_english(language: str | None) -> bool:
+def is_english(language: str | None) -> bool:
     if not isinstance(language, str):
         return False
     code = language.strip().casefold()
@@ -52,7 +52,7 @@ def _is_english(language: str | None) -> bool:
 
 
 def _words(language: str | None) -> dict:
-    return _EN if _is_english(language) else _RU
+    return _EN if is_english(language) else _RU
 
 
 def _named(doubts: tuple[Doubt, ...], words: dict) -> list[str]:

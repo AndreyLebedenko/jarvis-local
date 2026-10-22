@@ -17,6 +17,7 @@ class DoubtKind(StrEnum):
 class CheckSource(StrEnum):
     CHECKED = "checked"
     WHISPER_FALLBACK = "whisper_fallback"
+    TYPED = "typed"
 
 
 class FallbackReason(StrEnum):
