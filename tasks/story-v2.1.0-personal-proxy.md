@@ -328,7 +328,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    substitution fallback with the metadata mark, sentence-boundary buffering.
    Tested with a fake backend. Boundary: no external client.
 
-8. **Confirmation exchange.** (Size: L.) **Starts with a short design card**
+8. **Confirmation exchange.** (Size: L. Done 2026-10-22, `tasks/done/task-v2.1.0-8-confirmation-exchange.md`; the state machine and ports only, the adapters are task 9.) **Starts with a short design card**
    answering who listens for the answer while `PersonalProxyService` lives outside
    the turn lifecycle, and how a spoken "yes" is kept apart from ordinary input
    (stop condition below). Then: the decision to ask (the doubt trigger of
@@ -407,7 +407,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       response body never appear in logs or events. (Task 6.)
 - [x] The restoration pass touches only sentences with placeholders, and a failed
       validation falls back to substitution with the mark. (Task 7.)
-- [ ] With a doubt, the exchange shows the whole heard text and names the doubts
+- [x] With a doubt, the exchange shows the whole heard text and names the doubts
       by voice; only a clear "yes", spoken or typed, sends; no answer, unclear
       answer, or "no" sends nothing; without a doubt the request is sent without a
       question; the "went out" block equals the actual payload (a test). (Task 8.)

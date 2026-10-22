@@ -1,6 +1,6 @@
 # Task v2.1.0-8: confirmation exchange (design card and implementation)
 
-Status: Open.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 8 (Size: L), "Revisions of
 2026-10-19" items 2 and 4, and the stop conditions on the exchange. Facts: spike
@@ -174,15 +174,79 @@ Reuses the spike 8/9 harness where it can; no new corpus.
 
 ## Acceptance criteria
 
-- [ ] `classify_answer` returns `YES` only for the closed vocabulary, `NO` likewise, `UNCLEAR`
+- [x] `classify_answer` returns `YES` only for the closed vocabulary, `NO` likewise, `UNCLEAR`
       for everything else; a test lists the near-misses.
-- [ ] Only `CONFIRMED` can lead to a send; every other outcome, every exception and a failing
+- [x] Only `CONFIRMED` can lead to a send; every other outcome, every exception and a failing
       port send nothing; task cancellation propagates.
-- [ ] The microphone is paused before the question and resumed after it in every path; the
+- [x] The microphone is paused before the question and resumed after it in every path; the
       window and the timeout start after resume.
-- [ ] The handlers' work stays out of the event bus: the service-side inbox only enqueues (a
+- [x] The handlers' work stays out of the event bus: the service-side inbox only enqueues (a
       test of the inbox with a slow worker shows `submit` returns at once).
-- [ ] The "sent" block equals the outbound payload; neither block shows in `repr` or logs.
-- [ ] No `Orchestrator`, `app.py`, microphone loop, Journal or setting change.
-- [ ] Handoffs A and B exist and are self-sufficient; B's rule is applied to measured numbers.
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+- [x] The "sent" block equals the outbound payload; neither block shows in `repr` or logs.
+- [x] No `Orchestrator`, `app.py`, microphone loop, Journal or setting change.
+- [x] Handoffs A and B exist and are self-sufficient; B's rule is applied to measured numbers.
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green.
+
+## Outcome (2026-10-22)
+
+Accepted by the owner. Developer subagent; one independent review round, which found
+nothing that sends what must not be sent and these defects, all fixed test first: waits
+without a bound (a hung speaker, sink or microphone gate stranded the exchange and kept
+the microphone paused; a hung transcriber made `cancel()` wait), classifier gaps (zero-width
+characters, combining marks and punctuation deleted instead of separating, so `d<ZWSP>a`
+and `s.e.n.d` read as YES), no documented loop contract, edge cases (language tags such as
+`en-US`, blank fragments, non-str typed input), weak tests (the block-equals-payload test
+used clean strings; the exchange repr test could not fail), and `config.handoff-b.toml` not
+in `.gitignore`. Suite: 5013 passed, 1 skipped; ruff clean.
+
+Decisions beyond the card, accepted: any `?` in an answer makes it unclear (a hesitant
+"Da?" does not send); punctuation, format characters and diacritics are separators, not
+deletions (only the `n't` apostrophe is dropped); `should_ask(checked)` takes no settings
+because `would_ask` already applies `doubt_min_listed`; `SentBlock` holds the messages tuple
+(system prompt included) and equals `payload.messages`; `run` returns the bare outcome and
+the offer text and the shown question are posted by the service, not the exchange;
+`SPEECH_PHASE_TIMEOUT_SECONDS` = 30; while an exchange is pending, `submit_*` and
+`cancel` from another thread raise `WrongLoopError`; `last_failure` names the failed stage
+(no content).
+
+Handoff A (short answers through the real speech path, run by the owner at the
+microphone, 2026-10-22): false yes 0 of 50 non-yes takes (the safety number). As
+expected: `нет` 10/10, `отправляй` 10/10, `да` 8/10 (one take rejected by the speech guard
+at 0.26 s of speech against `stt_min_speech_seconds` 0.3, one unclear), `yes` 8/10,
+`стоп` 5/10, `no` 0/10 (all unclear: `stt_language = "ru"` makes Whisper write English
+words in Cyrillic); `да, но исправь` and the neutral phrase 10/10 unclear. Every loss is
+fail-closed. No vocabulary or threshold change was made (owner, 2026-10-22); options for
+later: NO variants for the Cyrillic spellings of `no` (safe, NO and UNCLEAR both send
+nothing), `stt_min_speech_seconds` 0.2 (controls measured 0.00 s, real utterances at least
+1.54 s), per-take Whisper texts to choose variants for `стоп` and `yes`.
+
+Handoff B (doubt trigger on the production check stage over the 60 labeled recordings,
+run by the agent on the owner's request, 2026-10-22, `doubt_min_listed` 1, INT4, `num_ctx`
+8192): verdict `not_comparable`, because the production chain finds 8 real errors where the
+rule was defined on 7. Asked 13/60 = 0.217 (limit 0.27, inside); real errors asked about
+7 of 8 (at least 6 of 7, inside); errors whose wrong fragment is named 3 of 8 (at least 4 of
+7, outside). The unnamed ones are the e-mail cases: `id_email` and
+`v2_email_underscore__owner` (the rewrite guard returned the Whisper text with a typed doubt
+and no fragment) and `v2_email_underscore__baya` (asked about nothing, the only missed
+error). Asked without an error: `q_accountant`, `q_pathologist_long`, `m_northwind_long`,
+`v2_card__owner`, `v2_card__eugene`, `v2_rare_surname__baya`. Decision (owner, 2026-10-22):
+keep `doubt_min_listed` = 1 and record the numbers; the weak spot is the pointer, not the
+trigger.
+
+Notes for later tasks:
+- Task 9: build the adapters (speaker over `ReplayPlayer`, microphone gate over
+  `auto_pause_for_speech`/`auto_resume_after_speech`, answer transcriber over the guarded
+  STT, chat sink, dock text and speech routed into `ProxyInbox`, `RunMode`). The service
+  must post the offer text after every outcome except `CONFIRMED`, post the
+  `SEND_WITHOUT_QUESTION` block itself on the no-doubt path, render the question from the
+  block when TTS is muted (a test), and never send an empty request (`EMPTY_TRANSCRIPT`
+  gives `would_ask` false).
+- Task 9: a failed check (every fallback reason except `EMPTY_TRANSCRIPT`) always asks.
+  When a doubt has no fragment (the rewrite guard, a failed check) the question should name
+  the kind of data ("check the e-mail address") instead of the generic sentence.
+- Task 9: the `interrupt` hotkey during a pending question calls `cancel()`; the exchange
+  runs on the app's event loop only (hotkeys and the transport marshal with
+  `run_coroutine_threadsafe`).
+- Documented limits: Whisper is forced to Russian, so the English `no` is not heard;
+  one-word answers can be lost to the speech guard or misheard, always as UNCLEAR, never as
+  YES.

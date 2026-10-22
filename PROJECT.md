@@ -5705,6 +5705,21 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   back to substitution), and never proofreads sentences without placeholders. Known:
   Latin names, reshaped digits and first-letter-changing declensions fall back to
   substitution.
+- Confirmation exchange (story v2.1.0 task 8, `src/jarvis/personal_proxy/confirmation_*.py`,
+  `proxy_inbox.py`): a state machine behind ports (chat sink, speaker, microphone gate,
+  answer transcriber), with no `Orchestrator`, microphone-loop or Journal dependency. When
+  the transcript check listed a doubt it posts the heard block, pauses the microphone,
+  speaks what to check, resumes, and waits `confirmation_timeout_seconds` for a typed or
+  spoken answer. Only a clear YES (the whole answer must be a phrase of a closed Russian or
+  English vocabulary; any `?`, extra word or broken word is unclear) leads to a send; NO,
+  unclear, timeout, cancel (the `interrupt` hotkey) and any failure send nothing. Every wait
+  is bounded; the microphone is resumed in every path. `ProxyInbox` only enqueues, so the
+  event bus never waits on the work. Measured on the real speech path: 0 false yes in 50
+  non-yes takes; the Russian-forced Whisper does not hear the English `no`, and some
+  short answers are lost to the speech guard, always as unclear. The doubt trigger
+  (`doubt_min_listed` = 1) asks on 13 of 60 labeled recordings and covers 7 of 8 real
+  errors on the production check; it names the wrong fragment on 3 of 8 (the e-mail cases
+  carry no fragment). The adapters and the chat blocks' real display are tasks 9 and 10.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.
