@@ -108,6 +108,17 @@
     <div class="chip-row" id="modulesPanel"></div>
   </section>
 
+  <section class="proxy-chat" id="proxyChat" aria-labelledby="proxyChatHeading">
+    <h2 id="proxyChatHeading" data-i18n="proxy_chat_title">Personal proxy</h2>
+    <div class="proxy-chat-empty" id="proxyChatEmpty" data-i18n="proxy_chat_empty">Say a request, or type one below.</div>
+    <div class="proxy-chat-list" id="proxyChatList" role="log" aria-live="polite"></div>
+    <form class="proxy-chat-input" id="proxyChatForm" onsubmit="submitProxyText(); return false">
+      <textarea id="proxyChatText" rows="2" data-i18n-placeholder="proxy_chat_placeholder" placeholder="Type a request" onkeydown="onProxyChatKeyDown(event)"></textarea>
+      <button type="submit" id="proxyChatSend" data-i18n="proxy_chat_send">Send</button>
+    </form>
+    <div class="proxy-chat-status" id="proxyChatStatus" role="status"></div>
+  </section>
+
   <div class="mode-card-row">
     <div class="think-card">
       <div class="think-body">
@@ -337,6 +348,7 @@
       <button type="submit" id="journalSendButton" data-i18n="journal_input_send">Send</button>
       <div class="journal-attachment-list" id="journalAttachmentList"></div>
       <div class="journal-input-inactive-note" id="journalInputInactiveNote" data-i18n="journal_input_inactive_session">This session does not accept input. Start a new context, or select the active session, to type.</div>
+      <div class="journal-input-proxy-note" id="journalInputProxyNote" data-i18n="journal_input_proxy_note">In the personal proxy mode, type requests in the Personal proxy panel of the Status view.</div>
       <div class="journal-input-status" id="journalInputStatus"></div>
     </form>
   </section>
@@ -361,6 +373,7 @@
 <script src="strings.js"></script>
 <script src="interaction.js"></script>
 <script src="transport.js"></script>
+<script src="proxy_chat.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

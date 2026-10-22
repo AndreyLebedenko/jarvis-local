@@ -52,12 +52,20 @@ def test_the_flag_excludes_mcp_mode(capsys, argv):
     assert "--personal-proxy and --mcp-mode" in capsys.readouterr().err
 
 
-def test_the_flag_combines_with_debug_and_no_touchstrip():
-    args = parse_args(
-        ["--status-console", "--personal-proxy", "--debug", "--no-touchstrip"]
-    )
+def test_the_flag_combines_with_no_touchstrip():
+    args = parse_args(["--status-console", "--personal-proxy", "--no-touchstrip"])
 
-    assert (args.personal_proxy, args.debug, args.no_touchstrip) == (True, True, True)
+    assert (args.personal_proxy, args.no_touchstrip) == (True, True)
+
+
+def test_the_flag_is_refused_with_debug_because_debug_would_record_the_request(
+    capsys,
+):
+    with pytest.raises(SystemExit) as raised:
+        parse_args(["--status-console", "--personal-proxy", "--debug"])
+
+    assert raised.value.code != 0
+    assert "--personal-proxy cannot be combined with --debug" in capsys.readouterr().err
 
 
 # --- settings check ------------------------------------------------------------
@@ -104,7 +112,7 @@ def _settings_with(proxy: PersonalProxySettings) -> Settings:
     return Settings(personal_proxy=proxy)
 
 
-def test_main_starts_a_normal_run_with_the_validated_settings(monkeypatch):
+def test_main_starts_the_personal_proxy_run_with_the_validated_settings(monkeypatch):
     settings = _settings_with(_configured())
     monkeypatch.setattr(app_module, "load_settings", lambda: settings)
     launches: list[dict] = []
@@ -114,7 +122,7 @@ def test_main_starts_a_normal_run_with_the_validated_settings(monkeypatch):
 
     app_module.main(["--status-console", "--personal-proxy"], acquire=_HeldGuard)
 
-    assert launches[0]["run_mode"] is RunMode.NORMAL
+    assert launches[0]["run_mode"] is RunMode.PERSONAL_PROXY
     assert launches[0]["settings"] is settings
 
 

@@ -25,5 +25,5 @@ const RESPONSE_MODES = ["text", "voice", "text_voice"];
 // source of an answer some other assistant sent
 // (journal/external_canvas.py). Named members because both are compared
 // against, not validated against a list.
-const RUN_MODE = { NORMAL: "normal", MCP: "mcp" };
+const RUN_MODE = { NORMAL: "normal", MCP: "mcp", PERSONAL_PROXY: "personal_proxy" };
 const MCP_CANVAS_SOURCE = "mcp_canvas";

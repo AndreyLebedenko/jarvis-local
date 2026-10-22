@@ -28,9 +28,10 @@ is started with the explicit `--personal-proxy` flag (requires
 a silent fall back to local. It is off by default and is not a persistent
 setting, so a restart without the flag is local again. A turn answered
 externally is reported as `DataLocality.EXTERNAL`; every other turn stays
-`LOCAL`. The reporting seam exists (`personal_proxy/locality.py`) but its
-call is wired by a later task (v2.1.0 task 9); until then the indicator stays
-`LOCAL`. Without the flag the runtime is byte-identical to the v2.0 behavior.
+`LOCAL`. The reporting seam (`personal_proxy/locality.py`) is wired by the
+application (v2.1.0 task 9b): the Status Console indicator reads `EXTERNAL` only
+while the external stream is read. Without the flag the runtime is
+byte-identical to the v2.0 behavior.
 `--mcp-mode` (story v2.0) adds an inbound path, not an outbound one: it serves
 one streamable-HTTP MCP endpoint on `127.0.0.1` only, behind a bearer token,
 so another assistant's answer can reach Jarvis without Jarvis reaching
@@ -5730,6 +5731,36 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   nothing; dry run skips the question, posts the full state and stops. The restored answer
   is shown and spoken sentence by sentence verbatim, with speech control tags stripped. The
   application wiring is task 9b.
+- Application wiring (story v2.1.0 task 9b, `RunMode.PERSONAL_PROXY`, `src/jarvis/app.py`,
+  `personal_proxy/proxy_assembly.py`, `proxy_runtime.py`, `launch.py`): with
+  `--personal-proxy` the only consumer of utterances is the proxy (the `Orchestrator`
+  turn path, the clipboard and screenshot inputs and the debug utterance recorder are not
+  subscribed; `McpHost` is never enabled) and dock text is rerouted into it as typed text.
+  The controls of the main model (thinking, response mode, MCP, solo session, tools,
+  context reset, new context, fork, transcript, annotation and consolidation generation,
+  replay) are refused, with a visible warning in the events panel; the speech switch and
+  dock text stay. Hotkeys bound: shutdown, interrupt (a pending question means "no",
+  otherwise the request is cancelled) and microphone sleep. Start order: checks (topics
+  file, key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
+  weights, Silero), warm-up of the check model at its own context, then the service and the
+  bus subscription; a failed check keeps the window open with a reason that names only the
+  kind of failure, and starts nothing. Stop order: unsubscribe, interrupt and close the
+  service (the microphone is given back, the speaker stopped), close the second HTTP client
+  (read timeout at least 120 s) used for the local check and restoration calls. Blocks reach
+  the window as transient `proxy_block` state deltas, dropped while Hidden and never
+  written to disk. Review round 1: `--personal-proxy` with `--debug` is refused in
+  `parse_args` and in `run()` (debug would record the transcript, mapping and answer through
+  the check model's exchange). The main model is not warmed in this mode, so `WarmupCompleted`
+  is not published; the proxy reports itself ready with its own event, the orb state and a
+  backend chip "check model ready", the top bar names `[personal_proxy].model`, and a failed
+  start plays no "listening" cue. Dock text before or after a failed start is refused as
+  `unavailable` with the failure reason (not "busy"); the dock itself is disabled in this mode
+  with a note pointing to the Personal proxy panel, and an attachment upload is refused with
+  `attachments_unavailable`. Hiding the window declines a pending question (the exchange ends
+  as CANCELLED; `PersonalProxyService.cancel_pending_question`). A failing proxy stop is
+  logged by error type only and does not skip the rest of the shutdown. Consolidation execution
+  is only refused in this mode; it reaches no model. Not in this task: persistence of the
+  blocks (task 10), the launcher offering the mode, orb states for a request in progress.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

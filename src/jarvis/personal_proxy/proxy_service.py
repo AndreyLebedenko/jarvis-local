@@ -15,6 +15,7 @@ line, and nothing taken from a request appears in an exception or a repr."""
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 
 from jarvis.core.config import PersonalProxySettings
@@ -145,14 +146,27 @@ class PersonalProxyService:
         the request in flight is cancelled. Safe to call from any thread: a call
         from outside the service's loop is marshalled onto it. Before `start`
         there is nothing to interrupt."""
+        self._on_service_loop(self._interrupt_on_loop)
+
+    def cancel_pending_question(self) -> None:
+        """A pending question is answered "no" (it ends as CANCELLED); a request
+        in flight is left alone. Same threading rules as `interrupt`."""
+        self._on_service_loop(self._cancel_pending_question_on_loop)
+
+    def _on_service_loop(self, action: Callable[[], None]) -> None:
         loop = self._loop
         if loop is None:
             return
         if _running_loop() is loop:
-            self._interrupt_on_loop()
+            action()
         else:
             with suppress(RuntimeError):
-                loop.call_soon_threadsafe(self._interrupt_on_loop)
+                loop.call_soon_threadsafe(action)
+
+    def _cancel_pending_question_on_loop(self) -> None:
+        exchange = self._pending_exchange()
+        if exchange is not None:
+            exchange.cancel()
 
     def _interrupt_on_loop(self) -> None:
         exchange = self._pending_exchange()

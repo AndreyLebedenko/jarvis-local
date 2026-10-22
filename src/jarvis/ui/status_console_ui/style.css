@@ -236,6 +236,43 @@ body {
 .run-mode-badge.show { display: flex; }
 .debug-banner-sep { opacity: 0.7; }
 
+/* story-v2.1: the personal proxy's chat. Only present in that run mode. */
+.proxy-chat { display: none; width: min(760px, 100%); }
+html[data-run-mode="personal_proxy"] .proxy-chat { display: block; }
+.proxy-chat h2 {
+  margin: 0 0 8px; color: var(--text-dim);
+  font: 600 11px "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.proxy-chat-empty { color: var(--text-faint); font-size: 12.5px; padding: 8px 0; }
+.proxy-chat-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 340px; overflow-y: auto;
+}
+.proxy-block {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 8px 12px;
+}
+.proxy-block[data-type="sent"] { border-color: var(--amber-dim); }
+.proxy-block[data-type="answer"] { border-color: var(--cyan-dim); }
+.proxy-block[data-type="notice"] { border-color: var(--violet-dim); }
+.proxy-block[data-type="dry_run"] { border-color: var(--violet-dim); }
+.proxy-block-title {
+  color: var(--text-dim); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;
+}
+.proxy-text, .proxy-sentence, .proxy-row-value { white-space: pre-wrap; word-break: break-word; }
+.proxy-sentence.rough { text-decoration: underline dotted var(--amber); }
+.proxy-note { color: var(--text-dim); font-size: 11.5px; margin-top: 4px; }
+.proxy-row { display: flex; gap: 10px; font-size: 12.5px; margin: 2px 0; }
+.proxy-row-label { color: var(--text-dim); min-width: 120px; flex-shrink: 0; }
+.proxy-chat-input { display: flex; gap: 8px; margin-top: 10px; }
+.proxy-chat-input textarea {
+  flex: 1; resize: vertical; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; font: inherit;
+}
+.proxy-chat-status { color: var(--amber); font-size: 12px; min-height: 16px; margin-top: 4px; }
+
 /* task-ui-05: system visibility mode. Open reuses cyan (calm/default,
    shared with data locality's "local" color by design - both represent the
    unremarkable case, per the privacy doc's color plan); Hidden uses violet
@@ -1292,6 +1329,14 @@ html[data-view="settings"] .settings {
 .journal-input-dock.inactive-session #journalSendButton,
 .journal-input-dock.inactive-session .journal-attachment-list { display: none; }
 .journal-input-dock.inactive-session .journal-input-inactive-note { display: block; }
+.journal-input-proxy-note { display: none; color: var(--text-dim); font-size: 12.5px; }
+.journal-input-dock.proxy-mode .journal-drop-target,
+.journal-input-dock.proxy-mode #journalAttachButton,
+.journal-input-dock.proxy-mode #journalTextInput,
+.journal-input-dock.proxy-mode #journalSendButton,
+.journal-input-dock.proxy-mode .journal-attachment-list,
+.journal-input-dock.proxy-mode .journal-input-inactive-note { display: none; }
+.journal-input-dock.proxy-mode .journal-input-proxy-note { display: block; }
 .journal-input-dock button {
   height: 34px; padding: 0 14px; border: 1px solid var(--cyan-dim);
   border-radius: 7px; background: var(--cyan-tint); color: var(--cyan);

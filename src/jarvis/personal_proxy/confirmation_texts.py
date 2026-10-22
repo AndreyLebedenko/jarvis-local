@@ -7,6 +7,7 @@ ignored); any other language, and none, gets Russian."""
 from __future__ import annotations
 
 from jarvis.personal_proxy.check_result import Doubt, DoubtKind
+from jarvis.personal_proxy.speech_tags import strip_speech_control_tags
 
 MAX_SPOKEN_ITEMS = 3
 MAX_SPOKEN_FRAGMENT_CHARS = 60
@@ -83,7 +84,7 @@ def shown_question(
 def spoken_question(language: str | None, doubts: tuple[Doubt, ...]) -> str:
     words = _words(language)
     named = [
-        item[:MAX_SPOKEN_FRAGMENT_CHARS].rstrip()
+        strip_speech_control_tags(item)[:MAX_SPOKEN_FRAGMENT_CHARS].rstrip()
         for item in _named(doubts, words)[:MAX_SPOKEN_ITEMS]
     ]
     return words["spoken"].format(check=_check_sentence(named, words))

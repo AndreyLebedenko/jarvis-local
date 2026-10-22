@@ -1046,9 +1046,9 @@ class StatusConsoleApi:
         self._schedule(self._save_config_selection_async(selection))
 
     def _persisted_mcp_enabled(self) -> bool:
-        # MCP mode never enables the host, so its live state would persist
-        # [mcp] enabled = false for the next normal start.
-        if self._mcp_host is None or self._run_mode is RunMode.MCP:
+        # MCP mode and the personal proxy never enable the host, so its live
+        # state would persist [mcp] enabled = false for the next normal start.
+        if self._mcp_host is None or self._run_mode is not RunMode.NORMAL:
             return self._settings.mcp.enabled
         return self._mcp_host.enabled
 

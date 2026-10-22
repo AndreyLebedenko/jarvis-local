@@ -1485,7 +1485,10 @@ def test_the_run_mode_and_external_source_vocabulary_lives_in_one_js_contract():
     app_js = (UI_DIR / "app.js").read_text(encoding="utf-8")
     contract_js = (UI_DIR / "contract.js").read_text(encoding="utf-8")
 
-    assert 'const RUN_MODE = { NORMAL: "normal", MCP: "mcp" };' in contract_js
+    assert (
+        'const RUN_MODE = { NORMAL: "normal", MCP: "mcp", '
+        'PERSONAL_PROXY: "personal_proxy" };'
+    ) in contract_js
     assert 'const MCP_CANVAS_SOURCE = "mcp_canvas";' in contract_js
     # Both surfaces compare against the constants, never against a literal.
     for function_body in (
@@ -1507,7 +1510,7 @@ def test_the_js_contract_run_mode_and_source_match_python():
 
     run_mode = re.search(r"const RUN_MODE = \{(.*?)\};", contract_js, re.S)
     assert run_mode is not None
-    assert re.findall(r': "([a-z]+)"', run_mode.group(1)) == [
+    assert re.findall(r': "([a-z_]+)"', run_mode.group(1)) == [
         mode.value for mode in RunMode
     ]
     source = re.search(r'const MCP_CANVAS_SOURCE = "(\w+)";', contract_js)
@@ -2139,7 +2142,11 @@ async def test_save_config_selection_writes_only_ui_config_and_publishes_saved_e
 
 @pytest.mark.parametrize(
     ("run_mode", "persisted"),
-    [(RunMode.NORMAL, "enabled = false"), (RunMode.MCP, "enabled = true")],
+    [
+        (RunMode.NORMAL, "enabled = false"),
+        (RunMode.MCP, "enabled = true"),
+        (RunMode.PERSONAL_PROXY, "enabled = true"),
+    ],
 )
 async def test_save_config_selection_persists_the_configured_mcp_switch_in_mcp_mode(
     tmp_path, run_mode, persisted

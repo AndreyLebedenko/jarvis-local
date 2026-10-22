@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import secrets
+import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,7 @@ from jarvis.core.run_mode import (
     ActionRefusal,
     ActionRefusedError,
     ControlAction,
+    RefusalReason,
     RunMode,
     RunModePolicy,
 )
@@ -115,6 +117,7 @@ from jarvis.ui.config_selection import validate_response_mode
 from jarvis.ui.contract import (
     DataLocality,
     DataSource,
+    EventLevel,
     ModelRequestItem,
     ModelRequestSummary,
     ModuleHealth,
@@ -1020,6 +1023,7 @@ class UiTransportServer:
             if refusal is None:
                 return await handler(request)
             self._require_http_token(request)
+            self._announce_refusal(refusal)
             return web.json_response(refusal_payload(refusal), status=403)
 
         return guarded
@@ -1119,6 +1123,33 @@ class UiTransportServer:
         self._publish_delta(self._state.set_visibility_mode(mode))
         if mode is VisibilityMode.OPEN:
             self._publish_delta(self._state.republish_voice_guide_queue_state())
+
+    def publish_proxy_block(self, payload: JsonObject) -> None:
+        """One chat block of the personal proxy. Transient like `journal_event`:
+        it is never stored in the snapshot, so a reconnecting client does not
+        get it, and while Hidden it is dropped, not queued."""
+        if self._is_hidden():
+            return
+        self._publish_delta(
+            make_message(
+                "state",
+                "delta",
+                {"key": "proxy_block", "value": cast(JSONValue, payload)},
+            )
+        )
+
+    def _announce_refusal(self, refusal: ActionRefusal) -> None:
+        """The personal proxy tells the user in the events panel that a control
+        of the main model is refused; the other modes only grey the control."""
+        if refusal.reason is not RefusalReason.PERSONAL_PROXY:
+            return
+        event = SystemEvent(
+            timestamp=time.time(),
+            source="PERSONAL_PROXY",
+            level=EventLevel.WARN,
+            message=ui_text("personal_proxy_control_refused", self._state.language),
+        )
+        self._publish_delta(self._state.add_system_event(event))
 
     def _subscribe_to_bus(self) -> None:
         subscriptions: list[tuple[type[object], Callable[..., object]]] = [
@@ -1312,6 +1343,11 @@ class UiTransportServer:
         self, request: web.Request
     ) -> web.Response:
         if self._journal_attachment_submitter is None:
+            if self._policy.run_mode is RunMode.PERSONAL_PROXY:
+                return web.json_response(
+                    {"status": "rejected", "reason": "attachments_unavailable"},
+                    status=409,
+                )
             raise web.HTTPServiceUnavailable(
                 text="journal attachment input not available"
             )
@@ -2286,11 +2322,14 @@ class UiTransportServer:
     def _text_submission_payload(result: TextSubmissionResult) -> JsonObject:
         if result.reason is TextSubmissionReason.ACCEPTED:
             return {"status": "accepted", "reason": result.reason.value}
-        return {
+        payload: JsonObject = {
             "status": "rejected",
             "reason": result.reason.value,
             "max_chars": result.max_chars,
         }
+        if result.detail:
+            payload["detail"] = result.detail
+        return payload
 
     @staticmethod
     def _attachment_submission_payload(
@@ -2606,6 +2645,7 @@ class UiTransportServer:
         try:
             self._dispatch_control(command, cast(JsonObject, arguments))
         except ActionRefusedError as error:
+            self._announce_refusal(error.refusal)
             self._enqueue_message(
                 client,
                 make_message("control", "error", refusal_error_payload(error.refusal)),

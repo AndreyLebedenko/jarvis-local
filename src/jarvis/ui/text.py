@@ -86,8 +86,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mic_detail_muted": "not in use",
         "mic_detail_capture_failed": "capture stopped",
         "mic_detail_off_mcp_mode": "off in MCP mode",
+        "mic_detail_off_proxy_not_started": "off: the personal proxy did not start",
         # Module-health details published by ModuleHealthTracker.
         "backend_detail_ready": "responding",
+        "backend_detail_proxy_ready": "check model ready",
         "backend_detail_warmup_failed": "warm-up failed",
         "backend_detail_request_failed": "request failed",
         "tts_detail_ready": "speaking",
@@ -133,6 +135,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "config_saved_restart_to_apply": "Settings saved - restart Jarvis to apply",
         "warmup_failed": "Model warm-up failed - the first response may be slow",
         "warmup_succeeded": "Model warm-up complete",
+        "personal_proxy_ready": "Personal proxy ready: the check model is warmed up",
+        "personal_proxy_starting": "The personal proxy is still starting.",
         "mic_awake": "Microphone woken up",
         "mic_asleep": "Microphone put to sleep",
         "reasoning_level_off": "Reasoning level: off",
@@ -154,6 +158,49 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "mcp_mode_port_unavailable": (
             "MCP server not started: port {port} is unavailable; change [mcp_mode].port"
+        ),
+        "personal_proxy_control_refused": (
+            "Personal proxy mode: this control is not available"
+        ),
+        "personal_proxy_inbox_full": (
+            "Personal proxy: the input queue is full, a message was dropped"
+        ),
+        "personal_proxy_not_started_topics_file": (
+            "Personal proxy not started: the topics file cannot be used; "
+            "see [personal_proxy].topics_file"
+        ),
+        "personal_proxy_not_started_api_key": (
+            "Personal proxy not started: the API key variable is missing or "
+            "unusable; see [personal_proxy].api_key_env"
+        ),
+        "personal_proxy_not_started_endpoint": (
+            "Personal proxy not started: the endpoint must be https or a local "
+            "http address; see [personal_proxy].endpoint"
+        ),
+        "personal_proxy_not_started_speech_dependency": (
+            "Personal proxy not started: the speech package is not installed; "
+            "run pip install -r requirements-stt.txt"
+        ),
+        "personal_proxy_not_started_speech_model": (
+            "Personal proxy not started: the speech model is not on this "
+            "machine; run python setup_stt_model.py once"
+        ),
+        "personal_proxy_not_started_speech_device": (
+            "Personal proxy not started: the speech engine cannot start on "
+            "[personal_proxy].stt_device"
+        ),
+        "personal_proxy_not_started_ollama": (
+            "Personal proxy not started: Ollama is not reachable at [backend].endpoint"
+        ),
+        "personal_proxy_not_started_check_model": (
+            "Personal proxy not started: the check model is not installed in "
+            "Ollama; see [personal_proxy].check_model"
+        ),
+        "personal_proxy_not_started_warm_up": (
+            "Personal proxy not started: the check model did not answer"
+        ),
+        "personal_proxy_not_started_internal": (
+            "Personal proxy not started: an unexpected error stopped the start"
         ),
         "mcp_server_disconnect_failed": "Error disconnecting server {server}",
         "mcp_tool_name_collision": "Tool name collision: {tool} ({server})",
@@ -195,7 +242,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "mic_detail_muted": "не используется",
         "mic_detail_capture_failed": "захват остановлен",
         "mic_detail_off_mcp_mode": "выключен в режиме MCP",
+        "mic_detail_off_proxy_not_started": "выключен: личный прокси не запущен",
         "backend_detail_ready": "отвечает",
+        "backend_detail_proxy_ready": "модель проверки готова",
         "backend_detail_warmup_failed": "прогрев не удался",
         "backend_detail_request_failed": "сбой запроса",
         "tts_detail_ready": "озвучивает",
@@ -242,6 +291,8 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "warmup_failed": "Прогрев модели не удался - первый ответ может быть медленным",
         "warmup_succeeded": "Прогрев модели завершён",
+        "personal_proxy_ready": "Личный прокси готов: модель проверки прогрета",
+        "personal_proxy_starting": "Личный прокси ещё запускается.",
         "mic_awake": "Микрофон разбужен",
         "mic_asleep": "Микрофон усыплён",
         "reasoning_level_off": "Уровень мышления: выключен",
@@ -261,6 +312,49 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "mcp_mode_port_unavailable": (
             "MCP-сервер не запущен: порт {port} недоступен; измените [mcp_mode].port"
+        ),
+        "personal_proxy_control_refused": (
+            "Режим личного прокси: этот элемент управления недоступен"
+        ),
+        "personal_proxy_inbox_full": (
+            "Личный прокси: очередь ввода заполнена, сообщение отброшено"
+        ),
+        "personal_proxy_not_started_topics_file": (
+            "Личный прокси не запущен: файл тем недоступен; "
+            "см. [personal_proxy].topics_file"
+        ),
+        "personal_proxy_not_started_api_key": (
+            "Личный прокси не запущен: переменная с ключом API не задана или "
+            "непригодна; см. [personal_proxy].api_key_env"
+        ),
+        "personal_proxy_not_started_endpoint": (
+            "Личный прокси не запущен: адрес должен быть https или локальным "
+            "http; см. [personal_proxy].endpoint"
+        ),
+        "personal_proxy_not_started_speech_dependency": (
+            "Личный прокси не запущен: не установлен пакет распознавания речи; "
+            "выполните pip install -r requirements-stt.txt"
+        ),
+        "personal_proxy_not_started_speech_model": (
+            "Личный прокси не запущен: модели распознавания речи нет на этом "
+            "компьютере; один раз выполните python setup_stt_model.py"
+        ),
+        "personal_proxy_not_started_speech_device": (
+            "Личный прокси не запущен: распознавание речи не стартует на "
+            "[personal_proxy].stt_device"
+        ),
+        "personal_proxy_not_started_ollama": (
+            "Личный прокси не запущен: Ollama недоступна по [backend].endpoint"
+        ),
+        "personal_proxy_not_started_check_model": (
+            "Личный прокси не запущен: модель проверки не установлена в Ollama; "
+            "см. [personal_proxy].check_model"
+        ),
+        "personal_proxy_not_started_warm_up": (
+            "Личный прокси не запущен: модель проверки не ответила"
+        ),
+        "personal_proxy_not_started_internal": (
+            "Личный прокси не запущен: запуск остановила непредвиденная ошибка"
         ),
         "mcp_server_disconnect_failed": "Ошибка отключения сервера «{server}»",
         "mcp_tool_name_collision": "Конфликт имён инструментов: «{tool}» ({server})",

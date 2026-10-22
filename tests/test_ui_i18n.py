@@ -62,6 +62,7 @@ def _strings_js_keys() -> dict[str, set[str]]:
         "demo.html",
         "demo.js",
         "interaction.js",
+        "proxy_chat.js",
     ],
 )
 def test_default_ui_surfaces_contain_no_russian_text(filename):
@@ -85,7 +86,8 @@ def test_every_data_i18n_key_in_markup_exists_in_the_dictionary(filename):
 
 
 @pytest.mark.parametrize(
-    "filename", ["app.js", "touchstrip.js", "transport.js", "interaction.js"]
+    "filename",
+    ["app.js", "touchstrip.js", "transport.js", "interaction.js", "proxy_chat.js"],
 )
 def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
     keys = _strings_js_keys()["en"]
@@ -101,6 +103,7 @@ def test_every_uistring_lookup_key_exists_in_the_dictionary(filename):
             "journal_consolidation_reason_",
             "mcp_",
             "response_mode_",
+            "run_mode_",
             "think_status_",
             "tts_language_mode_",
             "voice_guide_server_",

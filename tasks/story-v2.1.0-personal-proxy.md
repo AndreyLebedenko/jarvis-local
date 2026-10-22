@@ -350,7 +350,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    presentation (each restored sentence shown and spoken verbatim), the locality seam around
    the external stream. End to end with fakes. No `app.py`.
 
-   **9b. Application wiring.** (Size: L, card written after 9a.) `RunMode.PERSONAL_PROXY`
+   **9b. Application wiring.** (Size: L. Done 2026-10-22, `tasks/done/task-v2.1.0-9b-app-wiring.md`.) `RunMode.PERSONAL_PROXY`
    with its verdict table and UI badge; subscriptions (only the proxy handler gets speech;
    the debug utterance recorder decision); the dock text submitter routed to the proxy;
    hotkeys bound in this mode (interrupt, shutdown, mic sleep; capture, clipboard,

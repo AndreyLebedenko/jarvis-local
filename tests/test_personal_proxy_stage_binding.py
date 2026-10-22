@@ -1,0 +1,178 @@
+import json
+import threading
+from dataclasses import replace
+
+import numpy as np
+
+from jarvis.core.config import PersonalProxySettings
+from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
+from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT, build_outbound_payload
+from jarvis.personal_proxy.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize_result import SanitizeResult, SanitizeVerdict
+from jarvis.personal_proxy.speech_guard import NoSpeech, SpeechProbabilities
+from jarvis.personal_proxy.stage_binding import StageDependencies, bind_stages
+from jarvis.personal_proxy.stt_result import Transcription
+
+SETTINGS = PersonalProxySettings(stt_min_speech_seconds=0.03)
+CLIP = np.full(16000, 0.1, dtype=np.float32)
+HEARD = "Позвони Марине"
+SANITIZED = "Позвони <PERSON_1>"
+MAPPING = {"<PERSON_1>": "Марине"}
+
+
+class _Engine:
+    def __init__(self):
+        self.threads = []
+        self.clips = []
+
+    def transcribe(self, clip):
+        self.threads.append(threading.current_thread())
+        self.clips.append(clip)
+        return Transcription(HEARD, (), ())
+
+
+class _Backend:
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.requests = []
+
+    async def complete(self, request):
+        self.requests.append(request)
+        return self.replies.pop(0)
+
+
+def _probabilities(values):
+    return lambda clip: SpeechProbabilities(tuple(values), 0.032)
+
+
+def _deps(**changes):
+    values = {
+        "settings": SETTINGS,
+        "vad_threshold": 0.5,
+        "engine": _Engine(),
+        "probabilities": _probabilities([1.0, 1.0]),
+        "backend": _Backend([]),
+        "open_stream": lambda payload: _no_stream(),
+        "topics_text": "topic line",
+        "warm_up": _noop,
+    }
+    return StageDependencies(**(values | changes))
+
+
+async def _noop():
+    return None
+
+
+async def _no_stream():
+    return
+    yield
+
+
+async def test_transcribe_runs_the_guarded_engine_off_the_event_loop_thread():
+    engine = _Engine()
+    stages = bind_stages(_deps(engine=engine))
+
+    result = await stages.transcribe(CLIP)
+
+    assert result == Transcription(HEARD, (), ())
+    assert engine.threads[0] is not threading.current_thread()
+
+
+async def test_transcribe_keeps_silence_away_from_the_engine_using_the_vad_threshold():
+    engine = _Engine()
+    stages = bind_stages(
+        _deps(
+            engine=engine, probabilities=_probabilities([0.4, 0.4]), vad_threshold=0.5
+        )
+    )
+
+    result = await stages.transcribe(CLIP)
+
+    assert isinstance(result, NoSpeech)
+    assert engine.clips == []
+
+
+async def test_the_minimum_speech_comes_from_the_personal_proxy_settings():
+    engine = _Engine()
+    settings = replace(SETTINGS, stt_min_speech_seconds=1.0)
+    stages = bind_stages(_deps(engine=engine, settings=settings))
+
+    result = await stages.transcribe(CLIP)
+
+    assert isinstance(result, NoSpeech)
+    assert result.required_seconds == 1.0
+
+
+async def test_sanitize_uses_the_topics_text_and_the_shared_backend():
+    reply = json.dumps(
+        {
+            "verdict": "send",
+            "reason": "",
+            "sanitized_text": SANITIZED,
+            "mapping": MAPPING,
+        },
+        ensure_ascii=False,
+    )
+    backend = _Backend([reply])
+    stages = bind_stages(_deps(backend=backend, topics_text="topic line"))
+
+    result = await stages.sanitize(
+        CheckedTranscript(HEARD, (), CheckSource.CHECKED, False)
+    )
+
+    assert result == SanitizeResult(SanitizeVerdict.SEND, "", SANITIZED, MAPPING)
+    assert "topic line" in backend.requests[0].system
+
+
+def test_the_gate_is_the_deterministic_outbound_gate():
+    from jarvis.personal_proxy.gate_context import GateContext
+
+    stages = bind_stages(_deps())
+    payload = build_outbound_payload(DEFAULT_SYSTEM_PROMPT, "Позвони <PERSON_1>")
+
+    assert stages.gate(payload, GateContext(MAPPING, "")).allowed
+    leaking = build_outbound_payload(DEFAULT_SYSTEM_PROMPT, "Позвони Марине")
+    assert not stages.gate(leaking, GateContext(MAPPING, "")).allowed
+
+
+async def test_open_stream_is_the_given_external_stream_opener():
+    opened = []
+
+    def open_stream(payload):
+        opened.append(payload)
+        return _no_stream()
+
+    stages = bind_stages(_deps(open_stream=open_stream))
+    payload = build_outbound_payload(DEFAULT_SYSTEM_PROMPT, "x")
+
+    stages.open_stream(payload)
+
+    assert opened == [payload]
+
+
+async def test_restore_passes_sentences_without_placeholders_unchanged():
+    async def deltas():
+        yield "Всё готово."
+
+    stages = bind_stages(_deps())
+
+    sentences = [item async for item in stages.restore(deltas(), MAPPING)]
+
+    assert [(s.text, s.method) for s in sentences] == [
+        ("Всё готово.", RestorationMethod.PASSTHROUGH)
+    ]
+
+
+async def test_warm_up_is_the_given_warm_up():
+    calls = []
+
+    async def warm_up():
+        calls.append("warm")
+
+    await bind_stages(_deps(warm_up=warm_up)).warm_up()
+
+    assert calls == ["warm"]
+
+
+def test_the_repr_of_the_dependencies_hides_the_topics_text():
+    assert "topic line" not in repr(_deps(topics_text="topic line"))

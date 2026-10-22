@@ -148,6 +148,60 @@ async def test_an_interrupt_during_a_pending_question_cancels_the_exchange():
     assert rig.stages.calls["open_stream"] == []
 
 
+async def test_cancelling_the_pending_question_ends_it_as_declined_and_sends_nothing():
+    rig = asking_rig()
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await until_window_open(rig)
+
+        rig.service.cancel_pending_question()
+        await settled(rig)
+
+    (notice,) = rig.sink.of(NoticeBlock)
+    assert (notice.kind, notice.detail) == (
+        NoticeKind.NOT_SENT,
+        ExchangeOutcome.CANCELLED,
+    )
+    assert rig.stages.calls["open_stream"] == []
+
+
+async def test_cancelling_the_pending_question_from_another_thread_works():
+    rig = asking_rig()
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await until_window_open(rig)
+
+        await asyncio.to_thread(rig.service.cancel_pending_question)
+        await settled(rig)
+
+    assert rig.sink.of(NoticeBlock)[0].detail is ExchangeOutcome.CANCELLED
+
+
+async def test_cancelling_the_pending_question_leaves_a_request_in_flight_alone():
+    rig = Rig()
+    rig.stages.holds["sanitize"] = asyncio.Event()
+    async with running(rig):
+        rig.service.submit(TypedText("один"))
+        await until(lambda: len(rig.stages.calls["sanitize"]) == 1)
+
+        rig.service.cancel_pending_question()
+        rig.stages.holds["sanitize"].set()
+        await settled(rig)
+
+    assert NoticeKind.INTERRUPTED not in rig.sink.notices()
+    assert rig.stages.calls["open_stream"]
+
+
+async def test_cancelling_a_question_when_nothing_runs_never_raises():
+    rig = Rig()
+    rig.service.cancel_pending_question()
+    async with running(rig):
+        rig.service.cancel_pending_question()
+        await spin()
+
+    assert rig.sink.blocks == []
+
+
 async def test_an_interrupt_while_the_question_is_spoken_cancels_it_too():
     rig = asking_rig(speaker=FakeSpeaker([], hold=True))
     rig.speaker.log = rig.log

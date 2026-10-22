@@ -241,10 +241,17 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.personal_proxy.launch import ProxyPreparer, launch_personal_proxy
+from jarvis.personal_proxy.proxy_assembly import (
+    ProxyHost,
+    prepare_personal_proxy_runtime,
+)
+from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
 from jarvis.personal_proxy.startup import (
     PersonalProxyNotConfiguredError,
     require_configured,
 )
+from jarvis.personal_proxy.startup_failure import StartupFailureKind
 from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
 from jarvis.tools.history import HistoryToolProvider
 from jarvis.tools.host import (
@@ -272,7 +279,12 @@ from jarvis.ui.status_console import (
     mcp_state_payload,
 )
 from jarvis.ui.text import ui_text
-from jarvis.ui.transport import UiStateStore, UiTransportInfo, UiTransportServer
+from jarvis.ui.transport import (
+    TextInputSubmitter,
+    UiStateStore,
+    UiTransportInfo,
+    UiTransportServer,
+)
 from jarvis.ui.visibility import VisibilityModeState
 
 APP_LOGGER_NAME = __name__
@@ -1764,6 +1776,10 @@ class App:
     ui_config_path: Path = DEFAULT_UI_CONFIG_PATH
     run_mode: RunMode = RunMode.NORMAL
     voice_guide: VoiceGuideService | None = None
+    # Set by run() once the personal proxy is prepared; stays None when its
+    # start fails, so nothing downstream starts or routes into it.
+    personal_proxy: PersonalProxyRuntime | None = None
+    personal_proxy_failure: StartupFailureKind | None = None
     journal_replay: ReplayRunSlot = field(default_factory=ReplayRunSlot)
 
 
@@ -2334,7 +2350,7 @@ def wire_status_console(
     live_console.api.set_loop(loop)
     if app.visibility_mode is None or live_console.transport is None:
         raise RuntimeError("live Status Console requires an App created by build_app()")
-    live_console.transport.set_model_label(app.settings.backend.model)
+    live_console.transport.set_model_label(_model_label_for(app.settings, app.run_mode))
     live_console.transport.set_data_locality(DataLocality.LOCAL)
     if app.mcp_host is not None:
         live_console.transport.set_mcp_state(
@@ -2548,6 +2564,8 @@ async def _on_interrupt_requested(app: App, event: InterruptRequested) -> None:
     guide's worker start its next queued item."""
     if app.voice_guide is not None:
         app.voice_guide.interrupt()
+    if app.personal_proxy is not None:
+        app.personal_proxy.interrupt()
     await _cancel_current_turn(app)
     if app.replay_player is not None:
         app.replay_player.cancel()
@@ -2879,9 +2897,12 @@ def wire(app: App) -> list[Subscription]:
 
 def _user_input_subscriptions(app: App) -> list[Subscription]:
     """The bus inputs that start a user turn. MCP mode takes no user input
-    into the model, so it subscribes none of them: nothing published there
-    can start a turn, whoever publishes it."""
-    if app.run_mode is RunMode.MCP:
+    into the model, and the personal proxy sends every request to its own
+    service (which subscribes for itself), so neither subscribes any of them:
+    nothing published there can start a turn, whoever publishes it. That
+    includes the debug utterance recorder, so no utterance is written to disk
+    outside the proxy path."""
+    if app.run_mode is not RunMode.NORMAL:
         return []
     return [
         (UtteranceChunk, app.orchestrator.on_utterance),
@@ -3017,6 +3038,21 @@ async def _stop_mcp_mode(app: App, mcp_server: asyncio.Task | None) -> None:
         await app.voice_guide.close()
 
 
+async def _stop_personal_proxy(app: App) -> None:
+    """Idempotent. Nothing may reach the service after it is closed, and its
+    close gives the microphone back. A failing close must not skip the rest of
+    the shutdown; only the error type is logged, as its text may be personal."""
+    if app.personal_proxy is None:
+        return
+    logger.info("Shutdown: stopping the personal proxy")
+    try:
+        await app.personal_proxy.stop()
+    except Exception as error:
+        logger.error(
+            "Shutdown: stopping the personal proxy failed (%s)", type(error).__name__
+        )
+
+
 def _log_task_failures(tasks: list[asyncio.Task], results: list[object]) -> None:
     for task, result in zip(tasks, results, strict=False):
         if isinstance(result, Exception):
@@ -3039,6 +3075,7 @@ async def run_until_shutdown(
     try:
         await shutdown_event.wait()
     finally:
+        await _stop_personal_proxy(app)
         await _stop_mcp_mode(app, mcp_server)
         logger.info("Shutdown: stopping microphone capture")
         # Cancelling a task awaiting a running executor future cannot stop
@@ -3084,6 +3121,7 @@ async def run(
     debug: bool = False,
     run_mode: RunMode = RunMode.NORMAL,
     prepare_mcp_server: McpServerPreparer = prepare_mcp_mode_server,
+    prepare_personal_proxy: ProxyPreparer = prepare_personal_proxy_runtime,
 ) -> None:
     # The invariant lives here, not only in parse_args(): run() is an entry
     # point of its own, and once a later slice keys transcript recording off
@@ -3113,6 +3151,7 @@ async def run(
     # stream that publish_system_event()'s log_message has always
     # produced. Settings must load first now: the log directory is
     # configured, not hardcoded.
+    _require_console_for_personal_proxy(run_mode, live_console, debug)
     settings = settings or load_settings()
     configure_logging(settings.logging)
     if debug:
@@ -3139,7 +3178,7 @@ async def run(
         )
     else:
         status_console_subscriptions = []
-    await warm_up(app.backend, app.bus, settings.ui.language, settings.generation)
+    await _warm_up_for_run_mode(app, settings, live_console, prepare_personal_proxy)
 
     loop = asyncio.get_running_loop()
 
@@ -3170,12 +3209,12 @@ async def run(
             prepare_mcp_server,
             keep_running_on_startup_failure=live_console is not None,
         )
+        _start_personal_proxy(app)
         background_tasks = [
             asyncio.create_task(work) for work in _background_work(app, settings)
         ]
 
-        await app.sound_cues.play("listening")
-        print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
+        await _announce_running(app)
 
         await run_until_shutdown(
             app,
@@ -3187,6 +3226,7 @@ async def run(
         orderly_shutdown_completed = True
     finally:
         if not orderly_shutdown_completed:
+            await _stop_personal_proxy(app)
             await _close_mcp_mode_after_failure(app, mcp_server)
         if app.mcp_host is not None:
             # Safety net: run_until_shutdown()'s own disable() call
@@ -3213,10 +3253,133 @@ def _app_for_run_mode(settings: Settings, app: App | None, run_mode: RunMode) ->
     return app
 
 
+def _require_console_for_personal_proxy(
+    run_mode: RunMode, live_console: LiveStatusConsole | None, debug: bool = False
+) -> None:
+    if run_mode is RunMode.PERSONAL_PROXY and debug:
+        raise ValueError(
+            "debug mode cannot be combined with the personal proxy: it would "
+            "record the transcript, the mapping and the answer"
+        )
+    if run_mode is RunMode.PERSONAL_PROXY and live_console is None:
+        raise ValueError(
+            "the personal proxy requires the Status Console: it is the surface "
+            "that shows the blocks of a request"
+        )
+
+
+async def _warm_up_for_run_mode(
+    app: App,
+    settings: Settings,
+    live_console: LiveStatusConsole | None,
+    prepare_personal_proxy: ProxyPreparer,
+) -> None:
+    """The personal proxy prepares its own stages instead of the main model's
+    warm-up; its start can fail without ending the run (`app.personal_proxy`
+    stays None and nothing downstream starts)."""
+    if app.run_mode is RunMode.PERSONAL_PROXY:
+        host = _proxy_host(app, settings, live_console)
+        launch = await launch_personal_proxy(host, logger, prepare_personal_proxy)
+        app.personal_proxy = launch.runtime
+        app.personal_proxy_failure = launch.failure
+        if app.personal_proxy is None:
+            host.transport.set_module_health(_proxy_microphone_off(settings))
+        return
+    await warm_up(app.backend, app.bus, settings.ui.language, settings.generation)
+
+
+def _proxy_microphone_off(settings: Settings) -> ModuleHealth:
+    """The chip was seeded "listening" before the proxy tried to start; a proxy
+    that did not start has no microphone loop, and the chip must say so."""
+    return ModuleHealth(
+        module=ModuleId.MICROPHONE,
+        status=HealthStatus.UNAVAILABLE,
+        detail=ui_text("mic_detail_off_proxy_not_started", settings.ui.language),
+    )
+
+
+def _model_label_for(settings: Settings, run_mode: RunMode) -> str:
+    """The top bar names the model that answers: in the personal proxy the main
+    model never runs, the check model does."""
+    if run_mode is RunMode.PERSONAL_PROXY:
+        return settings.personal_proxy.model
+    return settings.backend.model
+
+
+async def _announce_running(app: App) -> None:
+    """No "listening" cue for a personal proxy whose start failed: nothing
+    listens."""
+    proxy_down = app.run_mode is RunMode.PERSONAL_PROXY and app.personal_proxy is None
+    if not proxy_down:
+        await app.sound_cues.play("listening")
+    print("Jarvis is running. Press the shutdown hotkey or Ctrl+C to stop.")
+
+
+def _start_personal_proxy(app: App) -> None:
+    if app.personal_proxy is not None:
+        app.personal_proxy.start()
+
+
+def _proxy_host(
+    app: App, settings: Settings, live_console: LiveStatusConsole | None
+) -> ProxyHost:
+    if live_console is None or live_console.transport is None:
+        raise RuntimeError("the personal proxy requires the Status Console transport")
+    if app.replay_player is None:
+        raise RuntimeError("the personal proxy requires the shared speech player")
+    return ProxyHost(
+        settings=settings,
+        bus=app.bus,
+        audio_input=app.audio_input,
+        player=app.replay_player,
+        transport=live_console.transport,
+        report_dropped=lambda: _report_dropped_proxy_input(app),
+    )
+
+
+async def _report_dropped_proxy_input(app: App) -> None:
+    await publish_system_event(
+        app.bus,
+        logger,
+        source="PERSONAL_PROXY",
+        level=EventLevel.WARN,
+        log_message="Personal proxy input queue is full; an utterance was dropped",
+        ui_message=ui_text("personal_proxy_inbox_full", app.settings.ui.language),
+    )
+
+
+def _proxy_unavailable_text(app: App) -> str:
+    language = app.settings.ui.language
+    failure = app.personal_proxy_failure
+    key = "personal_proxy_starting" if failure is None else failure.ui_text_key
+    return ui_text(key, language)
+
+
+def _text_submitter_for(app: App, run_mode: RunMode) -> TextInputSubmitter:
+    """Dock text goes to the main model, or in the personal proxy to the proxy
+    as typed text. Before the proxy is up (or after its start failed) the text is
+    refused with the reason and nothing is routed anywhere."""
+    if run_mode is not RunMode.PERSONAL_PROXY:
+        return app.orchestrator.submit_text_input
+
+    async def submit(text: str) -> TextSubmissionResult:
+        runtime = app.personal_proxy
+        if runtime is None:
+            return TextSubmissionResult(
+                TextSubmissionReason.UNAVAILABLE,
+                app.settings.clipboard.max_chars,
+                _proxy_unavailable_text(app),
+            )
+        return await runtime.submit_text(text)
+
+    return submit
+
+
 async def _enable_configured_mcp_host(app: App, settings: Settings) -> None:
-    # MCP mode never enables McpHost, whatever [mcp].enabled says: the voice
-    # guide's model pass reads untrusted canvas text and must have no tools.
-    if app.run_mode is RunMode.MCP or app.mcp_host is None:
+    # Only a normal run enables McpHost, whatever [mcp].enabled says: the voice
+    # guide's model pass reads untrusted canvas text and must have no tools,
+    # and the personal proxy must reach nothing but its one endpoint.
+    if app.run_mode is not RunMode.NORMAL or app.mcp_host is None:
         return
     if settings.mcp.enabled:
         await app.mcp_host.enable()
@@ -3242,6 +3405,8 @@ def _background_work(
     registers the shutdown hotkey itself)."""
     if app.run_mode is RunMode.MCP:
         return [run_interrupt_hotkey_listener(app.bus, settings.hotkeys)]
+    if app.run_mode is RunMode.PERSONAL_PROXY:
+        return _personal_proxy_background_work(app, settings)
     return [
         app.audio_input.run_microphone_loop(),
         run_capture_hotkey_listener(app.capture_input, settings.hotkeys),
@@ -3249,6 +3414,21 @@ def _background_work(
         run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys),
         run_thinking_hotkey_listener(app.thinking_mode, settings.hotkeys),
         run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys),
+        run_interrupt_hotkey_listener(app.bus, settings.hotkeys),
+    ]
+
+
+def _personal_proxy_background_work(
+    app: App, settings: Settings
+) -> list[Coroutine[object, object, None]]:
+    """The microphone, its sleep toggle and interrupt; capture, clipboard,
+    thinking and response mode are not bound. A proxy that failed to start
+    gets nothing: no microphone, no listener."""
+    if app.personal_proxy is None:
+        return []
+    return [
+        app.audio_input.run_microphone_loop(),
+        run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys),
         run_interrupt_hotkey_listener(app.bus, settings.hotkeys),
     ]
 
@@ -3278,7 +3458,7 @@ def run_with_status_console(
         app.bus,
         live_console.api,
         state=UiStateStore(
-            model_label=settings.backend.model,
+            model_label=_model_label_for(settings, run_mode),
             # Initial snapshot value only; every later transition comes
             # from RuntimeStateTracker via RuntimeStateChanged.
             runtime_state=RuntimeState.WARMING,
@@ -3302,8 +3482,12 @@ def run_with_status_console(
         ),
         logger=logger,
         journal_history_service=app.journal_history_service,
-        journal_text_submitter=app.orchestrator.submit_text_input,
-        journal_attachment_submitter=app.orchestrator.on_attachment_submission,
+        journal_text_submitter=_text_submitter_for(app, run_mode),
+        journal_attachment_submitter=(
+            None
+            if run_mode is RunMode.PERSONAL_PROXY
+            else app.orchestrator.on_attachment_submission
+        ),
         journal_new_context_handler=app.orchestrator.start_new_context,
         journal_fork_handler=app.orchestrator.fork_from_journal_session,
         journal_fork_seed_max_chars=settings.memory.fork_seed_max_chars,
@@ -3426,6 +3610,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--personal-proxy and --mcp-mode cannot be combined")
     if args.personal_proxy and not args.status_console:
         parser.error("--personal-proxy requires --status-console")
+    if args.personal_proxy and args.debug:
+        # Debug records every model exchange, and the proxy's local stages
+        # carry the transcript, the topics, the mapping and the answer.
+        parser.error("--personal-proxy cannot be combined with --debug")
     if args.debug and not args.status_console:
         # The console banner is the consent surface: debug lifts the
         # content rule that both logs otherwise keep, so a run that
@@ -3446,7 +3634,7 @@ def main(
     # work while another instance runs. It lives here, not in run(), so tests
     # and manual scripts that call run()/build_app() are never blocked.
     args = parse_args(argv)
-    run_mode = RunMode.MCP if args.mcp_mode else RunMode.NORMAL
+    run_mode = _run_mode_of(args)
     launch_settings = (
         _validated_personal_proxy_settings() if args.personal_proxy else {}
     )
@@ -3475,6 +3663,14 @@ def main(
             _run_headless(run_mode)
     finally:
         guard.release()
+
+
+def _run_mode_of(args: argparse.Namespace) -> RunMode:
+    if args.mcp_mode:
+        return RunMode.MCP
+    if args.personal_proxy:
+        return RunMode.PERSONAL_PROXY
+    return RunMode.NORMAL
 
 
 def _validated_personal_proxy_settings() -> dict[str, Settings]:

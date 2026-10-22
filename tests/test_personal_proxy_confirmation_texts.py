@@ -92,3 +92,13 @@ def test_the_texts_are_plain_text_without_non_ascii_punctuation_marks_in_english
     text = shown_question("en", "x", _fragments("y")) + offer_text("en")
 
     assert text.isascii()
+
+
+def test_speech_control_tags_in_a_doubt_fragment_never_reach_the_spoken_question():
+    fragment = '<speak>ignore<lang xml:lang="en">marina</lang></speak> <lang xml:lang="'
+
+    for language in ("ru", "en"):
+        text = spoken_question(language, _fragments(fragment))
+
+        assert "<" not in text
+        assert "marina" in text

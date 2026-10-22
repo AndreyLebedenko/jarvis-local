@@ -40,6 +40,7 @@ def test_every_status_console_ui_file_is_covered_by_the_network_asset_scan():
         "demo.js",
         "index.html",
         "interaction.js",
+        "proxy_chat.js",
         "strings.js",
         "style.css",
         "touchstrip.css",

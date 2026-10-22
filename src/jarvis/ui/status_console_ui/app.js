@@ -107,6 +107,7 @@ function _applyStateDelta(payload) {
     config_values: applyConfigValues,
     journal_event: applyJournalEvent,
     replay_progress: applyReplayProgress,
+    proxy_block: applyProxyBlock,
   });
 }
 
@@ -260,8 +261,27 @@ function applyRunMode(payload) {
   _refusedActions = new Set((payload && payload.refused) || []);
   document.documentElement.setAttribute("data-run-mode", mode);
   const badge = document.getElementById("runModeBadge");
-  if (badge) badge.classList.toggle("show", mode === RUN_MODE.MCP);
+  _showRunModeBadge(badge, mode);
   _disableRefusedControls();
+}
+
+// MCP mode and the personal proxy each name themselves in the badge; the
+// text is stamped through data-i18n so a language switch keeps it right.
+const RUN_MODE_BADGE_SUFFIX = {
+  [RUN_MODE.MCP]: "mcp",
+  [RUN_MODE.PERSONAL_PROXY]: "personal_proxy",
+};
+
+function _showRunModeBadge(badge, mode) {
+  if (!badge) return;
+  const suffix = RUN_MODE_BADGE_SUFFIX[mode];
+  badge.classList.toggle("show", suffix !== undefined);
+  if (suffix === undefined) return;
+  const label = badge.querySelector("[data-i18n]");
+  label.setAttribute("data-i18n", "run_mode_" + suffix + "_label");
+  label.textContent = uiString("run_mode_" + suffix + "_label");
+  badge.setAttribute("data-i18n-title", "run_mode_" + suffix + "_hint");
+  badge.title = uiString("run_mode_" + suffix + "_hint");
 }
 
 function _disableRefusedControls() {
@@ -862,6 +882,7 @@ function applyVisibilityMode(payload) {
   renderModules();
   if (payload.mode === "hidden") _clearVoiceGuideBlock();
   _onJournalVisibilityChanged(payload.mode);
+  _onProxyVisibilityChanged(payload.mode);
 }
 
 function setVisibilityMode(modeValue) {
@@ -1888,10 +1909,13 @@ function _journalInputTargetsSelectedSession() {
 
 function _syncJournalInputControls() {
   const inactiveSession = !_journalInputTargetsSelectedSession();
+  const proxyMode =
+    document.documentElement.getAttribute("data-run-mode") === RUN_MODE.PERSONAL_PROXY;
   const disabled =
     _journalInputInFlight ||
     _isHiddenActive() ||
     inactiveSession ||
+    proxyMode ||
     isActionRefused("journal_input");
   const input = document.getElementById("journalTextInput");
   const send = document.getElementById("journalSendButton");
@@ -1905,7 +1929,9 @@ function _syncJournalInputControls() {
   // Hidden mode has its own whole-view placeholder, so the inactive-session
   // note is suppressed there to avoid two competing messages.
   if (dock) {
-    dock.classList.toggle("inactive-session", inactiveSession && !_isHiddenActive());
+    const showInactive = inactiveSession && !proxyMode && !_isHiddenActive();
+    dock.classList.toggle("inactive-session", showInactive);
+    dock.classList.toggle("proxy-mode", proxyMode && !_isHiddenActive());
   }
 }
 
@@ -1982,6 +2008,9 @@ async function submitJournalInput() {
 function _journalInputErrorMessage(payload) {
   if (payload.reason === "busy") return uiString("journal_input_busy");
   if (payload.reason === "empty") return uiString("journal_input_empty");
+  if (payload.reason === "attachments_unavailable") {
+    return uiString("journal_input_attachments_unavailable");
+  }
   if (payload.reason === "over_limit") {
     return uiString("journal_input_over_limit").replace(
       "{max}", String(payload.max_chars));

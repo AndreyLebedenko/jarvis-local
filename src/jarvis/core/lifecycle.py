@@ -50,6 +50,7 @@ class TextSubmissionReason(Enum):
     BUSY = "busy"
     EMPTY = "empty"
     OVER_LIMIT = "over_limit"
+    UNAVAILABLE = "unavailable"
 
 
 class AttachmentSubmissionReason(Enum):
@@ -67,6 +68,7 @@ class NewContextReason(Enum):
 class TextSubmissionResult:
     reason: TextSubmissionReason
     max_chars: int
+    detail: str = ""
 
     @property
     def accepted(self) -> bool:
