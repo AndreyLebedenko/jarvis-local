@@ -47,7 +47,7 @@ Automated counterpart already green: `python -m pytest` (includes
 - The button: "New context" in the Journal view (`journalNewContextButton`,
   `strings.js` key `journal_new_context`). Texts below are English (`[ui].language`
   default `"en"`):
-  ready `New session ready. Speak a request, or type it in the Personal proxy panel.`
+  ready `New session ready. Speak a request, or type it here.`
   (`journal_new_context_ready_proxy`), proxy not running `The personal proxy is not
   running.` (`journal_new_context_unavailable`),
   refused `A request is in progress or a question is waiting. Try again when it ends.`
@@ -55,8 +55,8 @@ Automated counterpart already green: `python -m pytest` (includes
   `Personal proxy: this goes to the external service` (`journal_proxy_marker`),
   the normal-mode leave confirmation `Start a blank context and leave the
   current one?` (`journal_new_context_confirm`), which the proxy mode must NOT show.
-- The live chat of the Personal proxy panel (Status view, `proxyChat`): the blocks
-  list, the text box and the status line under it.
+- The live chat of the Personal proxy panel (Status view, `proxyChat`): the
+  read-only blocks list (it has no text box since task v2.1.0-10c).
 - The marker: an arrow-out-of-a-box icon in the title of a proxy session row and
   in the header of each proxy message, plus a 3 px amber (`#F0B15A`, `--amber`,
   `style.css`) left edge on the row and on the message.
@@ -93,15 +93,15 @@ Automated counterpart already green: `python -m pytest` (includes
 ## 3. New context while idle
 
 1. Still in the run of part 2, with the proxy idle (nothing spoken, no question).
-   Type "черновик" into the Personal proxy panel text box (do not send it).
+   Type "черновик" into the Journal dock text box (do not send it).
    Press "New context". Expected: NO confirmation dialog appears. The blocks
    of the live chat in the Personal proxy panel are gone (the panel shows its
-   empty text), the text box still holds "черновик". The status line reads `New session ready. Speak a
-   request, or type it in the Personal proxy panel.`; the session list still holds exactly one session (no empty
-   session was added), now not the active one (its Delete button is enabled); the
-   input dock is inactive and shows the proxy note (with `dry_run = false` it
-   reads the "starts with the first request" text, with `dry_run = true` the
-   dry-run text of `journal_input_proxy_note_dry_run`, `strings.js`).
+   empty text), the dock text box still holds "черновик". The dock status
+   line reads `New session ready. Speak a request, or type it here.`; the session
+   list still holds exactly one session (no empty session was added), now not the
+   active one (its Delete button is enabled), and no row is selected; the feed
+   shows `New session. It starts with your first request.`; the dock is active
+   (since task v2.1.0-10c it takes a request while no live session exists).
 2. Say: "Объясни, что такое диод". Let the answer finish. Expected: a second
    session row appears at once, marked like the first (select it to see its
    events); the first session did not gain any event.
@@ -121,7 +121,7 @@ Automated counterpart already green: `python -m pytest` (includes
    end and is stored in the current session, and the live chat blocks of the
    Personal proxy panel are NOT cleared by the refusal.
 3. After the answer finished, press "New context" again. Expected: accepted
-   (`New session ready. Speak a request, or type it in the Personal proxy panel.`).
+   (`New session ready. Speak a request, or type it here.`).
 
 ## 5. New context during a pending question
 

@@ -114,13 +114,8 @@
       <span class="proxy-dry-run" id="proxyDryRun" hidden data-i18n="proxy_dry_run_indicator">DRY RUN - nothing is sent</span>
       <span class="proxy-last-block" id="proxyLastBlock" role="status" hidden></span>
     </div>
-    <div class="proxy-chat-empty" id="proxyChatEmpty" data-i18n="proxy_chat_empty">Say a request, or type one below.</div>
+    <div class="proxy-chat-empty" id="proxyChatEmpty" data-i18n="proxy_chat_empty">Speak a request, or type it in the Journal dock.</div>
     <div class="proxy-chat-list" id="proxyChatList" role="log" aria-live="polite"></div>
-    <form class="proxy-chat-input" id="proxyChatForm" onsubmit="submitProxyText(); return false">
-      <textarea id="proxyChatText" rows="2" data-i18n-placeholder="proxy_chat_placeholder" placeholder="Type a request" onkeydown="onProxyChatKeyDown(event)"></textarea>
-      <button type="submit" id="proxyChatSend" data-i18n="proxy_chat_send">Send</button>
-    </form>
-    <div class="proxy-chat-status" id="proxyChatStatus" role="status"></div>
   </section>
 
   <div class="mode-card-row">
@@ -352,7 +347,8 @@
       <button type="submit" id="journalSendButton" data-i18n="journal_input_send">Send</button>
       <div class="journal-attachment-list" id="journalAttachmentList"></div>
       <div class="journal-input-inactive-note" id="journalInputInactiveNote" data-i18n="journal_input_inactive_session">This session does not accept input. Start a new context, or select the active session, to type.</div>
-      <div class="journal-input-proxy-note" id="journalInputProxyNote" data-i18n="journal_input_proxy_note">Personal proxy: the Journal session starts with the first request (say one, or type it in the Personal proxy panel). Select the active session to type here.</div>
+      <div class="journal-input-proxy-note" id="journalInputProxyNote" data-i18n="journal_input_proxy_note">Personal proxy: this is an older session and does not take requests. Select the live session, or start a new context, to type here.</div>
+      <div class="journal-input-new-session-note" id="journalInputNewSessionNote" data-i18n="journal_input_proxy_new_session_note">No live session: a request typed here starts a new session.</div>
       <div class="journal-input-status" id="journalInputStatus"></div>
     </form>
   </section>

@@ -395,7 +395,16 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     sessions (an icon plus an amber accent) in the Journal list and in each proxy message,
     and "New context" in the proxy mode starting a new proxy session lazily.
 
-10c. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10b.) A Journal
+10c. **Proxy input in the Journal dock.** (Size: S-M. Done 2026-10-24, `tasks/done/task-v2.1.0-10c-proxy-input-dock.md`; added 2026-10-23, card
+    `tasks/task-v2.1.0-10c-proxy-input-dock.md`.) The request input moves from the Status
+    panel to the Journal dock (active also when no live session exists yet), and the
+    "sent" block hides a default system prompt.
+
+10d. **/force command.** (Size: S-M, added 2026-10-24, card
+    `tasks/task-v2.1.0-10d-force-command.md`.) A typed command that sends one message
+    without the local model stages, after false refusals of harmless requests.
+
+10e. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10d.) A Journal
     feature for all session kinds: a title kept apart from the records, edited from the
     session's "..." menu, used in the list, search and the title.
 

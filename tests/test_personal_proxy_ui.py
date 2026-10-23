@@ -20,6 +20,11 @@ INDEX = _read("index.html")
 STRINGS = _read("strings.js")
 
 
+def _catalog_text(language):
+    body = STRINGS.split(f"  {language}: {{")[1].split("\n  },")[0]
+    return dict(re.findall(r'^    (\w+): "(.*)",?$', body, re.M))
+
+
 def _catalog_keys(language):
     body = STRINGS.split(f"  {language}: {{")[1].split("\n  },")[0]
     return set(re.findall(r"^    (\w+):", body, re.M))
@@ -104,7 +109,7 @@ def test_the_chat_is_wiped_when_the_window_goes_hidden():
     )
     body = PROXY_JS.split("function _onProxyVisibilityChanged(")[1].split("\n}")[0]
     assert 'mode === "hidden"' in body
-    assert "clearProxyChat();" in body
+    assert "clearProxyChatBlocks();" in body
 
 
 def test_a_block_is_ignored_while_hidden():
@@ -128,13 +133,45 @@ def test_a_sentence_made_by_plain_substitution_is_marked_rough():
     assert "payload.unresolved === true" in body
 
 
-def test_typed_text_goes_to_the_dock_route_that_the_engine_reroutes():
-    body = PROXY_JS.split("async function submitProxyText(")[1].split("\n}")[0]
+def test_the_status_panel_has_no_input_and_no_way_to_submit_text():
+    panel = INDEX.split('id="proxyChat"')[1].split("</section>")[0]
+
+    for forbidden in ("<textarea", "<form", "<input", "<button", "proxyChatText"):
+        assert forbidden not in panel
+    for removed in ("submitProxyText", "onProxyChatKeyDown", "proxyChatText"):
+        assert removed not in PROXY_JS
+        assert removed not in APP_JS
+        assert removed not in INDEX
+
+
+def test_the_dock_posts_typed_requests_to_the_route_the_engine_reroutes():
+    body = APP_JS.split("async function submitJournalInput(")[1].split("\n}")[0]
 
     assert '_journalUrl("/api/journal/input")' in body
 
 
-def test_the_dock_works_once_the_session_exists_but_takes_no_attachments():
+def test_the_status_panel_hint_points_to_speech_or_the_journal_dock():
+    for language, words in (
+        ("en", ("Speak", "Journal dock")),
+        ("ru", ("Скажите", "Журнал")),
+    ):
+        hint = _catalog_text(language)["proxy_chat_empty"]
+        assert all(word in hint for word in words), (language, hint)
+        assert "below" not in hint and "ниже" not in hint
+
+
+def test_no_string_still_sends_the_user_to_the_removed_status_input():
+    for language in ("en", "ru"):
+        for key, text in _catalog_text(language).items():
+            assert "Personal proxy panel" not in text, (language, key)
+            assert "панели «Личный прокси»" not in text, (language, key)
+            assert not key.startswith("proxy_chat_") or key in (
+                "proxy_chat_title",
+                "proxy_chat_empty",
+            ), (language, key)
+
+
+def test_the_dock_takes_requests_in_the_proxy_but_no_attachments():
     sync = APP_JS.split("function _syncJournalInputControls(")[1].split("\n}")[0]
 
     helper = APP_JS.split("function _isProxyRunMode(")[1].split("\n}")[0]
@@ -150,14 +187,17 @@ def test_the_dock_works_once_the_session_exists_but_takes_no_attachments():
     assert ".journal-input-dock.proxy-mode.inactive-session" in css
 
 
-def test_the_dock_note_no_longer_sends_the_user_away_from_the_dock():
-    for language in ("en", "ru"):
-        body = STRINGS.split(f"  {language}: {{")[1].split("\n  },")[0]
-        note = re.search(r"journal_input_proxy_note: \"(.*?)\"", body).group(1)
-        assert "first request" in note or "первого запроса" in note
+def test_the_dock_note_explains_an_older_session_and_says_how_to_type():
+    for language, words in (
+        ("en", ("older session", "live session", "new context")),
+        ("ru", ("прежняя сессия", "текущую сессию", "новый контекст")),
+    ):
+        note = _catalog_text(language)["journal_input_proxy_note"]
+        assert all(word in note for word in words), (language, note)
     for language in ("en", "ru"):
         keys = _catalog_keys(language)
         assert "journal_input_proxy_note" in keys
+        assert "journal_input_proxy_note_dry_run" not in keys
         assert "journal_input_attachments_unavailable" in keys
 
 
@@ -239,3 +279,52 @@ def test_nothing_else_is_hidden_by_the_proxy_mode_class_inside_a_layout():
 
     assert all("journal-input-dock.proxy-mode" in line for line in hidden)
     assert not re.search(r"\.proxy-chat-input[^{]*proxy-mode", css)
+
+
+def test_the_dry_run_status_and_new_session_texts_exist_in_both_languages():
+    for language in ("en", "ru"):
+        text = _catalog_text(language)
+        assert text["journal_input_sent_dry_run"]
+        assert text["journal_proxy_new_session_empty"]
+        assert text["proxy_sent_default_system"]
+    assert "Status" in _catalog_text("en")["journal_input_sent_dry_run"]
+    assert "Статус" in _catalog_text("ru")["journal_input_sent_dry_run"]
+
+
+def test_every_string_the_dock_and_feed_use_for_the_proxy_exists_in_both_languages():
+    used = set(
+        re.findall(
+            r'"(journal_proxy_new_session_empty|journal_input_sent_dry_run|proxy_sent_default_system)"',
+            APP_JS + PROXY_JS,
+        )
+    )
+
+    assert used == {
+        "journal_proxy_new_session_empty",
+        "journal_input_sent_dry_run",
+        "proxy_sent_default_system",
+    }
+    for language in ("en", "ru"):
+        assert used <= _catalog_keys(language)
+
+
+def test_the_folded_system_prompt_has_a_visible_label_style():
+    css = _read("style.css")
+
+    assert ".proxy-system-default-label" in css
+    assert (
+        "cursor: pointer" in css.split(".proxy-system-default-label")[1].split("}")[0]
+    )
+
+
+def test_the_dock_has_a_note_that_a_request_starts_a_new_session():
+    assert 'id="journalInputNewSessionNote"' in INDEX
+    sync = APP_JS.split("function _syncJournalInputControls(")[1].split("\n}")[0]
+    assert '"starts-new-session"' in sync
+    for language in ("en", "ru"):
+        assert _catalog_text(language)["journal_input_proxy_new_session_note"]
+    rule = _read("style.css").split(".journal-input-new-session-note {")[1]
+    assert "grid-column: 1 / -1" in rule.split("}")[0]
+    assert ".journal-input-dock.starts-new-session .journal-input-new-session-note" in (
+        _read("style.css")
+    )

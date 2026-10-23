@@ -41,10 +41,12 @@ from jarvis.inputs.camera import (
 )
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
-from jarvis.journal.proxy_exchange import PROXY_SOURCES
+from jarvis.journal.proxy_exchange import PROXY_SENT_SOURCE, PROXY_SOURCES
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.mcp_mode.server import McpServerStatusChanged
+from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.sent_view import request_after_default_system_prompt
 from jarvis.tools.builtin import CAMERA_TOOL_NAME
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
@@ -247,7 +249,7 @@ def journal_event_payload(
         transcript=event.transcript,
         metadata=event.metadata,
     )
-    return {
+    result = {
         "session_id": payload.session_id,
         "timestamp": payload.timestamp,
         "source": payload.source,
@@ -256,6 +258,20 @@ def journal_event_payload(
         "media": [asdict(item) for item in payload.media],
         "transcript": payload.transcript,
         "metadata": payload.metadata,
+    }
+    if event.source == PROXY_SENT_SOURCE:
+        result["proxy_sent"] = _proxy_sent_view(event.text)
+    return result
+
+
+def _proxy_sent_view(stored_text: str) -> dict:
+    request_text = request_after_default_system_prompt(stored_text)
+    if request_text is None:
+        return {"system_is_default": False}
+    return {
+        "system_is_default": True,
+        "system_text": DEFAULT_SYSTEM_PROMPT,
+        "request_text": request_text,
     }
 
 

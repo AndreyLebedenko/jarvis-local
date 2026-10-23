@@ -43,6 +43,7 @@ from jarvis.journal.external_canvas import (
     SpeechStatus,
 )
 from jarvis.mcp_mode.server import McpServerState, McpServerStatusChanged
+from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import (
@@ -3129,3 +3130,68 @@ def test_two_proxy_sessions_are_told_apart_by_start_time_alone(tmp_path):
         "Personal proxy session 2026-07-22 15:30",
     ]
     assert all("Секрет" not in title for title in titles)
+
+
+def _sent_text(system, request="user: Hello <PERSON_1>"):
+    return f"system: {system}\n\n{request}"
+
+
+def test_a_stored_sent_record_with_the_default_prompt_gets_a_split_view():
+    event = _proxy_event(
+        "20260722-100000-ab12",
+        "proxy_sent",
+        "system",
+        _sent_text(DEFAULT_SYSTEM_PROMPT),
+        message_count=2,
+    )
+
+    payload = journal_event_payload(event, _media_url)
+
+    assert payload["proxy_sent"] == {
+        "system_is_default": True,
+        "system_text": DEFAULT_SYSTEM_PROMPT,
+        "request_text": "user: Hello <PERSON_1>",
+    }
+
+
+def test_a_stored_sent_record_is_never_changed_by_the_split_view():
+    text = _sent_text(DEFAULT_SYSTEM_PROMPT)
+    event = _proxy_event("20260722-100000-ab12", "proxy_sent", "system", text)
+
+    payload = journal_event_payload(event, _media_url)
+
+    assert payload["text"] == text
+    assert event.text == text
+
+
+def test_a_stored_sent_record_with_another_system_prompt_is_not_marked_default():
+    event = _proxy_event(
+        "20260722-100000-ab12",
+        "proxy_sent",
+        "system",
+        _sent_text("Answer briefly."),
+    )
+
+    payload = journal_event_payload(event, _media_url)
+
+    assert payload["proxy_sent"] == {"system_is_default": False}
+
+
+def test_a_default_prompt_with_extra_text_after_it_is_not_marked_default():
+    event = _proxy_event(
+        "20260722-100000-ab12",
+        "proxy_sent",
+        "system",
+        _sent_text(DEFAULT_SYSTEM_PROMPT + " Extra."),
+    )
+
+    payload = journal_event_payload(event, _media_url)
+
+    assert payload["proxy_sent"] == {"system_is_default": False}
+
+
+@pytest.mark.parametrize("source", ["proxy_heard", "proxy_answer", "proxy_notice"])
+def test_only_a_sent_record_carries_the_split_view(source):
+    event = _proxy_event("20260722-100000-ab12", source, "system", _sent_text("x"))
+
+    assert "proxy_sent" not in journal_event_payload(event, _media_url)

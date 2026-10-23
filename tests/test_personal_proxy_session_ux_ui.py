@@ -203,21 +203,31 @@ def test_a_ready_session_in_the_proxy_mode_says_the_next_request_starts_it():
     assert 'uiString("journal_new_context_ready")' in body
 
 
-def test_a_proxy_session_without_an_id_leaves_nothing_selected_and_the_dock_inactive():
+def test_a_proxy_session_without_an_id_selects_nothing_and_shows_the_empty_state():
     body = _body(APP_JS, "async function startNewJournalContext(")
 
     assert "_journalSelectedSessionId = payload.session_id || null;" in body
     assert "_journalActiveSessionId = payload.session_id || null;" in body
+    assert "_journalNewSessionPending = !payload.session_id;" in body
+    assert "if (_journalNewSessionPending) _showJournalNewSessionEmpty();" in body
     assert "if (payload.session_id) selectJournalSession(payload.session_id);" in body
 
 
-def test_the_dock_stays_inactive_with_the_dry_run_aware_note_until_the_session_exists():
+def test_the_dock_accepts_a_request_with_no_live_session_in_the_proxy_only():
+    rule = _body(APP_JS, "function _journalInputTargetsSelectedSession(")
     sync = _body(APP_JS, "function _syncJournalInputControls(")
+
+    assert "_journalActiveSessionId === null" in rule
+    assert "return _isProxyRunMode();" in rule
+    assert "_journalSelectedSessionId === _journalActiveSessionId" in rule
+    assert "_journalInputTargetsSelectedSession()" in sync
+
+
+def test_the_dry_run_state_no_longer_rewrites_the_dock_note():
     status = _body(_read("proxy_chat.js"), "function applyProxyStatus(")
 
-    assert "_journalInputTargetsSelectedSession()" in sync
-    assert "journal_input_proxy_note_dry_run" in status
-    assert "journal_input_proxy_note" in status
+    assert "journalInputProxyNote" not in status
+    assert "_proxyDryRun = Boolean(status.dry_run);" in status
 
 
 def test_an_accepted_new_context_in_the_proxy_clears_only_the_chat_blocks():
@@ -229,13 +239,15 @@ def test_an_accepted_new_context_in_the_proxy_clears_only_the_chat_blocks():
     assert "clearProxyChatBlocks" not in refused
 
 
-def test_the_proxy_chat_clears_blocks_separately_from_input_and_status():
+def test_the_proxy_chat_has_one_way_to_clear_its_blocks():
     chat = _read("proxy_chat.js")
     blocks = _body(chat, "function clearProxyChatBlocks(")
 
-    assert "proxyChatText" not in blocks
-    assert "_setProxyChatStatus" not in blocks
-    assert "clearProxyChatBlocks();" in _body(chat, "function clearProxyChat(")
+    assert "journalTextInput" not in blocks
+    assert "function clearProxyChat(" not in chat
+    assert "clearProxyChatBlocks();" in _body(
+        chat, "function _onProxyVisibilityChanged("
+    )
 
 
 def test_the_proxy_mode_skips_the_leave_confirmation_but_keeps_the_memory_one():
@@ -259,8 +271,8 @@ def test_an_unavailable_proxy_gets_its_own_text_not_the_busy_one():
         assert _catalog(language).get("journal_new_context_unavailable")
 
 
-def test_the_ready_text_in_the_proxy_says_how_to_start_the_request():
+def test_the_ready_text_in_the_proxy_says_the_request_is_typed_here():
     ready = "journal_new_context_ready_proxy"
 
-    assert "type it in the Personal proxy panel" in _catalog("en")[ready]
-    assert "панели" in _catalog("ru")[ready]
+    assert "type it here" in _catalog("en")[ready]
+    assert "введите его здесь" in _catalog("ru")[ready]

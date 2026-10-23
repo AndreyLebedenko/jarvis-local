@@ -5782,11 +5782,10 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   dropped). A persistence failure never changes the request and logs the exception type
   only. Two persistence-only blocks (`RequestSourceBlock`, `AnswerCompleteBlock`) carry the
   recording and the end of an answer to the writer; the chat sink does not draw them.
-  `[personal_proxy].dry_run` defaults to true, so by default the Journal stays empty and the
-  Journal dock stays inactive until `dry_run = false`. The Status Console state key
-  `proxy_status` holds the dry-run indicator and the last block reason (kind and positions,
-  never a value); the Journal dock is usable once the session exists and still routes to
-  the proxy. Placeholder session title: "Personal proxy session <start time>".
+  `[personal_proxy].dry_run` defaults to true, so by default the Journal stays empty. The
+  Status Console state key `proxy_status` holds the dry-run indicator and the last block
+  reason (kind and positions, never a value). Placeholder session title: "Personal proxy
+  session <start time>".
   Proxy session UX (story v2.1.0 task 10b): proxy sessions and the four proxy message kinds
   carry one marker, an outline icon (arrow out of a box, `proxy_out` in `app.js`) plus an
   amber left edge (amber = data goes out); the two signals are independent. "New context" is
@@ -5798,6 +5797,20 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   the held request source is dropped, and `JournalRecorder.end_session()` makes the next
   event open a new session lazily (no empty session, no provenance event). The Status
   Console has one dark theme only.
+  Request input (story v2.1.0 task 10c): the Journal dock is the only place to type a
+  request in `PERSONAL_PROXY`; the Status "Personal proxy" panel is a read-only ribbon of
+  blocks. The dock is active when the selected session is the live one (the server's
+  `active_session_id`) or when no live session exists (start, dry run, after "New context"),
+  and inactive with a note when an older session is selected while a live one exists; a
+  typed request goes through the same `/api/journal/input` route to the proxy, never to
+  the main model, and attachments stay refused. After an accepted "New context" the feed
+  shows an empty "new session" state with nothing selected until the first request
+  (voice or typed) creates and selects the session. The "sent" block (Status ribbon, and the
+  Journal feed for `proxy_sent` records) folds a system prompt equal to
+  `DEFAULT_SYSTEM_PROMPT` behind an expandable label; the server decides
+  (`system_is_default` in the block payload, `proxy_sent` view in the feed payload, both
+  from `personal_proxy/sent_view.py`) so the page keeps no copy of the prompt; a different
+  prompt is shown in full; the stored record is unchanged.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

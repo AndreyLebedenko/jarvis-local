@@ -11,6 +11,7 @@ from typing import cast
 from jarvis.personal_proxy.check_result import Doubt
 from jarvis.personal_proxy.confirmation_blocks import HeardBlock, SentBlock
 from jarvis.personal_proxy.findings import Finding
+from jarvis.personal_proxy.sent_view import has_default_system_prompt
 from jarvis.personal_proxy.service_blocks import (
     AnswerBlock,
     DryRunBlock,
@@ -37,7 +38,11 @@ def block_payload(block: ServiceBlock, language: str | None) -> JsonObject:
             "decision": block.decision.value,
         }
     if isinstance(block, SentBlock):
-        return {"type": "sent", "messages": _messages(block.messages)}
+        return {
+            "type": "sent",
+            "messages": _messages(block.messages),
+            "system_is_default": has_default_system_prompt(block.messages),
+        }
     if isinstance(block, AnswerBlock):
         return {
             "type": "answer",

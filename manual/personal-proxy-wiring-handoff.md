@@ -113,8 +113,8 @@ Automated counterpart already green: `python -m pytest` (includes
    no error.
 3. In a second terminal: `ollama ps`. Expected: `gemma4:12b` is loaded; its
    context is 8192 (the `check_num_ctx` variant), not 65536.
-4. Expected in the window: the "Personal proxy" panel with an input box under the
-   modules row; the Thinking and Response mode cards are greyed out.
+4. Expected in the window: the "Personal proxy" panel (read-only, no input box)
+   under the modules row; the Thinking and Response mode cards are greyed out.
 5. Press `Ctrl+Alt+S`, `Ctrl+Alt+V`, `Ctrl+Alt+T`, `Ctrl+Alt+O`. Expected: nothing
    happens (no screenshot cue, no mode change, no event).
 6. Close it (`Ctrl+Alt+Q`), then run
@@ -134,8 +134,9 @@ Automated counterpart already green: `python -m pytest` (includes
    payload. No question is spoken, no "Heard" block, nothing is spoken at all,
    and the locality badge stays "Local". Report what the block shows for the
    gate (a phone number left in the sanitized text must show as blocked).
-3. Type "Расскажи коротко, что такое реле" in the panel's input box and press
-   Send. Expected: a dry-run block whose "Speech engine text" is empty (typed
+3. Type "Расскажи коротко, что такое реле" in the Journal view's dock text box
+   and press Send (the result appears in the Status view's panel; the dock
+   status line says so). Expected: a dry-run block whose "Speech engine text" is empty (typed
    text skips the speech stage) and whose payload holds your sentence.
 4. Say nothing but make a noise (tap the desk) for a second. Expected: no block
    or a single notice "Nothing to send: no speech or text was recognized."; the
@@ -164,8 +165,9 @@ The stand-in endpoint of step 1.3 answers; the locality badge is the check.
      by text or dictate again is spoken and shown; no "Sent" block.
    - 2c. Repeat and stay silent for 20 seconds (`confirmation_timeout_seconds`).
      Expected: same as 2b, nothing sent.
-   - 2d. Repeat and type "да" in the panel's input box (typed text is the
-     answer while a question waits). Expected: sent.
+   - 2d. Repeat and type "да" in the Journal view's dock text box and press
+     Send (typed text is the answer while a question waits; the Status panel has
+     no input box since task v2.1.0-10c). Expected: sent.
    - 2e. Repeat and, while the question waits (before you answer), click
      "Hidden" in the top bar's Open/Hidden switch (`data-mode="hidden"` in
      `src/jarvis/ui/status_console_ui/index.html`). Expected: nothing is sent
@@ -204,10 +206,9 @@ The stand-in endpoint of step 1.3 answers; the locality badge is the check.
    buttons are not greyed out, so this is the way to reach the refusal message.
    Consolidation execution is only refused; nothing in this mode sends it to a
    model.) If the session list is empty, step 1.5 was not done.
-3. Journal view dock: the text box and the attach button are disabled, and the
-   dock shows "In the personal proxy mode, type requests in the Personal proxy
-   panel of the Status view." Type the request in that panel instead (step 3.3
-   does it). Attachments cannot be offered in this mode; the server's reply to
+3. Journal view dock: the text box and the Send button take a request (the
+   dock is the only place to type one since task v2.1.0-10c); the attach button
+   is disabled. Attachments cannot be offered in this mode; the server's reply to
    a direct upload ("Attachments are not available in this mode.") is covered by
    `tests/main_split/test_main_personal_proxy.py`, not by this handoff.
 
@@ -240,8 +241,8 @@ a path or a text of yours. Restore the setting afterwards.
   the missing key and the process exits with code 5 (`PERSONAL_PROXY_STARTUP_FAILED_EXIT_CODE`
   in `src/jarvis/app.py`). Check with `echo $LASTEXITCODE` (PowerShell).
 - In every case also check: speaking does nothing, no "Sent" block, and typing
-  a request in the Personal proxy panel and pressing Send shows under the input
-  the SAME reason text as the events panel (for example "Personal proxy not
+  a request in the Journal dock and pressing Send shows in the dock's status
+  line the SAME reason text as the events panel (for example "Personal proxy not
   started: Ollama is not reachable at [backend].endpoint"), not "The request
   queue is full".
 

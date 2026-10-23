@@ -42,6 +42,29 @@ function _proxyMessages(messages) {
   return wrap;
 }
 
+// A system prompt equal to the default (decided by the server) is folded to a
+// short label; a changed one is shown in full like any other message.
+function _proxySentMessages(payload) {
+  const messages = payload.messages || [];
+  if (payload.system_is_default !== true || messages.length === 0) {
+    return _proxyMessages(messages);
+  }
+  const wrap = _proxyElement("div", "proxy-messages");
+  wrap.appendChild(proxyDefaultSystemElement(messages[0].content));
+  messages.slice(1).forEach((message) => {
+    wrap.appendChild(_proxyRow(message.role, message.content));
+  });
+  return wrap;
+}
+
+function proxyDefaultSystemElement(systemText) {
+  const details = _proxyElement("details", "proxy-system-default");
+  details.appendChild(_proxyElement(
+    "summary", "proxy-system-default-label", uiString("proxy_sent_default_system")));
+  details.appendChild(_proxyElement("div", "proxy-text", systemText));
+  return details;
+}
+
 function _proxyDoubtsText(doubts) {
   return (doubts || [])
     .map((doubt) => doubt.fragment || doubt.kind)
@@ -58,7 +81,7 @@ function _proxyBlockBody(payload) {
     body.appendChild(_proxyElement(
       "div", "proxy-note", uiString(PROXY_DECISION_KEYS[payload.decision])));
   } else if (payload.type === "sent") {
-    body.appendChild(_proxyMessages(payload.messages));
+    body.appendChild(_proxySentMessages(payload));
   } else if (payload.type === "notice") {
     body.appendChild(_proxyElement("div", "proxy-text", payload.text));
   } else if (payload.type === "dry_run") {
@@ -151,15 +174,17 @@ function applyProxyBlock(payload) {
 // The dry-run indicator and the content-free reason the last request was
 // stopped (kind and positions, never a value). Both ride in the snapshot, so a
 // reconnecting client sees them; unlike the blocks they hold nothing personal.
+let _proxyDryRun = false;
+
+function isProxyDryRun() {
+  return _proxyDryRun;
+}
+
 function applyProxyStatus(payload) {
   const status = payload || { dry_run: false, last_block: null };
+  _proxyDryRun = Boolean(status.dry_run);
   const badge = document.getElementById("proxyDryRun");
   if (badge) badge.hidden = !status.dry_run;
-  const note = document.getElementById("journalInputProxyNote");
-  if (note) {
-    note.textContent = uiString(
-      status.dry_run ? "journal_input_proxy_note_dry_run" : "journal_input_proxy_note");
-  }
   const reason = document.getElementById("proxyLastBlock");
   if (!reason) return;
   const last = status.last_block;
@@ -176,75 +201,6 @@ function clearProxyChatBlocks() {
   if (empty) empty.hidden = false;
 }
 
-function clearProxyChat() {
-  clearProxyChatBlocks();
-  const input = document.getElementById("proxyChatText");
-  if (input) input.value = "";
-  _setProxyChatStatus("");
-}
-
-function _setProxyChatStatus(text) {
-  const status = document.getElementById("proxyChatStatus");
-  if (status) status.textContent = text;
-}
-
-let _proxyChatInFlight = false;
-
-function _proxyErrorMessage(payload) {
-  if (payload.reason === "busy") return uiString("proxy_chat_busy");
-  if (payload.reason === "empty") return uiString("proxy_chat_empty_text");
-  if (payload.reason === "unavailable" && payload.detail) return payload.detail;
-  if (payload.reason === "over_limit") {
-    return uiString("proxy_chat_over_limit").replace("{max}", String(payload.max_chars));
-  }
-  return uiString("proxy_chat_failed");
-}
-
-// Typed text goes to the same route as the Journal dock: the engine sends it
-// to the proxy in this run mode, where it is a request like a spoken one.
-async function submitProxyText() {
-  if (_proxyChatInFlight || _isHiddenActive()) return;
-  const input = document.getElementById("proxyChatText");
-  const text = input.value;
-  if (!text.trim()) {
-    _setProxyChatStatus(uiString("proxy_chat_empty_text"));
-    return;
-  }
-  const url = _journalUrl("/api/journal/input");
-  if (url === null) {
-    _setProxyChatStatus(uiString("transport_no_token"));
-    return;
-  }
-  _proxyChatInFlight = true;
-  document.getElementById("proxyChatSend").disabled = true;
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const payload = await response.json();
-    if (payload.status === "accepted") {
-      if (input.value === text) input.value = "";
-      _setProxyChatStatus("");
-    } else {
-      _setProxyChatStatus(_proxyErrorMessage(payload));
-    }
-  } catch (error) {
-    console.error("Proxy input failed:", error);
-    _setProxyChatStatus(uiString("proxy_chat_failed"));
-  } finally {
-    _proxyChatInFlight = false;
-    document.getElementById("proxyChatSend").disabled = false;
-  }
-}
-
-function onProxyChatKeyDown(event) {
-  if (event.key !== "Enter" || event.shiftKey) return;
-  event.preventDefault();
-  submitProxyText();
-}
-
 function _onProxyVisibilityChanged(mode) {
-  if (mode === "hidden") clearProxyChat();
+  if (mode === "hidden") clearProxyChatBlocks();
 }

@@ -47,7 +47,7 @@ class El {
   }
 }
 const ids = {};
-for (const id of ["proxyChatList", "proxyChatEmpty", "proxyChatText", "proxyChatStatus"]) {
+for (const id of ["proxyChatList", "proxyChatEmpty"]) {
   ids[id] = new El("div");
 }
 const state = { hidden: false };
@@ -123,7 +123,6 @@ def test_hidden_clears_the_chat_and_a_block_while_hidden_is_dropped(tmp_path):
     probe = r"""
 applyProxyBlock({type: "notice", kind: "x", text: "personal"});
 const before = ids.proxyChatList.children.length;
-ids.proxyChatText.value = "typed";
 _onProxyVisibilityChanged("hidden");
 const after = ids.proxyChatList.children.length;
 state.hidden = true;
@@ -131,7 +130,6 @@ applyProxyBlock({type: "notice", kind: "x", text: "late"});
 console.log(JSON.stringify({
   before, after,
   late: ids.proxyChatList.children.length,
-  input: ids.proxyChatText.value,
   emptyShown: ids.proxyChatEmpty.hidden === false,
 }));
 """
@@ -142,7 +140,6 @@ console.log(JSON.stringify({
         "before": 1,
         "after": 0,
         "late": 0,
-        "input": "",
         "emptyShown": True,
     }
 
@@ -158,43 +155,96 @@ console.log(JSON.stringify({blocks: ids.proxyChatList.children.length}));
     assert _run(tmp_path, probe) == {"blocks": 200}
 
 
-def test_an_unavailable_submission_shows_its_own_reason_not_the_queue_message(
+SENT_PROBE_HELPERS = r"""
+function find(el, predicate, found = []) {
+  if (predicate(el)) found.push(el);
+  el.children.forEach((child) => child.children && find(child, predicate, found));
+  return found;
+}
+function textWithout(el, tag) {
+  if (el.tag === tag) return "";
+  return el._text + el.children.map((child) => textWithout(child, tag)).join("");
+}
+const block = ids.proxyChatList.lastElementChild;
+const folded = find(block, (el) => el.tag === "details");
+"""
+
+
+def test_a_default_system_prompt_is_folded_into_a_labelled_expandable_element(
     tmp_path,
 ):
-    probe = r"""
+    probe = (
+        r"""
+applyProxyBlock({type: "sent", system_is_default: true, messages: [
+  {role: "system", content: "STANDARD RULES"}, {role: "user", content: "Hello <PERSON_1>"}]});
+"""
+        + SENT_PROBE_HELPERS
+        + r"""
 console.log(JSON.stringify({
-  withDetail: _proxyErrorMessage({reason: "unavailable", detail: "Ollama is not running."}),
-  withoutDetail: _proxyErrorMessage({reason: "unavailable"}),
-  busy: _proxyErrorMessage({reason: "busy"}),
+  folded: folded.length,
+  label: folded[0].children[0].textContent,
+  insideText: folded[0].textContent,
+  visibleOutside: textWithout(block, "details"),
 }));
 """
+    )
 
     result = _run(tmp_path, probe)
 
-    assert result == {
-        "withDetail": "Ollama is not running.",
-        "withoutDetail": "proxy_chat_failed",
-        "busy": "proxy_chat_busy",
-    }
+    assert result["folded"] == 1
+    assert result["label"] == "proxy_sent_default_system"
+    assert "STANDARD RULES" in result["insideText"]
+    assert "Hello <PERSON_1>" in result["visibleOutside"]
+    assert "STANDARD RULES" not in result["visibleOutside"]
 
 
-def test_clearing_the_blocks_keeps_the_typed_text_and_the_status_line(tmp_path):
-    probe = r"""
-applyProxyBlock({type: "notice", kind: "x", text: "personal"});
-ids.proxyChatText.value = "typed";
-ids.proxyChatStatus.textContent = "status";
-clearProxyChatBlocks();
-console.log(JSON.stringify({
-  blocks: ids.proxyChatList.children.length,
-  emptyShown: ids.proxyChatEmpty.hidden === false,
-  input: ids.proxyChatText.value,
-  status: ids.proxyChatStatus.textContent,
-}));
+def test_a_changed_system_prompt_is_shown_in_full_without_folding(tmp_path):
+    probe = (
+        r"""
+applyProxyBlock({type: "sent", system_is_default: false, messages: [
+  {role: "system", content: "CHANGED RULES"}, {role: "user", content: "Hello"}]});
 """
+        + SENT_PROBE_HELPERS
+        + r"""
+console.log(JSON.stringify({folded: folded.length, text: block.textContent}));
+"""
+    )
 
-    assert _run(tmp_path, probe) == {
-        "blocks": 0,
-        "emptyShown": True,
-        "input": "typed",
-        "status": "status",
-    }
+    result = _run(tmp_path, probe)
+
+    assert result["folded"] == 0
+    assert "CHANGED RULES" in result["text"]
+    assert "Hello" in result["text"]
+
+
+def test_a_sent_block_without_the_default_flag_is_shown_in_full(tmp_path):
+    probe = (
+        r"""
+applyProxyBlock({type: "sent", messages: [{role: "system", content: "RULES"}]});
+"""
+        + SENT_PROBE_HELPERS
+        + r"""
+console.log(JSON.stringify({folded: folded.length, text: block.textContent}));
+"""
+    )
+
+    result = _run(tmp_path, probe)
+
+    assert result["folded"] == 0
+    assert "RULES" in result["text"]
+
+
+def test_the_default_prompt_is_set_as_text_never_as_markup_when_expanded(tmp_path):
+    probe = (
+        r"""
+const hostile = '<img src=x onerror="alert(1)">';
+applyProxyBlock({type: "sent", system_is_default: true, messages: [
+  {role: "system", content: hostile}, {role: "user", content: "x"}]});
+"""
+        + SENT_PROBE_HELPERS
+        + r"""
+console.log(JSON.stringify({hostile: folded[0].textContent.includes(hostile)}));
+"""
+    )
+
+    assert _run(tmp_path, probe) == {"hostile": True}

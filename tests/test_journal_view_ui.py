@@ -229,8 +229,9 @@ def test_input_dock_is_inactive_for_a_non_active_session():
     target_body = APP_JS.split("function _journalInputTargetsSelectedSession()")[
         1
     ].split("\n}")[0]
-    assert "_journalActiveSessionId !== null" in target_body
+    assert "_journalActiveSessionId === null" in target_body
     assert "_journalSelectedSessionId === _journalActiveSessionId" in target_body
+    assert "return _isProxyRunMode();" in target_body
 
     sync_body = APP_JS.split("function _syncJournalInputControls()")[1].split("\n}")[0]
     assert "!_journalInputTargetsSelectedSession()" in sync_body

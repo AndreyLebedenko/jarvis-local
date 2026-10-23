@@ -6,7 +6,8 @@ endpoint and the Status Console window. The agent prepared it and ran none of it
 
 What it answers: after a real spoken and a real typed request in
 `--personal-proxy`, does the Journal view show the proxy session with its
-labels; does the dock accept typed requests once the session exists; does a dry
+labels; does the dock accept typed requests (while the live session is selected,
+and while no live session exists); does a dry
 run leave the Journal empty; do the Status Console show the dry-run indicator
 and the last block reason without any value; does `search_history` find the
 proxy answer by its label and automatic retrieval never use it.
@@ -71,9 +72,10 @@ Automated counterpart already green: `python -m pytest` (includes
 1. `python -m jarvis --status-console --personal-proxy`. Wait for the orb to read
    "Waiting for a request".
 2. Open the Journal view (the "Journal" button in the top bar). Expected: the
-   session list is empty; the input dock at the bottom shows the note beginning
-   "Personal proxy: the Journal session starts with the first request" and no
-   text box.
+   session list is empty; the input dock at the bottom shows a text box and a
+   Send button (it takes a request while no live session exists; since task
+   v2.1.0-10c) and the feed reads "New session. It starts with your first
+   request."
 3. Say: "Расскажи коротко, что такое реле". Let the answer finish being spoken.
 4. Expected in the Journal view without a restart: one new session titled
    "Personal proxy session" (not the text you said). Open it. Expected, in this
@@ -90,7 +92,9 @@ Automated counterpart already green: `python -m pytest` (includes
    spoken), NOT through the main model (the orb never reads "Thinking" for the
    main model, and `ollama ps` in another terminal never lists `[backend].model`),
    and the same session gains a second request/sent/answer triple.
-6. In the Personal proxy panel (Status view) type "Привет" and press Send.
+6. In the same dock text box type "Привет" and press Send (the Status view
+   has no input box any more; since task v2.1.0-10c the dock is the only place
+   to type a request).
    Expected: a third triple in the same session (typed requests carry the note
    "Typed request." and have no audio tile).
 7. Press `Ctrl+Alt+Q`.

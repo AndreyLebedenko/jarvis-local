@@ -11,6 +11,7 @@ from jarvis.personal_proxy.confirmation_blocks import (
     SentBlock,
 )
 from jarvis.personal_proxy.findings import Finding, GateCategory
+from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
 from jarvis.personal_proxy.restoration_result import RestorationMethod
 from jarvis.personal_proxy.sanitize_result import SanitizeVerdict
 from jarvis.personal_proxy.service_blocks import (
@@ -47,7 +48,26 @@ def test_a_sent_block_lists_every_message_that_went_out():
             {"role": "system", "content": "rules"},
             {"role": "user", "content": "Hi <PERSON_1>"},
         ],
+        "system_is_default": False,
     }
+
+
+def test_a_sent_block_with_the_default_system_prompt_says_so():
+    block = SentBlock((("system", DEFAULT_SYSTEM_PROMPT), ("user", "Hi")))
+
+    assert block_payload(block, "en")["system_is_default"] is True
+
+
+def test_a_changed_system_prompt_is_not_the_default_even_by_one_character():
+    block = SentBlock((("system", DEFAULT_SYSTEM_PROMPT + " "), ("user", "Hi")))
+
+    assert block_payload(block, "en")["system_is_default"] is False
+
+
+def test_the_default_prompt_in_the_user_role_is_not_a_default_system_prompt():
+    block = SentBlock((("user", DEFAULT_SYSTEM_PROMPT),))
+
+    assert block_payload(block, "en")["system_is_default"] is False
 
 
 def test_an_answer_block_carries_the_method_and_the_unresolved_flag():

@@ -208,20 +208,23 @@ console.log(JSON.stringify({
     assert result["detail"] == "Not sent (not confirmed)"
 
 
-def test_the_dock_note_says_the_truth_about_a_dry_run(tmp_path):
+def test_the_dry_run_state_is_remembered_for_the_dock_status_line(tmp_path):
     probe = r"""
-ids.journalInputProxyNote = { textContent: "" };
+const initial = isProxyDryRun();
 applyProxyStatus({dry_run: true, last_block: null});
-const dry = ids.journalInputProxyNote.textContent;
+const on = isProxyDryRun();
 applyProxyStatus({dry_run: false, last_block: null});
-console.log(JSON.stringify({dry, live: ids.journalInputProxyNote.textContent}));
+const off = isProxyDryRun();
+applyProxyStatus(undefined);
+console.log(JSON.stringify({initial, on, off, missing: isProxyDryRun()}));
 """
 
-    result = _run(tmp_path, probe)
-
-    assert "nothing is written to the Journal" in result["dry"]
-    assert "inactive" in result["dry"]
-    assert "starts with the first request" in result["live"]
+    assert _run(tmp_path, probe) == {
+        "initial": False,
+        "on": True,
+        "off": False,
+        "missing": False,
+    }
 
 
 def test_the_proxy_mode_disables_the_attach_button_on_the_client(tmp_path):

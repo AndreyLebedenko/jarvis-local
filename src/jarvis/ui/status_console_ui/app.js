@@ -1309,6 +1309,9 @@ let _journalActiveSessionId = null;
 let _journalInputInFlight = false;
 let _journalAttachmentEntries = [];
 let _journalSelectPendingInputSession = false;
+// After the proxy's "New context" no session exists until the first request:
+// nothing is selected, and the list must not pick an older one on its own.
+let _journalNewSessionPending = false;
 let _journalForkInFlightSessionId = null;
 let _journalNewContextInFlight = false;
 const _MEMORY_FILE_IDS = ["self", "memory"];
@@ -1380,6 +1383,7 @@ function _clearJournalContent() {
   _journalUsageBySession = new Map();
   _journalActiveSessionId = null;
   _journalSelectPendingInputSession = false;
+  _journalNewSessionPending = false;
   _journalForkInFlightSessionId = null;
   _journalNewContextInFlight = false;
   _clearJournalMemoryPanel();
@@ -1392,6 +1396,13 @@ function _clearJournalContent() {
   document.getElementById("journalUsageTotal").textContent = "";
   document.getElementById("journalSessionsEmpty").hidden = false;
   _showJournalNoSelection();
+}
+
+function _showJournalNewSessionEmpty() {
+  document.getElementById("journalFeed").replaceChildren();
+  const empty = document.getElementById("journalFeedEmpty");
+  empty.hidden = false;
+  empty.textContent = uiString("journal_proxy_new_session_empty");
 }
 
 function _showJournalNoSelection() {
@@ -1642,6 +1653,9 @@ async function startNewJournalContext() {
       if (_isProxyRunMode()) clearProxyChatBlocks();
       _journalSelectedSessionId = payload.session_id || null;
       _journalActiveSessionId = payload.session_id || null;
+      _journalNewSessionPending = !payload.session_id;
+      if (_journalNewSessionPending) _showJournalNewSessionEmpty();
+      _syncJournalInputControls();
       _setJournalInputStatus(
         _isProxyRunMode()
           ? uiString("journal_new_context_ready_proxy")
@@ -1930,11 +1944,12 @@ function _journalAttachmentClassLabel(value) {
 // Input targets the active (live) session, never the one merely being viewed.
 // So the dock only accepts input while the selected session IS the active one;
 // for any other session it is hidden behind an explanatory note (CSS), and its
-// controls are disabled as defense in depth.
+// controls are disabled as defense in depth. The personal proxy also accepts
+// input while no live session exists (at start, in dry run, after "New
+// context"): the request itself starts the session.
 function _journalInputTargetsSelectedSession() {
-  return (
-    _journalActiveSessionId !== null &&
-    _journalSelectedSessionId === _journalActiveSessionId);
+  if (_journalActiveSessionId === null) return _isProxyRunMode();
+  return _journalSelectedSessionId === _journalActiveSessionId;
 }
 
 function _syncJournalInputControls() {
@@ -1959,6 +1974,9 @@ function _syncJournalInputControls() {
   if (dock) {
     dock.classList.toggle("inactive-session", inactiveSession && !_isHiddenActive());
     dock.classList.toggle("proxy-mode", proxyMode && !_isHiddenActive());
+    dock.classList.toggle(
+      "starts-new-session",
+      proxyMode && _journalActiveSessionId === null && !_isHiddenActive());
   }
 }
 
@@ -1972,7 +1990,7 @@ async function submitJournalInput() {
     _setJournalInputStatus(uiString("journal_input_hidden"));
     return;
   }
-  if (_journalActiveSessionId === null) {
+  if (_journalActiveSessionId === null && !_isProxyRunMode()) {
     _setJournalInputStatus(uiString("journal_new_context_required"));
     return;
   }
@@ -2013,7 +2031,10 @@ async function submitJournalInput() {
     if (payload.status === "accepted") {
       if (input.value === text) input.value = "";
       _clearCompletedJournalAttachments();
-      _setJournalInputStatus(uiString("journal_input_sent"));
+      const dryRun = _isProxyRunMode() && isProxyDryRun();
+      if (dryRun) _journalSelectPendingInputSession = false;
+      _setJournalInputStatus(
+        uiString(dryRun ? "journal_input_sent_dry_run" : "journal_input_sent"));
     } else if (payload.status === "hidden") {
       _clearJournalAttachments();
       _journalSelectPendingInputSession = false;
@@ -2035,6 +2056,7 @@ async function submitJournalInput() {
 function _journalInputErrorMessage(payload) {
   if (payload.reason === "busy") return uiString("journal_input_busy");
   if (payload.reason === "empty") return uiString("journal_input_empty");
+  if (payload.reason === "unavailable" && payload.detail) return payload.detail;
   if (payload.reason === "attachments_unavailable") {
     return uiString("journal_input_attachments_unavailable");
   }
@@ -2111,7 +2133,12 @@ async function refreshJournalSessions(refetchSelectedFeed = false) {
     (item) => item.classList.contains("sel")
   );
   initContextMenuTrigger(list, ".journal-session", _journalSessionMenuEntries);
-  if (_journalSelectedSessionId === null && sessions.length !== 0) {
+  if (_journalSelectedSessionId === null && _journalNewSessionPending &&
+      _journalActiveSessionId !== null) {
+    selectJournalSession(_journalActiveSessionId);
+  } else if (_journalSelectedSessionId === null && _journalShowsNewSessionState()) {
+    if (!_isJournalSearchActive()) _showJournalNewSessionEmpty();
+  } else if (_journalSelectedSessionId === null && sessions.length !== 0) {
     selectJournalSession(sessions[0].id);
   } else if (refetchSelectedFeed && _journalSelectedSessionId !== null) {
     if (_isJournalSearchActive()) {
@@ -2120,6 +2147,10 @@ async function refreshJournalSessions(refetchSelectedFeed = false) {
       selectJournalSession(_journalSelectedSessionId);
     }
   }
+}
+
+function _journalShowsNewSessionState() {
+  return _isProxyRunMode() && _journalActiveSessionId === null;
 }
 
 function _applyJournalUsage(payload) {
@@ -2378,6 +2409,7 @@ async function selectJournalSession(sessionId, contextEventPosition = null) {
   }
   const generation = _journalContentGeneration;
   _journalSelectedSessionId = sessionId;
+  _journalNewSessionPending = false;
   _syncJournalInputControls();
   const sessionList = document.getElementById("journalSessionList");
   sessionList.querySelectorAll(".journal-session").forEach((row) => {
@@ -2687,6 +2719,7 @@ function applyJournalEvent(payload) {
 }
 
 function _shouldSelectJournalInputSession(payload) {
+  if (_journalNewSessionPending && payload.source === PROXY_HEARD_SOURCE) return true;
   return (
     _journalSelectPendingInputSession &&
     payload.role === "user" &&
@@ -2826,6 +2859,9 @@ function _journalEventElement(event, position = null) {
     );
   }
   const bodyText = _journalEventBodyText(event);
+  if (_journalSentHidesSystemPrompt(event)) {
+    message.appendChild(proxyDefaultSystemElement(event.proxy_sent.system_text));
+  }
   if (bodyText) {
     const text = document.createElement("div");
     text.className = "journal-msg-text";
@@ -2868,7 +2904,15 @@ function _journalEventBodyText(event) {
   if (event.source === "proxy_notice" && event.metadata) {
     return proxyNoticeText(event.metadata.notice_kind, event.metadata.notice_detail);
   }
+  if (_journalSentHidesSystemPrompt(event)) return event.proxy_sent.request_text;
   return event.text;
+}
+
+function _journalSentHidesSystemPrompt(event) {
+  return (
+    event.source === "proxy_sent" &&
+    Boolean(event.proxy_sent) &&
+    event.proxy_sent.system_is_default === true);
 }
 
 function _journalEventHasAudio(event) {
