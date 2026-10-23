@@ -1342,6 +1342,10 @@ html[data-view="settings"] .settings {
 .journal-input-new-session-note { display: none; grid-column: 1 / -1; color: var(--text-dim); font-size: 12.5px; }
 .journal-input-dock.starts-new-session .journal-input-new-session-note { display: block; }
 .journal-input-proxy-note { display: none; grid-column: 1 / -1; color: var(--text-dim); font-size: 12.5px; }
+.journal-input-force-help { display: none; grid-column: 1 / -1; color: var(--text-dim); font-size: 12.5px; }
+.journal-input-dock.proxy-mode .journal-input-force-help { display: block; }
+.journal-input-dock.proxy-mode.inactive-session .journal-input-force-help { display: none; }
+.proxy-forced-marker { color: var(--amber); font-weight: 600; font-size: 12.5px; margin-bottom: 4px; }
 .journal-input-dock.proxy-mode { grid-template-columns: minmax(0, 1fr) auto; }
 .journal-input-dock.proxy-mode .journal-drop-target,
 .journal-input-dock.proxy-mode #journalAttachButton,

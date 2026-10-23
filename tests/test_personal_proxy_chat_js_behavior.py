@@ -248,3 +248,64 @@ console.log(JSON.stringify({hostile: folded[0].textContent.includes(hostile)}));
     )
 
     assert _run(tmp_path, probe) == {"hostile": True}
+
+
+def test_a_forced_sent_block_shows_the_forced_marker_before_the_messages(tmp_path):
+    probe = r"""
+applyProxyBlock({type: "sent", system_is_default: false, forced: true, messages: [
+  {role: "system", content: "RULES"}, {role: "user", content: "Hello Marina"}]});
+const block = ids.proxyChatList.lastElementChild;
+const body = block.querySelector(".proxy-block-body");
+const marker = block.querySelector(".proxy-forced-marker");
+console.log(JSON.stringify({
+  markerText: marker ? marker.textContent : null,
+  markerFirst: body.children[0] === marker,
+  text: block.textContent,
+}));
+"""
+
+    result = _run(tmp_path, probe)
+
+    assert result["markerText"] == "proxy_forced_marker"
+    assert result["markerFirst"] is True
+    assert "Hello Marina" in result["text"]
+
+
+def test_a_sent_block_that_is_not_forced_has_no_marker(tmp_path):
+    probe = r"""
+applyProxyBlock({type: "sent", system_is_default: false, forced: false, messages: [
+  {role: "user", content: "Hello"}]});
+applyProxyBlock({type: "sent", system_is_default: false, messages: [
+  {role: "user", content: "Older payload without the field"}]});
+const found = ids.proxyChatList.children.map(
+  (block) => block.querySelector(".proxy-forced-marker") !== null);
+console.log(JSON.stringify({found}));
+"""
+
+    assert _run(tmp_path, probe) == {"found": [False, False]}
+
+
+def test_a_forced_dry_run_block_shows_the_forced_marker_and_a_plain_one_does_not(
+    tmp_path,
+):
+    probe = r"""
+const base = {type: "dry_run", whisper_text: null, checked_text: "t", doubts: [],
+  would_ask: false, sanitized_text: "t", mapping: {}, verdict: "send", reason: "",
+  gate_findings: [], messages: [{role: "user", content: "t"}]};
+applyProxyBlock({...base, forced: true});
+applyProxyBlock({...base, forced: false});
+const found = ids.proxyChatList.children.map(
+  (block) => block.querySelector(".proxy-forced-marker") !== null);
+console.log(JSON.stringify({found}));
+"""
+
+    assert _run(tmp_path, probe) == {"found": [True, False]}
+
+
+def test_the_forced_marker_is_plain_text_never_markup(tmp_path):
+    probe = r"""
+const marker = proxyForcedMarkerElement();
+console.log(JSON.stringify({text: marker.textContent, tag: marker.tag}));
+"""
+
+    assert _run(tmp_path, probe) == {"text": "proxy_forced_marker", "tag": "div"}

@@ -25,6 +25,7 @@ class HeardBlock:
 @dataclass(frozen=True)
 class SentBlock:
     messages: tuple[tuple[str, str], ...] = field(repr=False)
+    forced: bool = False
 
     @property
     def text(self) -> str:
@@ -38,7 +39,8 @@ def heard_block_of(checked: CheckedTranscript, decision: HeardDecision) -> Heard
     return HeardBlock(checked.text, checked.doubts, decision)
 
 
-def sent_block_of(payload: OutboundPayload) -> SentBlock:
+def sent_block_of(payload: OutboundPayload, *, forced: bool = False) -> SentBlock:
     return SentBlock(
-        tuple((message.role, message.content) for message in payload.messages)
+        tuple((message.role, message.content) for message in payload.messages),
+        forced,
     )

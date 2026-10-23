@@ -2859,6 +2859,7 @@ function _journalEventElement(event, position = null) {
     );
   }
   const bodyText = _journalEventBodyText(event);
+  if (_journalSentIsForced(event)) message.appendChild(proxyForcedMarkerElement());
   if (_journalSentHidesSystemPrompt(event)) {
     message.appendChild(proxyDefaultSystemElement(event.proxy_sent.system_text));
   }
@@ -2906,6 +2907,13 @@ function _journalEventBodyText(event) {
   }
   if (_journalSentHidesSystemPrompt(event)) return event.proxy_sent.request_text;
   return event.text;
+}
+
+function _journalSentIsForced(event) {
+  return (
+    event.source === "proxy_sent" &&
+    Boolean(event.metadata) &&
+    event.metadata.forced === true);
 }
 
 function _journalSentHidesSystemPrompt(event) {

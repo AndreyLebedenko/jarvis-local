@@ -32,6 +32,7 @@ from jarvis.journal.fork import ForkSeedDropReport
 from jarvis.journal.proxy_exchange import (
     DECISION_METADATA_KEY,
     DOUBT_KINDS_METADATA_KEY,
+    FORCED_METADATA_KEY,
     INCOMPLETE_METADATA_KEY,
     METHODS_METADATA_KEY,
     NOTICE_DETAIL_METADATA_KEY,
@@ -246,12 +247,14 @@ class JournalRecorder:
             )
         )
 
-    async def record_proxy_sent(self, text: str, *, message_count: int) -> None:
+    async def record_proxy_sent(
+        self, text: str, *, message_count: int, forced: bool = False
+    ) -> None:
+        metadata: dict[str, JSONValue] = {"message_count": message_count}
+        if forced:
+            metadata[FORCED_METADATA_KEY] = True
         await self._record_proxy_event(
-            source=PROXY_SENT_SOURCE,
-            role="system",
-            text=text,
-            metadata={"message_count": message_count},
+            source=PROXY_SENT_SOURCE, role="system", text=text, metadata=metadata
         )
 
     async def record_proxy_answer(

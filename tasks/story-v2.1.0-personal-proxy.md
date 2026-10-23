@@ -78,7 +78,9 @@ that roadmap section; this card does not edit the roadmap.
   model's answer in `text_voice` mode, with the details the user mentioned
   (names, numbers, places) restored in the answer.
 - Nothing about the voice, and nothing sensitive that the sanitizer or the
-  gate recognizes, is sent. If the gate blocks the request, the user is told
+  gate recognizes, is sent. The one explicit exception (task 10d): a typed
+  `/force` message is sent without the local model stages, so the sanitizer
+  does not see it; the gate still does, and the message is marked as forced. If the gate blocks the request, the user is told
   why (the category, not the value), and nothing is sent.
 - A dry-run setting runs the whole path up to and including the gate, shows
   what would have been sent, and sends nothing.
@@ -206,7 +208,9 @@ criteria, and the stop conditions below were re-cut on 2026-10-19.
   intact) and mark the sentence as such in metadata. A placeholder split
   across streamed chunks is handled by buffering to sentence boundaries,
   reusing the sentence buffer.
-- **Nothing but the sanitized request goes out.** No screenshots or images,
+- **Nothing but the request itself goes out:** the sanitized text, or, for a
+  typed /force message (task 10d), the text as typed after the deterministic
+  gate. No screenshots or images,
   no journal or memory retrieval, no annotations, no history, no text that
   arrived through `--mcp-mode` (that text is another assistant's claim and is
   never sent onward, per `PROJECT.md`). A test enumerates the outbound builder
@@ -400,11 +404,19 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     panel to the Journal dock (active also when no live session exists yet), and the
     "sent" block hides a default system prompt.
 
-10d. **/force command.** (Size: S-M, added 2026-10-24, card
+10d. **/force command.** (Size: S-M. Done 2026-10-24, `tasks/done/task-v2.1.0-10d-force-command.md`; added 2026-10-24, card
     `tasks/task-v2.1.0-10d-force-command.md`.) A typed command that sends one message
-    without the local model stages, after false refusals of harmless requests.
+    without the local model stages, after false refusals of harmless requests. The
+    deterministic gate stays; the privacy contract has one explicit exception for it
+    (`PROJECT.md`).
 
-10e. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10d.) A Journal
+10e. **False refusals of the local sanitize model.** (Size: S, added 2026-10-24,
+    card `tasks/task-v2.1.0-10e-false-refusals.md`.) Remove the topics rule from the
+    prompt when the topics list is empty, one retry of the local sanitize call on a
+    refusal without topics or a malformed answer, a /force hint in the notice, and a
+    live measurement of the false refusal rate.
+
+10f. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10e.) A Journal
     feature for all session kinds: a title kept apart from the records, edited from the
     session's "..." menu, used in the list, search and the title.
 

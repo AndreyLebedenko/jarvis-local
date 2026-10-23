@@ -1,6 +1,7 @@
 """The first stage of a request: turns an inbox item into a checked transcript,
 or posts why there is nothing to go on with. Typed text is the user's own words
-and skips the speech stage and the check."""
+and skips the speech stage and the check. Only typed text is parsed for a
+command; a spoken request is never forced."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import numpy as np
 from jarvis.personal_proxy.check_result import CheckedTranscript, FallbackReason
 from jarvis.personal_proxy.pipeline_stages import PipelineStages
 from jarvis.personal_proxy.proxy_inbox import InboxItem, TypedText, Utterance
+from jarvis.personal_proxy.request_commands import ParsedKind, parse_typed_request
 from jarvis.personal_proxy.service_blocks import NoticeKind
 from jarvis.personal_proxy.service_reporter import Reporter
 from jarvis.personal_proxy.stt_result import Transcription
@@ -23,6 +25,7 @@ from jarvis.personal_proxy.wav_clip import WavClipError, wav_to_clip
 class Heard:
     checked: CheckedTranscript = field(repr=False)
     whisper_text: str | None = field(repr=False)
+    forced: bool = False
 
 
 class RequestIntake:
@@ -32,7 +35,7 @@ class RequestIntake:
 
     async def hear(self, item: InboxItem) -> Heard | None:
         if isinstance(item, TypedText):
-            heard = Heard(typed_checked_transcript(item.text), None)
+            heard = await self._heard_typed(item)
         elif isinstance(item, Utterance):
             heard = await self._heard_utterance(item)
         else:
@@ -43,6 +46,17 @@ class RequestIntake:
             await self._reporter.notice(NoticeKind.NO_SPEECH)
             return None
         return heard
+
+    async def _heard_typed(self, typed: TypedText) -> Heard | None:
+        parsed = parse_typed_request(typed.text)
+        if parsed.kind is ParsedKind.UNKNOWN_COMMAND:
+            await self._reporter.notice(NoticeKind.UNKNOWN_COMMAND)
+            return None
+        if parsed.kind is ParsedKind.EMPTY_COMMAND:
+            await self._reporter.notice(NoticeKind.EMPTY_COMMAND)
+            return None
+        forced = parsed.kind is ParsedKind.COMMAND
+        return Heard(typed_checked_transcript(parsed.text), None, forced)
 
     async def _heard_utterance(self, utterance: Utterance) -> Heard | None:
         clip = await self._clip_of(utterance)

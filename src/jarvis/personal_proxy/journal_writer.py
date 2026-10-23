@@ -43,7 +43,9 @@ class ProxyExchangeRecorder(Protocol):
         raw_transcript: str | None = None,
     ) -> None: ...
 
-    async def record_proxy_sent(self, text: str, *, message_count: int) -> None: ...
+    async def record_proxy_sent(
+        self, text: str, *, message_count: int, forced: bool = False
+    ) -> None: ...
 
     async def record_proxy_answer(
         self,
@@ -122,7 +124,7 @@ class ProxyJournalWriter:
             await self._record_heard(block)
         elif isinstance(block, SentBlock):
             await self._recorder.record_proxy_sent(
-                block.text, message_count=len(block.messages)
+                block.text, message_count=len(block.messages), forced=block.forced
             )
         elif isinstance(block, AnswerBlock):
             self._buffer(block)

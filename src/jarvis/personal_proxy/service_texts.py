@@ -43,6 +43,12 @@ _RU = {
     "internal_error.spoken": "Внутренняя ошибка остановила запрос.",
     "busy": "Очередь запросов заполнена, запрос пропущен.",
     "interrupted": "Запрос прерван.",
+    "unknown_command": (
+        "Неизвестная команда, ничего не отправлено. "
+        "Известная команда: /force (или /f). "
+        "Чтобы отправить текст как обычный, поставьте слово перед косой чертой."
+    ),
+    "empty_command": "После команды нет текста, ничего не отправлено.",
     "gate_position": "сообщение {message}, символы {start}-{end}",
     "gate_stage": "этап {stage}",
     "category.email": "адрес почты",
@@ -77,6 +83,11 @@ _EN = {
     "internal_error.spoken": "An internal error stopped the request.",
     "busy": "The request queue is full, the request was skipped.",
     "interrupted": "The request was interrupted.",
+    "unknown_command": (
+        "Unknown command, nothing was sent. The known command is /force (or /f). "
+        "To send the text as plain text, put a word before the slash."
+    ),
+    "empty_command": "There is no text after the command, nothing was sent.",
     "gate_position": "message {message}, characters {start}-{end}",
     "gate_stage": "stage {stage}",
     "category.email": "an e-mail address",

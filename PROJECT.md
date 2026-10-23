@@ -20,7 +20,17 @@ guarantee.
 `--personal-proxy` (story v2.1.0) is the second such capability and the first
 that sends text out: a spoken request is transcribed and sanitized locally,
 and only the sanitized text may go to the external OpenAI-compatible endpoint
-configured in `[personal_proxy]`. Jarvis's orchestration, conversation state,
+configured in `[personal_proxy]`. The one explicit exception is the typed `/force`
+command (task 10d): that single message is sent as typed, without the local model
+stages (the transcript check, the sanitize pass with its topics refusal, the
+confirmation question), so it may carry names and other personal text; the
+deterministic outbound gate (phone, card, IBAN, e-mail, key, password and the other
+detectors, and its topic-phrase check) still runs on it, and it is visibly marked as
+forced. What the gate does not cover: it recognises structured identifiers in their
+usual written forms; names, addresses in free text, and spelled-out or obfuscated numbers
+and e-mails are not recognised, and in a forced request nothing else catches them
+(restoration is a no-op there, since nothing was replaced). Nothing but the system
+prompt and that text goes out, and a spoken request is never forced. Jarvis's orchestration, conversation state,
 and Ollama inference stay local exactly as above. It exists only when the run
 is started with the explicit `--personal-proxy` flag (requires
 `--status-console`, excludes `--mcp-mode`) and `[personal_proxy].endpoint` and
@@ -5728,8 +5738,9 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   `app.py`, `Orchestrator` or Journal dependency. A router sends every item either to the
   pending confirmation exchange or to a bounded FIFO; one worker runs one request at a time,
   so the locality seam (EXTERNAL only around the external stream) is never overlapped. The
-  payload holds only the fixed system prompt and the sanitized text, and the stream gets
-  the exact object the gate allowed. Every failure posts a content-free notice and sends
+  payload holds only the fixed system prompt and the sanitized text (the one exception is
+  a forced request, task 10d: the verbatim typed text with an empty mapping), and the
+  stream gets the exact object the gate allowed. Every failure posts a content-free notice and sends
   nothing; dry run skips the question, posts the full state and stops. The restored answer
   is shown and spoken sentence by sentence verbatim, with speech control tags stripped. The
   application wiring is task 9b.
@@ -5811,6 +5822,30 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   (`system_is_default` in the block payload, `proxy_sent` view in the feed payload, both
   from `personal_proxy/sent_view.py`) so the page keeps no copy of the prompt; a different
   prompt is shown in full; the stored record is unchanged.
+  The `/force` command (story v2.1.0 task 10d, `personal_proxy/request_commands.py`,
+  `verbatim_result.py`): a typed request whose first token is `/force` or `/f` (lowercase,
+  ends at whitespace) is sent once, as typed, without the local model stages: no
+  transcript check, no sanitize pass (so no topics refusal and no false refusal by the
+  model), no confirmation question. The payload is `build_outbound_payload(
+  DEFAULT_SYSTEM_PROMPT, text)` with an empty mapping, and the deterministic gate runs as
+  for any request (`GateContext` with the topics text); a block posts the usual
+  content-free notice, and dry run still stops before the send. Privacy trade-off, the
+  owner's explicit decision (2026-10-24): the gate still finds structured identifiers, but
+  the model that finds names and other personal text is skipped, so such text in a forced
+  request goes out. The command is parsed in `RequestIntake` for typed items only: a
+  spoken request is never forced, a typed answer to a pending question is an answer (the
+  router takes it before the pipeline), and the command does not switch any mode, so the
+  next request is normal. A token that is a slash and letters but not a known command
+  (`/forse`, `/FORCE`, `/help`) posts the fixed notice `unknown_command`, and `/force` with
+  no text posts `empty_command`; neither sends nor persists anything but the notice. Any
+  other leading slash (a path, a lone slash) is an ordinary request. The command table
+  (`COMMAND_TABLE`, name -> `Command`) is where a further command is added. Visibility:
+  `SentBlock.forced` and `DryRunBlock.forced` (block payload key `forced`), the stored
+  `proxy_sent` record gets `metadata.forced = true` (the key is absent otherwise), and the
+  Status ribbon and the Journal feed show "FORCED: sent without the local checks"; the heard
+  record is stored as for any typed request. The Journal's provenance and exclusions are
+  unchanged. The dock shows a help line in the proxy mode. The forced text appears only in
+  the chat and the Journal, never in logs, exceptions or `repr`.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

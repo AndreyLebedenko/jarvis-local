@@ -328,3 +328,51 @@ def test_the_dock_has_a_note_that_a_request_starts_a_new_session():
     assert ".journal-input-dock.starts-new-session .journal-input-new-session-note" in (
         _read("style.css")
     )
+
+
+def test_the_dock_has_a_force_help_line_shown_in_the_proxy_mode_only():
+    css = _read("style.css")
+
+    assert 'id="journalInputForceHelp"' in INDEX
+    assert 'data-i18n="journal_input_force_help"' in INDEX
+    base_rule = css.split(".journal-input-force-help {")[1].split("}")[0]
+    assert "display: none" in base_rule
+    assert "grid-column: 1 / -1" in base_rule
+    assert ".journal-input-dock.proxy-mode .journal-input-force-help" in css
+    inactive = [
+        line
+        for line in css.splitlines()
+        if "inactive-session" in line and "journal-input-force-help" in line
+    ]
+    assert inactive and all("display: none" in line for line in inactive)
+
+
+def test_the_force_help_and_marker_texts_exist_in_both_languages_and_name_the_command():
+    for language in ("en", "ru"):
+        text = _catalog_text(language)
+        assert "/force" in text["journal_input_force_help"]
+        assert "/f" in text["journal_input_force_help"]
+        assert text["proxy_forced_marker"]
+        assert text["proxy_notice_unknown_command"]
+        assert text["proxy_notice_empty_command"]
+    assert _catalog_text("en")["proxy_forced_marker"] == (
+        "FORCED: sent without the local checks"
+    )
+    assert _catalog_text("en")["journal_input_force_help"].startswith("/force text")
+
+
+def test_the_forced_marker_is_drawn_in_the_status_block_and_in_the_journal_feed():
+    assert (
+        "proxyForcedMarkerElement()" in PROXY_JS.split("function _proxyBlockBody(")[1]
+    )
+    message = APP_JS.split("function _journalEventElement(")[1].split("\n}")[0]
+    guard = message.index("_journalSentIsForced(event)")
+    marker = message.index("proxyForcedMarkerElement()")
+    assert guard < marker < message.index('"journal-msg-text"')
+
+
+def test_the_forced_marker_has_a_visible_style():
+    css = _read("style.css")
+
+    assert ".proxy-forced-marker" in css
+    assert "var(--" in css.split(".proxy-forced-marker {")[1].split("}")[0]

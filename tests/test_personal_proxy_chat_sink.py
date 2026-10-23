@@ -49,6 +49,7 @@ def test_a_sent_block_lists_every_message_that_went_out():
             {"role": "user", "content": "Hi <PERSON_1>"},
         ],
         "system_is_default": False,
+        "forced": False,
     }
 
 

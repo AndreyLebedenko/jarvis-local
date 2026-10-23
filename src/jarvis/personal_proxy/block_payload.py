@@ -42,6 +42,7 @@ def block_payload(block: ServiceBlock, language: str | None) -> JsonObject:
             "type": "sent",
             "messages": _messages(block.messages),
             "system_is_default": has_default_system_prompt(block.messages),
+            "forced": block.forced,
         }
     if isinstance(block, AnswerBlock):
         return {
@@ -86,4 +87,5 @@ def _dry_run(block: DryRunBlock) -> JsonObject:
         "reason": block.reason,
         "gate_findings": [_finding(finding) for finding in block.gate_findings],
         "messages": _messages(block.messages),
+        "forced": block.forced,
     }

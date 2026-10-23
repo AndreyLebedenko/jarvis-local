@@ -32,6 +32,8 @@ class NoticeKind(StrEnum):
     INTERNAL_ERROR = "internal_error"
     BUSY = "busy"
     INTERRUPTED = "interrupted"
+    UNKNOWN_COMMAND = "unknown_command"
+    EMPTY_COMMAND = "empty_command"
 
 
 NoticeDetail = Enum | int | tuple[Finding, ...] | None
@@ -82,6 +84,7 @@ class DryRunBlock:
     reason: str = field(repr=False)
     gate_findings: tuple[Finding, ...]
     messages: tuple[tuple[str, str], ...] = field(repr=False)
+    forced: bool = False
 
 
 @dataclass(frozen=True)

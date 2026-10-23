@@ -32,6 +32,7 @@ EXTRACTED = (
     "_shouldSelectJournalInputSession",
     "_journalEventBodyText",
     "_journalSentHidesSystemPrompt",
+    "_journalSentIsForced",
     "_isJournalActive",
     "applyJournalEvent",
     "setActiveView",
@@ -567,3 +568,31 @@ console.log(JSON.stringify({
     assert result["body"] == "user: hi"
     assert result["changedBody"] == "system: RULES\n\nuser: hi"
     assert result["oldBody"] == "system: RULES\n\nuser: hi"
+
+
+def test_the_feed_knows_a_forced_sent_record_by_its_stored_marker_only(tmp_path):
+    probe = r"""
+const forced = {source: "proxy_sent", metadata: {message_count: 2, forced: true}};
+const plain = {source: "proxy_sent", metadata: {message_count: 2}};
+const noMetadata = {source: "proxy_sent"};
+const falseFlag = {source: "proxy_sent", metadata: {forced: false}};
+const wrongSource = {source: "proxy_heard", metadata: {forced: true}};
+const stringFlag = {source: "proxy_sent", metadata: {forced: "yes"}};
+console.log(JSON.stringify({
+  forced: _journalSentIsForced(forced),
+  plain: _journalSentIsForced(plain),
+  noMetadata: _journalSentIsForced(noMetadata),
+  falseFlag: _journalSentIsForced(falseFlag),
+  wrongSource: _journalSentIsForced(wrongSource),
+  stringFlag: _journalSentIsForced(stringFlag),
+}));
+"""
+
+    assert _run(tmp_path, probe) == {
+        "forced": True,
+        "plain": False,
+        "noMetadata": False,
+        "falseFlag": False,
+        "wrongSource": False,
+        "stringFlag": False,
+    }

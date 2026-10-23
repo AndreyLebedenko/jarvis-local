@@ -48,6 +48,7 @@ from jarvis.personal_proxy.service_blocks import (
     RequestSourceBlock,
 )
 from jarvis.personal_proxy.service_reporter import Reporter
+from jarvis.personal_proxy.verbatim_result import verbatim_result
 from jarvis.personal_proxy.visible_text import has_visible_text
 
 Confirm = Callable[[CheckedTranscript], Awaitable[ExchangeOutcome]]
@@ -79,7 +80,7 @@ class RequestPipeline:
         heard = await self._intake.hear(item)
         if heard is None:
             return
-        sanitized = await self._sanitized(heard.checked)
+        sanitized = await self._sanitized_or_verbatim(heard)
         if sanitized is None:
             return
         if not self._parts.dry_run and not await self._confirmed(item, heard):
@@ -93,7 +94,12 @@ class RequestPipeline:
         if self._parts.dry_run:
             await self._stop_at_dry_run(heard, sanitized, payload, gate)
         else:
-            await self._send(payload, sanitized)
+            await self._send(payload, sanitized, forced=heard.forced)
+
+    async def _sanitized_or_verbatim(self, heard: Heard) -> SanitizeResult | None:
+        if heard.forced:
+            return verbatim_result(heard.checked.text)
+        return await self._sanitized(heard.checked)
 
     async def _sanitized(self, checked: CheckedTranscript) -> SanitizeResult | None:
         result = await self._stages.sanitize(checked)
@@ -119,7 +125,7 @@ class RequestPipeline:
     async def _confirmed(self, item: InboxItem, heard: Heard) -> bool:
         checked = heard.checked
         await self._reporter.post(_request_source_of(item, heard))
-        if not should_ask(checked):
+        if heard.forced or not should_ask(checked):
             heard = heard_block_of(checked, HeardDecision.SEND_WITHOUT_QUESTION)
             await self._reporter.post(heard)
             return True
@@ -159,11 +165,14 @@ class RequestPipeline:
             reason=sanitized.reason,
             gate_findings=gate.findings,
             messages=sent_block_of(payload).messages,
+            forced=heard.forced,
         )
         await self._reporter.post(block)
 
-    async def _send(self, payload: OutboundPayload, sanitized: SanitizeResult) -> None:
-        await self._reporter.post(sent_block_of(payload))
+    async def _send(
+        self, payload: OutboundPayload, sanitized: SanitizeResult, *, forced: bool
+    ) -> None:
+        await self._reporter.post(sent_block_of(payload, forced=forced))
         deltas = None
         try:
             stream = self._stages.open_stream(payload)

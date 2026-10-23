@@ -65,6 +65,10 @@ function proxyDefaultSystemElement(systemText) {
   return details;
 }
 
+function proxyForcedMarkerElement() {
+  return _proxyElement("div", "proxy-forced-marker", uiString("proxy_forced_marker"));
+}
+
 function _proxyDoubtsText(doubts) {
   return (doubts || [])
     .map((doubt) => doubt.fragment || doubt.kind)
@@ -81,6 +85,7 @@ function _proxyBlockBody(payload) {
     body.appendChild(_proxyElement(
       "div", "proxy-note", uiString(PROXY_DECISION_KEYS[payload.decision])));
   } else if (payload.type === "sent") {
+    if (payload.forced === true) body.appendChild(proxyForcedMarkerElement());
     body.appendChild(_proxySentMessages(payload));
   } else if (payload.type === "notice") {
     body.appendChild(_proxyElement("div", "proxy-text", payload.text));
@@ -91,6 +96,7 @@ function _proxyBlockBody(payload) {
 }
 
 function _proxyFillDryRun(body, payload) {
+  if (payload.forced === true) body.appendChild(proxyForcedMarkerElement());
   body.appendChild(_proxyRow(uiString("proxy_dry_whisper"), payload.whisper_text || ""));
   body.appendChild(_proxyRow(uiString("proxy_dry_checked"), payload.checked_text));
   body.appendChild(_proxyRow(uiString("proxy_doubts_label"), _proxyDoubtsText(payload.doubts)));
