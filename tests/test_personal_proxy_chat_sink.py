@@ -15,9 +15,11 @@ from jarvis.personal_proxy.restoration_result import RestorationMethod
 from jarvis.personal_proxy.sanitize_result import SanitizeVerdict
 from jarvis.personal_proxy.service_blocks import (
     AnswerBlock,
+    AnswerCompleteBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
+    RequestSourceBlock,
 )
 
 SECRET = "Марина Крылова"
@@ -135,3 +137,13 @@ async def test_the_sink_publishes_each_block_in_the_current_language():
         "The request was interrupted.",
         "Запрос прерван.",
     ]
+
+
+async def test_the_sink_does_not_draw_the_blocks_meant_for_persistence_only():
+    publisher = _Publisher()
+    sink = TransportChatSink(publisher, lambda: "en")
+
+    await sink.post(RequestSourceBlock(b"wav", SECRET))
+    await sink.post(AnswerCompleteBlock())
+
+    assert publisher.payloads == []

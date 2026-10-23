@@ -15,7 +15,8 @@ retrieval, model-facing search, and Journal UI search; the spoken derivative
 is locator-only and must never enter model memory or automatic retrieval.
 An external canvas (another assistant's answer) and an annotation of one are
 searchable by the model and in the Journal, but never fed to automatic
-retrieval: they are not Jarvis's own claim.
+retrieval: they are not Jarvis's own claim. The personal proxy's heard request
+and its external answer follow the same rule.
 
 This module is pure: no sqlite, no filesystem, no network, no event bus.
 """
@@ -29,6 +30,12 @@ from typing import TYPE_CHECKING
 from jarvis.journal.annotation import AnnotationTarget
 from jarvis.journal.events import JournalEventRef
 from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
+from jarvis.journal.proxy_exchange import (
+    PROXY_ANSWER_SOURCE,
+    PROXY_HEARD_SOURCE,
+    PROXY_NOTICE_SOURCE,
+    PROXY_SENT_SOURCE,
+)
 
 if TYPE_CHECKING:
     from jarvis.journal.corpus import HistoryCorpusEvent
@@ -48,6 +55,9 @@ class ProvenanceSourceKind(Enum):
     SPOKEN_DERIVATIVE = "spoken_derivative"
     EXTERNAL_CANVAS = "external_canvas"
     EXTERNAL_ANNOTATION = "external_annotation"
+    PROXY_REQUEST = "proxy_request"
+    PROXY_ANSWER = "proxy_answer"
+    PROXY_NOTICE = "proxy_notice"
 
     @property
     def eligibility(self) -> frozenset[ProvenanceEligibility]:
@@ -56,6 +66,10 @@ class ProvenanceSourceKind(Enum):
     @property
     def is_external(self) -> bool:
         return self in _EXTERNAL_SOURCE_KINDS
+
+    @property
+    def is_proxy(self) -> bool:
+        return self in _PROXY_SOURCE_KINDS
 
 
 class ProvenanceEligibility(Enum):
@@ -139,14 +153,16 @@ def provenance_descriptor_from_corpus_event(
 
     ``text_is_transcript`` decides raw vs transcript: the corpus indexes
     ``effective_text`` only when the raw text is empty, so a transcript-backed
-    event's indexed text is derived, never canonical. An external canvas is
-    the canonical text of its event, just not authored by Jarvis.
+    event's indexed text is derived, never canonical. An external canvas and
+    the personal proxy's events are the canonical text of their event, just
+    not authored by Jarvis.
     """
 
-    if event.source == MCP_CANVAS_SOURCE:
+    own_kind = _KIND_BY_SOURCE.get(event.source)
+    if own_kind is not None:
         return ProvenanceDescriptor(
-            source_kind=ProvenanceSourceKind.EXTERNAL_CANVAS,
-            eligibility=ProvenanceSourceKind.EXTERNAL_CANVAS.eligibility,
+            source_kind=own_kind,
+            eligibility=own_kind.eligibility,
             target=ProvenanceTarget(event_ref=event.reference),
             is_canonical=True,
         )
@@ -215,6 +231,13 @@ def spoken_derivative_provenance_descriptor(
     )
 
 
+_PROXY_SOURCE_KINDS = frozenset(
+    {
+        ProvenanceSourceKind.PROXY_REQUEST,
+        ProvenanceSourceKind.PROXY_ANSWER,
+        ProvenanceSourceKind.PROXY_NOTICE,
+    }
+)
 _EXTERNAL_SOURCE_KINDS = frozenset(
     {ProvenanceSourceKind.EXTERNAL_CANVAS, ProvenanceSourceKind.EXTERNAL_ANNOTATION}
 )
@@ -230,4 +253,14 @@ _ELIGIBILITY_BY_SOURCE_KIND: dict[
     ProvenanceSourceKind.SPOKEN_DERIVATIVE: _LOCATOR_ELIGIBILITY,
     ProvenanceSourceKind.EXTERNAL_CANVAS: _EXTERNAL_ELIGIBILITY,
     ProvenanceSourceKind.EXTERNAL_ANNOTATION: _EXTERNAL_ELIGIBILITY,
+    ProvenanceSourceKind.PROXY_REQUEST: _EXTERNAL_ELIGIBILITY,
+    ProvenanceSourceKind.PROXY_ANSWER: _EXTERNAL_ELIGIBILITY,
+    ProvenanceSourceKind.PROXY_NOTICE: _EXTERNAL_ELIGIBILITY,
+}
+_KIND_BY_SOURCE = {
+    MCP_CANVAS_SOURCE: ProvenanceSourceKind.EXTERNAL_CANVAS,
+    PROXY_HEARD_SOURCE: ProvenanceSourceKind.PROXY_REQUEST,
+    PROXY_SENT_SOURCE: ProvenanceSourceKind.PROXY_REQUEST,
+    PROXY_NOTICE_SOURCE: ProvenanceSourceKind.PROXY_NOTICE,
+    PROXY_ANSWER_SOURCE: ProvenanceSourceKind.PROXY_ANSWER,
 }

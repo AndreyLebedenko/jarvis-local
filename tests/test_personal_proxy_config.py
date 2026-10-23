@@ -261,3 +261,11 @@ def test_the_minimum_speech_is_labeled_unmeasured_in_the_example_config():
         comment_lines.append(line)
 
     assert "UNMEASURED" in " ".join(comment_lines)
+
+
+def test_the_example_config_does_not_promise_a_dry_run_is_journaled():
+    text = EXAMPLE_CONFIG_PATH.read_text(encoding="utf-8")
+    comment = text.split("dry_run = true")[0].rsplit("api_key_env", 1)[1]
+
+    assert "journaled" not in comment
+    assert "Nothing is written to" in comment

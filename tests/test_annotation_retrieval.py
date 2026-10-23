@@ -352,6 +352,32 @@ def test_annotation_of_an_ordinary_session_stays_an_annotation() -> None:
     assert candidate.external_caller_name is None
 
 
+def test_annotation_of_a_personal_proxy_session_is_external_without_a_caller() -> None:
+    repository = _FakeCorpusRepository(
+        events=(
+            _event(0, "Что говорил врач?", source="proxy_heard"),
+            _event(1, "Ответ внешней модели.", role="assistant", source="proxy_answer"),
+        )
+    )
+    service = _annotation_service(repository, _annotation("ann-p", "Сводка."))
+
+    [candidate] = service.retrieve(HistoryRetrievalQuery("сводка", limit=5)).candidates
+
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_ANNOTATION
+    assert candidate.external_caller_name is None
+
+
+def test_annotation_of_a_session_with_only_a_proxy_request_is_external() -> None:
+    repository = _FakeCorpusRepository(
+        events=(_event(0, "Вопрос.", source="proxy_heard"),)
+    )
+    service = _annotation_service(repository, _annotation("ann-p", "Сводка."))
+
+    [candidate] = service.retrieve(HistoryRetrievalQuery("сводка", limit=5)).candidates
+
+    assert candidate.provenance.source_kind is ProvenanceSourceKind.EXTERNAL_ANNOTATION
+
+
 def test_annotation_session_check_runs_once_per_session_within_one_retrieve() -> None:
     repository = _FakeCorpusRepository(events=(_canvas_event(0, None),))
     service = _annotation_service(

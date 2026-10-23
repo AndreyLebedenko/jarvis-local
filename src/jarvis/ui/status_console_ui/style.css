@@ -244,6 +244,13 @@ html[data-run-mode="personal_proxy"] .proxy-chat { display: block; }
   font: 600 11px "Segoe UI", system-ui, sans-serif;
   letter-spacing: 0.8px; text-transform: uppercase;
 }
+.proxy-chat-flags { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 6px; }
+.proxy-chat-flags [hidden] { display: none; }
+.proxy-dry-run {
+  color: var(--amber); border: 1px solid var(--amber); border-radius: 6px;
+  padding: 1px 8px; font: 11px "Consolas", "Cascadia Mono", monospace;
+}
+.proxy-last-block { color: var(--text-dim); font-size: 12px; }
 .proxy-chat-empty { color: var(--text-faint); font-size: 12.5px; padding: 8px 0; }
 .proxy-chat-list {
   display: flex; flex-direction: column; gap: 8px;
@@ -1329,14 +1336,13 @@ html[data-view="settings"] .settings {
 .journal-input-dock.inactive-session #journalSendButton,
 .journal-input-dock.inactive-session .journal-attachment-list { display: none; }
 .journal-input-dock.inactive-session .journal-input-inactive-note { display: block; }
-.journal-input-proxy-note { display: none; color: var(--text-dim); font-size: 12.5px; }
+.journal-input-proxy-note { display: none; grid-column: 1 / -1; color: var(--text-dim); font-size: 12.5px; }
+.journal-input-dock.proxy-mode { grid-template-columns: minmax(0, 1fr) auto; }
 .journal-input-dock.proxy-mode .journal-drop-target,
 .journal-input-dock.proxy-mode #journalAttachButton,
-.journal-input-dock.proxy-mode #journalTextInput,
-.journal-input-dock.proxy-mode #journalSendButton,
-.journal-input-dock.proxy-mode .journal-attachment-list,
-.journal-input-dock.proxy-mode .journal-input-inactive-note { display: none; }
-.journal-input-dock.proxy-mode .journal-input-proxy-note { display: block; }
+.journal-input-dock.proxy-mode .journal-attachment-list { display: none; }
+.journal-input-dock.proxy-mode.inactive-session .journal-input-inactive-note { display: none; }
+.journal-input-dock.proxy-mode.inactive-session .journal-input-proxy-note { display: block; }
 .journal-input-dock button {
   height: 34px; padding: 0 14px; border: 1px solid var(--cyan-dim);
   border-radius: 7px; background: var(--cyan-tint); color: var(--cyan);

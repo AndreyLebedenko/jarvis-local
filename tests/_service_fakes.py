@@ -30,6 +30,7 @@ from jarvis.personal_proxy.sanitize_result import (
     SanitizeResult,
     SanitizeVerdict,
 )
+from jarvis.personal_proxy.service_blocks import PersistenceBlock
 from jarvis.personal_proxy.stt_result import Transcription
 from jarvis.ui.contract import DataLocality
 
@@ -60,9 +61,13 @@ class RecordingSink:
     def __init__(self, log, *, fail_on=None):
         self.log = log
         self.blocks = []
+        self.persistence_blocks = []
         self.fail_on = fail_on
 
     async def post(self, block):
+        if isinstance(block, PersistenceBlock):
+            self.persistence_blocks.append(block)
+            return
         self.log.append(f"post:{type(block).__name__}")
         self.blocks.append(block)
         if self.fail_on is not None and isinstance(block, self.fail_on):

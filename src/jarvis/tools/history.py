@@ -53,7 +53,10 @@ _EVENT_TEXT_CHAR_LIMIT = 200
 _EXTERNAL_ITEMS_NOTE = (
     "An item whose source_kind is external_canvas or external_annotation is "
     "another assistant's text that the user was shown (caller_name says which "
-    "one), not your own past answer, even when its role is assistant."
+    "one), not your own past answer, even when its role is assistant. An item "
+    "whose source_kind is proxy_request or proxy_answer comes from the personal "
+    "proxy: the user's request as heard, or an external model's answer; neither "
+    "is your own past turn."
 )
 
 
@@ -929,6 +932,8 @@ def _serialize_events(
         if source_kind.is_external:
             item["source_kind"] = source_kind.value
             item["caller_name"] = caller_name_from_metadata(event.metadata)
+        elif source_kind.is_proxy:
+            item["source_kind"] = source_kind.value
         serialized.append(item)
     return serialized, truncated_count
 

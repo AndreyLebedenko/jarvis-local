@@ -39,7 +39,30 @@ def test_a_proxy_block_delta_is_dispatched_to_the_chat():
 def test_the_proxy_block_is_never_part_of_the_snapshot_handling():
     snapshot = APP_JS.split("function _applyStateSnapshot(")[1].split("\n}")[0]
 
-    assert "proxy" not in snapshot
+    assert "proxy_block" not in snapshot
+    assert "applyProxyBlock" not in snapshot
+
+
+def test_the_proxy_status_rides_in_the_snapshot_and_as_a_delta():
+    snapshot = APP_JS.split("function _applyStateSnapshot(")[1].split("\n}")[0]
+    dispatch_table = APP_JS.split("function _applyStateDelta(")[1].split("\n}")[0]
+
+    assert "applyProxyStatus(state.proxy_status);" in snapshot
+    assert "proxy_status: applyProxyStatus," in dispatch_table
+
+
+def test_the_page_loads_the_proxy_text_before_the_chat_and_the_app_script():
+    for page in (INDEX, _read("demo.html")):
+        assert page.index('src="proxy_text.js"') < page.index('src="proxy_chat.js"')
+
+
+def test_the_panel_has_the_dry_run_indicator_and_the_last_block_reason():
+    assert 'id="proxyDryRun"' in INDEX
+    assert 'id="proxyLastBlock"' in INDEX
+    for language in ("en", "ru"):
+        keys = _catalog_keys(language)
+        assert "proxy_dry_run_indicator" in keys
+        assert "proxy_last_block_label" in keys
 
 
 def test_every_proxy_string_the_chat_uses_exists_in_both_languages():
@@ -111,15 +134,25 @@ def test_typed_text_goes_to_the_dock_route_that_the_engine_reroutes():
     assert '_journalUrl("/api/journal/input")' in body
 
 
-def test_the_dock_points_to_the_proxy_panel_and_cannot_send_in_this_mode():
+def test_the_dock_works_once_the_session_exists_but_takes_no_attachments():
     sync = APP_JS.split("function _syncJournalInputControls(")[1].split("\n}")[0]
 
     assert "RUN_MODE.PERSONAL_PROXY" in sync
-    assert "proxyMode ||" in sync
+    assert "proxyMode ||" not in sync
+    assert "disabled || proxyMode" in sync
     assert 'classList.toggle("proxy-mode"' in sync
     assert 'id="journalInputProxyNote"' in INDEX
     css = _read("style.css")
-    assert ".journal-input-dock.proxy-mode #journalSendButton" in css
+    assert ".journal-input-dock.proxy-mode #journalAttachButton" in css
+    assert ".journal-input-dock.proxy-mode #journalSendButton" not in css
+    assert ".journal-input-dock.proxy-mode.inactive-session" in css
+
+
+def test_the_dock_note_no_longer_sends_the_user_away_from_the_dock():
+    for language in ("en", "ru"):
+        body = STRINGS.split(f"  {language}: {{")[1].split("\n  },")[0]
+        note = re.search(r"journal_input_proxy_note: \"(.*?)\"", body).group(1)
+        assert "first request" in note or "первого запроса" in note
     for language in ("en", "ru"):
         keys = _catalog_keys(language)
         assert "journal_input_proxy_note" in keys
@@ -130,3 +163,77 @@ def test_an_attachment_refusal_is_shown_with_its_own_text():
     body = APP_JS.split("function _journalInputErrorMessage(")[1].split("\n}")[0]
 
     assert 'payload.reason === "attachments_unavailable"' in body
+
+
+def test_every_proxy_source_has_a_journal_label_in_both_languages():
+    for source in ("proxy_heard", "proxy_sent", "proxy_answer", "proxy_notice"):
+        for language in ("en", "ru"):
+            assert f"journal_source_{source}" in _catalog_keys(language)
+
+
+def test_the_contract_mirrors_the_journal_sources_of_the_proxy():
+    from jarvis.journal.proxy_exchange import PROXY_HEARD_SOURCE, PROXY_SOURCES
+
+    contract = _read("contract.js")
+
+    assert f'const PROXY_HEARD_SOURCE = "{PROXY_HEARD_SOURCE}";' in contract
+    for source in PROXY_SOURCES:
+        assert f'"{source}"' in contract.split("PROXY_SOURCES = ")[1].split(";")[0]
+
+
+def test_a_proxy_label_replaces_the_plain_label_in_the_journal_and_in_search():
+    body = APP_JS.split("function _journalExternalAnswerLabel(")[1].split("\n}")[0]
+
+    assert "PROXY_SOURCES.includes(source)" in body
+    assert "_journalSourceLabel(source)" in body
+
+
+def test_a_dock_typed_proxy_request_selects_its_new_session():
+    body = APP_JS.split("function _shouldSelectJournalInputSession(")[1].split("\n}")[0]
+
+    assert "PROXY_HEARD_SOURCE" in body
+
+
+def test_a_proxy_notice_is_drawn_from_its_content_free_record():
+    body = APP_JS.split("function _journalEventBodyText(")[1].split("\n}")[0]
+
+    assert 'event.source === "proxy_notice"' in body
+    assert "proxyNoticeText(" in body
+
+
+def _css_rule(selector):
+    css = _read("style.css")
+    start = css.index(selector + " {")
+    return css[start : css.index("}", start)]
+
+
+def test_the_dock_grid_is_two_columns_when_the_attach_button_is_hidden():
+    rule = _css_rule(".journal-input-dock.proxy-mode")
+
+    assert "grid-template-columns: minmax(0, 1fr) auto;" in rule
+
+
+def test_the_dock_grid_in_normal_mode_keeps_its_three_columns():
+    rule = _css_rule(".journal-input-dock")
+
+    assert "grid-template-columns: auto minmax(0, 1fr) auto;" in rule
+
+
+def test_the_dock_notes_span_every_column_in_both_grids():
+    css = _read("style.css")
+
+    for note in ("journal-input-inactive-note", "journal-input-proxy-note"):
+        rule = css[css.index(f".{note} {{") :].split("}")[0]
+        assert "grid-column: 1 / -1" in rule
+
+
+def test_nothing_else_is_hidden_by_the_proxy_mode_class_inside_a_layout():
+    css = _read("style.css")
+    hidden = [
+        line
+        for line in css.splitlines()
+        if "proxy-mode" in line and "display: none" in line
+    ]
+
+    assert all("journal-input-dock.proxy-mode" in line for line in hidden)
+    assert not re.search(r"\.proxy-chat-input[^{]*proxy-mode", css)

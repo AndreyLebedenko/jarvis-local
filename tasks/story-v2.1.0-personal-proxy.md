@@ -381,7 +381,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
    (`check_num_ctx` 8192 differs from the normal backend's 65536, so Ollama reloads
    the model on the first call).
 
-10. **Journal, provenance, and Status Console surfaces.** (Size: M.) Journal
+10. **Journal, provenance, and Status Console surfaces.** (Size: M. Done 2026-10-23, `tasks/done/task-v2.1.0-10-journal-surfaces.md`.) Journal
     events for the request/answer pair with external provenance
     (automatic-retrieval exclusion enforced at the existing single chokepoint,
     `select_automatic_retrieval_passages()`), `search_history` labeling, fork
@@ -436,11 +436,11 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       by voice; only a clear "yes", spoken or typed, sends; no answer, unclear
       answer, or "no" sends nothing; without a doubt the request is sent without a
       question; the "went out" block equals the actual payload (a test). (Task 8.)
-- [ ] With dry-run on, nothing is sent and the full intermediate state is shown;
+- [x] With dry-run on, nothing is sent and the full intermediate state is shown;
       with it off, the cleaned request is sent and the restored answer is
       presented in `text_voice`. No audio, image, history, memory, or `--mcp-mode`
       text is ever in the payload. (Task 9.)
-- [ ] The external answer is journaled with external provenance, excluded from
+- [x] The external answer is journaled with external provenance, excluded from
       automatic retrieval, and labeled in search and in the Status Console; the
       logs never contain the heard text. (Task 10.)
 - [ ] The sweep leaves the suite green. (Task 11.)

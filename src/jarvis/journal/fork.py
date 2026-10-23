@@ -5,6 +5,7 @@ from enum import Enum
 
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
+from jarvis.journal.proxy_exchange import PROXY_SOURCES
 from jarvis.journal.store import JournalReplay
 
 # Stands in for a past voice turn whose words were never transcribed. A seed
@@ -14,8 +15,9 @@ from jarvis.journal.store import JournalReplay
 UNTRANSCRIBED_VOICE_TURN_TEXT = "[голосовое сообщение без расшифровки]"
 
 # An external canvas carries role "assistant" but is another assistant's text:
-# seeding it would present it to the local model as its own past turn.
-_EXCLUDED_SOURCES = frozenset({"context", MCP_CANVAS_SOURCE})
+# seeding it would present it to the local model as its own past turn. The
+# personal proxy's records are the same case, and its heard text is personal.
+_EXCLUDED_SOURCES = frozenset({"context", MCP_CANVAS_SOURCE, *PROXY_SOURCES})
 
 
 @dataclass(frozen=True)

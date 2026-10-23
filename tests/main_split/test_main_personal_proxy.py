@@ -817,6 +817,7 @@ def test_the_status_console_path_refuses_main_model_controls_and_routes_dock_tex
                 )
                 seen["attachment"] = (response.status, await response.json())
             seen["snapshot"] = transport.state.snapshot()["run_mode"]
+            seen["proxy_status"] = transport.state.snapshot()["proxy_status"]
         finally:
             await transport.stop()
 
@@ -834,6 +835,10 @@ def test_the_status_console_path_refuses_main_model_controls_and_routes_dock_tex
     assert seen["built_for"] is RunMode.PERSONAL_PROXY
     assert seen["run_mode"] is RunMode.PERSONAL_PROXY
     assert seen["snapshot"]["mode"] == "personal_proxy"
+    assert seen["proxy_status"] == {
+        "dry_run": settings.personal_proxy.dry_run,
+        "last_block": None,
+    }
     assert "toggle_thinking" in seen["snapshot"]["refused"]
     assert "journal_input" not in seen["snapshot"]["refused"]
     assert seen["new_context"] == (
@@ -906,3 +911,23 @@ async def test_no_exchange_is_recorded_for_a_check_request_in_the_personal_proxy
     await asyncio.wait_for(running, timeout=5)
 
     assert seen == [None]
+
+
+async def test_the_proxy_host_gets_the_apps_journal_recorder(
+    tmp_path, quiet_run, fake_hotkeys
+):
+    settings = _settings(tmp_path)
+    app = _proxy_app(settings)
+    hosts: list[object] = []
+
+    async def prepare(host):
+        hosts.append(host)
+        return _FakeRuntime([])
+
+    running = _start_run(settings, app, fake_hotkeys, _console(), prepare)
+    await _until(lambda: settings.hotkeys.shutdown in fake_hotkeys)
+    fake_hotkeys[settings.hotkeys.shutdown]()
+    await asyncio.wait_for(running, timeout=5)
+
+    (host,) = hosts
+    assert host.journal is app.journal_recorder

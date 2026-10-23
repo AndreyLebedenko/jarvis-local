@@ -41,6 +41,7 @@ from jarvis.inputs.camera import (
 )
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.external_canvas import MCP_CANVAS_SOURCE
+from jarvis.journal.proxy_exchange import PROXY_SOURCES
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.mcp_mode.server import McpServerStatusChanged
@@ -87,6 +88,7 @@ TOUCHSTRIP_HTML = UI_DIR / "touchstrip.html"
 VOICE_ONLY_SESSION_TITLE = "Voice turn"
 NEW_CONTEXT_SESSION_TITLE = "New context"
 MCP_SESSION_TITLE = "MCP session"
+PROXY_SESSION_TITLE = "Personal proxy session"
 
 
 def runtime_state_payload(
@@ -289,6 +291,15 @@ def journal_search_hit_payload(hit: JournalSearchHit) -> dict:
 NEW_CONTEXT_TITLE_KIND = "new_context"
 VOICE_ONLY_TITLE_KIND = "voice_only"
 MCP_SESSION_TITLE_KIND = "mcp_session"
+PROXY_SESSION_TITLE_KIND = "proxy_session"
+
+
+def _proxy_session_title(session_id: str) -> str:
+    """The start time of the session tells proxy sessions apart; no request
+    text goes into a title."""
+    day, clock = session_id.split("-")[:2]
+    stamp = f"{day[:4]}-{day[4:6]}-{day[6:8]} {clock[:2]}:{clock[2:4]}"
+    return f"{PROXY_SESSION_TITLE} {stamp}"
 
 
 def _journal_session_title_and_kind(
@@ -296,13 +307,16 @@ def _journal_session_title_and_kind(
 ) -> tuple[str, str]:
     """Returns the session title and its kind. A placeholder title (a blank
     new context, a voice-only session with no text user turn, or an MCP-mode
-    session of external answers) carries a non-empty kind so the client
+    session of external answers, or a personal proxy session whose heard text
+    must not become its title) carries a non-empty kind so the client
     localizes it to the active UI language; a real user-authored title carries
     an empty kind and is shown verbatim. The literal titles here remain the
     client's fallback for an unknown kind."""
     for event in store.read_session(session_id).events:
         if event.source == "context" and event.metadata.get("kind") == "new_context":
             return NEW_CONTEXT_SESSION_TITLE, NEW_CONTEXT_TITLE_KIND
+        if event.source in PROXY_SOURCES:
+            return _proxy_session_title(session_id), PROXY_SESSION_TITLE_KIND
         if event.role == "user" and event.text.strip():
             return event.text.strip(), ""
         if event.source == MCP_CANVAS_SOURCE:

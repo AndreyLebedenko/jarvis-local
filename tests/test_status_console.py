@@ -3081,3 +3081,51 @@ def test_index_html_has_a_run_mode_label():
 
     assert 'id="runModeBadge"' in html
     assert 'data-i18n="run_mode_mcp_label"' in html
+
+
+def _proxy_event(session_id, source, role, text, **metadata):
+    return JournalEvent(
+        session_id=session_id,
+        timestamp="2026-10-22T10:00:00+01:00",
+        source=source,
+        role=role,
+        text=text,
+        media=[],
+        transcript=None,
+        metadata=metadata,
+    )
+
+
+def test_a_proxy_session_is_titled_as_its_own_placeholder_not_by_the_heard_text(
+    tmp_path,
+):
+    session_id = "20260722-100000-ab12"
+    store = JournalStore(tmp_path)
+    store.append(
+        _proxy_event(session_id, "proxy_heard", "user", "Передай Марине Крыловой")
+    )
+    store.append(_proxy_event(session_id, "proxy_answer", "assistant", "Хорошо."))
+    summary = store.list_sessions()[0]
+
+    payload = journal_session_payload(summary, store)
+
+    assert payload["title"] == "Personal proxy session 2026-07-22 10:00"
+    assert payload["title_kind"] == "proxy_session"
+    assert "Марине" not in payload["title"]
+
+
+def test_two_proxy_sessions_are_told_apart_by_start_time_alone(tmp_path):
+    store = JournalStore(tmp_path)
+    for session_id in ("20260722-100000-ab12", "20260722-153000-cd34"):
+        store.append(_proxy_event(session_id, "proxy_heard", "user", "Секрет"))
+
+    titles = sorted(
+        journal_session_payload(summary, store)["title"]
+        for summary in store.list_sessions()
+    )
+
+    assert titles == [
+        "Personal proxy session 2026-07-22 10:00",
+        "Personal proxy session 2026-07-22 15:30",
+    ]
+    assert all("Секрет" not in title for title in titles)

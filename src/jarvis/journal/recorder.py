@@ -29,6 +29,23 @@ from jarvis.journal.external_canvas import (
     SpeechStatus,
 )
 from jarvis.journal.fork import ForkSeedDropReport
+from jarvis.journal.proxy_exchange import (
+    DECISION_METADATA_KEY,
+    DOUBT_KINDS_METADATA_KEY,
+    INCOMPLETE_METADATA_KEY,
+    METHODS_METADATA_KEY,
+    NOTICE_DETAIL_METADATA_KEY,
+    NOTICE_KIND_METADATA_KEY,
+    ORIGIN_METADATA_KEY,
+    ORIGIN_TYPED,
+    ORIGIN_VOICE,
+    PROXY_ANSWER_SOURCE,
+    PROXY_HEARD_SOURCE,
+    PROXY_NOTICE_SOURCE,
+    PROXY_SENT_SOURCE,
+    RAW_TRANSCRIPT_METADATA_KEY,
+    UNRESOLVED_METADATA_KEY,
+)
 from jarvis.journal.store import JournalStore
 
 
@@ -195,6 +212,101 @@ class JournalRecorder:
             )
         )
 
+    async def record_proxy_heard(
+        self,
+        text: str,
+        *,
+        decision: str,
+        doubt_kinds: tuple[str, ...],
+        wav_bytes: bytes | None = None,
+        raw_transcript: str | None = None,
+    ) -> None:
+        if not self._enabled:
+            return
+        timestamp = self._now()
+        session_id = self._session(timestamp)
+        metadata: dict[str, JSONValue] = {
+            ORIGIN_METADATA_KEY: ORIGIN_TYPED if wav_bytes is None else ORIGIN_VOICE,
+            DECISION_METADATA_KEY: decision,
+            DOUBT_KINDS_METADATA_KEY: list(doubt_kinds),
+        }
+        if raw_transcript is not None:
+            metadata[RAW_TRANSCRIPT_METADATA_KEY] = raw_transcript
+        media_name = (
+            self._next_media_name(timestamp, ".wav") if wav_bytes is not None else None
+        )
+        self._schedule(
+            self._write_proxy_heard(
+                session_id=session_id,
+                timestamp=timestamp,
+                text=text,
+                metadata=metadata,
+                media_name=media_name,
+                wav_bytes=bytes(wav_bytes) if wav_bytes is not None else None,
+            )
+        )
+
+    async def record_proxy_sent(self, text: str, *, message_count: int) -> None:
+        await self._record_proxy_event(
+            source=PROXY_SENT_SOURCE,
+            role="system",
+            text=text,
+            metadata={"message_count": message_count},
+        )
+
+    async def record_proxy_answer(
+        self,
+        text: str,
+        *,
+        methods: tuple[str, ...],
+        unresolved_placeholders: bool,
+        incomplete: bool,
+    ) -> None:
+        await self._record_proxy_event(
+            source=PROXY_ANSWER_SOURCE,
+            role="assistant",
+            text=text,
+            metadata={
+                METHODS_METADATA_KEY: list(methods),
+                UNRESOLVED_METADATA_KEY: unresolved_placeholders,
+                INCOMPLETE_METADATA_KEY: incomplete,
+            },
+        )
+
+    async def record_proxy_notice(self, kind: str, detail: JSONValue) -> None:
+        await self._record_proxy_event(
+            source=PROXY_NOTICE_SOURCE,
+            role="system",
+            text="",
+            metadata={
+                NOTICE_KIND_METADATA_KEY: kind,
+                NOTICE_DETAIL_METADATA_KEY: detail,
+            },
+        )
+
+    async def _record_proxy_event(
+        self,
+        *,
+        source: str,
+        role: str,
+        text: str,
+        metadata: dict[str, JSONValue],
+    ) -> None:
+        if not self._enabled:
+            return
+        timestamp = self._now()
+        self._schedule(
+            self._append_event(
+                session_id=self._session(timestamp),
+                timestamp=timestamp,
+                source=source,
+                role=role,
+                text=text,
+                media=(),
+                metadata=metadata,
+            )
+        )
+
     async def start_fork_session(
         self,
         *,
@@ -315,6 +427,33 @@ class JournalRecorder:
             role="user",
             text="",
             media=tuple(media),
+        )
+
+    async def _write_proxy_heard(
+        self,
+        *,
+        session_id: str,
+        timestamp: datetime,
+        text: str,
+        metadata: dict[str, JSONValue],
+        media_name: str | None,
+        wav_bytes: bytes | None,
+    ) -> None:
+        if media_name is not None and wav_bytes is not None:
+            await asyncio.to_thread(
+                self._store.write_media,
+                session_id=session_id,
+                name=media_name,
+                contents=wav_bytes,
+            )
+        await self._append_event(
+            session_id=session_id,
+            timestamp=timestamp,
+            source=PROXY_HEARD_SOURCE,
+            role="user",
+            text=text,
+            media=(media_name,) if media_name is not None else (),
+            metadata=metadata,
         )
 
     async def _append_event(

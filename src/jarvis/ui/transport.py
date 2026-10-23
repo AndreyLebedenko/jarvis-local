@@ -677,6 +677,7 @@ class UiStateStore:
         config_values: JsonObject | None = None,
         debug: bool = False,
         run_mode_policy: RunModePolicy | None = None,
+        proxy_dry_run: bool = False,
     ) -> None:
         self._language = language
         self._run_mode_policy = run_mode_policy or RunModePolicy(RunMode.NORMAL)
@@ -694,6 +695,7 @@ class UiStateStore:
             # without depending on catching the original announcement.
             "debug": {"enabled": debug},
             "run_mode": cast(JsonObject, run_mode_payload(self._run_mode_policy)),
+            "proxy_status": {"dry_run": proxy_dry_run, "last_block": None},
             "mcp": {"status": "off", "enabled": False, "tools": []},
             # Explicit before the first event, so a client rendering the
             # snapshot never has to read a missing key.
@@ -765,6 +767,10 @@ class UiStateStore:
         return self._replace(
             "data_locality", cast(JsonObject, data_locality_payload(locality))
         )
+
+    def set_proxy_last_block(self, reason: JsonObject | None) -> JsonObject | None:
+        status = cast(JsonObject, self._state["proxy_status"])
+        return self._replace("proxy_status", {**status, "last_block": reason})
 
     def set_data_source(self, source: DataSource) -> JsonObject | None:
         return self._replace(
@@ -1082,6 +1088,9 @@ class UiTransportServer:
 
     def set_data_locality(self, locality: DataLocality) -> None:
         self._publish_delta(self._state.set_data_locality(locality))
+
+    def set_proxy_last_block(self, reason: JsonObject | None) -> None:
+        self._publish_delta(self._state.set_proxy_last_block(reason))
 
     def set_data_source(self, source: DataSource) -> None:
         self._publish_delta(self._state.set_data_source(source))

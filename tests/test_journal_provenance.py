@@ -61,7 +61,19 @@ class TestEligibilityContract:
             ProvenanceSourceKind.SPOKEN_DERIVATIVE: _LOCATOR_ELIGIBILITY,
             ProvenanceSourceKind.EXTERNAL_CANVAS: _EXTERNAL_ELIGIBILITY,
             ProvenanceSourceKind.EXTERNAL_ANNOTATION: _EXTERNAL_ELIGIBILITY,
+            ProvenanceSourceKind.PROXY_REQUEST: _EXTERNAL_ELIGIBILITY,
+            ProvenanceSourceKind.PROXY_ANSWER: _EXTERNAL_ELIGIBILITY,
+            ProvenanceSourceKind.PROXY_NOTICE: _EXTERNAL_ELIGIBILITY,
         }
+
+    def test_proxy_kinds_are_model_search_and_journal_ui_only(self) -> None:
+        for kind in (
+            ProvenanceSourceKind.PROXY_REQUEST,
+            ProvenanceSourceKind.PROXY_ANSWER,
+            ProvenanceSourceKind.PROXY_NOTICE,
+        ):
+            assert kind.eligibility == _EXTERNAL_ELIGIBILITY
+            assert not kind.is_external
 
     def test_external_kinds_are_model_search_and_journal_ui_only(self) -> None:
         for kind in (
@@ -245,3 +257,37 @@ def _corpus_event(
         metadata={},
         effective_text=effective_text,
     )
+
+
+class TestEverySourceOfTheProxyIsLabeled:
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("proxy_heard", ProvenanceSourceKind.PROXY_REQUEST),
+            ("proxy_sent", ProvenanceSourceKind.PROXY_REQUEST),
+            ("proxy_answer", ProvenanceSourceKind.PROXY_ANSWER),
+            ("proxy_notice", ProvenanceSourceKind.PROXY_NOTICE),
+        ],
+    )
+    def test_each_proxy_source_has_a_kind_that_auto_retrieval_never_takes(
+        self, source, expected
+    ) -> None:
+        from jarvis.journal import HistoryCorpusEvent
+
+        event = HistoryCorpusEvent(
+            _ref(),
+            "2026-08-01T10:00:00+00:00",
+            1.0,
+            "system",
+            source,
+            "t",
+            (),
+            0,
+            None,
+            {},
+        )
+
+        descriptor = provenance_descriptor_from_corpus_event(event)
+
+        assert descriptor.source_kind is expected
+        assert ProvenanceEligibility.AUTO_RETRIEVAL not in descriptor.eligibility

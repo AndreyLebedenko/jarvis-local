@@ -5,12 +5,14 @@ Start: the service, then the bus subscriptions, so nothing reaches a service
 that is not running. Hiding the window declines a pending question: nothing the
 user can no longer see may be confirmed on their behalf.
 Stop: unsubscribe first, then interrupt and close the service (which gives the
-microphone back and stops the speaker), then close the second HTTP client.
+microphone back and stops the speaker), then run what the chat sink needs once
+the service is down (the Journal writer ends the answer it was still holding),
+then close the second HTTP client.
 Stopping twice is harmless."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import httpx
@@ -43,7 +45,9 @@ class PersonalProxyRuntime:
         submissions: ProxySubmissions,
         bus: EventBus,
         client: httpx.AsyncClient,
+        on_stopped: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
+        self._on_stopped = on_stopped
         self._service = service
         self._submissions = submissions
         self._bus = bus
@@ -85,5 +89,12 @@ class PersonalProxyRuntime:
         try:
             self._service.interrupt()
             await self._service.close()
+        finally:
+            await self._finish()
+
+    async def _finish(self) -> None:
+        try:
+            if self._on_stopped is not None:
+                await self._on_stopped()
         finally:
             await self._client.aclose()

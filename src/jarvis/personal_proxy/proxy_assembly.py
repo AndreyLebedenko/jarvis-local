@@ -24,11 +24,16 @@ from jarvis.personal_proxy.block_payload import JsonObject
 from jarvis.personal_proxy.chat_sink import TransportChatSink
 from jarvis.personal_proxy.external_client import ExternalClient
 from jarvis.personal_proxy.guarded_transcription import ProbabilitySource
+from jarvis.personal_proxy.journal_writer import (
+    ProxyExchangeRecorder,
+    ProxyJournalWriter,
+)
 from jarvis.personal_proxy.microphone_gate import AudioMicrophoneGate, AutoPausable
 from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
 from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
 from jarvis.personal_proxy.proxy_service import PersonalProxyService
 from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
+from jarvis.personal_proxy.service_ports import LanguageProvider, ProxyChatSink
 from jarvis.personal_proxy.silero_probabilities import SileroSpeechProbabilities
 from jarvis.personal_proxy.stage_binding import StageDependencies, bind_stages
 from jarvis.personal_proxy.startup_checks import (
@@ -43,6 +48,7 @@ from jarvis.personal_proxy.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
 )
+from jarvis.personal_proxy.status_sink import ProxyStatusSink
 from jarvis.personal_proxy.stt_engine import SpeechEngine
 from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine
 from jarvis.ui.contract import DataLocality, ModuleHealth
@@ -53,6 +59,8 @@ LOCAL_CLIENT_MIN_READ_SECONDS = 120.0
 
 class ProxyTransport(Protocol):
     def publish_proxy_block(self, payload: JsonObject) -> None: ...
+
+    def set_proxy_last_block(self, reason: JsonObject | None) -> object: ...
 
     def set_data_locality(self, locality: DataLocality) -> object: ...
 
@@ -69,6 +77,7 @@ class ProxyHost:
     player: SpeechPlayer
     transport: ProxyTransport
     report_dropped: Callable[[], Awaitable[None]]
+    journal: ProxyExchangeRecorder | None = None
 
 
 def local_check_client(backend: BackendSettings) -> httpx.AsyncClient:
@@ -83,6 +92,27 @@ def local_check_client(backend: BackendSettings) -> httpx.AsyncClient:
             read=max(LOCAL_CLIENT_MIN_READ_SECONDS, backend.read_timeout_seconds),
         ),
     )
+
+
+@dataclass(frozen=True)
+class ProxyChatChain:
+    """The sink the service posts to, and what must run when it stops."""
+
+    sink: ProxyChatSink
+    on_stopped: Callable[[], Awaitable[None]] | None
+
+
+def build_chat_chain(host: ProxyHost, language: LanguageProvider) -> ProxyChatChain:
+    """The Status Console draws the block first, then tells it why a request was
+    stopped, then the Journal keeps the exchange, each step after the one before
+    it and none of the last two able to fail the request."""
+    shown = ProxyStatusSink(TransportChatSink(host.transport, language), host.transport)
+    if host.journal is None:
+        return ProxyChatChain(shown, None)
+    writer = ProxyJournalWriter(
+        shown, host.journal, dry_run=host.settings.personal_proxy.dry_run
+    )
+    return ProxyChatChain(writer, writer.close)
 
 
 @dataclass(frozen=True)
@@ -150,9 +180,10 @@ async def _build(
     def language() -> str:
         return settings.ui.language
 
+    chat = build_chat_chain(host, language)
     service = PersonalProxyService(
         stages=stages,
-        sink=TransportChatSink(host.transport, language),
+        sink=chat.sink,
         speaker=ReplayAnswerSpeaker(host.player),
         microphone=AudioMicrophoneGate(
             host.audio_input, settings.vad.resume_cooldown_seconds
@@ -175,4 +206,5 @@ async def _build(
         ),
         bus=host.bus,
         client=client,
+        on_stopped=chat.on_stopped,
     )

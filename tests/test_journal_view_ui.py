@@ -463,6 +463,8 @@ def test_placeholder_session_titles_are_localized_by_kind():
     assert 'uiString("journal_session_title_voice_only")' in body
     assert 'session.title_kind === "mcp_session"' in body
     assert 'uiString("journal_session_title_mcp_session")' in body
+    assert 'session.title_kind === "proxy_session"' in body
+    assert 'uiString("journal_session_title_proxy_session")' in body
     assert "return session.title;" in body
 
 
@@ -471,6 +473,7 @@ def test_every_placeholder_session_title_string_exists_in_both_languages():
         "journal_session_title_new_context",
         "journal_session_title_voice_only",
         "journal_session_title_mcp_session",
+        "journal_session_title_proxy_session",
     ):
         assert STRINGS_JS.count(key + ":") == 2, key
 
@@ -1130,7 +1133,8 @@ def test_attachment_journal_events_select_the_new_session_like_dock_events():
     helper = APP_JS.split("function _shouldSelectJournalInputSession(")[1].split("\n}")[
         0
     ]
-    assert 'payload.source === "dock" || payload.source === "attachment"' in helper
+    assert 'payload.source === "dock"' in helper
+    assert 'payload.source === "attachment"' in helper
 
 
 def test_journal_input_requires_an_explicit_active_context():

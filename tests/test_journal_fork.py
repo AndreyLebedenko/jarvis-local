@@ -235,3 +235,27 @@ def _event(
         media=media,
         transcript=transcript,
     )
+
+
+@pytest.mark.parametrize(
+    ("role", "source"),
+    [
+        ("user", "proxy_heard"),
+        ("system", "proxy_sent"),
+        ("assistant", "proxy_answer"),
+        ("system", "proxy_notice"),
+    ],
+)
+def test_fork_seed_excludes_and_counts_every_personal_proxy_event(
+    role: str, source: str
+) -> None:
+    replay = _replay(
+        _event(role=role, source=source, text="personal proxy text"),
+        _event(role="user", source="dock", text="real turn"),
+    )
+
+    result = build_fork_seed(replay, budget_chars=100)
+
+    assert result.turns == (ForkSeedTurn(role="user", text="real turn"),)
+    assert result.drop_report.skipped_events == 0
+    assert result.drop_report.excluded_events == 1

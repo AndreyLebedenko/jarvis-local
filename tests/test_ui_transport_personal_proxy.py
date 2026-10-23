@@ -162,3 +162,50 @@ def test_a_busy_text_submission_has_no_detail_field():
     payload = UiTransportServer._text_submission_payload(result)
 
     assert "detail" not in payload
+
+
+def test_the_snapshot_reports_the_dry_run_indicator_and_no_block_reason_at_first():
+    assert UiStateStore(proxy_dry_run=True).snapshot()["proxy_status"] == {
+        "dry_run": True,
+        "last_block": None,
+    }
+    assert UiStateStore().snapshot()["proxy_status"]["dry_run"] is False
+
+
+async def test_the_last_block_reason_is_a_delta_and_part_of_the_snapshot():
+    server = _server()
+    info = await server.start()
+    reason = {"kind": "gate_blocked", "detail": [{"category": "phone"}]}
+    try:
+        async with aiohttp.ClientSession() as session:
+            websocket = await _connected(server, info, session)
+
+            server.set_proxy_last_block(reason)
+            delta = await websocket.receive_json()
+
+            assert delta["payload"] == {
+                "key": "proxy_status",
+                "value": {"dry_run": False, "last_block": reason},
+            }
+            assert server._state.snapshot()["proxy_status"]["last_block"] == reason
+    finally:
+        await server.stop()
+
+
+async def test_clearing_the_last_block_reason_is_a_delta_and_repeating_it_is_not():
+    server = _server()
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            websocket = await _connected(server, info, session)
+
+            server.set_proxy_last_block({"kind": "refused", "detail": None})
+            await websocket.receive_json()
+            server.set_proxy_last_block(None)
+            cleared = await websocket.receive_json()
+            server.set_proxy_last_block(None)
+
+            assert cleared["payload"]["value"]["last_block"] is None
+            assert server._state.snapshot()["proxy_status"]["last_block"] is None
+    finally:
+        await server.stop()

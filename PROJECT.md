@@ -4209,8 +4209,10 @@ story cards under `tasks/done/`).
 - **Provenance is one typed descriptor for the retrieval/tool boundary.**
   `src/jarvis/journal/provenance.py` defines
   `ProvenanceSourceKind` (`raw_event` / `transcript` / `annotation` /
-  `spoken_derivative` / `external_canvas` / `external_annotation` - six kinds;
-  the last two were added by v2.0 task 2, 2026-09-30) with the eligibility
+  `spoken_derivative` / `external_canvas` / `external_annotation` /
+  `proxy_request` / `proxy_answer` / `proxy_notice` - nine kinds;
+  the two external kinds were added by v2.0 task 2, 2026-09-30, the three proxy
+  kinds by v2.1.0 task 10, 2026-10-22) with the eligibility
   axis encoded once on the enum
   (`AUTO_RETRIEVAL` / `MODEL_SEARCH` / `JOURNAL_UI` / `LOCATOR_ONLY`) and a
   frozen `ProvenanceDescriptor` (source kind, eligibility, target,
@@ -5747,20 +5749,44 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   kind of failure, and starts nothing. Stop order: unsubscribe, interrupt and close the
   service (the microphone is given back, the speaker stopped), close the second HTTP client
   (read timeout at least 120 s) used for the local check and restoration calls. Blocks reach
-  the window as transient `proxy_block` state deltas, dropped while Hidden and never
-  written to disk. Review round 1: `--personal-proxy` with `--debug` is refused in
+  the window as transient `proxy_block` state deltas, dropped while Hidden; the window itself holds them
+  only transiently (the Journal copy is task 10, below). Review round 1: `--personal-proxy` with `--debug` is refused in
   `parse_args` and in `run()` (debug would record the transcript, mapping and answer through
   the check model's exchange). The main model is not warmed in this mode, so `WarmupCompleted`
   is not published; the proxy reports itself ready with its own event, the orb state and a
   backend chip "check model ready", the top bar names `[personal_proxy].model`, and a failed
   start plays no "listening" cue. Dock text before or after a failed start is refused as
-  `unavailable` with the failure reason (not "busy"); the dock itself is disabled in this mode
-  with a note pointing to the Personal proxy panel, and an attachment upload is refused with
+  `unavailable` with the failure reason (not "busy"); the dock was disabled in this mode in task 9b (task 10 made it
+  usable once the session exists, see below), and an attachment upload is refused with
   `attachments_unavailable`. Hiding the window declines a pending question (the exchange ends
   as CANCELLED; `PersonalProxyService.cancel_pending_question`). A failing proxy stop is
   logged by error type only and does not skip the rest of the shutdown. Consolidation execution
-  is only refused in this mode; it reaches no model. Not in this task: persistence of the
-  blocks (task 10), the launcher offering the mode, orb states for a request in progress.
+  is only refused in this mode; it reaches no model. Not in this task: the launcher offering the mode, orb states
+  for a request in progress.
+- **Journal and Status Console surfaces (task v2.1.0-10, 2026-10-22).** The exchange is
+  persisted by a tee over the chat sink (`personal_proxy/journal_writer.py`; the service
+  stays journal-free). Four Journal sources (`journal/proxy_exchange.py`): `proxy_heard`
+  (user, the heard text whole, the recording and `raw_transcript` in the same event),
+  `proxy_sent` (system, the sanitized request that went out), `proxy_answer` (assistant,
+  one event per answer, the restored text as shown and spoken, `incomplete` when it was
+  cut short) and `proxy_notice` (system, content-free). Sibling provenance kinds
+  `PROXY_REQUEST` (heard, sent), `PROXY_ANSWER` and `PROXY_NOTICE`: MODEL_SEARCH and
+  JOURNAL_UI only, never AUTO_RETRIEVAL, and all four sources are excluded from fork
+  seeds (counted). `_ExternalSessionProbe` treats a session with a proxy event as external,
+  so its annotations are `EXTERNAL_ANNOTATION`. A dry run writes nothing, and the mapping
+  and the raw (placeholder) external answer are never written anywhere. Notices store the
+  kind and enum, int or finding positions only; a refusal is stored as its kind (the
+  model's reason is free text and is dropped). The heard text is stored whole, also for a
+  request the user declined or that timed out, because the user's own words are theirs to
+  keep. The writer persists while the window is Hidden (only the transient display is
+  dropped). A persistence failure never changes the request and logs the exception type
+  only. Two persistence-only blocks (`RequestSourceBlock`, `AnswerCompleteBlock`) carry the
+  recording and the end of an answer to the writer; the chat sink does not draw them.
+  `[personal_proxy].dry_run` defaults to true, so by default the Journal stays empty and the
+  Journal dock stays inactive until `dry_run = false`. The Status Console state key
+  `proxy_status` holds the dry-run indicator and the last block reason (kind and positions,
+  never a value); the Journal dock is usable once the session exists and still routes to
+  the proxy. Placeholder session title: "Personal proxy session <start time>".
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.

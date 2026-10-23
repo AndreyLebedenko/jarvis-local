@@ -198,3 +198,58 @@ async def test_hiding_the_window_before_start_or_after_stop_cancels_nothing():
     await bus.publish(VisibilityModeChanged, hidden)
 
     assert "question cancelled" not in log
+
+
+async def test_stop_runs_the_sink_finalizer_after_the_service_and_before_the_client():
+    log = []
+    runtime, _, _ = _runtime(log)
+
+    async def finalizer():
+        log.append("sink finalized")
+
+    runtime._on_stopped = finalizer
+    runtime.start()
+    log.clear()
+
+    await runtime.stop()
+
+    assert log == [
+        "service interrupted",
+        "service closed",
+        "sink finalized",
+        "client closed",
+    ]
+
+
+async def test_the_sink_finalizer_runs_even_when_the_service_fails_to_close():
+    log = []
+    runtime, _, service = _runtime(log)
+
+    async def failing_close():
+        raise RuntimeError("close failed")
+
+    async def finalizer():
+        log.append("sink finalized")
+
+    service.close = failing_close
+    runtime._on_stopped = finalizer
+
+    with pytest.raises(RuntimeError):
+        await runtime.stop()
+
+    assert log[-2:] == ["sink finalized", "client closed"]
+
+
+async def test_the_client_closes_even_when_the_sink_finalizer_fails():
+    log = []
+    runtime, _, _ = _runtime(log)
+
+    async def finalizer():
+        raise RuntimeError("flush failed")
+
+    runtime._on_stopped = finalizer
+
+    with pytest.raises(RuntimeError):
+        await runtime.stop()
+
+    assert "client closed" in log

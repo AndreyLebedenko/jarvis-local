@@ -53,9 +53,11 @@ from jarvis.personal_proxy.sanitize_result import (
 )
 from jarvis.personal_proxy.service_blocks import (
     AnswerBlock,
+    AnswerCompleteBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
+    RequestSourceBlock,
 )
 from jarvis.personal_proxy.service_texts import notice_text
 from jarvis.personal_proxy.speech_guard import NoSpeech
@@ -957,3 +959,74 @@ async def test_the_language_is_read_again_for_every_use():
 
     languages = [language for _, language in rig.speaker.spoken]
     assert (languages[0], languages[-1]) == ("ru", "en")
+
+
+# --- the blocks that only the persistence writer needs ----------------------
+
+
+async def test_a_voice_request_posts_its_recording_and_raw_text_before_confirmation():
+    rig = Rig()
+
+    await request(rig, UTTERANCE)
+
+    (source,) = [
+        b for b in rig.sink.persistence_blocks if isinstance(b, RequestSourceBlock)
+    ]
+    assert source.voice_wav == UTTERANCE.wav
+    assert source.raw_transcript == HEARD
+    assert rig.log.index("sanitize") < rig.log.index("post:HeardBlock")
+
+
+async def test_a_typed_request_posts_a_source_without_recording_or_raw_text():
+    rig = Rig()
+
+    await request(rig, TypedText("Привет, как дела?"))
+
+    (source,) = [
+        b for b in rig.sink.persistence_blocks if isinstance(b, RequestSourceBlock)
+    ]
+    assert (source.voice_wav, source.raw_transcript) == (None, None)
+
+
+async def test_a_dry_run_posts_no_persistence_block():
+    rig = Rig(dry_run=True)
+
+    await request(rig, UTTERANCE)
+
+    assert rig.sink.persistence_blocks == []
+
+
+async def test_a_full_answer_ends_with_an_answer_complete_block():
+    rig = Rig()
+
+    await request(rig, UTTERANCE)
+
+    assert [type(b) for b in rig.sink.persistence_blocks] == [
+        RequestSourceBlock,
+        AnswerCompleteBlock,
+    ]
+
+
+async def test_an_answer_that_failed_midway_posts_no_answer_complete_block():
+    rig = Rig()
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+
+    await request(rig, UTTERANCE)
+
+    assert not any(
+        isinstance(b, AnswerCompleteBlock) for b in rig.sink.persistence_blocks
+    )
+    assert NoticeKind.ANSWER_INCOMPLETE in rig.sink.notices()
+
+
+async def test_a_request_that_is_blocked_posts_no_answer_complete_block():
+    rig = Rig()
+    rig.stages.sanitized = SanitizeResult(
+        SanitizeVerdict.SEND, "", "Позвони на +7 912 345 67 89", {}
+    )
+
+    await request(rig, UTTERANCE)
+
+    assert not any(
+        isinstance(b, AnswerCompleteBlock) for b in rig.sink.persistence_blocks
+    )

@@ -33,7 +33,7 @@ from jarvis.personal_proxy.payload import (
     build_outbound_payload,
 )
 from jarvis.personal_proxy.pipeline_stages import PipelineStages
-from jarvis.personal_proxy.proxy_inbox import InboxItem
+from jarvis.personal_proxy.proxy_inbox import InboxItem, Utterance
 from jarvis.personal_proxy.request_intake import Heard, RequestIntake
 from jarvis.personal_proxy.sanitize_result import (
     SanitizeFailure,
@@ -41,7 +41,12 @@ from jarvis.personal_proxy.sanitize_result import (
     SanitizeResult,
     SanitizeVerdict,
 )
-from jarvis.personal_proxy.service_blocks import DryRunBlock, NoticeKind
+from jarvis.personal_proxy.service_blocks import (
+    AnswerCompleteBlock,
+    DryRunBlock,
+    NoticeKind,
+    RequestSourceBlock,
+)
 from jarvis.personal_proxy.service_reporter import Reporter
 from jarvis.personal_proxy.visible_text import has_visible_text
 
@@ -77,7 +82,7 @@ class RequestPipeline:
         sanitized = await self._sanitized(heard.checked)
         if sanitized is None:
             return
-        if not self._parts.dry_run and not await self._confirmed(heard.checked):
+        if not self._parts.dry_run and not await self._confirmed(item, heard):
             return
         payload = build_outbound_payload(
             DEFAULT_SYSTEM_PROMPT, sanitized.sanitized_text
@@ -111,7 +116,9 @@ class RequestPipeline:
         )
         return None
 
-    async def _confirmed(self, checked: CheckedTranscript) -> bool:
+    async def _confirmed(self, item: InboxItem, heard: Heard) -> bool:
+        checked = heard.checked
+        await self._reporter.post(_request_source_of(item, heard))
         if not should_ask(checked):
             heard = heard_block_of(checked, HeardDecision.SEND_WITHOUT_QUESTION)
             await self._reporter.post(heard)
@@ -166,7 +173,16 @@ class RequestPipeline:
         except Exception as error:
             detail = error.kind if isinstance(error, ExternalClientError) else None
             await self._reporter.quiet_notice(NoticeKind.ANSWER_INCOMPLETE, detail)
+        else:
+            with suppress(Exception):
+                await self._reporter.post(AnswerCompleteBlock())
         finally:
             if deltas is not None:
                 with suppress(Exception):
                     await deltas.aclose()
+
+
+def _request_source_of(item: InboxItem, heard: Heard) -> RequestSourceBlock:
+    if isinstance(item, Utterance):
+        return RequestSourceBlock(item.wav, heard.whisper_text)
+    return RequestSourceBlock(None, None)

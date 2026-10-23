@@ -16,9 +16,11 @@ from jarvis.core.config import (
 from jarvis.personal_proxy.proxy_assembly import (
     ProxyHost,
     ProxySeams,
+    build_chat_chain,
     local_check_client,
     prepare_personal_proxy_runtime,
 )
+from jarvis.personal_proxy.service_blocks import NoticeBlock, NoticeKind
 from jarvis.personal_proxy.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
@@ -88,9 +90,13 @@ class _Engine:
 class _Transport:
     def __init__(self):
         self.blocks = []
+        self.reasons = []
 
     def publish_proxy_block(self, payload):
         self.blocks.append(payload)
+
+    def set_proxy_last_block(self, reason):
+        self.reasons.append(reason)
 
     def set_module_health(self, health):
         pass
@@ -500,3 +506,60 @@ def test_the_second_client_ignores_proxy_variables_of_the_environment(monkeypatc
         "proxy.invalid" not in str(getattr(t, "_pool", ""))
         for t in client._mounts.values()
     )
+
+
+SENDING_SETTINGS = replace(SETTINGS, personal_proxy=replace(PROXY, dry_run=False))
+
+
+class _Recorder:
+    def __init__(self):
+        self.calls = []
+
+    async def record_proxy_heard(self, text, **kwargs):
+        self.calls.append(("heard", text))
+
+    async def record_proxy_sent(self, text, **kwargs):
+        self.calls.append(("sent", text))
+
+    async def record_proxy_answer(self, text, **kwargs):
+        self.calls.append(("answer", text))
+
+    async def record_proxy_notice(self, kind, detail):
+        self.calls.append(("notice", kind))
+
+
+def _chain(settings=SENDING_SETTINGS, journal=None):
+    transport = _Transport()
+    host = replace(_host(settings, transport), journal=journal)
+    return transport, build_chat_chain(host, lambda: "en")
+
+
+async def test_the_chat_chain_draws_the_block_reports_the_reason_and_keeps_it():
+    recorder = _Recorder()
+    transport, chain = _chain(journal=recorder)
+
+    await chain.sink.post(NoticeBlock(NoticeKind.NOT_SENT))
+
+    assert [block["type"] for block in transport.blocks] == ["notice"]
+    assert transport.reasons == [{"kind": "not_sent", "detail": None}]
+    assert recorder.calls == [("notice", "not_sent")]
+
+
+async def test_the_chat_chain_without_a_journal_still_draws_and_reports():
+    transport, chain = _chain()
+
+    await chain.sink.post(NoticeBlock(NoticeKind.NOT_SENT))
+
+    assert len(transport.blocks) == 1
+    assert chain.on_stopped is None
+
+
+async def test_the_chat_chain_writes_nothing_in_a_dry_run():
+    recorder = _Recorder()
+    transport, chain = _chain(SETTINGS, recorder)
+
+    await chain.sink.post(NoticeBlock(NoticeKind.NOT_SENT))
+    await chain.on_stopped()
+
+    assert len(transport.blocks) == 1
+    assert recorder.calls == []

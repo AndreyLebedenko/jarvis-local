@@ -148,6 +148,27 @@ function applyProxyBlock(payload) {
   return block;
 }
 
+// The dry-run indicator and the content-free reason the last request was
+// stopped (kind and positions, never a value). Both ride in the snapshot, so a
+// reconnecting client sees them; unlike the blocks they hold nothing personal.
+function applyProxyStatus(payload) {
+  const status = payload || { dry_run: false, last_block: null };
+  const badge = document.getElementById("proxyDryRun");
+  if (badge) badge.hidden = !status.dry_run;
+  const note = document.getElementById("journalInputProxyNote");
+  if (note) {
+    note.textContent = uiString(
+      status.dry_run ? "journal_input_proxy_note_dry_run" : "journal_input_proxy_note");
+  }
+  const reason = document.getElementById("proxyLastBlock");
+  if (!reason) return;
+  const last = status.last_block;
+  reason.hidden = !last;
+  reason.textContent = last
+    ? uiString("proxy_last_block_label") + " " + proxyNoticeText(last.kind, last.detail)
+    : "";
+}
+
 function clearProxyChat() {
   const list = document.getElementById("proxyChatList");
   if (list) list.replaceChildren();

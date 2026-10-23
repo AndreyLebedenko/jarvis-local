@@ -49,6 +49,7 @@ from jarvis.journal.provenance import (
     provenance_descriptor_from_annotation_identity,
     provenance_descriptor_from_corpus_event,
 )
+from jarvis.journal.proxy_exchange import PROXY_ANSWER_SOURCE, PROXY_HEARD_SOURCE
 from jarvis.journal.semantic import (
     SEMANTIC_MAX_RESULTS,
     SemanticCandidateQuery,
@@ -541,24 +542,32 @@ class HistoryRetrievalService:
 
 
 class _ExternalSessionProbe:
-    """Memoizes, for one ``retrieve()`` call, which sessions hold external canvases.
+    """Memoizes, for one ``retrieve()`` call, which sessions hold external text.
 
-    An external-canvas session contains only external canvases and an ordinary
-    session never does, so the first canvas event decides the whole session.
+    A session of external canvases holds only canvases and an ordinary session
+    never holds one, so the first canvas event decides the whole session. A
+    personal-proxy session mixes the user's heard request with the external
+    answer; either of them makes it external, and neither carries a caller.
     """
 
     def __init__(self, repository: HistoryCorpusRepository) -> None:
         self._repository = repository
-        self._first_canvas: dict[str, HistoryCorpusEvent | None] = {}
+        self._first_external: dict[str, HistoryCorpusEvent | None] = {}
 
     def first_canvas(self, session_id: str) -> HistoryCorpusEvent | None:
-        if session_id not in self._first_canvas:
-            self._first_canvas[session_id] = (
-                self._repository.read_first_event_with_source(
-                    session_id, MCP_CANVAS_SOURCE
-                )
-            )
-        return self._first_canvas[session_id]
+        if session_id not in self._first_external:
+            self._first_external[session_id] = self._first_external_event(session_id)
+        return self._first_external[session_id]
+
+    def _first_external_event(self, session_id: str) -> HistoryCorpusEvent | None:
+        for source in _EXTERNAL_EVENT_SOURCES:
+            event = self._repository.read_first_event_with_source(session_id, source)
+            if event is not None:
+                return event
+        return None
+
+
+_EXTERNAL_EVENT_SOURCES = (MCP_CANVAS_SOURCE, PROXY_HEARD_SOURCE, PROXY_ANSWER_SOURCE)
 
 
 @dataclass(frozen=True)

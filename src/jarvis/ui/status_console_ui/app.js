@@ -62,6 +62,7 @@ function _applyStateSnapshot(state) {
   applyLastModelRequest(state.last_model_request || { timestamp: null, items: [] });
   applyDataLocality(state.data_locality);
   applyDataSource(state.data_source || { source: "local_only" });
+  applyProxyStatus(state.proxy_status);
   applyDebugMode(state.debug || { enabled: false });
   applyRunMode(state.run_mode || { mode: RUN_MODE.NORMAL, refused: [] });
   applyMcpState(state.mcp || { status: "off", enabled: false, tools: [] });
@@ -88,6 +89,7 @@ function _applyStateDelta(payload) {
     last_model_request: applyLastModelRequest,
     data_locality: applyDataLocality,
     data_source: applyDataSource,
+    proxy_status: applyProxyStatus,
     debug: applyDebugMode,
     run_mode: applyRunMode,
     mcp: applyMcpState,
@@ -1915,7 +1917,6 @@ function _syncJournalInputControls() {
     _journalInputInFlight ||
     _isHiddenActive() ||
     inactiveSession ||
-    proxyMode ||
     isActionRefused("journal_input");
   const input = document.getElementById("journalTextInput");
   const send = document.getElementById("journalSendButton");
@@ -1924,13 +1925,12 @@ function _syncJournalInputControls() {
   const dock = document.getElementById("journalInputDock");
   if (input) input.disabled = disabled;
   if (send) send.disabled = disabled;
-  if (attach) attach.disabled = disabled;
-  if (fileInput) fileInput.disabled = disabled;
+  if (attach) attach.disabled = disabled || proxyMode;
+  if (fileInput) fileInput.disabled = disabled || proxyMode;
   // Hidden mode has its own whole-view placeholder, so the inactive-session
   // note is suppressed there to avoid two competing messages.
   if (dock) {
-    const showInactive = inactiveSession && !proxyMode && !_isHiddenActive();
-    dock.classList.toggle("inactive-session", showInactive);
+    dock.classList.toggle("inactive-session", inactiveSession && !_isHiddenActive());
     dock.classList.toggle("proxy-mode", proxyMode && !_isHiddenActive());
   }
 }
@@ -2109,6 +2109,14 @@ function _applyJournalUsage(payload) {
 // "mcp_session") is localized to the active UI language; a user-authored
 // title (empty kind) is shown verbatim. Mirrors the server's
 // _journal_session_title_and_kind.
+// The start time that tells placeholder-titled sessions apart, read from the
+// session id (YYYYMMDD-HHMMSS-...); no request text is ever part of a title.
+function _journalSessionStartStamp(sessionId) {
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(sessionId || "");
+  if (!match) return "";
+  return ` ${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}`;
+}
+
 function _journalSessionTitle(session) {
   if (session.title_kind === "new_context") {
     return uiString("journal_session_title_new_context");
@@ -2118,6 +2126,11 @@ function _journalSessionTitle(session) {
   }
   if (session.title_kind === "mcp_session") {
     return uiString("journal_session_title_mcp_session");
+  }
+  if (session.title_kind === "proxy_session") {
+    return (
+      uiString("journal_session_title_proxy_session") +
+      _journalSessionStartStamp(session.id));
   }
   return session.title;
 }
@@ -2647,7 +2660,9 @@ function _shouldSelectJournalInputSession(payload) {
   return (
     _journalSelectPendingInputSession &&
     payload.role === "user" &&
-    (payload.source === "dock" || payload.source === "attachment")
+    (payload.source === "dock" ||
+      payload.source === "attachment" ||
+      payload.source === PROXY_HEARD_SOURCE)
   );
 }
 
@@ -2798,6 +2813,8 @@ function _journalEventElement(event, position = null) {
   if (spokenDerivativeDetail !== null) message.appendChild(spokenDerivativeDetail);
   const externalAnswerDetail = _journalExternalAnswerDetail(event);
   if (externalAnswerDetail !== null) message.appendChild(externalAnswerDetail);
+  const proxyDetail = _journalProxyDetail(event);
+  if (proxyDetail !== null) message.appendChild(proxyDetail);
   return message;
 }
 
@@ -2813,6 +2830,9 @@ function _journalEventBodyText(event) {
     event.metadata.kind === "new_context"
   ) {
     return uiString("journal_new_context_event");
+  }
+  if (event.source === "proxy_notice" && event.metadata) {
+    return proxyNoticeText(event.metadata.notice_kind, event.metadata.notice_detail);
   }
   return event.text;
 }
@@ -3878,6 +3898,7 @@ function _journalMessageSourceLabel(event) {
 // rides in the label. `plainLabel` is what the calling surface shows for
 // every other source.
 function _journalExternalAnswerLabel(source, callerName, plainLabel) {
+  if (PROXY_SOURCES.includes(source)) return _journalSourceLabel(source);
   if (source !== MCP_CANVAS_SOURCE) return plainLabel;
   const label = _journalSourceLabel(source);
   return callerName ? `${label} - ${callerName}` : label;
@@ -3907,6 +3928,20 @@ function _journalExternalAnswerDetail(event) {
     );
   }
   return fragment.childNodes.length > 0 ? fragment : null;
+}
+
+// What the personal proxy's records say beyond their text: how a request
+// arrived, and that an answer was cut short.
+function _journalProxyDetail(event) {
+  if (!event.metadata) return null;
+  if (event.source === "proxy_answer" && event.metadata.incomplete === true) {
+    return _journalProvenanceNote("journal_proxy_answer_incomplete", "");
+  }
+  if (event.source === "proxy_heard" && typeof event.metadata.origin === "string") {
+    return _journalProvenanceNote(
+      "journal_proxy_heard_" + event.metadata.origin, event.metadata.origin);
+  }
+  return null;
 }
 
 function _journalProvenanceNote(key, fallback) {

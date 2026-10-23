@@ -3334,6 +3334,7 @@ def _proxy_host(
         player=app.replay_player,
         transport=live_console.transport,
         report_dropped=lambda: _report_dropped_proxy_input(app),
+        journal=app.journal_recorder,
     )
 
 
@@ -3479,6 +3480,9 @@ def run_with_status_console(
             config_values=config_values_payload(settings),
             debug=debug,
             run_mode_policy=RunModePolicy(run_mode),
+            proxy_dry_run=(
+                run_mode is RunMode.PERSONAL_PROXY and settings.personal_proxy.dry_run
+            ),
         ),
         logger=logger,
         journal_history_service=app.journal_history_service,

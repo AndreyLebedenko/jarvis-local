@@ -84,4 +84,20 @@ class DryRunBlock:
     messages: tuple[tuple[str, str], ...] = field(repr=False)
 
 
-ServiceBlock = ChatBlock | NoticeBlock | AnswerBlock | DryRunBlock
+@dataclass(frozen=True)
+class RequestSourceBlock:
+    """Reaches the persistence writer only, never the chat: where the heard text
+    came from. A typed request has neither the recording nor the engine text."""
+
+    voice_wav: bytes | None = field(repr=False)
+    raw_transcript: str | None = field(repr=False)
+
+
+@dataclass(frozen=True)
+class AnswerCompleteBlock:
+    """Reaches the persistence writer only, never the chat: the answer ended
+    after its last sentence."""
+
+
+PersistenceBlock = RequestSourceBlock | AnswerCompleteBlock
+ServiceBlock = ChatBlock | NoticeBlock | AnswerBlock | DryRunBlock | PersistenceBlock

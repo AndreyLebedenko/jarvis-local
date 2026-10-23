@@ -677,9 +677,11 @@ model = ""
 # is never a config value, so it cannot end up in this file or in a log. Set
 # the variable in the environment that starts Jarvis.
 api_key_env = "JARVIS_PERSONAL_PROXY_KEY"
-# true: run the whole pipeline but send nothing; the cleaned text is shown and
-# journaled instead. Safe default: turn it off only after you have looked at
-# what would have been sent.
+# true: run the whole pipeline but send nothing; the cleaned text and the full
+# intermediate state are shown in the Status Console only. Nothing is written to
+# the Journal in a dry run (the state holds the placeholder mapping, which is
+# never stored). Safe default: turn it off only after you have looked at what
+# would have been sent.
 dry_run = true
 # Plain-text list of topics you never want sent out, one per line, kept
 # locally. A relative path is relative to the working directory, like

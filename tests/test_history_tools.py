@@ -1090,3 +1090,80 @@ async def test_history_tools_dispatch_while_mcp_is_off() -> None:
     assert result.ok is True
     assert repository.read_events_calls == []
     assert len(retrieval.calls) == 1
+
+
+def _proxy_answer_candidate() -> HistoryRetrievalCandidate:
+    reference = JournalEventRef("20260801-100000-ab12", 4)
+    return HistoryRetrievalCandidate(
+        reference=reference,
+        text="The external model's restored answer.",
+        timestamp="2026-08-01T10:00:00Z",
+        role="assistant",
+        source="proxy_answer",
+        source_mode=HistoryRetrievalSourceMode.LEXICAL,
+        combined_rank=1,
+        provenance=ProvenanceDescriptor(
+            source_kind=ProvenanceSourceKind.PROXY_ANSWER,
+            eligibility=ProvenanceSourceKind.PROXY_ANSWER.eligibility,
+            target=ProvenanceTarget(event_ref=reference),
+            is_canonical=True,
+        ),
+        lexical_score=-0.2,
+        lexical_rank=1,
+    )
+
+
+async def test_search_history_labels_a_proxy_answer_with_its_own_kind() -> None:
+    [item] = await _search_items(_proxy_answer_candidate())
+
+    assert item["provenance"]["source_kind"] == "proxy_answer"
+    assert item["source"] == "proxy_answer"
+    assert "caller_name" not in item
+
+
+async def test_read_history_labels_a_proxy_answer_and_a_proxy_request() -> None:
+    answer, heard = await _read_events(
+        _event(
+            "20260801-100000-ab12",
+            4,
+            text="The restored answer.",
+            role="assistant",
+            source="proxy_answer",
+        ),
+        _event(
+            "20260801-100000-ab12",
+            3,
+            text="What I asked.",
+            role="user",
+            source="proxy_heard",
+        ),
+    )
+
+    assert answer["source_kind"] == "proxy_answer"
+    assert heard["source_kind"] == "proxy_request"
+    assert "caller_name" not in answer
+
+
+def test_the_history_tool_descriptions_name_the_proxy_kinds() -> None:
+    from jarvis.tools.history import _EXTERNAL_ITEMS_NOTE
+
+    assert "proxy_request" in _EXTERNAL_ITEMS_NOTE
+    assert "proxy_answer" in _EXTERNAL_ITEMS_NOTE
+
+
+async def test_read_history_labels_the_sent_record_and_a_notice_too():
+    sent, notice = await _read_events(
+        _event(
+            "20260801-100000-ab12",
+            5,
+            text="user: hi",
+            role="system",
+            source="proxy_sent",
+        ),
+        _event(
+            "20260801-100000-ab12", 6, text="", role="system", source="proxy_notice"
+        ),
+    )
+
+    assert sent["source_kind"] == "proxy_request"
+    assert notice["source_kind"] == "proxy_notice"

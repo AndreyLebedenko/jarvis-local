@@ -27,3 +27,7 @@ const RESPONSE_MODES = ["text", "voice", "text_voice"];
 // against, not validated against a list.
 const RUN_MODE = { NORMAL: "normal", MCP: "mcp", PERSONAL_PROXY: "personal_proxy" };
 const MCP_CANVAS_SOURCE = "mcp_canvas";
+// The Journal sources of the personal proxy's exchange
+// (journal/proxy_exchange.py).
+const PROXY_HEARD_SOURCE = "proxy_heard";
+const PROXY_SOURCES = ["proxy_heard", "proxy_sent", "proxy_answer", "proxy_notice"];
