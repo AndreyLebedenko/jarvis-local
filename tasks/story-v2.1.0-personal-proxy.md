@@ -390,6 +390,15 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     only what goes out, with placeholders (a test that the logs never contain the
     heard text). Boundary: no new Journal features.
 
+10b. **Proxy session UX.** (Size: S-M. Done 2026-10-23, `tasks/done/task-v2.1.0-10b-proxy-session-ux.md`; added after the first live run,
+    card `tasks/task-v2.1.0-10b-proxy-session-ux.md`.) A clearly visible marker of proxy
+    sessions (an icon plus an amber accent) in the Journal list and in each proxy message,
+    and "New context" in the proxy mode starting a new proxy session lazily.
+
+10c. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10b.) A Journal
+    feature for all session kinds: a title kept apart from the records, edited from the
+    session's "..." menu, used in the list, search and the title.
+
 11. **Refactoring and optimization sweep.** (Size: S-M.) Behavior-preserving
     consolidation of this story's code and tests. Boundary: this story's code
     only.

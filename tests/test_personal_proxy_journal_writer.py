@@ -650,3 +650,115 @@ async def test_a_clean_answer_is_not_marked_unresolved():
 
     (kwargs,) = recorder.answer_kwargs
     assert kwargs["unresolved_placeholders"] is False
+
+
+# --- a new session ------------------------------------------------------------
+
+
+def _texts(journal, session_id):
+    return [
+        (event.source, event.text)
+        for event in journal.store.read_session(session_id).events
+    ]
+
+
+async def _post_request(writer, reply):
+    await writer.post(RequestSourceBlock(None, None))
+    await writer.post(HeardBlock(HEARD, (), HeardDecision.SEND_WITHOUT_QUESTION))
+    await writer.post(answer(reply))
+    await writer.post(AnswerCompleteBlock())
+
+
+async def test_a_request_after_a_new_session_lands_in_a_second_session(tmp_path):
+    journal = Journaled(tmp_path)
+    await _post_request(journal.writer, FIRST_ANSWER)
+    await journal.recorder.wait_for_pending()
+    first = journal.recorder.session_id
+
+    await journal.writer.start_new_session()
+    await _post_request(journal.writer, SECOND_ANSWER)
+    await journal.recorder.wait_for_pending()
+
+    second = journal.recorder.session_id
+    assert first != second
+    assert [s.session_id for s in journal.sessions()] == sorted([first, second])
+    assert ("proxy_answer", FIRST_ANSWER) in _texts(journal, first)
+    assert ("proxy_answer", SECOND_ANSWER) not in _texts(journal, first)
+    assert ("proxy_answer", SECOND_ANSWER) in _texts(journal, second)
+    assert ("proxy_answer", FIRST_ANSWER) not in _texts(journal, second)
+
+
+async def test_a_new_session_creates_no_session_until_the_next_request(tmp_path):
+    journal = Journaled(tmp_path)
+    await _post_request(journal.writer, FIRST_ANSWER)
+    await journal.recorder.wait_for_pending()
+
+    await journal.writer.start_new_session()
+    await journal.recorder.wait_for_pending()
+
+    assert len(journal.sessions()) == 1
+    assert journal.recorder.session_id is None
+
+
+async def test_an_answer_still_held_is_closed_in_the_old_session_not_the_new_one(
+    tmp_path,
+):
+    journal = Journaled(tmp_path)
+    await journal.writer.post(RequestSourceBlock(None, None))
+    await journal.writer.post(
+        HeardBlock(HEARD, (), HeardDecision.SEND_WITHOUT_QUESTION)
+    )
+    await journal.writer.post(answer(FIRST_ANSWER))
+    old = journal.recorder.session_id
+
+    await journal.writer.start_new_session()
+    await _post_request(journal.writer, SECOND_ANSWER)
+    await journal.recorder.wait_for_pending()
+
+    new = journal.recorder.session_id
+    assert old != new
+    old_answers = [
+        event
+        for event in journal.store.read_session(old).events
+        if event.source == "proxy_answer"
+    ]
+    assert [(e.text, e.metadata["incomplete"]) for e in old_answers] == [
+        (FIRST_ANSWER, True)
+    ]
+    assert FIRST_ANSWER not in repr(_texts(journal, new))
+
+
+async def test_the_source_of_an_unanswered_request_is_not_carried_into_a_new_session(
+    tmp_path,
+):
+    journal = Journaled(tmp_path)
+    await journal.writer.post(RequestSourceBlock(make_wav(), RAW_TRANSCRIPT))
+
+    await journal.writer.start_new_session()
+    await journal.writer.post(
+        HeardBlock(HEARD, (), HeardDecision.SEND_WITHOUT_QUESTION)
+    )
+    await journal.recorder.wait_for_pending()
+
+    [heard] = journal.store.read_session(journal.recorder.session_id).events
+    assert heard.media == ()
+    assert "raw_transcript" not in heard.metadata
+
+
+async def test_a_new_session_is_started_even_when_the_old_answer_cannot_be_stored():
+    class _Recorder(RecordingRecorder):
+        ended = 0
+
+        async def record_proxy_answer(self, *args, **kwargs):
+            raise RuntimeError("storage broke")
+
+        def end_session(self):
+            self.ended += 1
+
+    recorder = _Recorder()
+    writer = ProxyJournalWriter(RecordingSink([]), recorder, dry_run=False)
+    await writer.post(answer(FIRST_ANSWER))
+
+    await writer.start_new_session()
+
+    assert recorder.ended == 1

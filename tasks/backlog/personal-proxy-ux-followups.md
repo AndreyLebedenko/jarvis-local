@@ -10,3 +10,7 @@ Origin: owner remarks after the first live run, 2026-10-23.
    "New context" is refused in this mode.
 3. Rename a session (a Journal feature that also applies to the other session kinds).
 4. Watch: a false `bad_placeholder` refusal of a harmless request in the live run.
+
+5. Move the request input from the Status panel to the Journal dock (the dock is inactive
+   until a session exists today; in dry run no session is ever created).
+6. The "sent" block shows the fixed system prompt on every request; show only what matters.

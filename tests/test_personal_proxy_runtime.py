@@ -3,6 +3,7 @@ import pytest
 
 from jarvis.audio.input import UtteranceChunk
 from jarvis.core.bus import EventBus
+from jarvis.core.lifecycle import NewContextReason
 from jarvis.personal_proxy.proxy_inbox import Utterance
 from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
 from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
@@ -14,6 +15,7 @@ class _Service:
     def __init__(self, log):
         self.log = log
         self.items = []
+        self.idle = True
 
     def start(self):
         self.log.append("service started")
@@ -253,3 +255,58 @@ async def test_the_client_closes_even_when_the_sink_finalizer_fails():
         await runtime.stop()
 
     assert "client closed" in log
+
+
+async def test_a_new_session_while_idle_runs_the_session_hook_and_is_accepted():
+    log = []
+    runtime, _, _ = _runtime(log)
+
+    async def hook(still_allowed):
+        log.append("session started")
+        return True
+
+    runtime._on_new_session = hook
+
+    result = await runtime.start_new_session()
+
+    assert result.reason is NewContextReason.ACCEPTED
+    assert log == ["session started"]
+    assert result.session_id is None
+    await runtime.stop()
+
+
+async def test_a_new_session_while_busy_is_refused_and_changes_nothing():
+    log = []
+    runtime, _, service = _runtime(log)
+    service.idle = False
+
+    async def hook(still_allowed):
+        log.append("session started")
+        return True
+
+    runtime._on_new_session = hook
+
+    result = await runtime.start_new_session()
+
+    assert result.reason is NewContextReason.BUSY
+    assert log == []
+    await runtime.stop()
+
+
+async def test_a_new_session_after_stop_is_unavailable_not_busy():
+    log = []
+    runtime, _, _ = _runtime(log)
+    await runtime.stop()
+
+    result = await runtime.start_new_session()
+
+    assert result.reason is NewContextReason.UNAVAILABLE
+
+
+async def test_a_new_session_without_a_journal_is_accepted_and_does_nothing_else():
+    runtime, _, _ = _runtime([])
+
+    result = await runtime.start_new_session()
+
+    assert result.reason is NewContextReason.ACCEPTED
+    await runtime.stop()

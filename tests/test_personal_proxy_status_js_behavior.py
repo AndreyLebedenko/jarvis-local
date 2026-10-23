@@ -238,9 +238,15 @@ def test_the_proxy_mode_disables_the_attach_button_on_the_client(tmp_path):
         ]
         + "\n}"
     )
+    run_mode = (
+        "function _isProxyRunMode("
+        + app.split("function _isProxyRunMode(")[1].split("\n}\n")[0]
+        + "\n}"
+    )
     probe = (
         sync
         + targets
+        + run_mode
         + r"""
 globalThis.RUN_MODE = { PERSONAL_PROXY: "personal_proxy" };
 globalThis._journalActiveSessionId = "s";

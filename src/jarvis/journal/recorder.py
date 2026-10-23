@@ -355,6 +355,12 @@ class JournalRecorder:
         )
         return self._session_id
 
+    def end_session(self) -> None:
+        """The next event opens a new session; events already scheduled keep
+        the session id they were scheduled with."""
+        self._session_id = None
+        self._media_counter = 0
+
     async def wait_for_pending(self) -> None:
         while self._tasks:
             await asyncio.gather(*tuple(self._tasks), return_exceptions=True)

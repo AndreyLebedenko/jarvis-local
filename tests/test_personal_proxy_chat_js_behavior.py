@@ -176,3 +176,25 @@ console.log(JSON.stringify({
         "withoutDetail": "proxy_chat_failed",
         "busy": "proxy_chat_busy",
     }
+
+
+def test_clearing_the_blocks_keeps_the_typed_text_and_the_status_line(tmp_path):
+    probe = r"""
+applyProxyBlock({type: "notice", kind: "x", text: "personal"});
+ids.proxyChatText.value = "typed";
+ids.proxyChatStatus.textContent = "status";
+clearProxyChatBlocks();
+console.log(JSON.stringify({
+  blocks: ids.proxyChatList.children.length,
+  emptyShown: ids.proxyChatEmpty.hidden === false,
+  input: ids.proxyChatText.value,
+  status: ids.proxyChatStatus.textContent,
+}));
+"""
+
+    assert _run(tmp_path, probe) == {
+        "blocks": 0,
+        "emptyShown": True,
+        "input": "typed",
+        "status": "status",
+    }

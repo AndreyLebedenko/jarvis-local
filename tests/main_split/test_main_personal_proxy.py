@@ -17,6 +17,7 @@ import jarvis.app as main_module
 import jarvis.inputs.hotkeys as hotkeys_module
 from jarvis.app import (
     _model_label_for,
+    _new_context_handler_for,
     _on_interrupt_requested,
     _text_submitter_for,
     build_app,
@@ -36,7 +37,12 @@ from jarvis.core.config import (
     Settings,
 )
 from jarvis.core.debug_transcript import recording
-from jarvis.core.lifecycle import TextSubmissionReason, TextSubmissionResult
+from jarvis.core.lifecycle import (
+    NewContextReason,
+    NewContextResult,
+    TextSubmissionReason,
+    TextSubmissionResult,
+)
 from jarvis.core.run_mode import RunMode
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
@@ -117,6 +123,7 @@ class _FakeRuntime:
         self.stops = 0
         self.interrupts = 0
         self.texts: list[str] = []
+        self.new_sessions = 0
 
     def start(self) -> None:
         self._order.append("proxy started")
@@ -132,6 +139,10 @@ class _FakeRuntime:
     async def submit_text(self, text: str):
         self.texts.append(text)
         return TextSubmissionResult(TextSubmissionReason.ACCEPTED, 100)
+
+    async def start_new_session(self):
+        self.new_sessions += 1
+        return NewContextResult(NewContextReason.ACCEPTED)
 
 
 class _CountingJournal:
@@ -842,13 +853,10 @@ def test_the_status_console_path_refuses_main_model_controls_and_routes_dock_tex
     assert "toggle_thinking" in seen["snapshot"]["refused"]
     assert "journal_input" not in seen["snapshot"]["refused"]
     assert seen["new_context"] == (
-        403,
-        {
-            "status": "rejected",
-            "reason": "personal_proxy",
-            "action": "journal_new_context",
-        },
+        200,
+        {"status": "ok", "session_id": None, "provenance": None},
     )
+    assert runtime.new_sessions == 1
     assert seen["input"][0] == 200
     assert runtime.texts == ["Привет"]
     assert seen["attachment"] == (
@@ -856,6 +864,55 @@ def test_the_status_console_path_refuses_main_model_controls_and_routes_dock_tex
         {"status": "rejected", "reason": "attachments_unavailable"},
     )
     assert app.backend.calls == []
+
+
+async def test_new_context_in_the_proxy_starts_a_proxy_session_and_not_a_model_context(
+    tmp_path,
+):
+    app = _proxy_app(_settings(tmp_path))
+    runtime = _FakeRuntime([])
+    app.personal_proxy = runtime
+    app.orchestrator.start_new_context = _must_not_be_called
+
+    result = await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+
+    assert result.reason is NewContextReason.ACCEPTED
+    assert runtime.new_sessions == 1
+    assert app.backend.calls == []
+
+
+async def test_new_context_in_the_proxy_leaves_the_history_of_the_main_model_alone(
+    tmp_path,
+):
+    app = _proxy_app(_settings(tmp_path))
+    app.personal_proxy = _FakeRuntime([])
+    app.history.add("user", "u")
+    turns_before = app.history.turns()
+
+    await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+
+    assert app.history.turns() == turns_before
+
+
+async def test_new_context_before_the_proxy_is_up_is_unavailable(tmp_path):
+    app = _proxy_app(_settings(tmp_path))
+    app.orchestrator.start_new_context = _must_not_be_called
+
+    result = await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+
+    assert result.reason is NewContextReason.UNAVAILABLE
+
+
+def test_new_context_in_a_normal_run_stays_the_orchestrators_own_action(tmp_path):
+    app = _proxy_app(_settings(tmp_path))
+
+    handler = _new_context_handler_for(app, RunMode.NORMAL)
+
+    assert handler == app.orchestrator.start_new_context
+
+
+async def _must_not_be_called():
+    raise AssertionError("the main model context must not be touched")
 
 
 async def test_the_main_models_controls_never_reach_it_through_the_bus(tmp_path):

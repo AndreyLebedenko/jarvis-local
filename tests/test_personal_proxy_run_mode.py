@@ -21,7 +21,6 @@ _REFUSED_IN_PERSONAL_PROXY = {
     _A.SET_SOLO_SESSION_ENABLED,
     _A.SET_TOOL_ENABLED,
     _A.RESET_CONTEXT,
-    _A.JOURNAL_NEW_CONTEXT,
     _A.JOURNAL_FORK,
     _A.TRANSCRIPT_GENERATE,
     _A.ANNOTATION_GENERATE,
@@ -48,8 +47,10 @@ def test_the_personal_proxy_refuses_exactly_the_controls_of_the_main_model():
     assert set(policy.refused_actions()) == _REFUSED_IN_PERSONAL_PROXY
 
 
-@pytest.mark.parametrize("action", [_A.JOURNAL_INPUT, _A.SET_TTS_ENABLED])
-def test_dock_text_and_the_speech_switch_stay_allowed(action):
+@pytest.mark.parametrize(
+    "action", [_A.JOURNAL_INPUT, _A.SET_TTS_ENABLED, _A.JOURNAL_NEW_CONTEXT]
+)
+def test_dock_text_the_speech_switch_and_a_new_session_are_allowed(action):
     assert RunModePolicy(RunMode.PERSONAL_PROXY).verdict(action) is Verdict.ALLOWED
 
 

@@ -10,7 +10,7 @@ a log line."""
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -56,6 +56,8 @@ class ProxyExchangeRecorder(Protocol):
 
     async def record_proxy_notice(self, kind: str, detail: JSONValue) -> None: ...
 
+    def end_session(self) -> None: ...
+
 
 @dataclass
 class _AnswerBuffer:
@@ -92,6 +94,19 @@ class ProxyJournalWriter:
     async def close(self) -> None:
         """Writes the answer that was still being shown, as incomplete."""
         await self._guarded(self._flush_answer(incomplete=True))
+
+    async def start_new_session(
+        self, still_allowed: Callable[[], bool] = lambda: True
+    ) -> bool:
+        """What is still held belongs to the session that ends here; the next
+        request opens the new one. The flush may yield, so `still_allowed` is
+        asked again after it and the session is kept when it says no."""
+        await self._guarded(self._flush_answer(incomplete=True))
+        if not still_allowed():
+            return False
+        self._source = _NO_SOURCE
+        self._recorder.end_session()
+        return True
 
     async def _guarded(self, work: Awaitable[None]) -> None:
         try:

@@ -6,7 +6,8 @@ accepts no user input into the model, so every control that submits input or
 changes dialog settings is refused here, and nowhere else. `PERSONAL_PROXY`
 (`--personal-proxy`) sends every request to the personal proxy instead of the
 main model, so the controls of the main model and its tools are refused and
-dock text is allowed (it is rerouted into the proxy). The Status Console
+dock text is allowed (it is rerouted into the proxy) and so is "New context"
+(it starts a new proxy session, not a new context of the main model). The Status Console
 transport consults this policy for every WebSocket control command and every
 HTTP route; the UI greys out the same actions from the run-mode snapshot.
 """
@@ -129,7 +130,7 @@ PERSONAL_PROXY_VERDICTS: Mapping[ControlAction, Verdict] = MappingProxyType(
         _A.UI_SHELL: _ALLOWED,
         _A.JOURNAL_READ: _ALLOWED,
         _A.JOURNAL_INPUT: _ALLOWED,
-        _A.JOURNAL_NEW_CONTEXT: _REFUSED,
+        _A.JOURNAL_NEW_CONTEXT: _ALLOWED,
         _A.JOURNAL_FORK: _REFUSED,
         _A.JOURNAL_DELETE_SESSION: _ALLOWED,
         _A.TRANSCRIPT_EDIT: _ALLOWED,

@@ -30,7 +30,7 @@ from jarvis.personal_proxy.journal_writer import (
 )
 from jarvis.personal_proxy.microphone_gate import AudioMicrophoneGate, AutoPausable
 from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
-from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
+from jarvis.personal_proxy.proxy_runtime import NewSessionHook, PersonalProxyRuntime
 from jarvis.personal_proxy.proxy_service import PersonalProxyService
 from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
 from jarvis.personal_proxy.service_ports import LanguageProvider, ProxyChatSink
@@ -100,6 +100,7 @@ class ProxyChatChain:
 
     sink: ProxyChatSink
     on_stopped: Callable[[], Awaitable[None]] | None
+    on_new_session: NewSessionHook | None = None
 
 
 def build_chat_chain(host: ProxyHost, language: LanguageProvider) -> ProxyChatChain:
@@ -112,7 +113,7 @@ def build_chat_chain(host: ProxyHost, language: LanguageProvider) -> ProxyChatCh
     writer = ProxyJournalWriter(
         shown, host.journal, dry_run=host.settings.personal_proxy.dry_run
     )
-    return ProxyChatChain(writer, writer.close)
+    return ProxyChatChain(writer, writer.close, writer.start_new_session)
 
 
 @dataclass(frozen=True)
@@ -207,4 +208,5 @@ async def _build(
         bus=host.bus,
         client=client,
         on_stopped=chat.on_stopped,
+        on_new_session=chat.on_new_session,
     )

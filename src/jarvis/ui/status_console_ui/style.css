@@ -857,6 +857,12 @@ html[data-view="settings"] .settings {
   grid-row: 1 / span 2; grid-column: 2; align-self: center;
   display: flex; flex-direction: column; gap: 4px;
 }
+/* Personal proxy sessions: an amber edge (data goes out) next to the icon in
+   the title, so the marker survives without color. Only the left edge changes,
+   so the selection fill and border of .sel stay as they are. */
+.journal-session.proxy-marked { border-left: 3px solid var(--amber); }
+.proxy-marker { display: inline-flex; align-items: center; color: var(--amber); flex: none; margin-right: 5px; vertical-align: -2px; }
+.proxy-marker .icon { width: 15px; height: 15px; stroke-width: 2.2; }
 .journal-session-delete,
 .journal-session-continue {
   width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
@@ -1132,6 +1138,7 @@ html[data-view="settings"] .settings {
   align-self: center; max-width: min(88%, 720px);
   border-color: var(--amber-dim); background: var(--amber-tint);
 }
+.journal-msg.proxy-marked { border-left: 3px solid var(--amber); }
 .journal-msg-meta {
   display: flex; gap: 8px; align-items: baseline;
   font-family: "Consolas", "Cascadia Mono", monospace; font-size: 9.5px;

@@ -430,6 +430,8 @@ const ICON_PATHS = {
   annotations: '<path d="M12 3h6a1 1 0 0 1 1 1v6l-9 9-7-7 9-9z"/>' +
     '<circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
   consolidation: '<path d="M12 4l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/>',
+  proxy_out: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/>' +
+    '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="1.5"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>',
   play: '<path d="M8 5v14l11-7z"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
@@ -456,6 +458,23 @@ function _icon(name) {
   const wrapper = document.createElement("span");
   wrapper.innerHTML = `<svg viewBox="0 0 24 24" class="icon" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
   return wrapper.firstElementChild;
+}
+
+// The one marker of the personal proxy in the Journal: an icon that reads
+// without color, next to the amber edge the stylesheet draws (amber = data
+// goes out). Rows and messages of other kinds never get it.
+function _proxyMarkerElement() {
+  const marker = document.createElement("span");
+  marker.className = "proxy-marker";
+  marker.setAttribute("role", "img");
+  marker.title = uiString("journal_proxy_marker");
+  marker.setAttribute("aria-label", marker.title);
+  marker.appendChild(_icon("proxy_out"));
+  return marker;
+}
+
+function _isProxyRunMode() {
+  return document.documentElement.getAttribute("data-run-mode") === RUN_MODE.PERSONAL_PROXY;
 }
 
 // Static markup (index.html) ships icon-less on purpose, so ICON_PATHS
@@ -1389,6 +1408,7 @@ function _confirmDiscardJournalMemoryChanges() {
 
 function _confirmStartNewJournalContext() {
   if (!_confirmDiscardJournalMemoryChanges()) return false;
+  if (_isProxyRunMode()) return true;
   if (_journalActiveSessionId === null) return true;
   return window.confirm(uiString("journal_new_context_confirm"));
 }
@@ -1619,9 +1639,13 @@ async function startNewJournalContext() {
     const response = await fetch(url, { method: "POST" });
     const payload = await response.json();
     if (payload.status === "ok") {
+      if (_isProxyRunMode()) clearProxyChatBlocks();
       _journalSelectedSessionId = payload.session_id || null;
       _journalActiveSessionId = payload.session_id || null;
-      _setJournalInputStatus(uiString("journal_new_context_ready"));
+      _setJournalInputStatus(
+        _isProxyRunMode()
+          ? uiString("journal_new_context_ready_proxy")
+          : uiString("journal_new_context_ready"));
       await refreshJournalSessions();
       if (payload.session_id) selectJournalSession(payload.session_id);
       return;
@@ -1645,7 +1669,11 @@ function _updateJournalNewContextButton() {
 
 function _journalNewContextErrorMessage(payload) {
   if (payload.status === "hidden") return uiString("journal_new_context_hidden");
-  if (payload.reason === "busy") return uiString("journal_new_context_busy");
+  if (payload.reason === "unavailable") return uiString("journal_new_context_unavailable");
+  if (payload.reason === "busy") {
+    return uiString(
+      _isProxyRunMode() ? "journal_new_context_busy_proxy" : "journal_new_context_busy");
+  }
   return uiString("journal_new_context_failed");
 }
 
@@ -1911,8 +1939,7 @@ function _journalInputTargetsSelectedSession() {
 
 function _syncJournalInputControls() {
   const inactiveSession = !_journalInputTargetsSelectedSession();
-  const proxyMode =
-    document.documentElement.getAttribute("data-run-mode") === RUN_MODE.PERSONAL_PROXY;
+  const proxyMode = _isProxyRunMode();
   const disabled =
     _journalInputInFlight ||
     _isHiddenActive() ||
@@ -2144,6 +2171,8 @@ function _journalSessionElement(session) {
   const selected = session.id === _journalSelectedSessionId;
   row.classList.toggle("sel", selected);
   row.setAttribute("aria-selected", String(selected));
+  const isProxy = session.title_kind === "proxy_session";
+  row.classList.toggle("proxy-marked", isProxy);
 
   // task-ui-ux-5: title leads (the session's identity); date/time/duration/
   // size collapse into one dimmed meta line beneath it, replacing the old
@@ -2151,6 +2180,7 @@ function _journalSessionElement(session) {
   const title = document.createElement("div");
   title.className = "journal-session-title";
   title.textContent = _journalSessionTitle(session);
+  if (isProxy) title.prepend(_proxyMarkerElement());
 
   const meta = document.createElement("div");
   meta.className = "journal-session-meta";
@@ -2743,6 +2773,10 @@ function _journalEventElement(event, position = null) {
   const time = document.createElement("span");
   time.textContent = _formatJournalTime(event.timestamp);
   meta.append(source, time);
+  if (PROXY_SOURCES.includes(event.source)) {
+    message.classList.add("proxy-marked");
+    meta.prepend(_proxyMarkerElement());
+  }
   const metaSpacer = document.createElement("span");
   metaSpacer.className = "journal-msg-meta-spacer";
   meta.appendChild(metaSpacer);

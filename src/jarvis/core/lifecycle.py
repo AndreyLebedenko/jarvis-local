@@ -62,6 +62,7 @@ class AttachmentSubmissionReason(Enum):
 class NewContextReason(Enum):
     ACCEPTED = "accepted"
     BUSY = "busy"
+    UNAVAILABLE = "unavailable"
 
 
 @dataclass(frozen=True)

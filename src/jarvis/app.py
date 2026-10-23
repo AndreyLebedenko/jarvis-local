@@ -280,6 +280,7 @@ from jarvis.ui.status_console import (
 )
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import (
+    NewContextHandler,
     TextInputSubmitter,
     UiStateStore,
     UiTransportInfo,
@@ -3376,6 +3377,22 @@ def _text_submitter_for(app: App, run_mode: RunMode) -> TextInputSubmitter:
     return submit
 
 
+def _new_context_handler_for(app: App, run_mode: RunMode) -> NewContextHandler:
+    """In the personal proxy "New context" starts a new proxy session and
+    touches neither the main model nor its state. While the proxy is not up
+    it is refused as unavailable."""
+    if run_mode is not RunMode.PERSONAL_PROXY:
+        return app.orchestrator.start_new_context
+
+    async def start() -> NewContextResult:
+        runtime = app.personal_proxy
+        if runtime is None:
+            return NewContextResult(NewContextReason.UNAVAILABLE)
+        return await runtime.start_new_session()
+
+    return start
+
+
 async def _enable_configured_mcp_host(app: App, settings: Settings) -> None:
     # Only a normal run enables McpHost, whatever [mcp].enabled says: the voice
     # guide's model pass reads untrusted canvas text and must have no tools,
@@ -3492,7 +3509,7 @@ def run_with_status_console(
             if run_mode is RunMode.PERSONAL_PROXY
             else app.orchestrator.on_attachment_submission
         ),
-        journal_new_context_handler=app.orchestrator.start_new_context,
+        journal_new_context_handler=_new_context_handler_for(app, run_mode),
         journal_fork_handler=app.orchestrator.fork_from_journal_session,
         journal_fork_seed_max_chars=settings.memory.fork_seed_max_chars,
         journal_active_session_id=(

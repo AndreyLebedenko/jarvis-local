@@ -257,8 +257,10 @@ class PersonalProxyService:
             if not task.done():
                 task.cancel()
                 await asyncio.wait({task})
+        try:
+            await self._after(task)
+        finally:
             self._current = None
-        await self._after(task)
 
     async def _after(self, task: asyncio.Task[None]) -> None:
         if not task.cancelled():

@@ -137,7 +137,9 @@ def test_typed_text_goes_to_the_dock_route_that_the_engine_reroutes():
 def test_the_dock_works_once_the_session_exists_but_takes_no_attachments():
     sync = APP_JS.split("function _syncJournalInputControls(")[1].split("\n}")[0]
 
-    assert "RUN_MODE.PERSONAL_PROXY" in sync
+    helper = APP_JS.split("function _isProxyRunMode(")[1].split("\n}")[0]
+    assert "RUN_MODE.PERSONAL_PROXY" in helper
+    assert "_isProxyRunMode()" in sync
     assert "proxyMode ||" not in sync
     assert "disabled || proxyMode" in sync
     assert 'classList.toggle("proxy-mode"' in sync

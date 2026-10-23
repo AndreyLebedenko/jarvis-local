@@ -2446,6 +2446,10 @@ class UiTransportServer:
             return web.json_response(
                 {"status": "rejected", "reason": "busy"}, status=409
             )
+        if result.reason is NewContextReason.UNAVAILABLE:
+            return web.json_response(
+                {"status": "rejected", "reason": "unavailable"}, status=409
+            )
         raise RuntimeError(f"unsupported new context result reason: {result.reason}")
 
     @staticmethod

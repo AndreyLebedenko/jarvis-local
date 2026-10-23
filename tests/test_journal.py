@@ -910,6 +910,67 @@ async def test_recorder_starts_blank_session_with_context_provenance(
     assert event.metadata == {"kind": "new_context"}
 
 
+async def test_ending_the_session_makes_the_next_event_open_a_new_one_lazily(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(
+        store,
+        clock=_fixed_clock(
+            datetime(2026, 10, 23, 10, 0, 0, tzinfo=UTC),
+            datetime(2026, 10, 23, 10, 0, 1, tzinfo=UTC),
+        ),
+    )
+    await recorder.record_proxy_sent("first", message_count=1)
+    first_session_id = recorder.session_id
+
+    recorder.end_session()
+
+    assert recorder.session_id is None
+    await recorder.wait_for_pending()
+    assert [s.session_id for s in store.list_sessions()] == [first_session_id]
+    await recorder.record_proxy_sent("second", message_count=1)
+    await recorder.wait_for_pending()
+    assert recorder.session_id not in (None, first_session_id)
+    assert len(store.list_sessions()) == 2
+
+
+async def test_ending_the_session_restarts_the_media_numbering(
+    tmp_path: Path,
+) -> None:
+    recorder = JournalRecorder(
+        JournalStore(tmp_path),
+        clock=_fixed_clock(datetime(2026, 10, 23, 10, 0, 0, tzinfo=UTC)),
+    )
+    for text in ("a", "b"):
+        await recorder.record_proxy_heard(
+            text, decision="x", doubt_kinds=(), wav_bytes=b"w"
+        )
+    recorder.end_session()
+    await recorder.record_proxy_heard("c", decision="x", doubt_kinds=(), wav_bytes=b"w")
+    await recorder.wait_for_pending()
+
+    [event] = JournalStore(tmp_path).read_session(recorder.session_id).events
+    assert event.media[0].endswith("-0001.wav")
+
+
+async def test_an_event_scheduled_before_the_session_ended_stays_in_that_session(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path)
+    recorder = JournalRecorder(
+        store, clock=_fixed_clock(datetime(2026, 10, 23, 10, 0, 0, tzinfo=UTC))
+    )
+    await recorder.record_proxy_sent("before", message_count=1)
+    session_id = recorder.session_id
+
+    recorder.end_session()
+    await recorder.wait_for_pending()
+
+    [event] = store.read_session(session_id).events
+    assert event.text == "before"
+
+
 async def test_recorder_start_fork_session_writes_provenance_before_return(
     tmp_path: Path,
 ) -> None:

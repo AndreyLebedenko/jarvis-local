@@ -1,7 +1,12 @@
 import aiohttp
 
 from jarvis.core.bus import EventBus
-from jarvis.core.lifecycle import TextSubmissionReason, TextSubmissionResult
+from jarvis.core.lifecycle import (
+    NewContextReason,
+    NewContextResult,
+    TextSubmissionReason,
+    TextSubmissionResult,
+)
 from jarvis.core.run_mode import RunMode, RunModePolicy
 from jarvis.ui.contract import VisibilityMode
 from jarvis.ui.transport import UiStateStore, UiTransportServer, hello_message
@@ -13,12 +18,13 @@ class _NoControlApi:
     pass
 
 
-def _server(run_mode=RunMode.PERSONAL_PROXY, language="en"):
+def _server(run_mode=RunMode.PERSONAL_PROXY, language="en", **handlers):
     return UiTransportServer(
         EventBus(),
         _NoControlApi(),
         state=UiStateStore(run_mode_policy=RunModePolicy(run_mode), language=language),
         token_factory=lambda: TOKEN,
+        **handlers,
     )
 
 
@@ -76,7 +82,8 @@ async def test_a_refused_http_route_shows_a_message_in_the_events_panel():
             websocket = await _connected(server, info, session)
 
             response = await session.post(
-                f"http://127.0.0.1:{info.port}/api/journal/context/new?token={TOKEN}",
+                f"http://127.0.0.1:{info.port}/api/journal/sessions/any/fork"
+                f"?token={TOKEN}",
                 json={},
             )
             delta = await websocket.receive_json()
@@ -121,6 +128,49 @@ async def test_a_refused_control_command_shows_the_message_in_the_chosen_languag
             assert event["message"] == (
                 "Режим личного прокси: этот элемент управления недоступен"
             )
+    finally:
+        await server.stop()
+
+
+async def test_new_context_reaches_its_handler_in_the_proxy_and_shows_no_refusal():
+    async def new_session():
+        return NewContextResult(NewContextReason.ACCEPTED)
+
+    server = _server(journal_new_context_handler=new_session)
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/context/new?token={TOKEN}",
+                json={},
+            )
+
+            assert response.status == 200
+            assert await response.json() == {
+                "status": "ok",
+                "session_id": None,
+                "provenance": None,
+            }
+            assert server._state.snapshot()["system_events"] == []
+    finally:
+        await server.stop()
+
+
+async def test_a_busy_proxy_refuses_new_context_with_the_content_free_busy_reason():
+    async def busy():
+        return NewContextResult(NewContextReason.BUSY)
+
+    server = _server(journal_new_context_handler=busy)
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/context/new?token={TOKEN}",
+                json={},
+            )
+
+            assert response.status == 409
+            assert await response.json() == {"status": "rejected", "reason": "busy"}
     finally:
         await server.stop()
 
@@ -207,5 +257,27 @@ async def test_clearing_the_last_block_reason_is_a_delta_and_repeating_it_is_not
 
             assert cleared["payload"]["value"]["last_block"] is None
             assert server._state.snapshot()["proxy_status"]["last_block"] is None
+    finally:
+        await server.stop()
+
+
+async def test_new_context_with_no_proxy_running_says_unavailable_not_busy():
+    async def unavailable():
+        return NewContextResult(NewContextReason.UNAVAILABLE)
+
+    server = _server(journal_new_context_handler=unavailable)
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(
+                f"http://127.0.0.1:{info.port}/api/journal/context/new?token={TOKEN}",
+                json={},
+            )
+
+            assert response.status == 409
+            assert await response.json() == {
+                "status": "rejected",
+                "reason": "unavailable",
+            }
     finally:
         await server.stop()

@@ -20,7 +20,8 @@ from jarvis.personal_proxy.proxy_assembly import (
     local_check_client,
     prepare_personal_proxy_runtime,
 )
-from jarvis.personal_proxy.service_blocks import NoticeBlock, NoticeKind
+from jarvis.personal_proxy.restoration_result import RestorationMethod
+from jarvis.personal_proxy.service_blocks import AnswerBlock, NoticeBlock, NoticeKind
 from jarvis.personal_proxy.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
@@ -527,6 +528,9 @@ class _Recorder:
     async def record_proxy_notice(self, kind, detail):
         self.calls.append(("notice", kind))
 
+    def end_session(self):
+        self.calls.append(("session ended", None))
+
 
 def _chain(settings=SENDING_SETTINGS, journal=None):
     transport = _Transport()
@@ -563,3 +567,45 @@ async def test_the_chat_chain_writes_nothing_in_a_dry_run():
 
     assert len(transport.blocks) == 1
     assert recorder.calls == []
+
+
+async def test_the_chat_chain_starts_a_new_session_by_closing_the_answer_first():
+    recorder = _Recorder()
+    _, chain = _chain(journal=recorder)
+    await chain.sink.post(AnswerBlock("Hello.", RestorationMethod.PASSTHROUGH, False))
+
+    await chain.on_new_session(lambda: True)
+
+    assert recorder.calls == [("answer", "Hello."), ("session ended", None)]
+
+
+async def test_the_chat_chain_without_a_journal_has_no_new_session_step():
+    _, chain = _chain()
+
+    assert chain.on_new_session is None
+
+
+async def test_a_prepared_runtime_with_a_journal_ends_the_journal_session():
+    recorder = _Recorder()
+    host = replace(_host(SENDING_SETTINGS), journal=recorder)
+
+    runtime = await prepare_personal_proxy_runtime(host, _seams([], _Ollama([])))
+    result = await runtime.start_new_session()
+    await runtime.stop()
+
+    assert result.accepted
+    assert recorder.calls == [("session ended", None)]
+
+
+async def test_a_prepared_runtime_refuses_a_new_session_while_a_request_is_queued():
+    recorder = _Recorder()
+    host = replace(_host(SENDING_SETTINGS), journal=recorder)
+    runtime = await prepare_personal_proxy_runtime(host, _seams([], _Ollama([])))
+    runtime.start()
+
+    await runtime.submit_text("Расскажи подробнее")
+    result = await runtime.start_new_session()
+    await runtime.stop()
+
+    assert not result.accepted
+    assert ("session ended", None) not in recorder.calls

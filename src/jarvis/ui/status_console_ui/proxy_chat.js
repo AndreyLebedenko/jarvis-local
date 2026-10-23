@@ -169,11 +169,15 @@ function applyProxyStatus(payload) {
     : "";
 }
 
-function clearProxyChat() {
+function clearProxyChatBlocks() {
   const list = document.getElementById("proxyChatList");
   if (list) list.replaceChildren();
   const empty = document.getElementById("proxyChatEmpty");
   if (empty) empty.hidden = false;
+}
+
+function clearProxyChat() {
+  clearProxyChatBlocks();
   const input = document.getElementById("proxyChatText");
   if (input) input.value = "";
   _setProxyChatStatus("");

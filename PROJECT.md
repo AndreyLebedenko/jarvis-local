@@ -5739,7 +5739,7 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   turn path, the clipboard and screenshot inputs and the debug utterance recorder are not
   subscribed; `McpHost` is never enabled) and dock text is rerouted into it as typed text.
   The controls of the main model (thinking, response mode, MCP, solo session, tools,
-  context reset, new context, fork, transcript, annotation and consolidation generation,
+  context reset, fork, transcript, annotation and consolidation generation,
   replay) are refused, with a visible warning in the events panel; the speech switch and
   dock text stay. Hotkeys bound: shutdown, interrupt (a pending question means "no",
   otherwise the request is cancelled) and microphone sleep. Start order: checks (topics
@@ -5787,6 +5787,17 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   `proxy_status` holds the dry-run indicator and the last block reason (kind and positions,
   never a value); the Journal dock is usable once the session exists and still routes to
   the proxy. Placeholder session title: "Personal proxy session <start time>".
+  Proxy session UX (story v2.1.0 task 10b): proxy sessions and the four proxy message kinds
+  carry one marker, an outline icon (arrow out of a box, `proxy_out` in `app.js`) plus an
+  amber left edge (amber = data goes out); the two signals are independent. "New context" is
+  allowed in `PERSONAL_PROXY` and starts a new proxy session, never a new context of the
+  main model: `App` wires it (`_new_context_handler_for`) to
+  `PersonalProxyRuntime.start_new_session()`, which is refused (HTTP 409 `busy`) unless the
+  service is idle (no request in flight, no question pending), and otherwise runs the
+  writer's `start_new_session()`: a held answer is closed as incomplete in the old session,
+  the held request source is dropped, and `JournalRecorder.end_session()` makes the next
+  event open a new session lazily (no empty session, no provenance event). The Status
+  Console has one dark theme only.
 
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.
