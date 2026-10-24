@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from _backend_fakes import FakeBackend
 
 from jarvis.core.config import GenerationOptions, PersonalProxySettings
 from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
@@ -34,18 +35,6 @@ def _reply(**changes):
 
 def _checked(text=TRANSCRIPT):
     return CheckedTranscript(text, (), CheckSource.CHECKED, False)
-
-
-class FakeBackend:
-    def __init__(self, reply):
-        self._reply = reply
-        self.requests = []
-
-    async def complete(self, request):
-        self.requests.append(request)
-        if isinstance(self._reply, BaseException):
-            raise self._reply
-        return self._reply
 
 
 async def _sanitize(reply, transcript=TRANSCRIPT, topics=TOPICS):

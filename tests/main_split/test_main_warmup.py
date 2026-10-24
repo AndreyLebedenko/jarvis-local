@@ -6,9 +6,9 @@ from _support_from_test_main import (
 )
 
 from jarvis.app import (
-    APP_LOGGER_NAME,
     warm_up,
 )
+from jarvis.app_logger import APP_LOGGER_NAME
 from jarvis.core.bus import EventBus
 from jarvis.ui.contract import (
     EventLevel,

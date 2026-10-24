@@ -9,11 +9,11 @@ from _support_from_test_main import (
 )
 
 from jarvis.app import (
-    APP_LOGGER_NAME,
     App,
     _on_reasoning_level_changed,
     _on_response_mode_changed,
 )
+from jarvis.app_logger import APP_LOGGER_NAME
 from jarvis.core.bus import EventBus
 from jarvis.dialog.response_mode import (
     ResponseMode,

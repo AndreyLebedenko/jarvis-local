@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
 from jarvis.personal_proxy.check_result import (
@@ -26,21 +27,6 @@ CHECKED = "Позвони Марине по номеру 8 912 345 67 89"
 
 def _judge(fragments, confidence=0.9):
     return json.dumps({"uncertain_fragments": fragments, "confidence": confidence})
-
-
-class FakeBackend:
-    """Replies in order; an Exception in the list is raised instead."""
-
-    def __init__(self, *replies):
-        self._replies = list(replies)
-        self.requests = []
-
-    async def complete(self, request):
-        self.requests.append(request)
-        reply = self._replies.pop(0)
-        if isinstance(reply, BaseException):
-            raise reply
-        return reply
 
 
 def _transcription(text=WHISPER, words=()):

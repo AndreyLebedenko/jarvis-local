@@ -16,15 +16,17 @@ from _support_from_test_main import (
 import jarvis.app as main_module
 import jarvis.inputs.hotkeys as hotkeys_module
 from jarvis.app import (
-    _model_label_for,
-    _new_context_handler_for,
     _on_interrupt_requested,
-    _text_submitter_for,
     build_app,
     create_live_status_console,
     run,
     wire,
     wire_status_console,
+)
+from jarvis.app_proxy import (
+    model_label_for,
+    new_context_handler_for,
+    text_submitter_for,
 )
 from jarvis.audio.input import UtteranceChunk
 from jarvis.audio.replay import ReplayPlayer
@@ -600,7 +602,7 @@ async def test_a_started_runtime_sends_utterances_and_dock_text_to_the_inbox(
     await app.bus.publish(
         UtteranceChunk, UtteranceChunk(wav_bytes=b"wav", start_seconds=0, end_seconds=1)
     )
-    result = await _text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
+    result = await text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
     await app.personal_proxy.stop()
 
     assert result.reason is TextSubmissionReason.ACCEPTED
@@ -621,7 +623,7 @@ async def test_dock_text_while_the_proxy_is_starting_says_so_and_goes_nowhere(
 ):
     app = _proxy_app(_settings(tmp_path))
 
-    result = await _text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
+    result = await text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
 
     assert result.reason is TextSubmissionReason.UNAVAILABLE
     assert result.detail == ui_text("personal_proxy_starting", "en")
@@ -635,7 +637,7 @@ async def test_dock_text_after_a_failed_start_gives_the_failure_reason_not_busy(
     app = _proxy_app(_settings(tmp_path))
     app.personal_proxy_failure = kind
 
-    result = await _text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
+    result = await text_submitter_for(app, RunMode.PERSONAL_PROXY)("Привет")
 
     assert result.reason is TextSubmissionReason.UNAVAILABLE
     assert result.detail == ui_text(kind.ui_text_key, "en")
@@ -699,8 +701,8 @@ def test_the_model_label_is_the_main_model_only_in_a_normal_run():
         )
     )
 
-    assert _model_label_for(settings, RunMode.NORMAL) == settings.backend.model
-    assert _model_label_for(settings, RunMode.PERSONAL_PROXY) == "check-model"
+    assert model_label_for(settings, RunMode.NORMAL) == settings.backend.model
+    assert model_label_for(settings, RunMode.PERSONAL_PROXY) == "check-model"
 
 
 async def test_the_status_console_is_seeded_with_the_check_model_in_the_proxy(
@@ -734,9 +736,7 @@ async def test_the_normal_dock_text_still_reaches_the_orchestrator(tmp_path):
         capture_input=_FakeCaptureInput(),
     )
 
-    assert (
-        _text_submitter_for(app, RunMode.NORMAL) == app.orchestrator.submit_text_input
-    )
+    assert text_submitter_for(app, RunMode.NORMAL) == app.orchestrator.submit_text_input
 
 
 async def test_the_interrupt_hotkey_reaches_the_proxy_before_the_shared_player(
@@ -874,7 +874,7 @@ async def test_new_context_in_the_proxy_starts_a_proxy_session_and_not_a_model_c
     app.personal_proxy = runtime
     app.orchestrator.start_new_context = _must_not_be_called
 
-    result = await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+    result = await new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
 
     assert result.reason is NewContextReason.ACCEPTED
     assert runtime.new_sessions == 1
@@ -889,7 +889,7 @@ async def test_new_context_in_the_proxy_leaves_the_history_of_the_main_model_alo
     app.history.add("user", "u")
     turns_before = app.history.turns()
 
-    await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+    await new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
 
     assert app.history.turns() == turns_before
 
@@ -898,7 +898,7 @@ async def test_new_context_before_the_proxy_is_up_is_unavailable(tmp_path):
     app = _proxy_app(_settings(tmp_path))
     app.orchestrator.start_new_context = _must_not_be_called
 
-    result = await _new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
+    result = await new_context_handler_for(app, RunMode.PERSONAL_PROXY)()
 
     assert result.reason is NewContextReason.UNAVAILABLE
 
@@ -906,7 +906,7 @@ async def test_new_context_before_the_proxy_is_up_is_unavailable(tmp_path):
 def test_new_context_in_a_normal_run_stays_the_orchestrators_own_action(tmp_path):
     app = _proxy_app(_settings(tmp_path))
 
-    handler = _new_context_handler_for(app, RunMode.NORMAL)
+    handler = new_context_handler_for(app, RunMode.NORMAL)
 
     assert handler == app.orchestrator.start_new_context
 

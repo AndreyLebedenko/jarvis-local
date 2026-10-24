@@ -6,6 +6,7 @@ import json
 import logging
 
 import pytest
+from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
 from jarvis.personal_proxy import sanitize as sanitize_module
@@ -51,21 +52,8 @@ MALFORMED = {
 }
 
 
-class ScriptedBackend:
-    def __init__(self, *replies):
-        self._replies = list(replies)
-        self.requests = []
-
-    async def complete(self, request):
-        self.requests.append(request)
-        reply = self._replies[min(len(self.requests), len(self._replies)) - 1]
-        if isinstance(reply, BaseException):
-            raise reply
-        return reply
-
-
 async def _run(*replies, topics=NO_TOPICS):
-    backend = ScriptedBackend(*replies)
+    backend = FakeBackend(*replies)
     checked = CheckedTranscript(TRANSCRIPT, (), CheckSource.CHECKED, False)
     return await sanitize(checked, topics, backend, SETTINGS), backend
 
@@ -232,7 +220,7 @@ async def test_a_no_speech_reason_in_any_case_or_spacing_is_not_retried(reason):
 
 
 async def test_a_cancelled_backend_call_propagates_and_is_not_retried():
-    backend = ScriptedBackend(asyncio.CancelledError(), GOOD)
+    backend = FakeBackend(asyncio.CancelledError(), GOOD)
     checked = CheckedTranscript(TRANSCRIPT, (), CheckSource.CHECKED, False)
 
     with pytest.raises(asyncio.CancelledError):
@@ -251,7 +239,7 @@ async def test_the_retry_count_constant_decides_the_number_of_calls(monkeypatch)
 
 
 async def test_the_empty_transcript_still_makes_no_call():
-    backend = ScriptedBackend(GOOD)
+    backend = FakeBackend(GOOD)
     checked = CheckedTranscript("  ", (), CheckSource.CHECKED, False)
 
     result = await sanitize(checked, NO_TOPICS, backend, SETTINGS)

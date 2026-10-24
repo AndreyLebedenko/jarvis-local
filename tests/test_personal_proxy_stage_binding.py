@@ -3,6 +3,7 @@ import threading
 from dataclasses import replace
 
 import numpy as np
+from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
 from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
@@ -31,16 +32,6 @@ class _Engine:
         return Transcription(HEARD, (), ())
 
 
-class _Backend:
-    def __init__(self, replies):
-        self.replies = list(replies)
-        self.requests = []
-
-    async def complete(self, request):
-        self.requests.append(request)
-        return self.replies.pop(0)
-
-
 def _probabilities(values):
     return lambda clip: SpeechProbabilities(tuple(values), 0.032)
 
@@ -51,7 +42,7 @@ def _deps(**changes):
         "vad_threshold": 0.5,
         "engine": _Engine(),
         "probabilities": _probabilities([1.0, 1.0]),
-        "backend": _Backend([]),
+        "backend": FakeBackend(),
         "open_stream": lambda payload: _no_stream(),
         "topics_text": "topic line",
         "warm_up": _noop,
@@ -113,7 +104,7 @@ async def test_sanitize_uses_the_topics_text_and_the_shared_backend():
         },
         ensure_ascii=False,
     )
-    backend = _Backend([reply])
+    backend = FakeBackend(reply)
     stages = bind_stages(_deps(backend=backend, topics_text="topic line"))
 
     result = await stages.sanitize(

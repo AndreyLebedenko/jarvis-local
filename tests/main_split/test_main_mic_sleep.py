@@ -7,10 +7,10 @@ from _support_from_test_main import (
 )
 
 from jarvis.app import (
-    APP_LOGGER_NAME,
     App,
     _on_mic_sleep_toggled,
 )
+from jarvis.app_logger import APP_LOGGER_NAME
 from jarvis.audio.input import (
     MicSleepToggled,
 )

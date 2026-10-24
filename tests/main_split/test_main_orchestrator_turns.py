@@ -12,9 +12,9 @@ from _support_from_test_main import (
 
 import jarvis.app as main_module
 from jarvis.app import (
-    APP_LOGGER_NAME,
     SYSTEM_PROMPT,
 )
+from jarvis.app_logger import APP_LOGGER_NAME
 from jarvis.audio.input import (
     UtteranceChunk,
 )

@@ -1,6 +1,7 @@
 import logging
 
 import pytest
+from _backend_fakes import FakeBackend
 
 from jarvis.core.config import GenerationOptions, PersonalProxySettings
 from jarvis.personal_proxy.restoration import restore_answer
@@ -18,19 +19,6 @@ MAPPING = {
 SENTENCE = "Передайте <PERSON_1>, что документы готовы."
 RESTORED = "Передайте Марине Крыловой, что документы готовы."
 SUBSTITUTED = "Передайте Марина Крылова, что документы готовы."
-
-
-class FakeBackend:
-    def __init__(self, *replies):
-        self._replies = list(replies)
-        self.requests = []
-
-    async def complete(self, request):
-        self.requests.append(request)
-        reply = self._replies.pop(0)
-        if isinstance(reply, BaseException):
-            raise reply
-        return reply
 
 
 class Deltas:

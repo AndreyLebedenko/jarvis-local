@@ -11,13 +11,13 @@ from _support_from_test_main import (
 )
 
 from jarvis.app import (
-    APP_LOGGER_NAME,
     _announce_debug_mode_to_panel,
     announce_debug_mode,
     main,
     parse_args,
     run,
 )
+from jarvis.app_logger import APP_LOGGER_NAME
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     LoggingSettings,
