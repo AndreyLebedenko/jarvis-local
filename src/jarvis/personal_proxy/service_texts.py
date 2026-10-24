@@ -24,10 +24,13 @@ SPOKEN_KINDS = frozenset(
     }
 )
 
+FORCEABLE_KINDS = frozenset({NoticeKind.REFUSED, NoticeKind.SANITIZE_FAILED})
+
 _RU = {
     "no_speech": "Нечего отправлять: речь или текст не распознаны.",
     "bad_audio": "Запись не удалось прочитать. Ничего не отправлено.",
     "refused": "Запрос отклонён, ничего не отправлено.",
+    "force_hint": "Чтобы отправить как есть, начните сообщение с /force.",
     "refused.spoken": "Запрос отклонён. Ничего не отправлено.",
     "sanitize_failed": "Не удалось подготовить запрос. Ничего не отправлено.",
     "sanitize_failed.spoken": "Не удалось подготовить запрос. Ничего не отправлено.",
@@ -67,6 +70,7 @@ _EN = {
     "no_speech": "Nothing to send: no speech or text was recognized.",
     "bad_audio": "The recording could not be read. Nothing was sent.",
     "refused": "The request was refused, nothing was sent.",
+    "force_hint": "To send it as is, start the message with /force.",
     "refused.spoken": "The request was refused. Nothing was sent.",
     "sanitize_failed": "The request could not be prepared. Nothing was sent.",
     "sanitize_failed.spoken": "The request could not be prepared. Nothing was sent.",
@@ -143,11 +147,21 @@ def notice_text(block: NoticeBlock, language: str | None) -> str:
     words = _words(language)
     if block.kind is NoticeKind.GATE_BLOCKED:
         return _shown_gate(block, words)
+    return _with_force_hint(_shown_plain(block, words), block, words)
+
+
+def _shown_plain(block: NoticeBlock, words: dict[str, str]) -> str:
     text = words[block.kind.value]
     if block.kind is NoticeKind.REFUSED and block.reason:
         return f"{text} {block.reason}"
     if isinstance(block.detail, Enum):
         return f"{text} ({block.detail.value})"
+    return text
+
+
+def _with_force_hint(text: str, block: NoticeBlock, words: dict[str, str]) -> str:
+    if block.forceable and block.kind in FORCEABLE_KINDS:
+        return f"{text} {words['force_hint']}"
     return text
 
 

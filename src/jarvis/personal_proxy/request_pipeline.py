@@ -33,7 +33,7 @@ from jarvis.personal_proxy.payload import (
     build_outbound_payload,
 )
 from jarvis.personal_proxy.pipeline_stages import PipelineStages
-from jarvis.personal_proxy.proxy_inbox import InboxItem, Utterance
+from jarvis.personal_proxy.proxy_inbox import InboxItem, TypedText, Utterance
 from jarvis.personal_proxy.request_intake import Heard, RequestIntake
 from jarvis.personal_proxy.sanitize_result import (
     SanitizeFailure,
@@ -80,7 +80,9 @@ class RequestPipeline:
         heard = await self._intake.hear(item)
         if heard is None:
             return
-        sanitized = await self._sanitized_or_verbatim(heard)
+        sanitized = await self._sanitized_or_verbatim(
+            heard, forceable=isinstance(item, TypedText)
+        )
         if sanitized is None:
             return
         if not self._parts.dry_run and not await self._confirmed(item, heard):
@@ -96,29 +98,41 @@ class RequestPipeline:
         else:
             await self._send(payload, sanitized, forced=heard.forced)
 
-    async def _sanitized_or_verbatim(self, heard: Heard) -> SanitizeResult | None:
+    async def _sanitized_or_verbatim(
+        self, heard: Heard, *, forceable: bool
+    ) -> SanitizeResult | None:
         if heard.forced:
             return verbatim_result(heard.checked.text)
-        return await self._sanitized(heard.checked)
+        return await self._sanitized(heard.checked, forceable)
 
-    async def _sanitized(self, checked: CheckedTranscript) -> SanitizeResult | None:
+    async def _sanitized(
+        self, checked: CheckedTranscript, forceable: bool
+    ) -> SanitizeResult | None:
         result = await self._stages.sanitize(checked)
         if isinstance(result, SanitizeResult):
-            return await self._sendable(result)
+            return await self._sendable(result, forceable)
         failure = result.failure if isinstance(result, SanitizeFailure) else None
-        await self._reporter.notice(NoticeKind.SANITIZE_FAILED, failure)
+        await self._reporter.notice(
+            NoticeKind.SANITIZE_FAILED, failure, forceable=forceable
+        )
         return None
 
-    async def _sendable(self, result: SanitizeResult) -> SanitizeResult | None:
+    async def _sendable(
+        self, result: SanitizeResult, forceable: bool
+    ) -> SanitizeResult | None:
         if result.verdict is SanitizeVerdict.REFUSE:
-            await self._reporter.notice(NoticeKind.REFUSED, reason=result.reason)
+            await self._reporter.notice(
+                NoticeKind.REFUSED, reason=result.reason, forceable=forceable
+            )
             return None
         if result.verdict is SanitizeVerdict.SEND and has_visible_text(
             result.sanitized_text
         ):
             return result
         await self._reporter.notice(
-            NoticeKind.SANITIZE_FAILED, SanitizeFailureClass.EMPTY_SANITIZED_TEXT
+            NoticeKind.SANITIZE_FAILED,
+            SanitizeFailureClass.EMPTY_SANITIZED_TEXT,
+            forceable=forceable,
         )
         return None
 

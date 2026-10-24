@@ -175,7 +175,10 @@ criteria, and the stop conditions below were re-cut on 2026-10-19.
   `raw_transcript` is always returned, not only in dry-run, so the failure mode
   "the model misheard" can be told from "the model heard and did not replace".
   It stays local (journal only). A parse failure or an invalid structure is a
-  fail-closed refusal, never a retry loop and never a send.
+  fail-closed refusal, never a retry loop and never a send. Revised by task 10e: the
+  local sanitize call is retried once (a constant) after a malformed answer (including an empty one) or a
+  refusal without topics; the second outcome is final, and a backend failure, a refusal
+  by a real topic and "no speech" are never retried.
 - **Typed placeholders, stable in the request.** `<PERSON_1>`, `<ORG_2>`, and
   so on: the type is kept so the external model can still reason; the same
   entity gets the same placeholder within the request. A whole-request
@@ -410,7 +413,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     deterministic gate stays; the privacy contract has one explicit exception for it
     (`PROJECT.md`).
 
-10e. **False refusals of the local sanitize model.** (Size: S, added 2026-10-24,
+10e. **False refusals of the local sanitize model.** (Size: S. Done 2026-10-24, `tasks/done/task-v2.1.0-10e-false-refusals.md`; added 2026-10-24,
     card `tasks/task-v2.1.0-10e-false-refusals.md`.) Remove the topics rule from the
     prompt when the topics list is empty, one retry of the local sanitize call on a
     refusal without topics or a malformed answer, a /force hint in the notice, and a

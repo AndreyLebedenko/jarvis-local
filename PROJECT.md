@@ -5692,7 +5692,18 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   backend seam and the same `check_*` settings (a test keeps the production text
   equal to the spike's). The reply is parsed strictly (no salvage); any malformed
   reply, empty text, bad placeholder key, or backend error is a typed fail-closed
-  failure; a `refuse` drops the text and mapping. The topics file is local-only,
+  failure; a `refuse` drops the text and mapping. With an empty topics list the system
+  prompt has no topics rule and no "Sensitive topics:" section (rule 7, no speech, becomes
+  rule 6); with topics it is unchanged byte for byte. The stage retries the same local
+  request once (`SANITIZE_RETRIES`, a constant, not a setting; story task 10e) after a
+  malformed answer (`empty`, `bad_placeholder`, `empty_sanitized_text`, `empty_mapping_value`,
+  `no_json`, `extra_prose`, `missing_field`, `wrong_type`, `bad_verdict`) or a refusal
+  with an empty topics list whose reason is not "no speech"; never after `backend_failed`,
+  a refusal while topics exist, "no speech", or a valid send. The second outcome is final,
+  and a second topic-less refusal is the failure class `unexpected_refusal`. The retry goes
+  to the local Ollama only, so nothing leaves the machine. The sanitize-failed and refused
+  notices of a typed request carry a fixed `/force` hint (shown only, never spoken). The
+  topics file is local-only,
   capped at 8000 characters, and goes only into the system prompt (the opt-in debug
   transcript would record it too). The stage does not check that a `send` replaced
   anything: the outbound gate's mapping check does.

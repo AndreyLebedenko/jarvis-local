@@ -30,6 +30,7 @@ class SanitizeFailureClass(StrEnum):
     EMPTY_SANITIZED_TEXT = "empty_sanitized_text"
     BAD_PLACEHOLDER = "bad_placeholder"
     EMPTY_MAPPING_VALUE = "empty_mapping_value"
+    UNEXPECTED_REFUSAL = "unexpected_refusal"
 
 
 @dataclass(frozen=True)

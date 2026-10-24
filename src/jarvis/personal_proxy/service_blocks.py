@@ -44,6 +44,7 @@ class NoticeBlock:
     kind: NoticeKind
     detail: NoticeDetail = None
     reason: str = field(default="", repr=False)
+    forceable: bool = False
 
     def __post_init__(self) -> None:
         if not _is_content_free(self.detail):

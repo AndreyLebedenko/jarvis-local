@@ -29,9 +29,14 @@ class Reporter:
         await self._sink.post(block)
 
     async def notice(
-        self, kind: NoticeKind, detail: NoticeDetail = None, reason: str = ""
+        self,
+        kind: NoticeKind,
+        detail: NoticeDetail = None,
+        reason: str = "",
+        *,
+        forceable: bool = False,
     ) -> None:
-        block = NoticeBlock(kind, detail, reason)
+        block = NoticeBlock(kind, detail, reason, forceable)
         await self._sink.post(block)
         sentence = spoken_notice(block, self._language())
         if sentence is not None:
