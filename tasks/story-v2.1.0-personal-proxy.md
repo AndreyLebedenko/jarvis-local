@@ -419,7 +419,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     refusal without topics or a malformed answer, a /force hint in the notice, and a
     live measurement of the false refusal rate.
 
-10f. **Rename a session.** (Size: S-M, added 2026-10-23, card written after 10e.) A Journal
+10f. **Rename a session.** (Size: S-M. Done 2026-10-24, `tasks/done/task-v2.1.0-10f-rename-session.md`; added 2026-10-23, card written after 10e. Search by title is split off: `tasks/backlog/journal-search-by-session-title.md`.) A Journal
     feature for all session kinds: a title kept apart from the records, edited from the
     session's "..." menu, used in the list, search and the title.
 

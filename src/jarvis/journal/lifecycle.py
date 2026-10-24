@@ -25,6 +25,7 @@ from jarvis.journal.events import (
     JournalEventRef,
 )
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
+from jarvis.journal.session_metadata import SessionMetadata
 from jarvis.journal.store import (
     JournalReplay,
     JournalSessionSummary,
@@ -296,6 +297,12 @@ class JournalHistoryService:
             date_to=date_to,
             limit=limit,
         )
+
+    def read_session_metadata(self, session_id: str) -> SessionMetadata:
+        return self._store.read_session_metadata(session_id)
+
+    def rename_session(self, session_id: str, raw_title: object) -> str | None:
+        return self._store.rename_session(session_id, raw_title)
 
     def delete_session(self, session_id: str) -> None:
         self._store.delete_session(session_id)

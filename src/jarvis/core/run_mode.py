@@ -52,6 +52,7 @@ class ControlAction(Enum):
     JOURNAL_NEW_CONTEXT = "journal_new_context"
     JOURNAL_FORK = "journal_fork"
     JOURNAL_DELETE_SESSION = "journal_delete_session"
+    JOURNAL_RENAME_SESSION = "journal_rename_session"
     TRANSCRIPT_EDIT = "transcript_edit"
     TRANSCRIPT_GENERATE = "transcript_generate"
     REPLAY = "replay"
@@ -100,6 +101,7 @@ MCP_MODE_VERDICTS: Mapping[ControlAction, Verdict] = MappingProxyType(
         _A.JOURNAL_NEW_CONTEXT: _REFUSED,
         _A.JOURNAL_FORK: _REFUSED,
         _A.JOURNAL_DELETE_SESSION: _ALLOWED,
+        _A.JOURNAL_RENAME_SESSION: _ALLOWED,
         _A.TRANSCRIPT_EDIT: _ALLOWED,
         _A.TRANSCRIPT_GENERATE: _ALLOWED,
         _A.REPLAY: _ALLOWED,
@@ -133,6 +135,7 @@ PERSONAL_PROXY_VERDICTS: Mapping[ControlAction, Verdict] = MappingProxyType(
         _A.JOURNAL_NEW_CONTEXT: _ALLOWED,
         _A.JOURNAL_FORK: _REFUSED,
         _A.JOURNAL_DELETE_SESSION: _ALLOWED,
+        _A.JOURNAL_RENAME_SESSION: _ALLOWED,
         _A.TRANSCRIPT_EDIT: _ALLOWED,
         _A.TRANSCRIPT_GENERATE: _REFUSED,
         _A.REPLAY: _REFUSED,

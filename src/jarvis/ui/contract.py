@@ -139,6 +139,9 @@ class JournalSessionPayload:
     # Empty for a user-authored title; "new_context"/"voice_only" for a
     # placeholder the client localizes to the active UI language.
     title_kind: str = ""
+    # True when `title` is the user's own title (it then wins over the
+    # automatic title and is shown verbatim whatever `title_kind` says).
+    has_user_title: bool = False
 
 
 @dataclass(frozen=True)

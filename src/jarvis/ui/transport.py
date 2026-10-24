@@ -91,6 +91,7 @@ from jarvis.journal.lifecycle import (
     JournalHistoryService,
 )
 from jarvis.journal.search import JournalSearchIndex
+from jarvis.journal.session_metadata import SessionTitleError
 from jarvis.journal.store import JournalReplay, JournalStore
 from jarvis.journal.transcript import (
     TRANSCRIPT_MAX_TEXT_LENGTH,
@@ -391,6 +392,12 @@ ROUTES: tuple[Route, ...] = (
         "/api/journal/sessions/{session_id}",
         "_journal_delete_handler",
         _A.JOURNAL_DELETE_SESSION,
+    ),
+    Route(
+        "PUT",
+        "/api/journal/sessions/{session_id}/title",
+        "_journal_rename_handler",
+        _A.JOURNAL_RENAME_SESSION,
     ),
     Route("GET", "/api/journal/search", "_journal_search_handler", _A.JOURNAL_READ),
     Route(
@@ -1642,6 +1649,42 @@ class UiTransportServer:
                 status=500,
             )
         return web.json_response({"status": "ok", "deleted_session_id": session_id})
+
+    async def _journal_rename_handler(self, request: web.Request) -> web.Response:
+        self._require_http_token(request)
+        if self._is_hidden():
+            return self._journal_hidden_response()
+        session_id = request.match_info["session_id"]
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise web.HTTPBadRequest(text="request body must be JSON") from None
+        if not isinstance(body, dict) or "title" not in body:
+            raise web.HTTPBadRequest(text="request body must carry a title")
+        target = self._journal_history_service or self._journal_store
+        if target is None:
+            return web.json_response(
+                {"status": "rejected", "reason": "journal_unavailable"}, status=503
+            )
+        try:
+            title = await asyncio.to_thread(
+                target.rename_session, session_id, body["title"]
+            )
+        except SessionTitleError as refused:
+            return web.json_response(
+                {"status": "rejected", "reason": refused.reason}, status=400
+            )
+        except KeyError:
+            return web.json_response(
+                {"status": "rejected", "reason": "not_found"}, status=404
+            )
+        except OSError:
+            return web.json_response(
+                {"status": "rejected", "reason": "rename_failed"}, status=503
+            )
+        return web.json_response(
+            {"status": "ok", "session_id": session_id, "title": title}
+        )
 
     async def _journal_search_handler(self, request: web.Request) -> web.Response:
         self._require_http_token(request)

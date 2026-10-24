@@ -3195,3 +3195,100 @@ def test_only_a_sent_record_carries_the_split_view(source):
     event = _proxy_event("20260722-100000-ab12", source, "system", _sent_text("x"))
 
     assert "proxy_sent" not in journal_event_payload(event, _media_url)
+
+
+def _session_with_title_state(tmp_path, source, role, text, metadata=None):
+    session_id = "20260724-100000-ab12"
+    store = JournalStore(tmp_path)
+    store.append(
+        JournalEvent(
+            session_id=session_id,
+            timestamp="2026-10-24T10:00:00+01:00",
+            source=source,
+            role=role,
+            text=text,
+            media=[],
+            transcript=None,
+            metadata=metadata or {},
+        )
+    )
+    return session_id, store
+
+
+def test_session_payload_without_a_user_title_has_the_automatic_one(tmp_path):
+    session_id, store = _session_with_title_state(
+        tmp_path, "user", "user", "first question"
+    )
+
+    payload = journal_session_payload(store.list_sessions()[0], store)
+
+    assert payload["title"] == "first question"
+    assert payload["has_user_title"] is False
+
+
+def test_user_title_wins_over_the_text_title_in_the_session_payload(tmp_path):
+    session_id, store = _session_with_title_state(
+        tmp_path, "user", "user", "first question"
+    )
+    store.rename_session(session_id, "Pump notes")
+
+    payload = journal_session_payload(store.list_sessions()[0], store)
+
+    assert payload["title"] == "Pump notes"
+    assert payload["has_user_title"] is True
+
+
+@pytest.mark.parametrize(
+    ("source", "role", "metadata", "kind"),
+    [
+        ("context", "system", {"kind": "new_context"}, "new_context"),
+        ("proxy_heard", "user", {}, "proxy_session"),
+        ("mcp_canvas", "assistant", {}, "mcp_session"),
+    ],
+)
+def test_user_title_wins_for_placeholder_sessions_and_keeps_their_kind(
+    tmp_path, source, role, metadata, kind
+):
+    session_id, store = _session_with_title_state(
+        tmp_path, source, role, "text", metadata
+    )
+    store.rename_session(session_id, "Mine")
+
+    payload = journal_session_payload(store.list_sessions()[0], store)
+
+    assert payload["title"] == "Mine"
+    assert payload["has_user_title"] is True
+    assert payload["title_kind"] == kind
+
+
+def test_reset_restores_the_automatic_proxy_title_with_its_date_stamp(tmp_path):
+    session_id, store = _session_with_title_state(
+        tmp_path, "proxy_heard", "user", "private words"
+    )
+    store.rename_session(session_id, "Mine")
+    store.rename_session(session_id, "")
+
+    payload = journal_session_payload(store.list_sessions()[0], store)
+
+    assert payload["title"] == "Personal proxy session 2026-07-24 10:00"
+    assert payload["has_user_title"] is False
+
+
+def test_corrupted_metadata_file_leaves_the_session_list_working(tmp_path):
+    session_id, store = _session_with_title_state(
+        tmp_path, "user", "user", "first question"
+    )
+    (tmp_path / session_id / "session.json").write_text("{broken", encoding="utf-8")
+
+    payload = journal_session_payload(store.list_sessions()[0], store)
+
+    assert payload["title"] == "first question"
+
+
+def test_display_title_helper_prefers_the_user_title(tmp_path):
+    session_id, store = _session_with_title_state(
+        tmp_path, "user", "user", "first question"
+    )
+    store.rename_session(session_id, "Mine")
+
+    assert _journal_session_title(session_id, store) == "Mine"

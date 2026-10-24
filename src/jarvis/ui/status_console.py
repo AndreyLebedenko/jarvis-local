@@ -279,12 +279,14 @@ def journal_session_payload(
     summary: JournalSessionSummary, store: JournalStore
 ) -> dict:
     title, title_kind = _journal_session_title_and_kind(summary.session_id, store)
+    user_title = store.read_session_metadata(summary.session_id).title
     payload = JournalSessionPayload(
         id=summary.session_id,
         start_timestamp=summary.first_timestamp,
         end_timestamp=summary.last_timestamp,
-        title=title,
+        title=title if user_title is None else user_title,
         title_kind=title_kind,
+        has_user_title=user_title is not None,
         folder_path=str(store.root / summary.session_id),
     )
     return asdict(payload)
@@ -341,6 +343,9 @@ def _journal_session_title_and_kind(
 
 
 def _journal_session_title(session_id: str, store: JournalStore) -> str:
+    user_title = store.read_session_metadata(session_id).title
+    if user_title is not None:
+        return user_title
     return _journal_session_title_and_kind(session_id, store)[0]
 
 

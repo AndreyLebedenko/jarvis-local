@@ -844,6 +844,120 @@ function closeSessionInfoOverlay() {
   _sessionInfoReturnFocus = null;
 }
 
+// Session rename dialog. Same overlay contract as the session info modal.
+// The server owns the limits (80 characters, one line); maxlength here only
+// saves a round trip.
+const SESSION_TITLE_MAX_CHARS = 80;
+let _sessionRenameReturnFocus = null;
+let _sessionRenameSessionId = null;
+let _sessionRenameInFlight = false;
+let _sessionRenameInitialTitle = "";
+
+function openSessionRenameOverlay(sessionId) {
+  const overlay = document.getElementById("sessionRenameOverlay");
+  const session = _journalSessions.find((item) => item.id === sessionId);
+  if (!overlay || !overlay.hidden || !session) return;
+  const input = document.getElementById("sessionRenameInput");
+  _sessionRenameSessionId = sessionId;
+  input.maxLength = SESSION_TITLE_MAX_CHARS;
+  _sessionRenameInitialTitle = session.has_user_title ? session.title : "";
+  input.value = _sessionRenameInitialTitle;
+  input.placeholder = _sessionRenamePlaceholder(session);
+  document.getElementById("sessionRenameError").textContent = "";
+  syncSessionRenameCounter();
+  _sessionRenameReturnFocus = document.activeElement;
+  _setBackgroundInert(true, overlay);
+  overlay.hidden = false;
+  input.focus();
+  input.select();
+}
+
+// The automatic name is shown as a hint only, never as editable text: it can
+// be a long or multi-line first request.
+function _sessionRenamePlaceholder(session) {
+  if (session.has_user_title) return "";
+  const oneLine = _journalSessionTitle(session).replace(/\s+/g, " ").trim();
+  if (oneLine.length <= SESSION_TITLE_MAX_CHARS) return oneLine;
+  return oneLine.slice(0, SESSION_TITLE_MAX_CHARS - 3) + "...";
+}
+
+function closeSessionRenameOverlay() {
+  const overlay = document.getElementById("sessionRenameOverlay");
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  _setBackgroundInert(false, overlay);
+  _sessionRenameSessionId = null;
+  _sessionRenameReturnFocus?.focus?.();
+  _sessionRenameReturnFocus = null;
+}
+
+function syncSessionRenameCounter() {
+  const input = document.getElementById("sessionRenameInput");
+  document.getElementById("sessionRenameCounter").textContent = uiString(
+    "journal_rename_counter")
+    .replace("{chars}", String(input.value.length))
+    .replace("{max}", String(SESSION_TITLE_MAX_CHARS));
+}
+
+async function submitSessionRename(event) {
+  event.preventDefault();
+  if (_sessionRenameInFlight || _sessionRenameSessionId === null) return false;
+  const url = _journalUrl(
+    "/api/journal/sessions/" + encodeURIComponent(_sessionRenameSessionId) + "/title");
+  if (url === null) {
+    _showSessionRenameError(uiString("transport_no_token"));
+    return false;
+  }
+  const title = document.getElementById("sessionRenameInput").value;
+  if (title.trim() === _sessionRenameInitialTitle) {
+    closeSessionRenameOverlay();
+    return false;
+  }
+  const save = document.getElementById("sessionRenameSave");
+  _sessionRenameInFlight = true;
+  save.disabled = true;
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    const payload = await response.json();
+    if (payload.status === "ok") {
+      closeSessionRenameOverlay();
+      await refreshJournalSessions();
+      if (_isJournalSearchActive()) _scheduleJournalSearch();
+      return false;
+    }
+    _showSessionRenameError(
+      payload.status === "hidden"
+        ? uiString("journal_rename_hidden")
+        : _sessionRenameErrorMessage(payload.reason));
+  } catch (error) {
+    console.error("Journal rename failed:", error);
+    _showSessionRenameError(uiString("journal_rename_failed"));
+  } finally {
+    _sessionRenameInFlight = false;
+    save.disabled = false;
+  }
+  return false;
+}
+
+function _showSessionRenameError(message) {
+  document.getElementById("sessionRenameError").textContent = message;
+}
+
+function _sessionRenameErrorMessage(reason) {
+  if (reason === "title_too_long") {
+    return uiString("journal_rename_too_long").replace(
+      "{max}", String(SESSION_TITLE_MAX_CHARS));
+  }
+  if (reason === "title_invalid") return uiString("journal_rename_invalid");
+  if (reason === "not_found") return uiString("journal_rename_not_found");
+  if (reason === "journal_unavailable") return uiString("journal_rename_unavailable");
+  return uiString("journal_rename_failed");
+}
+
 function copySessionInfoFolder() {
   const path = document.getElementById("sessionInfoFolder")?.textContent || "";
   if (path) _copyToClipboardWithJournalStatus(path);
@@ -2176,6 +2290,7 @@ function _journalSessionStartStamp(sessionId) {
 }
 
 function _journalSessionTitle(session) {
+  if (session.has_user_title) return session.title;
   if (session.title_kind === "new_context") {
     return uiString("journal_session_title_new_context");
   }
@@ -2303,6 +2418,11 @@ function _journalSessionMenuEntries(row) {
     !isActive && {
       label: uiString("journal_session_delete"),
       run: () => deleteJournalSession(sessionId),
+    },
+    {
+      label: uiString("journal_session_rename"),
+      run: () => openSessionRenameOverlay(sessionId),
+      disabled: _isHiddenActive(),
     },
     {
       label: uiString("journal_session_copy_title"),
@@ -4312,6 +4432,10 @@ registerEscapable({
 registerEscapable({
   isOpen: () => document.getElementById("sessionInfoOverlay")?.hidden === false,
   close: closeSessionInfoOverlay,
+});
+registerEscapable({
+  isOpen: () => document.getElementById("sessionRenameOverlay")?.hidden === false,
+  close: closeSessionRenameOverlay,
 });
 registerEscapable({ isOpen: _contextMenuOpen, close: _closeContextMenu });
 

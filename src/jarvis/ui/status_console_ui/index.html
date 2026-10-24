@@ -57,6 +57,25 @@
   </div>
 </div>
 
+<div class="session-info-overlay" id="sessionRenameOverlay" role="dialog" aria-modal="true" aria-labelledby="sessionRenameTitle" hidden>
+  <form class="session-info-panel session-rename-panel" onsubmit="return submitSessionRename(event)">
+    <div class="session-info-head">
+      <h2 id="sessionRenameTitle" data-i18n="journal_rename_title">Rename session</h2>
+    </div>
+    <label class="session-rename-label" for="sessionRenameInput" data-i18n="journal_rename_label">Session name</label>
+    <input id="sessionRenameInput" class="session-rename-input" type="text" maxlength="80" autocomplete="off" oninput="syncSessionRenameCounter()">
+    <div class="session-rename-meta">
+      <span class="session-rename-hint" data-i18n="journal_rename_hint">Leave empty to restore the automatic name.</span>
+      <span class="session-rename-counter" id="sessionRenameCounter"></span>
+    </div>
+    <div class="session-rename-error" id="sessionRenameError" role="alert"></div>
+    <div class="session-rename-actions">
+      <button type="button" data-i18n="journal_rename_cancel" onclick="closeSessionRenameOverlay()">Cancel</button>
+      <button type="submit" id="sessionRenameSave" data-i18n="journal_rename_save">Save</button>
+    </div>
+  </form>
+</div>
+
 <div class="topbar">
   <div class="brand">
     <div class="brand-mark">J</div>

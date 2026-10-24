@@ -1498,6 +1498,26 @@ html[data-visibility="hidden"] .journal-hidden-placeholder { display: flex; }
 }
 .session-info-copy:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 
+/* Rename dialog: reuses the session info overlay and panel. */
+.session-rename-label { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 6px; }
+.session-rename-input {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  border-radius: 6px; padding: 7px 10px; font-size: 13px;
+}
+.session-rename-input:focus { border-color: var(--cyan-dim); outline: none; }
+.session-rename-meta {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin-top: 6px; font-size: 11.5px; color: var(--text-dim);
+}
+.session-rename-error { min-height: 16px; margin-top: 8px; font-size: 12px; color: var(--red, #e0707a); }
+.session-rename-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.session-rename-actions button {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer;
+}
+.session-rename-actions button:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+
 /* ===== CONTEXT MENU (task-ui-ux-2) ===== */
 .context-menu {
   position: fixed; z-index: 210; min-width: 168px;

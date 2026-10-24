@@ -326,6 +326,10 @@ EXPECTED_ROUTE_ACTIONS = {
     ): ControlAction.JOURNAL_DELETE_SESSION,
     (
         "PUT",
+        "/api/journal/sessions/{session_id}/title",
+    ): ControlAction.JOURNAL_RENAME_SESSION,
+    (
+        "PUT",
         "/api/journal/transcripts/{session_id}/{event_position}",
     ): ControlAction.TRANSCRIPT_EDIT,
     (

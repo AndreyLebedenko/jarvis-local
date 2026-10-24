@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,12 @@ from jarvis.journal.events import (
     JournalEventRecord,
     JournalEventRef,
     parse_journal_timestamp,
+)
+from jarvis.journal.session_metadata import (
+    SessionMetadata,
+    normalize_session_title,
+    read_session_metadata,
+    write_session_metadata,
 )
 
 _EVENTS_FILE_NAME = "events.jsonl"
@@ -47,6 +54,7 @@ class JournalStore:
     def __init__(self, root: Path) -> None:
         self._root = root
         self._next_event_positions: dict[str, int] = {}
+        self._metadata_lock = threading.Lock()
 
     @property
     def root(self) -> Path:
@@ -142,9 +150,32 @@ class JournalStore:
         )
 
     def delete_session(self, session_id: str) -> None:
-        session_dir = self._existing_session_dir(session_id)
-        shutil.rmtree(session_dir)
-        self._next_event_positions.pop(session_id, None)
+        with self._metadata_lock:
+            session_dir = self._existing_session_dir(session_id)
+            shutil.rmtree(session_dir)
+            self._next_event_positions.pop(session_id, None)
+
+    def read_session_metadata(self, session_id: str) -> SessionMetadata:
+        with self._metadata_lock:
+            return read_session_metadata(self._root / session_id)
+
+    def rename_session(self, session_id: str, raw_title: object) -> str | None:
+        """Sets the user title of an existing session; a blank title resets it.
+        Returns the stored title. Raises SessionTitleError for a refused title
+        and KeyError for an unknown session. Event records are never touched."""
+        title = normalize_session_title(raw_title)
+        with self._metadata_lock:
+            session_dir = self._existing_session_dir(session_id)
+            current = read_session_metadata(session_dir)
+            if title == current.title:
+                return title
+            write_session_metadata(
+                session_dir,
+                SessionMetadata(
+                    title=title, extra=current.extra, version=current.version
+                ),
+            )
+        return title
 
     def _existing_session_dir(self, session_id: str) -> Path:
         real_session_ids = {summary.session_id for summary in self.list_sessions()}

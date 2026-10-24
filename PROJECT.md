@@ -5858,6 +5858,44 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   unchanged. The dock shows a help line in the proxy mode. The forced text appears only in
   the chat and the Journal, never in logs, exceptions or `repr`.
 
+  Session metadata and rename (story v2.1.0 task 10f, `journal/session_metadata.py`,
+  `JournalStore.rename_session`, `PUT /api/journal/sessions/{id}/title`). A session
+  directory may hold `session.json` next to `events.jsonl`: a UTF-8 JSON object
+  `{"version": 1, "title": "..."}`. It is the place for user-owned facts about a session
+  (the owner expects a project id, paths and URLs later). Extension rule: a new fact is a
+  new optional key; a reader ignores a key it does not know and a rewrite keeps every
+  unknown key and the stored `version` (so a newer file is never downgraded); a missing
+  file, a missing key, malformed JSON or an invalid stored value mean "no such metadata"
+  and never raise. The event log is never touched by a rename (a test compares its
+  bytes). Writes go to `session.json.tmp` and `os.replace`, under one lock shared with
+  session delete and with metadata reads (on Windows a reader blocks `os.replace`), a replace
+  blocked by an outside reader is retried a few times, and an `OSError` that remains is HTTP 503
+  `rename_failed`, and only for a session that has events (an unknown id is `not_found`
+  and creates nothing). Deleting a session removes its directory, and so the file;
+  fork, consolidation and the search projections neither read nor copy it. Title rules,
+  enforced on the server (`normalize_session_title`): text only, trimmed, at most 80
+  characters (counted after trimming), no control characters (Unicode category Cc) and no
+  U+2028/U+2029, no lone surrogates (Cs), and at least one visible character (a title of only
+  invisible format characters such as U+200B is `title_invalid`; a ZWJ inside an emoji
+  sequence is fine); a blank title resets (the key is dropped). Saving a title equal to the
+  stored one, or resetting a session that has no title, writes nothing. A non-UTF-8 request
+  body is 400. A longer or invalid title is
+  refused, not cut: HTTP 400 `{"status": "rejected", "reason": "title_too_long" |
+  "title_invalid"}`; `not_found` is 404 and an unavailable Journal is 503
+  `journal_unavailable`. The route is the control action `journal_rename_session`
+  (allowed in every run mode), refused as `hidden` while Hidden, and any session can be
+  renamed including the live one; the client disables the entry while Hidden
+  (`_isHiddenActive()`; no run mode refuses it, so the refused-action marking does not apply)
+  and shows a hidden-specific message on `hidden`. The user title wins everywhere: the sessions payload
+  carries `title` = the user title and `has_user_title: true`, `title_kind` stays the
+  automatic kind (so the proxy marker stays), and the page shows a user title verbatim; the editor opens empty for a session without
+  a user title and shows the automatic name only as a one-line placeholder; an
+  empty title restores the automatic one. The Journal search matches event text only, as
+  before (a title is not searched); search results show the session's current title. The
+  title is user text kept local: it is never read into the main model's context, never in
+  a proxy record or request, and no log line carries it. Manual check:
+  `manual/session-rename-handoff.md`.
+
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.
 
