@@ -423,7 +423,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     feature for all session kinds: a title kept apart from the records, edited from the
     session's "..." menu, used in the list, search and the title.
 
-11. **Refactoring and optimization sweep.** (Size: S-M.) Behavior-preserving
+11. **Refactoring and optimization sweep.** (Size: S-M. Done 2026-10-25, `tasks/done/task-v2.1.0-11-refactoring-sweep.md` and `tasks/done/task-v2.1.0-11a-personal-proxy-package-layout.md`.) Behavior-preserving
     consolidation of this story's code and tests. Boundary: this story's code
     only.
 

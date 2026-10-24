@@ -1,6 +1,6 @@
 # Task v2.1.0-11: Refactoring and optimization sweep
 
-Status: In review (findings 2, 3 and 4 applied 2026-10-24; waiting for the owner).
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 11.
 
@@ -49,9 +49,9 @@ Complexity is low: no C901 or PLR0912 hit in story code. Every hit is listed bel
 
 ## Acceptance criteria
 
-- [ ] The owner picks which findings to apply.
-- [ ] Chosen items applied with no assertion edited (except as agreed for finding 1).
-- [ ] `python -m pytest`, `ruff check` and `ruff format --check` are green.
+- [x] The owner picks which findings to apply.
+- [x] Chosen items applied with no assertion edited (except as agreed for finding 1).
+- [x] `python -m pytest`, `ruff check` and `ruff format --check` are green.
 
 ## Applied (owner choice: findings 2, 3, 4)
 
@@ -66,5 +66,5 @@ Complexity is low: no C901 or PLR0912 hit in story code. Every hit is listed bel
 - 4: `app.py` `create_live_status_console` fixed. The `proxy_assembly.py:142` hit is a false
   positive: `runtime` is read in the `finally` block, so it stays.
 - Comments in story code are all "why not the obvious" notes (project rule 7.2); kept.
-- Not applied, needs an owner decision: `personal_proxy/` has 95 flat modules; see the
-  grouping proposal in the review message.
+- Package layout of `personal_proxy/`: done as `tasks/done/task-v2.1.0-11a-personal-proxy-package-layout.md`.
+- Left as is by recommendation: findings 1 (test-only helpers `failed_rules`, `shown_question`), 5, 6, 7, 8.
