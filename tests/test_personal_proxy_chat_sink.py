@@ -2,19 +2,17 @@ import json
 
 import pytest
 
-from jarvis.personal_proxy.block_payload import block_payload
-from jarvis.personal_proxy.chat_sink import TransportChatSink
-from jarvis.personal_proxy.check_result import Doubt, DoubtKind
-from jarvis.personal_proxy.confirmation_blocks import (
+from jarvis.personal_proxy.check.check_result import Doubt, DoubtKind
+from jarvis.personal_proxy.common.findings import Finding, GateCategory
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
     HeardBlock,
     HeardDecision,
     SentBlock,
 )
-from jarvis.personal_proxy.findings import Finding, GateCategory
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.sanitize_result import SanitizeVerdict
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.reporting.block_payload import block_payload
+from jarvis.personal_proxy.reporting.chat_sink import TransportChatSink
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     AnswerCompleteBlock,
     DryRunBlock,
@@ -22,6 +20,8 @@ from jarvis.personal_proxy.service_blocks import (
     NoticeKind,
     RequestSourceBlock,
 )
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeVerdict
 
 SECRET = "Марина Крылова"
 

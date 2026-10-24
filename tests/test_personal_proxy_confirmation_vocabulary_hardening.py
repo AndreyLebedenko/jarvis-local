@@ -2,7 +2,7 @@ import unicodedata
 
 import pytest
 
-from jarvis.personal_proxy.confirmation_vocabulary import (
+from jarvis.personal_proxy.confirmation.confirmation_vocabulary import (
     NO_PHRASES,
     YES_PHRASES,
     AnswerKind,

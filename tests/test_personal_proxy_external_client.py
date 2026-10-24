@@ -9,12 +9,12 @@ import httpx
 import pytest
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.external_client import ExternalClient
-from jarvis.personal_proxy.external_error import (
+from jarvis.personal_proxy.common.payload import build_outbound_payload
+from jarvis.personal_proxy.external.external_client import ExternalClient
+from jarvis.personal_proxy.external.external_error import (
     ExternalClientError,
     ExternalErrorKind,
 )
-from jarvis.personal_proxy.payload import build_outbound_payload
 
 KEY = "sk-test-KEY-4711"
 KEY_ENV = "JARVIS_PERSONAL_PROXY_KEY"

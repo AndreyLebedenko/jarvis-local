@@ -7,8 +7,8 @@ from jarvis.app import parse_args
 from jarvis.core.config import PersonalProxySettings, Settings
 from jarvis.core.run_mode import RunMode
 from jarvis.core.single_instance import HeldInstance
-from jarvis.personal_proxy.locality import external_locality
-from jarvis.personal_proxy.startup import (
+from jarvis.personal_proxy.common.locality import external_locality
+from jarvis.personal_proxy.startup.startup import (
     PersonalProxyNotConfiguredError,
     require_configured,
 )
@@ -210,7 +210,7 @@ def test_the_seam_has_no_production_caller():
         path.relative_to(source_root).as_posix()
         for path in source_root.rglob("*.py")
         if "external_locality" in path.read_text(encoding="utf-8")
-        and path.parent.name != "personal_proxy"
+        and "personal_proxy" not in path.relative_to(source_root).parts
     ]
 
     assert callers == []

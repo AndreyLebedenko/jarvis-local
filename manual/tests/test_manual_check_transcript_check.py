@@ -3,7 +3,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     Doubt,

@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeFailure,
     SanitizeResult,
     SanitizeVerdict,

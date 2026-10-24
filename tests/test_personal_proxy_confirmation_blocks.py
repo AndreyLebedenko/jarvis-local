@@ -1,19 +1,19 @@
 import pytest
 
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     Doubt,
     DoubtKind,
 )
-from jarvis.personal_proxy.confirmation_blocks import (
+from jarvis.personal_proxy.common.payload import build_outbound_payload
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
     HeardBlock,
     HeardDecision,
     SentBlock,
     heard_block_of,
     sent_block_of,
 )
-from jarvis.personal_proxy.payload import build_outbound_payload
 
 HEARD = "Отправь Марине Крыловой письмо на marina@example.org"
 FRAGMENT = "marina@example.org"

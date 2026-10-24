@@ -9,10 +9,10 @@ import pytest
 from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy import sanitize as sanitize_module
-from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
-from jarvis.personal_proxy.sanitize import SANITIZE_RETRIES, sanitize
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.check.check_result import CheckedTranscript, CheckSource
+from jarvis.personal_proxy.sanitize import sanitize as sanitize_module
+from jarvis.personal_proxy.sanitize.sanitize import SANITIZE_RETRIES, sanitize
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeFailure,
     SanitizeFailureClass,
     SanitizeResult,

@@ -1,13 +1,13 @@
 import numpy as np
 
-from jarvis.personal_proxy.confirmation_vocabulary import (
+from jarvis.personal_proxy.confirmation.confirmation_vocabulary import (
     NO_PHRASES,
     YES_PHRASES,
     AnswerKind,
     classify_answer,
 )
-from jarvis.personal_proxy.speech_guard import SpeechProbabilities
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.stt.speech_guard import SpeechProbabilities
+from jarvis.personal_proxy.stt.stt_result import Transcription
 from manual.personal_proxy.answer_words import (
     PHRASES,
     REPETITIONS,

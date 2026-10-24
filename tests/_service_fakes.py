@@ -16,22 +16,22 @@ from _confirmation_fakes import (
 )
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     Doubt,
     DoubtKind,
 )
-from jarvis.personal_proxy.gate import check_outbound_payload
-from jarvis.personal_proxy.pipeline_stages import PipelineStages
-from jarvis.personal_proxy.proxy_service import PersonalProxyService
-from jarvis.personal_proxy.restoration import restore_answer
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.gate.gate import check_outbound_payload
+from jarvis.personal_proxy.reporting.service_blocks import PersistenceBlock
+from jarvis.personal_proxy.request.pipeline_stages import PipelineStages
+from jarvis.personal_proxy.restoration.restoration import restore_answer
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeResult,
     SanitizeVerdict,
 )
-from jarvis.personal_proxy.service_blocks import PersistenceBlock
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
+from jarvis.personal_proxy.stt.stt_result import Transcription
 from jarvis.ui.contract import DataLocality
 
 HEARD = "Передай Марине Крыловой, что документы готовы"
@@ -77,7 +77,7 @@ class RecordingSink:
         return [block for block in self.blocks if isinstance(block, block_type)]
 
     def notices(self):
-        from jarvis.personal_proxy.service_blocks import NoticeBlock
+        from jarvis.personal_proxy.reporting.service_blocks import NoticeBlock
 
         return [block.kind for block in self.of(NoticeBlock)]
 

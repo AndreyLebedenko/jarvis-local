@@ -65,7 +65,7 @@ Automated counterpart already green: `python -m pytest` (includes
     `Standard system prompt (click to show)`.
   - Journal event label (`journal_source_proxy_sent`): `Personal proxy - sent`.
 - The standard system prompt is `DEFAULT_SYSTEM_PROMPT` in
-  `src/jarvis/personal_proxy/payload.py`: `Answer in the language of the request. Keep placeholders such as <PERSON_1> exactly as written.`
+  `src/jarvis/personal_proxy/common/payload.py`: `Answer in the language of the request. Keep placeholders such as <PERSON_1> exactly as written.`
   It cannot be changed from `config.toml`, so the "a changed prompt is shown in
   full" half of the rule is covered only by automated tests
   (`tests/test_personal_proxy_chat_js_behavior.py`,

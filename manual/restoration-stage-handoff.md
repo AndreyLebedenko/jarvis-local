@@ -52,14 +52,14 @@ Automated counterpart already green: `python -m pytest` (includes
   effective values and a `WARNING:` line for each one that is unset. (Setting the
   server variables as well is optional; if you do, set them before Ollama starts.)
 - Constants of the stage (not settings): `num_predict` 512 (`NUM_PREDICT` in
-  `src/jarvis/personal_proxy/restoration_requests.py`); a time limit of 15 s per
-  model call (`BACKEND_TIMEOUT_SECONDS`, `src/jarvis/personal_proxy/restoration.py`;
+  `src/jarvis/personal_proxy/restoration/restoration_requests.py`); a time limit of 15 s per
+  model call (`BACKEND_TIMEOUT_SECONDS`, `src/jarvis/personal_proxy/restoration/restoration.py`;
   a timeout is a fallback); a sentence with more than 8 placeholders
   (`MAX_MODEL_PLACEHOLDERS`) or more than 1000 characters
   (`MAX_MODEL_SENTENCE_CHARS`, both in
-  `src/jarvis/personal_proxy/restoration_validation.py`) is never sent to the model
+  `src/jarvis/personal_proxy/restoration/restoration_validation.py`) is never sent to the model
   and is only substituted; a newline, or more than 4000 pending characters
-  (`MAX_PENDING_CHARS`, `src/jarvis/personal_proxy/restoration_sentences.py`), ends
+  (`MAX_PENDING_CHARS`, `src/jarvis/personal_proxy/restoration/restoration_sentences.py`), ends
   a sentence; reasoning off
   (`think: false`, the `ReasoningLevel.OFF` default of
   `src/jarvis/dialog/backend.py`); the text-only request has no `format` and no
@@ -74,7 +74,7 @@ Automated counterpart already green: `python -m pytest` (includes
   `MIN_VALIDATION_PASS_RATE = 0.90`, `MAX_ALTERATION_RATE = 0.05`,
   `MIN_FALLBACK_BEATEN_SHARE = 0.80`.
 
-- The validation rule (`src/jarvis/personal_proxy/restoration_validation.py`): the
+- The validation rule (`src/jarvis/personal_proxy/restoration/restoration_validation.py`): the
   sentence is cut at its placeholders; the model's reply must equal the remaining
   text exactly (case, `ё`, punctuation, digits), and in each placeholder's place
   must stand a form of that placeholder's original: the same number of words and

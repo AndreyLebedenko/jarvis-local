@@ -2,7 +2,7 @@
 
 import pytest
 
-from jarvis.personal_proxy.request_commands import (
+from jarvis.personal_proxy.request.request_commands import (
     COMMAND_TABLE,
     Command,
     ParsedKind,

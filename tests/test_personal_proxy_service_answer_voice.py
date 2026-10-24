@@ -3,9 +3,9 @@ import asyncio
 import pytest
 from _confirmation_fakes import FakeMicrophone, FakeSpeaker
 
-from jarvis.personal_proxy.answer_voice import AnswerVoice
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
-from jarvis.personal_proxy.service_blocks import NoticeKind
+from jarvis.personal_proxy.answer.answer_voice import AnswerVoice
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.reporting.service_blocks import NoticeKind
 
 
 def _voice(log, *, speaker=None, microphone=None, language="en", limit=0.05):

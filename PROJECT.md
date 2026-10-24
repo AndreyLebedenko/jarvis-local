@@ -38,7 +38,7 @@ is started with the explicit `--personal-proxy` flag (requires
 a silent fall back to local. It is off by default and is not a persistent
 setting, so a restart without the flag is local again. A turn answered
 externally is reported as `DataLocality.EXTERNAL`; every other turn stays
-`LOCAL`. The reporting seam (`personal_proxy/locality.py`) is wired by the
+`LOCAL`. The reporting seam (`personal_proxy/common/locality.py`) is wired by the
 application (v2.1.0 task 9b): the Status Console indicator reads `EXTERNAL` only
 while the external stream is read. Without the flag the runtime is
 byte-identical to the v2.0 behavior.
@@ -5744,8 +5744,22 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   (`doubt_min_listed` = 1) asks on 13 of 60 labeled recordings and covers 7 of 8 real
   errors on the production check; it names the wrong fragment on 3 of 8 (the e-mail cases
   carry no fragment). The adapters and the chat blocks' real display are tasks 9 and 10.
-- Personal proxy service (story v2.1.0 task 9a, `src/jarvis/personal_proxy/proxy_service.py`
-  and `request_pipeline.py`): composes the stages over injected callables and ports, with no
+- Package layout of `src/jarvis/personal_proxy/` (story v2.1.0 task 11a): the root holds only
+  `__init__.py`; modules live in `common/` (payload, findings, locality, text helpers),
+  `gate/` (the deterministic gate and `detectors/`), `stt/`, `check/` (transcript check),
+  `sanitize/`, `restoration/`, `confirmation/`, `external/` (the external client),
+  `request/` (intake, pipeline, stage binding, the inbox), `answer/` (presenting and
+  speaking the answer), `reporting/` (blocks, sinks, the Journal writer), `service/`
+  (the service, runtime, submissions) and `startup/` (assembly, launch, startup checks).
+  Imports use the full path (`jarvis.personal_proxy.<package>.<module>`), packages do not
+  re-export, and the package graph has no cycle: `common`, `stt`, `external`, `gate` are
+  leaves; `check` -> `stt`; `confirmation`, `sanitize` -> `check`; `restoration` ->
+  `sanitize`, `external`; `reporting` -> `check`, `confirmation`, `restoration`,
+  `sanitize`; `answer` -> `reporting` and the stage packages; `request` -> `answer`, `reporting` and
+  the stage packages; `service` -> `request`, `answer`, `reporting`; `startup` -> all. A new module goes into the package of its stage; a new
+  import must not add an edge against these arrows.
+- Personal proxy service (story v2.1.0 task 9a, `src/jarvis/personal_proxy/service/proxy_service.py`
+  and `request/request_pipeline.py`): composes the stages over injected callables and ports, with no
   `app.py`, `Orchestrator` or Journal dependency. A router sends every item either to the
   pending confirmation exchange or to a bounded FIFO; one worker runs one request at a time,
   so the locality seam (EXTERNAL only around the external stream) is never overlapped. The
@@ -5756,7 +5770,7 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   is shown and spoken sentence by sentence verbatim, with speech control tags stripped. The
   application wiring is task 9b.
 - Application wiring (story v2.1.0 task 9b, `RunMode.PERSONAL_PROXY`, `src/jarvis/app.py`,
-  `personal_proxy/proxy_assembly.py`, `proxy_runtime.py`, `launch.py`): with
+  `personal_proxy/startup/proxy_assembly.py`, `service/proxy_runtime.py`, `startup/launch.py`): with
   `--personal-proxy` the only consumer of utterances is the proxy (the `Orchestrator`
   turn path, the clipboard and screenshot inputs and the debug utterance recorder are not
   subscribed; `McpHost` is never enabled) and dock text is rerouted into it as typed text.
@@ -5786,7 +5800,7 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   is only refused in this mode; it reaches no model. Not in this task: the launcher offering the mode, orb states
   for a request in progress.
 - **Journal and Status Console surfaces (task v2.1.0-10, 2026-10-22).** The exchange is
-  persisted by a tee over the chat sink (`personal_proxy/journal_writer.py`; the service
+  persisted by a tee over the chat sink (`personal_proxy/reporting/journal_writer.py`; the service
   stays journal-free). Four Journal sources (`journal/proxy_exchange.py`): `proxy_heard`
   (user, the heard text whole, the recording and `raw_transcript` in the same event),
   `proxy_sent` (system, the sanitized request that went out), `proxy_answer` (assistant,
@@ -5831,9 +5845,9 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   Journal feed for `proxy_sent` records) folds a system prompt equal to
   `DEFAULT_SYSTEM_PROMPT` behind an expandable label; the server decides
   (`system_is_default` in the block payload, `proxy_sent` view in the feed payload, both
-  from `personal_proxy/sent_view.py`) so the page keeps no copy of the prompt; a different
+  from `personal_proxy/reporting/sent_view.py`) so the page keeps no copy of the prompt; a different
   prompt is shown in full; the stored record is unchanged.
-  The `/force` command (story v2.1.0 task 10d, `personal_proxy/request_commands.py`,
+  The `/force` command (story v2.1.0 task 10d, `personal_proxy/request/request_commands.py`,
   `verbatim_result.py`): a typed request whose first token is `/force` or `/f` (lowercase,
   ends at whitespace) is sent once, as typed, without the local model stages: no
   transcript check, no sanitize pass (so no topics refusal and no false refusal by the

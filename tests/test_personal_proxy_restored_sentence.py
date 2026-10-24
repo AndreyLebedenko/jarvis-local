@@ -2,7 +2,7 @@ import dataclasses
 
 import pytest
 
-from jarvis.personal_proxy.restoration_result import (
+from jarvis.personal_proxy.restoration.restoration_result import (
     RestorationMethod,
     RestoredSentence,
 )

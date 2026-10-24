@@ -1,5 +1,5 @@
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.sent_view import (
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.reporting.sent_view import (
     has_default_system_prompt,
     request_after_default_system_prompt,
 )

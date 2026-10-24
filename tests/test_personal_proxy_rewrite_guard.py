@@ -1,7 +1,7 @@
 import pytest
 
-from jarvis.personal_proxy.check_result import FallbackReason
-from jarvis.personal_proxy.rewrite_guard import detect_rewrite
+from jarvis.personal_proxy.check.check_result import FallbackReason
+from jarvis.personal_proxy.check.rewrite_guard import detect_rewrite
 
 
 def test_a_second_invented_address_is_caught():

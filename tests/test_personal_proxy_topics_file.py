@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.topics_file import (
+from jarvis.personal_proxy.gate.topics_file import (
     MAX_TOPICS_CHARACTERS,
     TopicsFileError,
     load_topics,

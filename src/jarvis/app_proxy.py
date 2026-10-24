@@ -12,8 +12,8 @@ from jarvis.core.lifecycle import (
 )
 from jarvis.core.run_mode import RunMode
 from jarvis.core.system_log import publish_system_event
-from jarvis.personal_proxy.launch import ProxyPreparer, launch_personal_proxy
-from jarvis.personal_proxy.proxy_assembly import ProxyHost
+from jarvis.personal_proxy.startup.launch import ProxyPreparer, launch_personal_proxy
+from jarvis.personal_proxy.startup.proxy_assembly import ProxyHost
 from jarvis.ui.contract import EventLevel, HealthStatus, ModuleHealth, ModuleId
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import NewContextHandler, TextInputSubmitter

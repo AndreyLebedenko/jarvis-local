@@ -6,15 +6,15 @@ from contextlib import asynccontextmanager
 import pytest
 from _service_fakes import Rig, closed, make_wav, settled
 
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.reporting.service_blocks import NoticeBlock, NoticeKind
+from jarvis.personal_proxy.reporting.service_texts import notice_text, spoken_notice
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeFailure,
     SanitizeFailureClass,
     SanitizeResult,
     SanitizeVerdict,
 )
-from jarvis.personal_proxy.service_blocks import NoticeBlock, NoticeKind
-from jarvis.personal_proxy.service_texts import notice_text, spoken_notice
 
 HINT_EN = "/force"
 REASON = "a sensitive topic"

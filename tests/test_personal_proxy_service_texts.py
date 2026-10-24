@@ -1,14 +1,14 @@
 import pytest
 
-from jarvis.personal_proxy import service_texts
-from jarvis.personal_proxy.confirmation_texts import offer_text
-from jarvis.personal_proxy.findings import (
+from jarvis.personal_proxy.common.findings import (
     Finding,
     GateCategory,
     GateStage,
 )
-from jarvis.personal_proxy.service_blocks import NoticeBlock, NoticeKind
-from jarvis.personal_proxy.service_texts import (
+from jarvis.personal_proxy.confirmation.confirmation_texts import offer_text
+from jarvis.personal_proxy.reporting import service_texts
+from jarvis.personal_proxy.reporting.service_blocks import NoticeBlock, NoticeKind
+from jarvis.personal_proxy.reporting.service_texts import (
     SPOKEN_KINDS,
     notice_text,
     spoken_notice,
@@ -133,6 +133,6 @@ def test_the_internal_error_wording_does_not_claim_that_nothing_or_something_was
 
 
 def test_the_language_rule_is_public():
-    from jarvis.personal_proxy.confirmation_texts import is_english
+    from jarvis.personal_proxy.confirmation.confirmation_texts import is_english
 
     assert is_english("en-US") and not is_english("ru") and not is_english(None)

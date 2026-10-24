@@ -1,7 +1,7 @@
 import pytest
 
-from jarvis.personal_proxy import restoration_validation
-from jarvis.personal_proxy.restoration_validation import (
+from jarvis.personal_proxy.restoration import restoration_validation
+from jarvis.personal_proxy.restoration.restoration_validation import (
     failed_rules,
     restoration_is_valid,
 )

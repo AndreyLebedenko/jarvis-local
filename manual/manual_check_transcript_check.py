@@ -24,14 +24,14 @@ import httpx
 import numpy as np
 
 from jarvis.core.config import load_settings
-from jarvis.personal_proxy.check_backend import ChatRequest, CheckBackend
-from jarvis.personal_proxy.check_result import CheckedTranscript, FallbackReason
-from jarvis.personal_proxy.guarded_transcription import transcribe_guarded
-from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
-from jarvis.personal_proxy.silero_probabilities import SileroSpeechProbabilities
-from jarvis.personal_proxy.speech_guard import NoSpeech
-from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine
-from jarvis.personal_proxy.transcript_check import check_transcript
+from jarvis.personal_proxy.check.check_backend import ChatRequest, CheckBackend
+from jarvis.personal_proxy.check.check_result import CheckedTranscript, FallbackReason
+from jarvis.personal_proxy.check.ollama_check_backend import OllamaCheckBackend
+from jarvis.personal_proxy.check.transcript_check import check_transcript
+from jarvis.personal_proxy.stt.guarded_transcription import transcribe_guarded
+from jarvis.personal_proxy.stt.silero_probabilities import SileroSpeechProbabilities
+from jarvis.personal_proxy.stt.speech_guard import NoSpeech
+from jarvis.personal_proxy.stt.stt_whisper import FasterWhisperEngine
 from manual.manual_check_stt_stage import decode
 
 REWRITE_CASES = ("n_short_translate", "m_trade_house")

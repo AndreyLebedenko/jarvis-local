@@ -1,5 +1,5 @@
-from jarvis.personal_proxy.check_result import Doubt, DoubtKind
-from jarvis.personal_proxy.confirmation_texts import (
+from jarvis.personal_proxy.check.check_result import Doubt, DoubtKind
+from jarvis.personal_proxy.confirmation.confirmation_texts import (
     MAX_SPOKEN_FRAGMENT_CHARS,
     MAX_SPOKEN_ITEMS,
     offer_text,

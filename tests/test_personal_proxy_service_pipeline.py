@@ -24,34 +24,26 @@ from _service_fakes import (
     until,
 )
 
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     FallbackReason,
 )
-from jarvis.personal_proxy.confirmation_blocks import (
+from jarvis.personal_proxy.common.findings import Finding, GateCategory, GateResult
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT, OutboundPayload
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
     HeardBlock,
     HeardDecision,
     SentBlock,
 )
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
-from jarvis.personal_proxy.confirmation_texts import offer_text
-from jarvis.personal_proxy.external_error import (
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.confirmation.confirmation_texts import offer_text
+from jarvis.personal_proxy.external.external_error import (
     ExternalClientError,
     ExternalErrorKind,
 )
-from jarvis.personal_proxy.findings import Finding, GateCategory, GateResult
-from jarvis.personal_proxy.gate_context import GateContext
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT, OutboundPayload
-from jarvis.personal_proxy.proxy_inbox import InboxFullError, TypedText, Utterance
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.sanitize_result import (
-    SanitizeFailure,
-    SanitizeFailureClass,
-    SanitizeResult,
-    SanitizeVerdict,
-)
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.gate.gate_context import GateContext
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     AnswerCompleteBlock,
     DryRunBlock,
@@ -59,9 +51,21 @@ from jarvis.personal_proxy.service_blocks import (
     NoticeKind,
     RequestSourceBlock,
 )
-from jarvis.personal_proxy.service_texts import notice_text
-from jarvis.personal_proxy.speech_guard import NoSpeech
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.reporting.service_texts import notice_text
+from jarvis.personal_proxy.request.proxy_inbox import (
+    InboxFullError,
+    TypedText,
+    Utterance,
+)
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize.sanitize_result import (
+    SanitizeFailure,
+    SanitizeFailureClass,
+    SanitizeResult,
+    SanitizeVerdict,
+)
+from jarvis.personal_proxy.stt.speech_guard import NoSpeech
+from jarvis.personal_proxy.stt.stt_result import Transcription
 from jarvis.ui.contract import DataLocality
 
 UTTERANCE = Utterance(make_wav())
@@ -400,7 +404,7 @@ async def test_a_gate_result_with_findings_is_a_block_whatever_else_it_says():
 
 
 def _service_with(rig, **replacements):
-    from jarvis.personal_proxy.proxy_service import PersonalProxyService
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
 
     stages = dataclasses.replace(rig.stages.as_stages(), **replacements)
     return PersonalProxyService(

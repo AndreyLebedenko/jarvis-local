@@ -111,8 +111,8 @@ def test_a_notice_is_worded_in_russian_too(tmp_path):
 def test_every_notice_kind_and_gate_category_has_a_string_in_both_languages(
     tmp_path,
 ):
-    from jarvis.personal_proxy.findings import GateCategory
-    from jarvis.personal_proxy.service_blocks import NoticeKind
+    from jarvis.personal_proxy.common.findings import GateCategory
+    from jarvis.personal_proxy.reporting.service_blocks import NoticeKind
 
     keys = [f"proxy_notice_{kind.value}" for kind in NoticeKind] + [
         f"proxy_gate_category_{category.value}" for category in GateCategory
@@ -162,9 +162,9 @@ console.log(JSON.stringify(out));
 def test_every_enum_that_can_ride_in_a_notice_has_a_string_in_both_languages(
     tmp_path,
 ):
-    from jarvis.personal_proxy.confirmation_outcome import ExchangeOutcome
-    from jarvis.personal_proxy.external_error import ExternalErrorKind
-    from jarvis.personal_proxy.sanitize_result import SanitizeFailureClass
+    from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
+    from jarvis.personal_proxy.external.external_error import ExternalErrorKind
+    from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeFailureClass
 
     values = {
         member.value

@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from jarvis.personal_proxy.clip_check import require_valid_clip
-from jarvis.personal_proxy.wav_clip import WavClipError, wav_to_clip
+from jarvis.personal_proxy.stt.clip_check import require_valid_clip
+from jarvis.personal_proxy.stt.wav_clip import WavClipError, wav_to_clip
 
 
 def _wav(samples, rate=16000, subtype="PCM_16"):

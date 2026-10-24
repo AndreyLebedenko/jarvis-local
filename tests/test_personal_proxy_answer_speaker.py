@@ -3,8 +3,8 @@ import asyncio
 import pytest
 
 from jarvis.audio.replay import ReplayOutcome, ReplayRun, TextReply
-from jarvis.personal_proxy.answer_speaker import ReplayAnswerSpeaker
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.answer.answer_speaker import ReplayAnswerSpeaker
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
 
 
 class _FakePlayer:

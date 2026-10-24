@@ -4,11 +4,11 @@ import pytest
 from _backend_fakes import FakeBackend
 
 from jarvis.core.config import GenerationOptions, PersonalProxySettings
-from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
-from jarvis.personal_proxy.sanitize import sanitize
-from jarvis.personal_proxy.sanitize_parsing import parse_sanitize_output
-from jarvis.personal_proxy.sanitize_prompts import TEXT_SCHEMA
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.check.check_result import CheckedTranscript, CheckSource
+from jarvis.personal_proxy.sanitize.sanitize import sanitize
+from jarvis.personal_proxy.sanitize.sanitize_parsing import parse_sanitize_output
+from jarvis.personal_proxy.sanitize.sanitize_prompts import TEXT_SCHEMA
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     MAX_REASON_LENGTH,
     SanitizeFailure,
     SanitizeFailureClass,

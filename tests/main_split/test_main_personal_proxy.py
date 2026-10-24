@@ -49,10 +49,10 @@ from jarvis.core.run_mode import RunMode
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
-from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
-from jarvis.personal_proxy.startup_failure import (
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
+from jarvis.personal_proxy.service.proxy_runtime import PersonalProxyRuntime
+from jarvis.personal_proxy.service.proxy_submissions import ProxySubmissions
+from jarvis.personal_proxy.startup.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
 )

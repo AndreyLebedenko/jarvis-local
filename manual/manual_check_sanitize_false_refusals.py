@@ -21,13 +21,16 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from jarvis.core.config import DEFAULT_CONFIG_PATH, Settings, load_settings
-from jarvis.personal_proxy.check_backend import ChatRequest
-from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
-from jarvis.personal_proxy.proxy_assembly import local_check_client
-from jarvis.personal_proxy.sanitize import SANITIZE_RETRIES, sanitize_with_retries
-from jarvis.personal_proxy.startup_checks import read_topics
-from jarvis.personal_proxy.typed_transcript import typed_checked_transcript
-from jarvis.personal_proxy.visible_text import has_visible_text
+from jarvis.personal_proxy.check.check_backend import ChatRequest
+from jarvis.personal_proxy.check.ollama_check_backend import OllamaCheckBackend
+from jarvis.personal_proxy.common.visible_text import has_visible_text
+from jarvis.personal_proxy.request.typed_transcript import typed_checked_transcript
+from jarvis.personal_proxy.sanitize.sanitize import (
+    SANITIZE_RETRIES,
+    sanitize_with_retries,
+)
+from jarvis.personal_proxy.startup.proxy_assembly import local_check_client
+from jarvis.personal_proxy.startup.startup_checks import read_topics
 from manual.personal_proxy.false_refusals import (
     ARM_OFF,
     ARM_ON,

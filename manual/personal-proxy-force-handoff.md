@@ -64,7 +64,7 @@ Automated counterpart already green: `python -m pytest` (includes
   `[hotkeys]` section of `config.toml`; check that section first): shutdown
   `Ctrl+Alt+Q`.
 - The command syntax (`COMMAND_TABLE` and `parse_typed_request`,
-  `src/jarvis/personal_proxy/request_commands.py`): a typed message whose first
+  `src/jarvis/personal_proxy/request/request_commands.py`): a typed message whose first
   word is exactly `/force` or `/f` (lowercase) followed by the text. A first word
   that is a slash and letters only but is not one of those two (`/forse`,
   `/FORCE`, `/help`) is an unknown command. A first word with any other shape
@@ -81,7 +81,7 @@ Automated counterpart already green: `python -m pytest` (includes
   - Forced marker (`proxy_forced_marker`):
     `FORCED: sent without the local checks`.
   - Unknown command notice, chat text (`unknown_command`,
-    `src/jarvis/personal_proxy/service_texts.py`):
+    `src/jarvis/personal_proxy/reporting/service_texts.py`):
     `Unknown command, nothing was sent. The known command is /force (or /f).`
   - Empty command notice, chat text (`empty_command`):
     `There is no text after the command, nothing was sent.`
@@ -96,7 +96,7 @@ Automated counterpart already green: `python -m pytest` (includes
   - Journal event label (`journal_source_proxy_sent`):
     `Personal proxy - sent`.
 - The standard system prompt is `DEFAULT_SYSTEM_PROMPT` in
-  `src/jarvis/personal_proxy/payload.py`; it is folded behind the label
+  `src/jarvis/personal_proxy/common/payload.py`; it is folded behind the label
   `Standard system prompt (click to show)` (`proxy_sent_default_system`).
 
 ## 1. A forced message goes out, marked (`dry_run = false`)
@@ -190,7 +190,7 @@ Prepare the microphone and speech engine as in part 1 and part 2 of
 2. Press `Ctrl+Alt+Q`.
 
 Honest limit: the guarantee is structural (only typed dock text is parsed for a
-command, `RequestIntake` in `src/jarvis/personal_proxy/request_intake.py`) and is
+command, `RequestIntake` in `src/jarvis/personal_proxy/request/request_intake.py`) and is
 covered by the automated tests in `tests/test_personal_proxy_force_pipeline.py`;
 speech recognition would not write a literal slash anyway, so this part is a
 sanity check, not the proof.

@@ -43,24 +43,30 @@ from jarvis.journal import (
 from jarvis.journal.events import JournalEvent
 from jarvis.journal.fork import build_fork_seed
 from jarvis.journal.provenance import ProvenanceEligibility, ProvenanceSourceKind
-from jarvis.personal_proxy.check_result import Doubt, DoubtKind
-from jarvis.personal_proxy.confirmation_blocks import HeardBlock, HeardDecision
-from jarvis.personal_proxy.external_error import (
+from jarvis.personal_proxy.check.check_result import Doubt, DoubtKind
+from jarvis.personal_proxy.common.findings import GateCategory
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
+    HeardBlock,
+    HeardDecision,
+)
+from jarvis.personal_proxy.external.external_error import (
     ExternalClientError,
     ExternalErrorKind,
 )
-from jarvis.personal_proxy.findings import GateCategory
-from jarvis.personal_proxy.journal_writer import ProxyJournalWriter
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.sanitize_result import SanitizeResult, SanitizeVerdict
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.reporting.journal_writer import ProxyJournalWriter
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     AnswerCompleteBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
     RequestSourceBlock,
+)
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize.sanitize_result import (
+    SanitizeResult,
+    SanitizeVerdict,
 )
 
 FIRST_ANSWER = "Хорошо, передаю Марине Крыловой."

@@ -9,12 +9,16 @@ from _service_fakes import RecordingSink, Rig, until
 
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import NewContextReason
-from jarvis.personal_proxy.journal_writer import ProxyJournalWriter
-from jarvis.personal_proxy.proxy_inbox import TypedText
-from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
-from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.service_blocks import AnswerBlock, NoticeBlock, NoticeKind
+from jarvis.personal_proxy.reporting.journal_writer import ProxyJournalWriter
+from jarvis.personal_proxy.reporting.service_blocks import (
+    AnswerBlock,
+    NoticeBlock,
+    NoticeKind,
+)
+from jarvis.personal_proxy.request.proxy_inbox import TypedText
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.service.proxy_runtime import PersonalProxyRuntime
+from jarvis.personal_proxy.service.proxy_submissions import ProxySubmissions
 
 
 class SessionRecorder:

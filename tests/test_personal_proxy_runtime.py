@@ -4,9 +4,9 @@ import pytest
 from jarvis.audio.input import UtteranceChunk
 from jarvis.core.bus import EventBus
 from jarvis.core.lifecycle import NewContextReason
-from jarvis.personal_proxy.proxy_inbox import Utterance
-from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
-from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
+from jarvis.personal_proxy.request.proxy_inbox import Utterance
+from jarvis.personal_proxy.service.proxy_runtime import PersonalProxyRuntime
+from jarvis.personal_proxy.service.proxy_submissions import ProxySubmissions
 from jarvis.ui.contract import VisibilityMode
 from jarvis.ui.visibility import VisibilityModeChanged
 

@@ -9,15 +9,15 @@ import pytest
 from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckSource,
     Doubt,
     DoubtKind,
     FallbackReason,
 )
-from jarvis.personal_proxy.clip_check import InvalidClipError
-from jarvis.personal_proxy.stt_result import Transcription, Word
-from jarvis.personal_proxy.transcript_check import check_transcript
+from jarvis.personal_proxy.check.transcript_check import check_transcript
+from jarvis.personal_proxy.stt.clip_check import InvalidClipError
+from jarvis.personal_proxy.stt.stt_result import Transcription, Word
 
 CLIP = np.zeros(16000, dtype=np.float32)
 SETTINGS = PersonalProxySettings()

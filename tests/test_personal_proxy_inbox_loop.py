@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from jarvis.personal_proxy.proxy_inbox import (
+from jarvis.personal_proxy.request.proxy_inbox import (
     ProxyInbox,
     TypedText,
     WrongLoopError,

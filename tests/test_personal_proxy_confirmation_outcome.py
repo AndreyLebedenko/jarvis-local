@@ -1,6 +1,6 @@
 import pytest
 
-from jarvis.personal_proxy.confirmation_outcome import ExchangeOutcome
+from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
 
 
 def test_only_a_confirmation_leads_to_a_send():

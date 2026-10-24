@@ -77,12 +77,12 @@ Automated counterpart already green: `python -m pytest` (includes
 - A failed check counts as asked. For every fallback reason except
   `EMPTY_TRANSCRIPT` (`call_failed`, `empty_sample`, `unparseable_judge`,
   `invented_address`, `alphabet_switch`) the stage returns one doubt and
-  `would_ask` true (`src/jarvis/personal_proxy/transcript_check.py`), so such a
+  `would_ask` true (`src/jarvis/personal_proxy/check/transcript_check.py`), so such a
   recording is in the asked share even though no real doubt was listed. A
   recording whose check fell back this way therefore raises the share; the tool
   prints no separate line for it, so read the per-recording doubts.
 - Asked means `would_ask` of the checked transcript
-  (`src/jarvis/personal_proxy/check_result.py`), which the stage derives from the
+  (`src/jarvis/personal_proxy/check/check_result.py`), which the stage derives from the
   number of listed doubts and `doubt_min_listed`.
 
 ## 1. Prerequisites

@@ -28,19 +28,19 @@ from pathlib import Path
 import httpx
 
 from jarvis.core.config import GenerationOptions, PersonalProxySettings, load_settings
-from jarvis.personal_proxy.check_backend import (
+from jarvis.personal_proxy.check.check_backend import (
     BackendReplyError,
     ChatRequest,
     CheckBackend,
 )
-from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
-from jarvis.personal_proxy.placeholders import known_entries
-from jarvis.personal_proxy.restoration import restore_answer
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.restoration_validation import (
+from jarvis.personal_proxy.check.ollama_check_backend import OllamaCheckBackend
+from jarvis.personal_proxy.restoration.restoration import restore_answer
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.restoration.restoration_validation import (
     RestorationRule,
     failed_rules,
 )
+from jarvis.personal_proxy.sanitize.placeholders import known_entries
 from manual.manual_check_transcript_check import ollama_preflight
 from manual.personal_proxy.restoration import (
     ITEMS,

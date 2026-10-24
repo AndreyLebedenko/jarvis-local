@@ -7,10 +7,10 @@ import pytest
 from _service_fakes import Rig, closed, make_wav, settled, until, within
 
 from jarvis.audio.replay import ReplayOutcome, ReplayRun
-from jarvis.personal_proxy.answer_speaker import ReplayAnswerSpeaker
-from jarvis.personal_proxy.microphone_gate import AudioMicrophoneGate
-from jarvis.personal_proxy.proxy_inbox import Utterance
-from jarvis.personal_proxy.service_blocks import AnswerBlock, NoticeKind
+from jarvis.personal_proxy.answer.answer_speaker import ReplayAnswerSpeaker
+from jarvis.personal_proxy.confirmation.microphone_gate import AudioMicrophoneGate
+from jarvis.personal_proxy.reporting.service_blocks import AnswerBlock, NoticeKind
+from jarvis.personal_proxy.request.proxy_inbox import Utterance
 
 
 class _Audio:
@@ -178,7 +178,7 @@ async def test_a_question_pauses_and_resumes_once_per_speech(doubt_answer):
         lambda: rig.stages.calls["sanitize"] and audio.calls.count("resume") >= 1
     )
     await until(lambda: not audio.paused)
-    from jarvis.personal_proxy.proxy_inbox import TypedText
+    from jarvis.personal_proxy.request.proxy_inbox import TypedText
 
     rig.service.submit(TypedText("да" if doubt_answer == "yes" else "нет"))
     await within(settled(rig))

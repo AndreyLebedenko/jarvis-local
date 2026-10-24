@@ -18,17 +18,17 @@ from _service_fakes import (
     until,
 )
 
-from jarvis.personal_proxy.confirmation_blocks import HeardBlock, SentBlock
-from jarvis.personal_proxy.confirmation_outcome import ExchangeOutcome
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
-from jarvis.personal_proxy.confirmation_texts import shown_question
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.confirmation.confirmation_blocks import HeardBlock, SentBlock
+from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.confirmation.confirmation_texts import shown_question
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
 )
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
 from jarvis.ui.contract import DataLocality
 
 UTTERANCE = Utterance(make_wav())
@@ -432,7 +432,7 @@ async def test_the_microphone_is_resumed_whatever_ends_the_answer():
 
 
 def _rebuilt(rig):
-    from jarvis.personal_proxy.proxy_service import PersonalProxyService
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
 
     return PersonalProxyService(
         stages=rig.stages.as_stages(),
@@ -451,8 +451,8 @@ def _rebuilt(rig):
 def test_the_internal_records_of_a_request_hide_its_text():
     from _service_fakes import CHECKED, TOPICS
 
-    from jarvis.personal_proxy.request_intake import Heard
-    from jarvis.personal_proxy.request_pipeline import PipelineParts
+    from jarvis.personal_proxy.request.request_intake import Heard
+    from jarvis.personal_proxy.request.request_pipeline import PipelineParts
 
     rig = Rig()
     parts = PipelineParts(

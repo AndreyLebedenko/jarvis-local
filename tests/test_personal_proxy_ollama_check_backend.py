@@ -10,9 +10,9 @@ from jarvis.core.config import (
     PersonalProxySettings,
     Settings,
 )
-from jarvis.personal_proxy.check_backend import BackendReplyError, ChatRequest
-from jarvis.personal_proxy.check_prompts import JUDGE_SCHEMA
-from jarvis.personal_proxy.ollama_check_backend import OllamaCheckBackend
+from jarvis.personal_proxy.check.check_backend import BackendReplyError, ChatRequest
+from jarvis.personal_proxy.check.check_prompts import JUDGE_SCHEMA
+from jarvis.personal_proxy.check.ollama_check_backend import OllamaCheckBackend
 
 AUDIO = "QVVESU8="
 

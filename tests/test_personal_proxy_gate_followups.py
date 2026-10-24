@@ -1,12 +1,12 @@
 import pytest
 
-from jarvis.personal_proxy.detectors.address import find_street_addresses
-from jarvis.personal_proxy.detectors.api_key import find_api_keys
-from jarvis.personal_proxy.detectors.password import find_passwords
-from jarvis.personal_proxy.findings import GateCategory
-from jarvis.personal_proxy.gate import check_outbound_payload
-from jarvis.personal_proxy.gate_context import GateContext
-from jarvis.personal_proxy.payload import build_outbound_payload
+from jarvis.personal_proxy.common.findings import GateCategory
+from jarvis.personal_proxy.common.payload import build_outbound_payload
+from jarvis.personal_proxy.gate.detectors.address import find_street_addresses
+from jarvis.personal_proxy.gate.detectors.api_key import find_api_keys
+from jarvis.personal_proxy.gate.detectors.password import find_passwords
+from jarvis.personal_proxy.gate.gate import check_outbound_payload
+from jarvis.personal_proxy.gate.gate_context import GateContext
 
 BASE64_KEY = "fV88vYmBrICkR3NPXurXpvOq/0RJkn8v"
 

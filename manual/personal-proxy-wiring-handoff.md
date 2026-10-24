@@ -53,7 +53,7 @@ Automated counterpart already green: `python -m pytest` (includes
   mode) are deliberately NOT bound; pressing them must do nothing. The list of
   what is bound is `_personal_proxy_background_work` in `src/jarvis/app.py`.
 - The question after a doubt, the answer vocabulary and the offer texts are in
-  `src/jarvis/personal_proxy/confirmation_texts.py` and
+  `src/jarvis/personal_proxy/confirmation/confirmation_texts.py` and
   `confirmation_vocabulary.py`; only a whole-answer clear yes sends.
 - The window text and the events panel are in the language of `[ui].language`
   (default `"en"`, `UiSettings`); this handoff names the English texts.

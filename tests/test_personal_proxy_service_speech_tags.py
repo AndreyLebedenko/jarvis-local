@@ -3,7 +3,7 @@ import random
 import pytest
 
 from jarvis.audio.speech_markup import parse_speech_markup
-from jarvis.personal_proxy.speech_tags import strip_speech_control_tags
+from jarvis.personal_proxy.common.speech_tags import strip_speech_control_tags
 
 
 @pytest.mark.parametrize(

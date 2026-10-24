@@ -2,18 +2,21 @@ import time
 
 import pytest
 
-from jarvis.personal_proxy import gate as gate_module
-from jarvis.personal_proxy.detectors.address import find_street_addresses
-from jarvis.personal_proxy.detectors.api_key import find_api_keys
-from jarvis.personal_proxy.detectors.card import find_payment_cards
-from jarvis.personal_proxy.detectors.digit_run import find_long_digit_runs
-from jarvis.personal_proxy.detectors.iban import find_ibans
-from jarvis.personal_proxy.detectors.password import find_passwords
-from jarvis.personal_proxy.detectors.phone import find_phones
-from jarvis.personal_proxy.findings import GateCategory, GateStage
-from jarvis.personal_proxy.gate import MAX_TOPICS_LENGTH, check_outbound_payload
-from jarvis.personal_proxy.gate_context import GateContext
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT, build_outbound_payload
+from jarvis.personal_proxy.common.findings import GateCategory, GateStage
+from jarvis.personal_proxy.common.payload import (
+    DEFAULT_SYSTEM_PROMPT,
+    build_outbound_payload,
+)
+from jarvis.personal_proxy.gate import gate as gate_module
+from jarvis.personal_proxy.gate.detectors.address import find_street_addresses
+from jarvis.personal_proxy.gate.detectors.api_key import find_api_keys
+from jarvis.personal_proxy.gate.detectors.card import find_payment_cards
+from jarvis.personal_proxy.gate.detectors.digit_run import find_long_digit_runs
+from jarvis.personal_proxy.gate.detectors.iban import find_ibans
+from jarvis.personal_proxy.gate.detectors.password import find_passwords
+from jarvis.personal_proxy.gate.detectors.phone import find_phones
+from jarvis.personal_proxy.gate.gate import MAX_TOPICS_LENGTH, check_outbound_payload
+from jarvis.personal_proxy.gate.gate_context import GateContext
 
 VALID_CARD_DIGITS = "4539148803436467"
 
@@ -94,7 +97,7 @@ def test_ordinary_prose_with_marker_like_words_passes(text):
     ],
 )
 def test_digit_groups_join_across_collapsed_whitespace(find, text, expected):
-    from jarvis.personal_proxy.normalize import normalize_message
+    from jarvis.personal_proxy.common.normalize import normalize_message
 
     normalized = normalize_message(text).text
 

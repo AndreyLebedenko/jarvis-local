@@ -1,11 +1,11 @@
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     Doubt,
     DoubtKind,
 )
-from jarvis.personal_proxy.confirmation_policy import should_ask
+from jarvis.personal_proxy.confirmation.confirmation_policy import should_ask
 
 
 def _checked(would_ask, doubts=()):

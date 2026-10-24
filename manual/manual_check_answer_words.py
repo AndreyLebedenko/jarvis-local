@@ -33,9 +33,9 @@ from jarvis.audio.input import (
 )
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings, load_settings
-from jarvis.personal_proxy.confirmation_vocabulary import AnswerKind
-from jarvis.personal_proxy.silero_probabilities import SileroSpeechProbabilities
-from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine
+from jarvis.personal_proxy.confirmation.confirmation_vocabulary import AnswerKind
+from jarvis.personal_proxy.stt.silero_probabilities import SileroSpeechProbabilities
+from jarvis.personal_proxy.stt.stt_whisper import FasterWhisperEngine
 from manual.manual_check_stt_stage import decode
 from manual.personal_proxy.answer_words import (
     PHRASES,

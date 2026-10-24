@@ -13,25 +13,29 @@ from jarvis.core.config import (
     Settings,
     VadSettings,
 )
-from jarvis.personal_proxy.proxy_assembly import (
+from jarvis.personal_proxy.reporting.service_blocks import (
+    AnswerBlock,
+    NoticeBlock,
+    NoticeKind,
+)
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.startup.proxy_assembly import (
     ProxyHost,
     ProxySeams,
     build_chat_chain,
     local_check_client,
     prepare_personal_proxy_runtime,
 )
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.service_blocks import AnswerBlock, NoticeBlock, NoticeKind
-from jarvis.personal_proxy.startup_failure import (
+from jarvis.personal_proxy.startup.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
 )
-from jarvis.personal_proxy.stt_engine import (
+from jarvis.personal_proxy.stt.stt_engine import (
     MissingSpeechDependencyError,
     SpeechDeviceError,
     SpeechModelUnavailableError,
 )
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.stt.stt_result import Transcription
 
 PROXY = PersonalProxySettings(
     endpoint="https://api.example.test/v1",
@@ -404,7 +408,7 @@ def _custom_settings(tmp_path):
 
 
 async def _custom_runtime(tmp_path, monkeypatch, ollama, transport):
-    from jarvis.personal_proxy import proxy_assembly
+    from jarvis.personal_proxy.startup import proxy_assembly
 
     captured = {}
 

@@ -10,15 +10,18 @@ import numpy as np
 import pytest
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy import stt_whisper
-from jarvis.personal_proxy.stt_engine import (
+from jarvis.personal_proxy.stt import stt_whisper
+from jarvis.personal_proxy.stt.stt_engine import (
     MissingSpeechDependencyError,
     SpeechDeviceError,
     SpeechEngineLoadError,
     SpeechModelUnavailableError,
 )
-from jarvis.personal_proxy.stt_result import Segment, Transcription, Word
-from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine, load_whisper_model
+from jarvis.personal_proxy.stt.stt_result import Segment, Transcription, Word
+from jarvis.personal_proxy.stt.stt_whisper import (
+    FasterWhisperEngine,
+    load_whisper_model,
+)
 
 
 class _FakeWhisperModel:
@@ -80,7 +83,8 @@ def test_model_device_and_precision_follow_the_settings(fake_faster_whisper):
 
 def test_the_gpu_loads_in_float16(fake_faster_whisper, monkeypatch):
     monkeypatch.setattr(
-        "jarvis.personal_proxy.stt_whisper._add_nvidia_dll_directories", lambda: None
+        "jarvis.personal_proxy.stt.stt_whisper._add_nvidia_dll_directories",
+        lambda: None,
     )
 
     FasterWhisperEngine(PersonalProxySettings(stt_device="cuda"))
@@ -305,14 +309,14 @@ def test_importing_the_stage_without_the_optional_package_works():
                     raise ImportError("blocked for the test")
 
         sys.meta_path.insert(0, _Blocker())
-        import jarvis.personal_proxy.guarded_transcription
-        import jarvis.personal_proxy.silero_probabilities
-        import jarvis.personal_proxy.stt_whisper
+        import jarvis.personal_proxy.stt.guarded_transcription
+        import jarvis.personal_proxy.stt.silero_probabilities
+        import jarvis.personal_proxy.stt.stt_whisper
 
         assert "faster_whisper" not in sys.modules
         from jarvis.core.config import PersonalProxySettings
-        from jarvis.personal_proxy.stt_engine import MissingSpeechDependencyError
-        from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine
+        from jarvis.personal_proxy.stt.stt_engine import MissingSpeechDependencyError
+        from jarvis.personal_proxy.stt.stt_whisper import FasterWhisperEngine
 
         try:
             FasterWhisperEngine(PersonalProxySettings(stt_device="cpu"))

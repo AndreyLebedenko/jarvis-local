@@ -1,16 +1,16 @@
 import pytest
 
-from jarvis.personal_proxy import gate as gate_module
-from jarvis.personal_proxy import payload as payload_module
-from jarvis.personal_proxy.findings import GateCategory
-from jarvis.personal_proxy.gate import check_outbound_payload
-from jarvis.personal_proxy.gate_context import GateContext
-from jarvis.personal_proxy.payload import (
+from jarvis.personal_proxy.common import payload as payload_module
+from jarvis.personal_proxy.common.findings import GateCategory
+from jarvis.personal_proxy.common.payload import (
     DEFAULT_SYSTEM_PROMPT,
     OutboundMessage,
     OutboundPayload,
     build_outbound_payload,
 )
+from jarvis.personal_proxy.gate import gate as gate_module
+from jarvis.personal_proxy.gate.gate import check_outbound_payload
+from jarvis.personal_proxy.gate.gate_context import GateContext
 
 SECRET_FOR_CATEGORY = {
     GateCategory.EMAIL: "anna.lebedeva@example.com",

@@ -1,4 +1,4 @@
-from jarvis.personal_proxy.text import (
+from jarvis.personal_proxy.common.text import (
     MIN_STEM_LENGTH,
     STEM_ENDING_LENGTH,
     joined_token_spans,

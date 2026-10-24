@@ -6,14 +6,21 @@ from datetime import UTC, datetime
 import pytest
 
 from jarvis.journal import JournalRecorder, JournalStore
-from jarvis.personal_proxy.block_payload import block_payload
-from jarvis.personal_proxy.check_result import Doubt, DoubtKind
-from jarvis.personal_proxy.confirmation_blocks import SentBlock, sent_block_of
-from jarvis.personal_proxy.notice_class import BLOCKING_KINDS, notice_class
-from jarvis.personal_proxy.payload import build_outbound_payload
-from jarvis.personal_proxy.sanitize_result import SanitizeVerdict
-from jarvis.personal_proxy.service_blocks import DryRunBlock, NoticeBlock, NoticeKind
-from jarvis.personal_proxy.service_texts import notice_text, spoken_notice
+from jarvis.personal_proxy.check.check_result import Doubt, DoubtKind
+from jarvis.personal_proxy.common.payload import build_outbound_payload
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
+    SentBlock,
+    sent_block_of,
+)
+from jarvis.personal_proxy.reporting.block_payload import block_payload
+from jarvis.personal_proxy.reporting.notice_class import BLOCKING_KINDS, notice_class
+from jarvis.personal_proxy.reporting.service_blocks import (
+    DryRunBlock,
+    NoticeBlock,
+    NoticeKind,
+)
+from jarvis.personal_proxy.reporting.service_texts import notice_text, spoken_notice
+from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeVerdict
 
 SECRET = "Марина Крылова"
 

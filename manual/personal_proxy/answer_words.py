@@ -11,13 +11,16 @@ from statistics import mean
 
 import numpy as np
 
-from jarvis.personal_proxy.confirmation_vocabulary import AnswerKind, classify_answer
-from jarvis.personal_proxy.guarded_transcription import (
+from jarvis.personal_proxy.confirmation.confirmation_vocabulary import (
+    AnswerKind,
+    classify_answer,
+)
+from jarvis.personal_proxy.stt.guarded_transcription import (
     ProbabilitySource,
     transcribe_guarded,
 )
-from jarvis.personal_proxy.speech_guard import NoSpeech, speech_seconds
-from jarvis.personal_proxy.stt_engine import SpeechEngine
+from jarvis.personal_proxy.stt.speech_guard import NoSpeech, speech_seconds
+from jarvis.personal_proxy.stt.stt_engine import SpeechEngine
 
 REPETITIONS = 10
 

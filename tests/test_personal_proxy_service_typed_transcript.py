@@ -1,6 +1,6 @@
-from jarvis.personal_proxy.check_result import CheckSource
-from jarvis.personal_proxy.confirmation_policy import should_ask
-from jarvis.personal_proxy.typed_transcript import typed_checked_transcript
+from jarvis.personal_proxy.check.check_result import CheckSource
+from jarvis.personal_proxy.confirmation.confirmation_policy import should_ask
+from jarvis.personal_proxy.request.typed_transcript import typed_checked_transcript
 
 
 def test_typed_text_is_carried_whole_with_no_doubts():

@@ -1,7 +1,7 @@
 import numpy as np
 import soundfile as sf
 
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.stt.stt_result import Transcription
 from manual import manual_check_stt_stage as harness
 
 

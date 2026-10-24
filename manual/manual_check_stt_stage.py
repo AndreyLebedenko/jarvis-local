@@ -25,13 +25,13 @@ import numpy as np
 import soundfile as sf
 
 from jarvis.core.config import load_settings
-from jarvis.personal_proxy.guarded_transcription import transcribe_guarded
-from jarvis.personal_proxy.silero_probabilities import (
+from jarvis.personal_proxy.stt.guarded_transcription import transcribe_guarded
+from jarvis.personal_proxy.stt.silero_probabilities import (
     SAMPLE_RATE,
     SileroSpeechProbabilities,
 )
-from jarvis.personal_proxy.speech_guard import NoSpeech, speech_seconds
-from jarvis.personal_proxy.stt_whisper import FasterWhisperEngine
+from jarvis.personal_proxy.stt.speech_guard import NoSpeech, speech_seconds
+from jarvis.personal_proxy.stt.stt_whisper import FasterWhisperEngine
 from manual.personal_proxy.audio import control_audio
 from manual.personal_proxy.corpus import CONTROLS
 

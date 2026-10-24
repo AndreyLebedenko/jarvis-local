@@ -6,13 +6,19 @@ import numpy as np
 from _backend_fakes import FakeBackend
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT, build_outbound_payload
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.sanitize_result import SanitizeResult, SanitizeVerdict
-from jarvis.personal_proxy.speech_guard import NoSpeech, SpeechProbabilities
-from jarvis.personal_proxy.stage_binding import StageDependencies, bind_stages
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.check.check_result import CheckedTranscript, CheckSource
+from jarvis.personal_proxy.common.payload import (
+    DEFAULT_SYSTEM_PROMPT,
+    build_outbound_payload,
+)
+from jarvis.personal_proxy.request.stage_binding import StageDependencies, bind_stages
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize.sanitize_result import (
+    SanitizeResult,
+    SanitizeVerdict,
+)
+from jarvis.personal_proxy.stt.speech_guard import NoSpeech, SpeechProbabilities
+from jarvis.personal_proxy.stt.stt_result import Transcription
 
 SETTINGS = PersonalProxySettings(stt_min_speech_seconds=0.03)
 CLIP = np.full(16000, 0.1, dtype=np.float32)
@@ -116,7 +122,7 @@ async def test_sanitize_uses_the_topics_text_and_the_shared_backend():
 
 
 def test_the_gate_is_the_deterministic_outbound_gate():
-    from jarvis.personal_proxy.gate_context import GateContext
+    from jarvis.personal_proxy.gate.gate_context import GateContext
 
     stages = bind_stages(_deps())
     payload = build_outbound_payload(DEFAULT_SYSTEM_PROMPT, "Позвони <PERSON_1>")

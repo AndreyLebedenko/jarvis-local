@@ -31,7 +31,7 @@ Automated counterpart already green: `python -m pytest` (includes
   starting value). Each tool prints the effective values it uses.
 - The speech threshold is `[vad].threshold` (`VadSettings`, same file;
   default `0.5`). A `>=` comparison per 512-sample window (32 ms) of the Silero
-  VAD, as in `src/jarvis/personal_proxy/silero_probabilities.py`.
+  VAD, as in `src/jarvis/personal_proxy/stt/silero_probabilities.py`.
 - The controls are the spike's: `ctl_silence` (2.0 s of digital silence) and
   `ctl_noise` (3.0 s of seeded room noise, RMS 0.005), defined by `CONTROLS`
   and `NOISE_RMS` in `manual/personal_proxy/corpus.py`.
@@ -39,7 +39,7 @@ Automated counterpart already green: `python -m pytest` (includes
   (spike v2.1.0-1 recordings; gitignored; contains invented data only). Any
   other directory of 16 kHz `.wav` files works the same way, for example
   `personal_proxy_corpus_v2_wavs/`.
-- The Whisper settings are fixed in `src/jarvis/personal_proxy/stt_whisper.py`:
+- The Whisper settings are fixed in `src/jarvis/personal_proxy/stt/stt_whisper.py`:
   `BEAM_SIZE = 5`, `COMPUTE_TYPE_BY_DEVICE = {"cuda": "float16", "cpu": "int8"}`.
 
 ## 1. Install and fetch the weights (network needed once)

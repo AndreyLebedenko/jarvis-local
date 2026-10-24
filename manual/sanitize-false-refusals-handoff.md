@@ -8,7 +8,7 @@ What it answers: how often does the local sanitize stage refuse or break a harml
 request (dates, numbers, places, news, how-to, general knowledge, short and long,
 Russian and English), and how many of those does the one retry rescue. The same 40
 requests go through the real stage `sanitize_with_retries` in
-`src/jarvis/personal_proxy/sanitize.py`, on the production backend
+`src/jarvis/personal_proxy/sanitize/sanitize.py`, on the production backend
 (`OllamaCheckBackend`), the production settings and the production prompt, twice
 (`--repeats`, default 2), each time once with the retry on and once with it off.
 
@@ -52,12 +52,12 @@ Automated counterpart already green: `python -m pytest` (includes
   does not matter), `--only H01,H02` (a subset), `--out DIR` (default
   `manual_check_sanitize_false_refusals_out`, holds `report.md`).
 - The two arms: `retry-on` uses the production retry count `SANITIZE_RETRIES` (1,
-  `src/jarvis/personal_proxy/sanitize.py`); `retry-off` uses 0. In `retry-off` a
+  `src/jarvis/personal_proxy/sanitize/sanitize.py`); `retry-off` uses 0. In `retry-off` a
   refusal while the topics list is empty is reported as `unexpected_refusal`, the same
   class the production stage reports after a second such refusal.
 - Outcome labels in the report: `send` (a valid sendable result), `refused` (a refusal
   while topics exist), and the failure classes of `SanitizeFailureClass`
-  (`src/jarvis/personal_proxy/sanitize_result.py`): `backend_failed`, `empty`,
+  (`src/jarvis/personal_proxy/sanitize/sanitize_result.py`): `backend_failed`, `empty`,
   `no_json`, `extra_prose`, `missing_field`, `wrong_type`, `bad_verdict`,
   `empty_sanitized_text`, `bad_placeholder`, `empty_mapping_value`,
   `unexpected_refusal`. Any label other than `send` on a harmless request is a false

@@ -6,15 +6,18 @@ import httpx
 import pytest
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy import payload as payload_module
-from jarvis.personal_proxy.external_client import ExternalClient
-from jarvis.personal_proxy.external_error import (
+from jarvis.personal_proxy.common import payload as payload_module
+from jarvis.personal_proxy.common.payload import OutboundPayload, build_outbound_payload
+from jarvis.personal_proxy.external.external_client import ExternalClient
+from jarvis.personal_proxy.external.external_error import (
     ExternalClientError,
     ExternalErrorKind,
 )
-from jarvis.personal_proxy.external_limits import MAX_ANSWER_CHARS, MAX_LINE_BYTES
-from jarvis.personal_proxy.external_lines import iter_lines
-from jarvis.personal_proxy.payload import OutboundPayload, build_outbound_payload
+from jarvis.personal_proxy.external.external_limits import (
+    MAX_ANSWER_CHARS,
+    MAX_LINE_BYTES,
+)
+from jarvis.personal_proxy.external.external_lines import iter_lines
 
 KEY = "sk-test-KEY-4711"
 KEY_ENV = "JARVIS_PERSONAL_PROXY_KEY"

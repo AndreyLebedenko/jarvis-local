@@ -1,13 +1,13 @@
 import pytest
 
-from jarvis.personal_proxy.detectors.address import find_street_addresses
-from jarvis.personal_proxy.detectors.api_key import find_api_keys
-from jarvis.personal_proxy.detectors.card import find_payment_cards
-from jarvis.personal_proxy.detectors.digit_run import find_long_digit_runs
-from jarvis.personal_proxy.detectors.email import find_emails
-from jarvis.personal_proxy.detectors.iban import find_ibans
-from jarvis.personal_proxy.detectors.password import find_passwords
-from jarvis.personal_proxy.detectors.phone import find_phones
+from jarvis.personal_proxy.gate.detectors.address import find_street_addresses
+from jarvis.personal_proxy.gate.detectors.api_key import find_api_keys
+from jarvis.personal_proxy.gate.detectors.card import find_payment_cards
+from jarvis.personal_proxy.gate.detectors.digit_run import find_long_digit_runs
+from jarvis.personal_proxy.gate.detectors.email import find_emails
+from jarvis.personal_proxy.gate.detectors.iban import find_ibans
+from jarvis.personal_proxy.gate.detectors.password import find_passwords
+from jarvis.personal_proxy.gate.detectors.phone import find_phones
 
 VALID_CARD = "4539 1488 0343 6467"
 LUHN_INVALID_CARD = "4539 1488 0343 6468"

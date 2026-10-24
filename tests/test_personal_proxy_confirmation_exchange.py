@@ -9,27 +9,30 @@ from _confirmation_fakes import (
     ManualSleep,
 )
 
-from jarvis.personal_proxy.check_result import (
+from jarvis.personal_proxy.check.check_result import (
     CheckedTranscript,
     CheckSource,
     Doubt,
     DoubtKind,
 )
-from jarvis.personal_proxy.confirmation_blocks import HeardBlock, HeardDecision
-from jarvis.personal_proxy.confirmation_exchange import (
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
+    HeardBlock,
+    HeardDecision,
+)
+from jarvis.personal_proxy.confirmation.confirmation_exchange import (
     SPEECH_PHASE_TIMEOUT_SECONDS,
     ConfirmationExchange,
     ExchangeBusyError,
     WrongLoopError,
 )
-from jarvis.personal_proxy.confirmation_outcome import (
+from jarvis.personal_proxy.confirmation.confirmation_outcome import (
     Delivery,
     ExchangeOutcome,
     ExchangeState,
     FailureStage,
 )
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
-from jarvis.personal_proxy.confirmation_texts import spoken_question
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.confirmation.confirmation_texts import spoken_question
 
 HEARD = "Отправь Марине Крыловой письмо на marina@example.org"
 DOUBTS = (Doubt(DoubtKind.FRAGMENT, "marina@example.org"),)

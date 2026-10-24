@@ -2,10 +2,10 @@ import time
 
 import pytest
 
-from jarvis.personal_proxy.findings import GateCategory
-from jarvis.personal_proxy.gate import MAX_MESSAGE_LENGTH, check_outbound_payload
-from jarvis.personal_proxy.gate_context import GateContext
-from jarvis.personal_proxy.payload import build_outbound_payload
+from jarvis.personal_proxy.common.findings import GateCategory
+from jarvis.personal_proxy.common.payload import build_outbound_payload
+from jarvis.personal_proxy.gate.gate import MAX_MESSAGE_LENGTH, check_outbound_payload
+from jarvis.personal_proxy.gate.gate_context import GateContext
 
 
 def _gate(request, mapping=None):

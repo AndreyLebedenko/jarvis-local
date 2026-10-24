@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from jarvis.personal_proxy.sanitize_result import (
+from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeFailure,
     SanitizeFailureClass,
     SanitizeResult,

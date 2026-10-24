@@ -7,9 +7,9 @@ from _service_fakes import RecordingSink, Rig, closed, settled
 
 from jarvis.journal import JournalRecorder, JournalStore
 from jarvis.journal.fork import build_fork_seed
-from jarvis.personal_proxy.journal_writer import ProxyJournalWriter
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.proxy_inbox import TypedText
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.reporting.journal_writer import ProxyJournalWriter
+from jarvis.personal_proxy.request.proxy_inbox import TypedText
 
 TEXT = "What happened with the internet on Wednesday, 21 October this year?"
 

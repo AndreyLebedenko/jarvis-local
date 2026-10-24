@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from jarvis.personal_proxy.microphone_gate import AudioMicrophoneGate
+from jarvis.personal_proxy.confirmation.microphone_gate import AudioMicrophoneGate
 
 
 class _FakeAudioInput:

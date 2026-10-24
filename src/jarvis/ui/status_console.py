@@ -45,8 +45,10 @@ from jarvis.journal.proxy_exchange import PROXY_SENT_SOURCE, PROXY_SOURCES
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.mcp_mode.server import McpServerStatusChanged
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.sent_view import request_after_default_system_prompt
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.reporting.sent_view import (
+    request_after_default_system_prompt,
+)
 from jarvis.tools.builtin import CAMERA_TOOL_NAME
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry

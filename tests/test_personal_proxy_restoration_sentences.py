@@ -1,6 +1,6 @@
 import time
 
-from jarvis.personal_proxy.restoration_sentences import (
+from jarvis.personal_proxy.restoration.restoration_sentences import (
     MAX_PENDING_CHARS,
     BoundedSentenceBuffer,
 )

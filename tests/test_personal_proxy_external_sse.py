@@ -1,11 +1,11 @@
 import pytest
 
-from jarvis.personal_proxy.external_endpoint import require_secure_endpoint
-from jarvis.personal_proxy.external_error import (
+from jarvis.personal_proxy.external.external_endpoint import require_secure_endpoint
+from jarvis.personal_proxy.external.external_error import (
     ExternalClientError,
     ExternalErrorKind,
 )
-from jarvis.personal_proxy.external_sse import StreamEvent, parse_event_line
+from jarvis.personal_proxy.external.external_sse import StreamEvent, parse_event_line
 
 
 def _data(json_text):

@@ -1,5 +1,5 @@
 from jarvis.core.config import GenerationOptions
-from jarvis.personal_proxy.restoration_requests import (
+from jarvis.personal_proxy.restoration.restoration_requests import (
     NUM_PREDICT,
     RESTORE_RULES,
     build_restoration_request,

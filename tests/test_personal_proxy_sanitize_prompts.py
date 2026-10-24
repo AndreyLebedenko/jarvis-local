@@ -2,10 +2,10 @@ import hashlib
 
 import pytest
 
-from jarvis.personal_proxy import sanitize_prompts as production
-from jarvis.personal_proxy.sanitize_parsing import parse_sanitize_output
-from jarvis.personal_proxy.sanitize_requests import build_sanitize_request
-from jarvis.personal_proxy.sanitize_result import SanitizeFailure
+from jarvis.personal_proxy.sanitize import sanitize_prompts as production
+from jarvis.personal_proxy.sanitize.sanitize_parsing import parse_sanitize_output
+from jarvis.personal_proxy.sanitize.sanitize_requests import build_sanitize_request
+from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeFailure
 from manual.personal_proxy import prompts as spike
 from manual.personal_proxy.parse import parse_sanitize_output as spike_parse
 

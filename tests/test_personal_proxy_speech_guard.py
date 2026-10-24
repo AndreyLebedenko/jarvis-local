@@ -2,20 +2,20 @@ import numpy as np
 import pytest
 import torch
 
-from jarvis.personal_proxy.clip_check import InvalidClipError
-from jarvis.personal_proxy.guarded_transcription import transcribe_guarded
-from jarvis.personal_proxy.silero_probabilities import (
+from jarvis.personal_proxy.stt.clip_check import InvalidClipError
+from jarvis.personal_proxy.stt.guarded_transcription import transcribe_guarded
+from jarvis.personal_proxy.stt.silero_probabilities import (
     SAMPLE_RATE,
     WINDOW_SAMPLES,
     SileroSpeechProbabilities,
 )
-from jarvis.personal_proxy.speech_guard import (
+from jarvis.personal_proxy.stt.speech_guard import (
     NoSpeech,
     SpeechGuardError,
     SpeechProbabilities,
     speech_seconds,
 )
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.stt.stt_result import Transcription
 
 WINDOW = 0.1
 THRESHOLD = 0.5

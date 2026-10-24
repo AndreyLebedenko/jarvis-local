@@ -2,7 +2,7 @@ import inspect
 
 import pytest
 
-from jarvis.personal_proxy.payload import (
+from jarvis.personal_proxy.common.payload import (
     DEFAULT_SYSTEM_PROMPT,
     OutboundMessage,
     OutboundPayload,

@@ -1,7 +1,7 @@
 import pytest
 
-from jarvis.personal_proxy.normalize import normalize_message
-from jarvis.personal_proxy.spans import Span
+from jarvis.personal_proxy.common.normalize import normalize_message
+from jarvis.personal_proxy.common.spans import Span
 
 
 @pytest.mark.parametrize(

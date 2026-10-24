@@ -18,7 +18,7 @@ v2.1.0-3 being installed: its prerequisites are step 1.
 
 Scope note: this handoff runs the speech stage and the classifier only, not the
 transcript check. In the real flow a failed check (every fallback reason except
-`EMPTY_TRANSCRIPT`, `src/jarvis/personal_proxy/transcript_check.py`) makes
+`EMPTY_TRANSCRIPT`, `src/jarvis/personal_proxy/check/transcript_check.py`) makes
 `would_ask` true, so such requests also reach the confirmation question and
 the answer path measured here; the share of questions is measured by handoff B
 (`manual/doubt-trigger-handoff.md`), where a failed check counts as asked.
@@ -56,13 +56,13 @@ Automated counterpart already green: `python -m pytest` (includes
   (yes), `стоп` (no), `yes` (yes), `no` (no), `да, но исправь` (unclear, a
   sentence containing a yes word), `сегодня хорошая погода` (unclear, a neutral
   phrase). The vocabulary and the classifier are `YES_PHRASES`, `NO_PHRASES` and
-  `classify_answer` in `src/jarvis/personal_proxy/confirmation_vocabulary.py`.
+  `classify_answer` in `src/jarvis/personal_proxy/confirmation/confirmation_vocabulary.py`.
 - Repetitions: `REPETITIONS = 10` in `manual/personal_proxy/answer_words.py`, so
   80 takes in all. The option `--repetitions N` changes it.
-- The Whisper settings are fixed in `src/jarvis/personal_proxy/stt_whisper.py`
+- The Whisper settings are fixed in `src/jarvis/personal_proxy/stt/stt_whisper.py`
   (`BEAM_SIZE = 5`, `COMPUTE_TYPE_BY_DEVICE = {"cuda": "float16", "cpu":
   "int8"}`). The tool calls the same guarded function the production stage uses,
-  `transcribe_guarded` in `src/jarvis/personal_proxy/guarded_transcription.py`.
+  `transcribe_guarded` in `src/jarvis/personal_proxy/stt/guarded_transcription.py`.
 
 ## 1. Prerequisites
 

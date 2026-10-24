@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 
-from jarvis.personal_proxy.confirmation_ports import SpeechResult
+from jarvis.personal_proxy.confirmation.confirmation_ports import SpeechResult
 
 
 class FakeSink:

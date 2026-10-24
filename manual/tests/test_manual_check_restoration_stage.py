@@ -5,8 +5,10 @@ import httpx
 import pytest
 
 from jarvis.core.config import PersonalProxySettings
-from jarvis.personal_proxy.check_backend import BackendReplyError
-from jarvis.personal_proxy.restoration_validation import restoration_is_valid
+from jarvis.personal_proxy.check.check_backend import BackendReplyError
+from jarvis.personal_proxy.restoration.restoration_validation import (
+    restoration_is_valid,
+)
 from manual import manual_check_restoration_stage as harness
 from manual.personal_proxy.restoration import (
     ITEMS,

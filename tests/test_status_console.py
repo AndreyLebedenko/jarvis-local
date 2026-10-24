@@ -43,7 +43,7 @@ from jarvis.journal.external_canvas import (
     SpeechStatus,
 )
 from jarvis.mcp_mode.server import McpServerState, McpServerStatusChanged
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.ui.contract import (

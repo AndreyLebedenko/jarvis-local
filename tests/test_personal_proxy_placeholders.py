@@ -1,4 +1,4 @@
-from jarvis.personal_proxy.placeholders import (
+from jarvis.personal_proxy.sanitize.placeholders import (
     PLACEHOLDER,
     has_unresolved,
     known_entries,

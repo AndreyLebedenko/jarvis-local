@@ -2,7 +2,7 @@ import time
 
 import pytest
 
-from jarvis.personal_proxy.restoration_validation import (
+from jarvis.personal_proxy.restoration.restoration_validation import (
     MAX_MODEL_PLACEHOLDERS,
     MAX_MODEL_SENTENCE_CHARS,
     RestorationRule,

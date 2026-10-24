@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from jarvis.core.config import BackendSettings, PersonalProxySettings, Settings
-from jarvis.personal_proxy.speech_guard import SpeechProbabilities
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.stt.speech_guard import SpeechProbabilities
+from jarvis.personal_proxy.stt.stt_result import Transcription
 from manual.personal_proxy.corpus import CORPUS
 from manual.personal_proxy.doubt_trigger import (
     EXPECTED_ERRORS,

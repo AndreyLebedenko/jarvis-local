@@ -4,8 +4,8 @@ import pytest
 from _backend_fakes import FakeBackend
 
 from jarvis.core.config import GenerationOptions, PersonalProxySettings
-from jarvis.personal_proxy.restoration import restore_answer
-from jarvis.personal_proxy.restoration_result import (
+from jarvis.personal_proxy.restoration.restoration import restore_answer
+from jarvis.personal_proxy.restoration.restoration_result import (
     RestorationMethod,
     RestoredSentence,
 )

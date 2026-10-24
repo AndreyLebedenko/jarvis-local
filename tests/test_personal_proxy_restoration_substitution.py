@@ -1,4 +1,4 @@
-from jarvis.personal_proxy.restoration_substitution import substitute
+from jarvis.personal_proxy.restoration.restoration_substitution import substitute
 
 MAPPING = {"<PERSON_1>": "Анна Лебедева", "<PHONE_1>": "8 915 234 56 78"}
 

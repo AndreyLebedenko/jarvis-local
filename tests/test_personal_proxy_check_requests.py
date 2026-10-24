@@ -2,16 +2,16 @@ import json
 
 import pytest
 
-from jarvis.personal_proxy.check_prompts import ERROR_HINT, JUDGE_SCHEMA, RULES
-from jarvis.personal_proxy.check_requests import (
+from jarvis.personal_proxy.check.check_prompts import ERROR_HINT, JUDGE_SCHEMA, RULES
+from jarvis.personal_proxy.check.check_requests import (
     JUDGE_SEED,
     NUM_PREDICT,
     build_judge_request,
     build_sample_request,
 )
-from jarvis.personal_proxy.judge_parsing import JudgeResult, parse_judge
-from jarvis.personal_proxy.stt_result import Word
-from jarvis.personal_proxy.weak_word_marks import mark_weak_words
+from jarvis.personal_proxy.check.judge_parsing import JudgeResult, parse_judge
+from jarvis.personal_proxy.check.weak_word_marks import mark_weak_words
+from jarvis.personal_proxy.stt.stt_result import Word
 
 
 def _word(text, probability):

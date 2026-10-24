@@ -18,23 +18,15 @@ from _service_fakes import (
     until,
 )
 
-from jarvis.personal_proxy.check_result import CheckedTranscript, CheckSource
-from jarvis.personal_proxy.confirmation_blocks import (
+from jarvis.personal_proxy.check.check_result import CheckedTranscript, CheckSource
+from jarvis.personal_proxy.common.findings import GateCategory
+from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+from jarvis.personal_proxy.confirmation.confirmation_blocks import (
     HeardBlock,
     HeardDecision,
     SentBlock,
 )
-from jarvis.personal_proxy.findings import GateCategory
-from jarvis.personal_proxy.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.restoration_result import RestorationMethod
-from jarvis.personal_proxy.sanitize_result import (
-    SanitizeFailure,
-    SanitizeFailureClass,
-    SanitizeResult,
-    SanitizeVerdict,
-)
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     AnswerCompleteBlock,
     DryRunBlock,
@@ -42,8 +34,16 @@ from jarvis.personal_proxy.service_blocks import (
     NoticeKind,
     RequestSourceBlock,
 )
-from jarvis.personal_proxy.service_texts import notice_text
-from jarvis.personal_proxy.stt_result import Transcription
+from jarvis.personal_proxy.reporting.service_texts import notice_text
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
+from jarvis.personal_proxy.restoration.restoration_result import RestorationMethod
+from jarvis.personal_proxy.sanitize.sanitize_result import (
+    SanitizeFailure,
+    SanitizeFailureClass,
+    SanitizeResult,
+    SanitizeVerdict,
+)
+from jarvis.personal_proxy.stt.stt_result import Transcription
 
 UTTERANCE = Utterance(make_wav())
 HARMLESS = "What is a relay?"
@@ -119,7 +119,8 @@ def typed_text_that_would_ask(monkeypatch):
         return CheckedTranscript(text, (), CheckSource.TYPED, True)
 
     monkeypatch.setattr(
-        "jarvis.personal_proxy.request_intake.typed_checked_transcript", doubtful
+        "jarvis.personal_proxy.request.request_intake.typed_checked_transcript",
+        doubtful,
     )
 
 
@@ -248,7 +249,7 @@ async def test_a_gate_that_raises_stops_a_forced_request():
 
 
 def _service_over(rig, stages):
-    from jarvis.personal_proxy.proxy_service import PersonalProxyService
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
 
     return PersonalProxyService(
         stages=stages,

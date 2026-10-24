@@ -1,6 +1,6 @@
 import asyncio
 
-from jarvis.personal_proxy.restoration_queue import QueueEnd, SentenceQueue
+from jarvis.personal_proxy.restoration.restoration_queue import QueueEnd, SentenceQueue
 
 
 async def _completes(awaitable, seconds=0.5):

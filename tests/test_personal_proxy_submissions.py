@@ -4,9 +4,13 @@ import pytest
 
 from jarvis.audio.input import UtteranceChunk
 from jarvis.core.lifecycle import TextSubmissionReason
-from jarvis.personal_proxy.proxy_inbox import InboxFullError, TypedText, Utterance
-from jarvis.personal_proxy.proxy_service import ServiceClosedError
-from jarvis.personal_proxy.proxy_submissions import ProxySubmissions
+from jarvis.personal_proxy.request.proxy_inbox import (
+    InboxFullError,
+    TypedText,
+    Utterance,
+)
+from jarvis.personal_proxy.service.proxy_service import ServiceClosedError
+from jarvis.personal_proxy.service.proxy_submissions import ProxySubmissions
 
 SECRET = "Марина Крылова"
 

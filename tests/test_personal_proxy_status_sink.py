@@ -2,11 +2,15 @@ import logging
 
 from _service_fakes import HEARD, RecordingSink
 
-from jarvis.personal_proxy.confirmation_blocks import SentBlock
-from jarvis.personal_proxy.findings import Finding, GateCategory
-from jarvis.personal_proxy.sanitize_result import SanitizeVerdict
-from jarvis.personal_proxy.service_blocks import DryRunBlock, NoticeBlock, NoticeKind
-from jarvis.personal_proxy.status_sink import ProxyStatusSink
+from jarvis.personal_proxy.common.findings import Finding, GateCategory
+from jarvis.personal_proxy.confirmation.confirmation_blocks import SentBlock
+from jarvis.personal_proxy.reporting.service_blocks import (
+    DryRunBlock,
+    NoticeBlock,
+    NoticeKind,
+)
+from jarvis.personal_proxy.reporting.status_sink import ProxyStatusSink
+from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeVerdict
 
 
 class _Publisher:

@@ -1,13 +1,16 @@
 import pytest
 
-from jarvis.personal_proxy.findings import Finding, GateCategory
-from jarvis.personal_proxy.restoration_result import RestorationMethod, RestoredSentence
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.common.findings import Finding, GateCategory
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
     answer_block_of,
+)
+from jarvis.personal_proxy.restoration.restoration_result import (
+    RestorationMethod,
+    RestoredSentence,
 )
 
 SECRET = "Марина Крылова marina@example.org"

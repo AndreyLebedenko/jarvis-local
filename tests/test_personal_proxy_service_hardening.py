@@ -25,23 +25,25 @@ from _service_fakes import (
     within,
 )
 
-from jarvis.personal_proxy import proxy_service
-from jarvis.personal_proxy.answer_voice import AnswerVoice
-from jarvis.personal_proxy.confirmation_exchange import ConfirmationExchange
-from jarvis.personal_proxy.confirmation_outcome import ExchangeOutcome
-from jarvis.personal_proxy.confirmation_texts import spoken_question
-from jarvis.personal_proxy.findings import GateCategory, GateStage
-from jarvis.personal_proxy.proxy_inbox import TypedText, Utterance
-from jarvis.personal_proxy.sanitize_result import (
-    SanitizeFailure,
-    SanitizeFailureClass,
+from jarvis.personal_proxy.answer.answer_voice import AnswerVoice
+from jarvis.personal_proxy.common.findings import GateCategory, GateStage
+from jarvis.personal_proxy.confirmation.confirmation_exchange import (
+    ConfirmationExchange,
 )
-from jarvis.personal_proxy.service_blocks import (
+from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
+from jarvis.personal_proxy.confirmation.confirmation_texts import spoken_question
+from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
 )
+from jarvis.personal_proxy.request.proxy_inbox import TypedText, Utterance
+from jarvis.personal_proxy.sanitize.sanitize_result import (
+    SanitizeFailure,
+    SanitizeFailureClass,
+)
+from jarvis.personal_proxy.service import proxy_service
 from jarvis.ui.contract import DataLocality
 
 UTTERANCE = Utterance(make_wav())
@@ -381,7 +383,7 @@ async def test_the_sentence_stream_is_closed_when_cancelled_while_speaking():
     kept = []
 
     def one_sentence_then_wait(deltas, mapping):
-        from jarvis.personal_proxy.restoration_result import (
+        from jarvis.personal_proxy.restoration.restoration_result import (
             RestorationMethod,
             RestoredSentence,
         )
@@ -440,7 +442,7 @@ async def test_a_gate_result_that_is_not_a_gate_result_blocks_with_a_gate_error(
 ):
     from dataclasses import replace
 
-    from jarvis.personal_proxy.proxy_service import PersonalProxyService
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
 
     rig = Rig()
     stages = replace(rig.stages.as_stages(), gate=lambda payload, context: verdict)

@@ -250,16 +250,16 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
-from jarvis.personal_proxy.launch import ProxyPreparer
-from jarvis.personal_proxy.proxy_assembly import (
+from jarvis.personal_proxy.service.proxy_runtime import PersonalProxyRuntime
+from jarvis.personal_proxy.startup.launch import ProxyPreparer
+from jarvis.personal_proxy.startup.proxy_assembly import (
     prepare_personal_proxy_runtime,
 )
-from jarvis.personal_proxy.proxy_runtime import PersonalProxyRuntime
-from jarvis.personal_proxy.startup import (
+from jarvis.personal_proxy.startup.startup import (
     PersonalProxyNotConfiguredError,
     require_configured,
 )
-from jarvis.personal_proxy.startup_failure import StartupFailureKind
+from jarvis.personal_proxy.startup.startup_failure import StartupFailureKind
 from jarvis.tools.builtin import CAMERA_TOOL_NAME, BuiltinToolProvider
 from jarvis.tools.history import HistoryToolProvider
 from jarvis.tools.host import (

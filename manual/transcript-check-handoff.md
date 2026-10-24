@@ -56,9 +56,9 @@ Automated counterpart already green: `python -m pytest` (includes
   before judging the results. The tool prints the sampling values it uses.
 - Constants of the stage (not settings): the judge runs at temperature 0 with
   seed 1 (`JUDGE_TEMPERATURE`, `JUDGE_SEED` in
-  `src/jarvis/personal_proxy/check_requests.py`); both requests use
+  `src/jarvis/personal_proxy/check/check_requests.py`); both requests use
   `num_predict` 2048 (`NUM_PREDICT`, same file); the rewrite guard's alphabet
-  limit is `CYRILLIC_SHARE_DROP = 0.5` (`src/jarvis/personal_proxy/rewrite_guard.py`).
+  limit is `CYRILLIC_SHARE_DROP = 0.5` (`src/jarvis/personal_proxy/check/rewrite_guard.py`).
 - The recordings are the `.wav` files of `personal_proxy_corpus_wavs/` (spike
   v2.1.0-1 recordings; gitignored; invented data only). The known rewrite cases
   are `n_short_translate.wav` and `m_trade_house.wav` in that directory; the

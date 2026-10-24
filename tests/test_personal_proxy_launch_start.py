@@ -5,9 +5,9 @@ import pytest
 from jarvis.core.bus import EventBus
 from jarvis.core.config import Settings, UiSettings
 from jarvis.core.lifecycle import WarmupCompleted, WarmupStarted
-from jarvis.personal_proxy.launch import launch_personal_proxy
-from jarvis.personal_proxy.proxy_assembly import ProxyHost
-from jarvis.personal_proxy.startup_failure import (
+from jarvis.personal_proxy.startup.launch import launch_personal_proxy
+from jarvis.personal_proxy.startup.proxy_assembly import ProxyHost
+from jarvis.personal_proxy.startup.startup_failure import (
     ProxyStartupError,
     StartupFailureKind,
 )
