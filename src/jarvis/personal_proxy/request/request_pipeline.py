@@ -35,7 +35,6 @@ from jarvis.personal_proxy.external.external_error import ExternalClientError
 from jarvis.personal_proxy.external.external_scope import external_deltas
 from jarvis.personal_proxy.gate.gate_context import GateContext
 from jarvis.personal_proxy.reporting.service_blocks import (
-    AnswerCompleteBlock,
     DryRunBlock,
     NoticeKind,
     RequestSourceBlock,
@@ -196,9 +195,6 @@ class RequestPipeline:
         except Exception as error:
             detail = error.kind if isinstance(error, ExternalClientError) else None
             await self._reporter.quiet_notice(NoticeKind.ANSWER_INCOMPLETE, detail)
-        else:
-            with suppress(Exception):
-                await self._reporter.post(AnswerCompleteBlock())
         finally:
             if deltas is not None:
                 with suppress(Exception):

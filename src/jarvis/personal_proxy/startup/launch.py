@@ -1,8 +1,9 @@
 """The proxy's part of the application's start: prepare it where the main
 model's warm-up would run, and say so on the bus. The main model is not warmed
 in this mode, so `WarmupCompleted` is never published: it would mark the
-backend as responding. A failed start is reported with its kind alone; the
-window stays open and nothing is started."""
+backend as responding. A failed start is reported with the fixed message of
+its kind, never with the error's own text; the window stays open and nothing
+is started."""
 
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ from jarvis.personal_proxy.startup.startup_failure import (
 from jarvis.ui.contract import EventLevel, HealthStatus, ModuleId, RuntimeState
 from jarvis.ui.module_health import ModuleHealthChanged
 from jarvis.ui.runtime_state import RuntimeStateChanged
-from jarvis.ui.text import ui_text
+from jarvis.ui.text import DEFAULT_UI_LANGUAGE, ui_text
 
 SOURCE = "PERSONAL_PROXY"
 
@@ -89,6 +90,6 @@ async def _report_failure(
         logger,
         source=SOURCE,
         level=EventLevel.ERROR,
-        log_message=f"Personal proxy not started: {kind.value}",
+        log_message=ui_text(kind.ui_text_key, DEFAULT_UI_LANGUAGE),
         ui_message=ui_text(kind.ui_text_key, language),
     )

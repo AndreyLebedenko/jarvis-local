@@ -33,7 +33,6 @@ from jarvis.personal_proxy.confirmation.confirmation_exchange import (
 from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
 from jarvis.personal_proxy.confirmation.confirmation_texts import spoken_question
 from jarvis.personal_proxy.reporting.service_blocks import (
-    AnswerBlock,
     DryRunBlock,
     NoticeBlock,
     NoticeKind,
@@ -418,11 +417,10 @@ async def test_an_answer_block_is_posted_before_its_sentence_is_spoken():
     await settled(rig)
     await closed(rig.service)
 
-    answer_events = [
-        entry for entry in rig.log if entry in ("post:AnswerBlock", "speak")
-    ]
-    assert answer_events == ["post:AnswerBlock", "speak"] * 2
-    assert len(rig.sink.of(AnswerBlock)) == 2
+    posts = [i for i, entry in enumerate(rig.log) if entry == "post:AnswerBlock"]
+    speeches = [i for i, entry in enumerate(rig.log) if entry == "speak"]
+    assert len(posts) == len(speeches) == 2
+    assert all(post < speech for post, speech in zip(posts, speeches, strict=True))
 
 
 @pytest.mark.parametrize("language", ["ru", "en"])

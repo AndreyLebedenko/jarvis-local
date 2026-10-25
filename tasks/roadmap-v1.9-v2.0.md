@@ -2,7 +2,7 @@
 
 **Status:** Accepted roadmap update (owner planning dialog, 2026-08-30). Amended
 2026-08-31 (owner planning dialog): v2.0 is now the functional self-model
-(idle-time reflection); the former v2.0 "Canvas-guided voice" moves to v2.1.
+(idle-time reflection); the former v2.0 "Canvas-guided voice" moves to v2.2 (v2.1.0 became the personal proxy).
 Amended 2026-09-30 (owner planning dialog): file operations and execution
 tools added, then parked as needing a safety rethink (see "Parked"); v2.0
 is now the MCP voice guide
@@ -46,7 +46,7 @@ Rejected names for now:
   opposite of the current provenance model.
 
 Use "Text + voice" for the shipped mode label. Use "canvas-guided voice" when
-discussing the broader v2.1 direction.
+discussing the broader v2.2 direction.
 
 ## Cross-cutting rules
 
@@ -251,7 +251,7 @@ that can reduce but never prove absence of sensitive data. The voice-guide
 shape gives the same user value with none of that. May return later as a
 separate canvas source.
 
-## v2.1 - Canvas-guided voice
+## v2.2 - Canvas-guided voice (renumbered from v2.1 on 2026-10-25: v2.1.0 is the personal proxy)
 
 Purpose: explore the larger capability hinted by Text + voice: a structured
 multi-channel answer where Jarvis can build visible content and guide the user
@@ -291,7 +291,7 @@ Candidate directions:
 
 Boundary:
 
-- v2.1 is exploratory until a spike proves model compliance with the tagged or
+- v2.2 is exploratory until a spike proves model compliance with the tagged or
   interleaved protocol.
 - Do not replace the v1.9 two-pass Text + voice mode until the single-pass or
   interleaved design has better measured behavior on latency, tag stability,

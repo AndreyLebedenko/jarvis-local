@@ -1011,6 +1011,41 @@ async def test_a_full_answer_ends_with_an_answer_complete_block():
     ]
 
 
+async def test_the_whole_answer_is_shown_and_closed_during_the_first_sentence():
+    rig = Rig(speaker=FakeSpeaker([], hold=True))
+    rig.speaker.log = rig.log
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await until(lambda: "speak" in rig.log)
+        await until(
+            lambda: any(
+                isinstance(b, AnswerCompleteBlock) for b in rig.sink.persistence_blocks
+            )
+        )
+
+        assert rig.spoken_texts == [FIRST_ANSWER]
+        assert [b.text for b in rig.sink.of(AnswerBlock)] == [
+            FIRST_ANSWER,
+            SECOND_ANSWER,
+        ]
+        rig.speaker.release.set()
+        await settled(rig)
+
+    assert rig.spoken_texts == [FIRST_ANSWER, SECOND_ANSWER]
+
+
+async def test_the_sentences_shown_before_a_failed_answer_are_still_spoken():
+    rig = Rig()
+    rig.stages.deltas = ("Хорошо. ", "Это займёт минуту. ")
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+
+    await request(rig, UTTERANCE)
+
+    shown = [b.text for b in rig.sink.of(AnswerBlock)]
+    assert rig.spoken_texts[: len(shown)] == shown
+    assert NoticeKind.ANSWER_INCOMPLETE in rig.sink.notices()
+
+
 async def test_an_answer_that_failed_midway_posts_no_answer_complete_block():
     rig = Rig()
     rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)

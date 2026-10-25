@@ -2,7 +2,7 @@
 
 Jarvis is a local voice and vision assistant for a Windows workstation. It listens through the microphone, sends audio and optional screenshots to a local Ollama model, and speaks answers through configurable local TTS routes.
 
-The v2.0 headline is the voice guide mode. Started with `--mcp-mode`, Jarvis serves a localhost-only, token-authenticated MCP server, and another local assistant (for example Claude Code) hands it a long answer as the canvas: Jarvis speaks a short guide over it and keeps that answer in its Journal, labeled as somebody else's. See [Voice guide mode](#voice-guide-mode---mcp-mode).
+The v2.1 headline is the personal proxy mode (`--personal-proxy`): Jarvis cleans a spoken or typed request locally and sends only the cleaned text to one external model you choose, then restores the answer locally. See [Personal proxy mode](#personal-proxy-mode---personal-proxy). The v2.0 headline is the voice guide mode. Started with `--mcp-mode`, Jarvis serves a localhost-only, token-authenticated MCP server, and another local assistant (for example Claude Code) hands it a long answer as the canvas: Jarvis speaks a short guide over it and keeps that answer in its Journal, labeled as somebody else's. See [Voice guide mode](#voice-guide-mode---mcp-mode).
 
 Jarvis core is designed to run without network access after the one-time setup
 steps are complete. The LLM backend is a separate component: the default
@@ -50,7 +50,12 @@ v1.2.11 the UI is English by default, with Russian available via
 
 ## Status
 
-This is the v2.0.0 hobby/research release. Its headline is the voice guide
+This is the v2.1.0 hobby/research release. Its headline is the personal
+proxy mode: `Jarvis.cmd --personal-proxy` cleans a spoken or typed request
+locally and sends only the cleaned text to one external OpenAI-compatible
+model (off by default, dry run on by default) - see
+[Personal proxy mode](#personal-proxy-mode---personal-proxy) below. The
+v2.0 headline remains the voice guide
 mode: `Jarvis.cmd --mcp-mode` serves a localhost-only, token-authenticated MCP
 server whose single `speak` tool takes another assistant's long answer as the
 canvas, and Jarvis speaks a short derivative guide over it while keeping the
@@ -637,6 +642,106 @@ carries that token. It is the one MCP tool Jarvis serves,
 ![Jarvis voice guide on the Status tab](docs/screenshots/en/voice-guide-status.jpg)
 
 ![Jarvis voice guide in the Journal](docs/screenshots/en/voice-guide-journal.jpg)
+
+## Personal proxy mode (`--personal-proxy`)
+
+This mode lets you ask a stronger external model a question by voice (or by typing in the
+Journal dock) without the voice, and without the identifying details of the question,
+leaving the machine. Jarvis transcribes your speech locally, removes the identifying
+details with a local model, checks the result with deterministic rules, and sends only the
+cleaned text to one OpenAI-compatible endpoint that you choose. The answer comes back with
+the removed details restored locally and is shown and spoken in Text + voice. The audio, the
+screenshots, your history, memory and Jarvis's own dialog never leave the machine.
+
+It is off by default, it is not a saved setting (a restart without the flag is local again),
+and without the flag nothing in this section has any effect.
+
+### One-time setup
+
+1. Install the optional speech recognition (the normal install does not need it), then fetch
+   the weights once (this needs the network; the runtime itself never downloads them):
+
+   ```cmd
+   .venv\Scripts\python.exe -m pip install -r requirements-stt.txt
+   .venv\Scripts\python.exe setup_stt_model.py
+   ```
+
+2. Pull the local check model: `ollama pull gemma4:12b` (about 7.6 GB). It is the default
+   `[personal_proxy].check_model`.
+3. In `config.toml` set the two required values in `[personal_proxy]` (`config.example.toml`
+   documents every key):
+
+   ```toml
+   [personal_proxy]
+   endpoint = "https://your-provider.example/v1/chat/completions"
+   model = "the-model-name-your-provider-expects"
+   ```
+
+   The endpoint must be `https` (or `http` on this machine). Redirects are not followed.
+4. Put the API key in an environment variable. The config holds only the variable's name
+   (`api_key_env`, default `JARVIS_PERSONAL_PROXY_KEY`), never the key. In cmd, for the
+   window that starts Jarvis:
+
+   ```cmd
+   set JARVIS_PERSONAL_PROXY_KEY=your-key
+   ```
+
+5. Optional: list topics you never want sent in `personal_proxy_topics.txt` (one per line,
+   next to `Jarvis.cmd`; it is gitignored and never leaves the machine). A request that
+   touches a listed topic is refused, not sent.
+
+### Running it
+
+```cmd
+Jarvis.cmd --personal-proxy
+```
+
+`--personal-proxy` needs the Status Console (`Jarvis.cmd` already adds it) and cannot be
+combined with `--mcp-mode` or `--debug`. A missing endpoint, model, key variable, Ollama model
+or speech dependency ends startup with a message that names the kind of problem and starts
+nothing. Close any other running Jarvis first.
+
+`dry_run` is **true by default**: the whole pipeline runs and the Status Console shows what
+would have been sent, but nothing is sent and nothing is written to the Journal. Read a few
+of those cleaned requests, then set `dry_run = false` in `[personal_proxy]` to send for real.
+
+What happens to a request:
+
+1. Speech recognition (Whisper large-v3-turbo) and a local check of the transcript against
+   the recording. Silence and noise never reach the model.
+2. If the check doubts a fragment, Jarvis shows what it heard in full, says what to check,
+   and waits (`confirmation_timeout_seconds`). Only a clear "yes", spoken or typed, goes on;
+   "no", an unclear answer or silence sends nothing.
+3. The local model replaces identifying details with placeholders, or refuses. A fixed
+   rule-based gate then checks the exact text that would leave (card numbers, IBANs,
+   e-mails, keys, your topics list). Any failure sends nothing.
+4. The cleaned text goes to your endpoint. The answer is restored locally, then shown and
+   spoken sentence by sentence.
+
+In the Journal the heard text, the cleaned request that went out and the answer are kept as
+a proxy session, marked with an arrow-out-of-a-box icon and an amber edge ("data goes out").
+They are searchable and shown, but never used as Jarvis's own memory or automatic retrieval.
+"New context" starts a new proxy session. A session can be renamed from its "..." menu.
+
+Typing `/force text` (or `/f text`) in the Journal dock sends that one typed message as it
+is, skipping the local model stages, with the deterministic gate still on. Use it when the
+local model refuses a harmless request. It is marked "FORCED" and, because the model that
+finds names and personal text is skipped, such text in a forced request can go out.
+
+### Limits you should know
+
+- The cleaning is not a guarantee. On the project's test recordings (invented identities,
+  one speaker) the local model still left about 5% of the labeled details in place, and the
+  gate recognises structured identifiers, not names or addresses written in ordinary
+  sentences. Read the "sent" block before you rely on it, and keep dry run on until you
+  trust it.
+- The provider sees the cleaned text, and a request can identify you through its context
+  alone.
+- Recognition errors are caught only partly: the check asks about roughly one request in
+  four and found 7 of 8 real errors in the test set.
+- The local sanitize model sometimes refuses a harmless request; `/force` is the escape.
+- It needs a GPU with room for Whisper and the check model together (about 13 GB in the
+  tested setup). Details and measurements: [Architecture v2.1.0](PROJECT.md).
 
 ## Response modes
 

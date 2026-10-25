@@ -14,20 +14,32 @@ TRANSCRIPT = "Позвони Марине по номеру 8 912 345 67 89"
 
 
 def test_the_frozen_texts_equal_the_spike_texts():
-    assert production.RULES == spike.RULES
     assert production.TEXT_FORMAT == spike.TEXT_FORMAT
     assert production.TEXT_USER_PREFIX == spike.TEXT_USER_PREFIX
     assert production.TEXT_SCHEMA == spike.TEXT_SCHEMA
     assert ", ".join(production.PLACEHOLDER_TYPES) == spike.PLACEHOLDER_TYPES
 
 
-def test_the_messages_equal_the_spike_messages():
+def test_the_user_message_equals_the_spike_user_message():
     request = build_sanitize_request(TRANSCRIPT, TOPICS, 0.5)
 
-    assert [
-        {"role": "system", "content": request.system},
-        {"role": "user", "content": request.prompt},
-    ] == spike.sanitize_text_messages(TRANSCRIPT, TOPICS)
+    spike_user = spike.sanitize_text_messages(TRANSCRIPT, TOPICS)[1]
+    assert {"role": "user", "content": request.prompt} == spike_user
+
+
+def test_the_worked_example_is_a_reply_the_production_parser_accepts():
+    outcome = parse_sanitize_output(production.EXAMPLE_REPLY)
+
+    assert outcome.sanitized_text == "Напиши <PERSON_1> про договор"
+    assert outcome.mapping == {"<PERSON_1>": "Тамара Игнатьева"}
+
+
+@pytest.mark.parametrize("topics", ["", "- x"])
+def test_the_prompt_holds_the_worked_example_and_the_numbering_rule(topics):
+    prompt = production.sanitize_system_prompt(topics)
+
+    assert production.EXAMPLE_REPLY in prompt
+    assert "<PERSON_1>, never <PERSON>" in prompt
 
 
 def test_the_parser_names_the_same_failures_as_the_spike_parser():
@@ -44,7 +56,7 @@ def test_the_parser_names_the_same_failures_as_the_spike_parser():
 
 
 PROMPT_WITH_TOPICS_SHA256 = (
-    "e33b9b6eb773356736fa95b030f36cfaa8bc5baaddda53f128649a2dff9cdc19"
+    "1bf7f77eec262e6fdbfbd6bbcead1ca2c3436464df564ac0b9eb44248978fdf3"
 )
 TOPIC_RULE_START = "6. If the whole request is mainly about one of the sensitive topics"
 NO_SPEECH_RULE_TEXT = (
@@ -61,7 +73,7 @@ def _numbered_rules(prompt):
     ]
 
 
-def test_the_prompt_with_topics_is_byte_identical_to_the_measured_baseline():
+def test_the_prompt_with_topics_is_byte_identical_to_the_frozen_text():
     prompt = production.sanitize_system_prompt("- the secret diagnosis of the user")
 
     assert hashlib.sha256(prompt.encode()).hexdigest() == PROMPT_WITH_TOPICS_SHA256

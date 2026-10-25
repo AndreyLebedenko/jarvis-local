@@ -145,15 +145,28 @@ async def test_an_unexpected_error_is_reported_as_internal_without_its_text(capl
     assert secret not in repr(seen)
 
 
-async def test_the_failure_log_line_holds_the_kind_alone(caplog):
+@pytest.mark.parametrize("kind", list(StartupFailureKind))
+async def test_the_failure_log_line_is_the_readable_message_of_the_kind(caplog, kind):
     bus = EventBus()
 
     async def prepare(host):
-        raise ProxyStartupError(StartupFailureKind.TOPICS_FILE)
+        raise ProxyStartupError(kind)
 
     with caplog.at_level(logging.DEBUG):
         await launch_personal_proxy(_host(bus), LOGGER, prepare)
 
     assert [record.getMessage() for record in caplog.records] == [
-        "[PERSONAL_PROXY] Personal proxy not started: topics_file"
+        f"[PERSONAL_PROXY] {ui_text(kind.ui_text_key, 'en')}"
     ]
+
+
+async def test_the_api_key_failure_log_names_the_config_key_to_check(caplog):
+    bus = EventBus()
+
+    async def prepare(host):
+        raise ProxyStartupError(StartupFailureKind.API_KEY)
+
+    with caplog.at_level(logging.DEBUG):
+        await launch_personal_proxy(_host(bus), LOGGER, prepare)
+
+    assert "[personal_proxy].api_key_env" in caplog.text

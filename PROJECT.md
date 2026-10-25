@@ -5804,8 +5804,8 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   stays journal-free). Four Journal sources (`journal/proxy_exchange.py`): `proxy_heard`
   (user, the heard text whole, the recording and `raw_transcript` in the same event),
   `proxy_sent` (system, the sanitized request that went out), `proxy_answer` (assistant,
-  one event per answer, the restored text as shown and spoken, `incomplete` when it was
-  cut short) and `proxy_notice` (system, content-free). Sibling provenance kinds
+  one event per answer, the restored text as shown, written when the last sentence has
+  arrived and not when its speech ends, `incomplete` when the answer was cut short) and `proxy_notice` (system, content-free). Sibling provenance kinds
   `PROXY_REQUEST` (heard, sent), `PROXY_ANSWER` and `PROXY_NOTICE`: MODEL_SEARCH and
   JOURNAL_UI only, never AUTO_RETRIEVAL, and all four sources are excluded from fork
   seeds (counted). `_ExternalSessionProbe` treats a session with a proxy event as external,
@@ -5818,6 +5818,9 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   dropped). A persistence failure never changes the request and logs the exception type
   only. Two persistence-only blocks (`RequestSourceBlock`, `AnswerCompleteBlock`) carry the
   recording and the end of an answer to the writer; the chat sink does not draw them.
+  The answer is read by its own task (`answer/answer_presenter.py`): each sentence is shown
+  as it arrives and queued for speech, so showing and the Journal write never wait for the
+  voice; an interruption cuts the speech, not the text already shown.
   `[personal_proxy].dry_run` defaults to true, so by default the Journal stays empty. The
   Status Console state key `proxy_status` holds the dry-run indicator and the last block
   reason (kind and positions, never a value). Placeholder session title: "Personal proxy
@@ -5913,6 +5916,75 @@ Verified facts (one speaker, one room, a corpus of invented identities):
 Honest limits: the corpora are 44 and 30 recordings of invented identities,
 one speaker and two Silero voices; thresholds were taken from the first corpus.
 
+## Architecture v2.1.0 (personal proxy)
+
+The settled design of `--personal-proxy` (story v2.1.0, tasks 1-12). The detailed records
+of each stage (measurements, review rounds, owner decisions) are the bullets of "v2.1.0
+speech recognition and confidence spikes" above; this section is the map.
+
+**What it is.** A run mode (`RunMode.PERSONAL_PROXY`, flag `--personal-proxy`, requires
+`--status-console`, excludes `--mcp-mode` and `--debug`) in which a spoken or typed request
+is cleaned locally and only the cleaned text goes to one external OpenAI-compatible model;
+the answer comes back with the removed details restored locally and is shown and spoken in
+Text+Voice. Audio, images, history, memory, tools and Jarvis's own dialog never leave. Off by
+default and not persistent; with the flag absent the runtime is byte-identical to v2.0.
+
+**Pipeline, in order** (one request at a time, every failure sends nothing):
+
+1. Speech-to-text: Whisper large-v3-turbo (optional `requirements-stt.txt`, weights fetched
+   once by `setup_stt_model.py`), behind a speech-presence guard.
+2. Transcript check: a local Gemma sample and judge against the recording give a checked
+   transcript and a doubt list.
+3. Confirmation exchange, only with a doubt: the whole heard text is shown, the doubts are
+   spoken, and only a clear "yes" (spoken or typed) continues.
+4. Sanitize pass: the local model replaces identifying details with placeholders, or refuses
+   (a topics-file match, or a direct identifier); a malformed reply is a failure, retried
+   once locally.
+5. Outbound gate: deterministic detectors, the placeholder mapping check and the topics
+   check on the exact payload; the payload is built in one place and holds only the fixed
+   system prompt and the sanitized text.
+6. External client: the only code that talks to the provider; the key is read from the named
+   environment variable per call, https or loopback only, no redirect, no retry, no logging.
+7. Restoration: sentences with placeholders go through the local model and a template
+   check, with plain substitution as the fallback; the result is presented sentence by
+   sentence.
+
+Dry run (`[personal_proxy].dry_run`, default true) runs everything up to the gate, shows the
+state and sends nothing. `/force` (typed only) sends one message without the local model
+stages; the gate still runs. The package layout is described above (task 11a).
+
+**Journal.** The exchange is persisted with its own provenance (`PROXY_REQUEST`,
+`PROXY_ANSWER`, `PROXY_NOTICE`): searchable and shown, never automatic retrieval, never a
+fork seed; the mapping and the raw external answer are never written. A session carries an
+optional user title in `session.json` (task 10f).
+
+**Honest limits** (the measured numbers are in the spike records above):
+
+- The corpora are 44 and 30 recordings of invented identities, one speaker and two Silero
+  voices; thresholds came from the first corpus. The sanitize pass leaked 5.2% of the
+  recognisable labeled spans in spike 11; the outbound gate catches structured identifiers
+  (cards, IBANs, e-mails, keys) but not names or addresses in free text.
+- The doubt trigger asked on 13 of 60 labeled recordings and covered 7 of 8 real errors,
+  naming the wrong fragment on 3 of 8.
+- The false-refusal rate of the sanitize model was 23.5% in spike 11; task 10e added one
+  local retry and a `/force` hint. The live rate after 10e is measured by the release handoff
+  (`manual/personal-proxy-release-handoff.md`) and is not recorded here until the owner
+  reports it.
+- The sanitize prompt was extended on 2026-10-25 by a numbering rule and one worked example
+  (`EXAMPLE_REPLY` in `sanitize/sanitize_prompts.py`), because the live model answered a
+  lone person with `<PERSON>` and the strict parser rejected it twice. Both rates above were
+  measured on the earlier text. On the new text the owner measured the false refusals on
+  2026-10-25, without a topics file: 80 of 80 trials sent in both arms (retry on and off),
+  the retry never fired, and 5 of 5 replies to the request that had failed were accepted.
+  Not measured on the new text: the false refusals with a topics file, and the leak rate
+  (handoff part 9.1 only re-scores the recorded output of the earlier text).
+- A forced request skips the model that finds names and personal text; that is the owner's
+  explicit trade-off (2026-10-24).
+- The external provider sees the cleaned text; Jarvis cannot make the cleaned text anonymous
+  when the context itself identifies the user.
+- Hardware-dependent behavior (microphone, speakers, GPU, the live provider) is verified only
+  by the human-run handoffs, never by CI.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old
@@ -5933,10 +6005,14 @@ Current direction:
    user input into the model in this mode; never concurrent with a normal
    instance; journal search, memory, and annotations preserved. Runtime
    locality unchanged.
-5. v2.1 "canvas-guided voice": explore interleaved visible canvas plus spoken
-   guide protocols, if a spike proves tag stability, latency benefit, factual
-   preservation, and recovery behavior.
-6. v3.0 functional self-model (idle-time reflection), deferred from v2.0.
+5. v2.1.0 personal proxy - delivered (story-v2.1.0, tasks 1-12, 2026-10-25):
+   `--personal-proxy` cleans a spoken or typed request locally and sends only the
+   cleaned text to one external model (see "Architecture v2.1.0"). Off by default;
+   the runtime without the flag is unchanged.
+6. v2.2 "canvas-guided voice" (renumbered from v2.1): explore interleaved visible
+   canvas plus spoken guide protocols, if a spike proves tag stability, latency
+   benefit, factual preservation, and recovery behavior.
+7. v3.0 functional self-model (idle-time reflection), deferred from v2.0.
 
 Parked, unversioned: file operations (edit, delete to the Recycle Bin) and
 execution tools - too dangerous for the concept in their current form; they

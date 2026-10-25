@@ -1,11 +1,13 @@
-"""The sanitize pass's model-facing text, promoted unchanged in substance from
-the v2.1.0 spikes (manual/personal_proxy/prompts.py). The text is English; the
-sanitized text it asks for stays in the language of the request. Without topics
-the prompt has no topics rule and no topics section: there is nothing to refuse
-by topic."""
+"""The sanitize pass's model-facing text, promoted from the v2.1.0 spikes
+(manual/personal_proxy/prompts.py) and extended by a numbering rule and one
+worked example, because the model left the number off a lone placeholder. The
+text is English; the sanitized text it asks for stays in the language of the
+request. Without topics the prompt has no topics rule and no topics section:
+there is nothing to refuse by topic."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from jarvis.personal_proxy.common.visible_text import has_visible_text
@@ -23,6 +25,17 @@ PLACEHOLDER_TYPES = (
     "SECRET",
     "GOV_ID",
     "OTHER",
+)
+
+EXAMPLE_REQUEST = "Напиши Тамаре Игнатьевой про договор"
+EXAMPLE_REPLY = json.dumps(
+    {
+        "verdict": "send",
+        "reason": "",
+        "sanitized_text": "Напиши <PERSON_1> про договор",
+        "mapping": {"<PERSON_1>": "Тамара Игнатьева"},
+    },
+    ensure_ascii=False,
 )
 
 _RULES_HEAD = (
@@ -45,6 +58,10 @@ _RULES_HEAD = (
     "5. mapping lists each placeholder with its original value in base form: "
     "for a person, the full name in the nominative case; for a number, the "
     "digits as spoken.\n"
+    "Every placeholder ends with its number, also the only one of its type: "
+    "<PERSON_1>, never <PERSON>. The keys of mapping are the placeholders "
+    "exactly as they stand in sanitized_text.\n"
+    "Example. Request: {example_request}. Reply: {example_reply}\n"
 )
 _TOPIC_RULE = (
     "6. If the whole request is mainly about one of the sensitive topics listed "
@@ -60,7 +77,11 @@ _TOPICS_SECTION = "\nSensitive topics:\n{topics}\n"
 
 
 def _rules(*, with_topics: bool) -> str:
-    head = _RULES_HEAD.replace("{types}", ", ".join(PLACEHOLDER_TYPES))
+    head = (
+        _RULES_HEAD.replace("{types}", ", ".join(PLACEHOLDER_TYPES))
+        .replace("{example_request}", json.dumps(EXAMPLE_REQUEST, ensure_ascii=False))
+        .replace("{example_reply}", EXAMPLE_REPLY)
+    )
     if with_topics:
         no_speech = _NO_SPEECH_RULE.replace("{number}", "7")
         return head + _TOPIC_RULE + no_speech + _TOPICS_SECTION
