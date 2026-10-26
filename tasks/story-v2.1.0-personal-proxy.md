@@ -441,6 +441,11 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
     `ruff check`, `ruff format --check`, and
     `tools/check_handoff_self_sufficiency.py`.
 
+12a. **Public names file.** (Size: S-M. Proposed 2026-10-26, `tasks/task-v2.1.0-12a-public-names-file.md`.)
+    An owner-kept file of names that the sanitize pass keeps in the text, so a question about a
+    public person is not turned into `<PERSON_1>`. Added after the owner's live run; not part of
+    task 12.
+
 ## Acceptance criteria
 
 - [x] The spike records and the decision (a dedicated engine first) are in
