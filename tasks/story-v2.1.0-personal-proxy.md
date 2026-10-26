@@ -482,7 +482,7 @@ others are changed or new. Cards for tasks 1-12 do not exist yet.
       automatic retrieval, and labeled in search and in the Status Console; the
       logs never contain the heard text. (Task 10.)
 - [x] The sweep leaves the suite green. (Task 11.)
-- [ ] `python -m pytest`, `ruff check`, and `ruff format --check` are green; the
+- [x] `python -m pytest`, `ruff check`, and `ruff format --check` are green; the
       end-to-end check and the recall report are a prepared, self-sufficient
       human-run handoff; docs state the honest limits. (Task 12.)
 

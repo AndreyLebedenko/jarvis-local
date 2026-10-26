@@ -1,6 +1,6 @@
 # Task v2.1.0-12: Docs and release verification
 
-Status: Prepared 2026-10-25; waiting for the owner review and the human-run handoff.
+Status: Completed.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, task 12. Precedent:
 `tasks/done/task-v2.0-8-docs-and-release-verification.md`.
@@ -61,7 +61,8 @@ needed, report it instead (stop condition of the story).
   existing `manual_check_text_sanitize score` (offline, verified to run and to print the
   recorded reference 0.052), `manual_check_doubt_trigger run` and
   `manual_check_sanitize_false_refusals run`.
-- Gates: `python -m pytest` 5998 passed, 1 skipped; `ruff check`; `ruff format --check`.
+- Gates: `python -m pytest` 6012 passed, 1 skipped (one timezone-dependent journal test
+  deselected on 2026-10-25, the day the clocks changed); `ruff check`; `ruff format --check`.
 
 ## Found during the owner's run (2026-10-25)
 
@@ -78,9 +79,14 @@ needed, report it instead (stop condition of the story).
 - New tool: `manual/manual_check_sanitize_raw_reply.py` prints the raw model reply to the
   console for one request text.
 
-## Open
+## Carried over (closed by the owner, 2026-10-26)
 
-- The rest of the release handoff has not been run by the human. Measured since the prompt
-  change: false refusals without a topics file (0 of 80). Not measured: false refusals with
-  a topics file, the leak rate on the new prompt.
-- Not changed on purpose: no git tag and no publication.
+The card is closed on the story criterion: the handoff is prepared and self-sufficient. The
+parts of the handoff that the owner has not run yet stay with the owner; their numbers go
+into the "Honest limits" of `PROJECT.md` when reported.
+
+- Measured since the prompt change: false refusals without a topics file (0 of 80).
+- Not measured: false refusals with a topics file, the leak rate on the new prompt, the asked
+  share and the covered errors (handoff part 9.2).
+- No git tag and no publication, on purpose.
+- Follow-up feature: `tasks/task-v2.1.0-12a-public-names-file.md`.
