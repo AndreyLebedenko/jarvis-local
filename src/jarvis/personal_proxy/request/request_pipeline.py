@@ -31,7 +31,7 @@ from jarvis.personal_proxy.confirmation.confirmation_blocks import (
 )
 from jarvis.personal_proxy.confirmation.confirmation_outcome import ExchangeOutcome
 from jarvis.personal_proxy.confirmation.confirmation_policy import should_ask
-from jarvis.personal_proxy.external.external_error import ExternalClientError
+from jarvis.personal_proxy.external.external_error import error_kind_of
 from jarvis.personal_proxy.external.external_scope import external_deltas
 from jarvis.personal_proxy.gate.gate_context import GateContext
 from jarvis.personal_proxy.reporting.service_blocks import (
@@ -193,8 +193,9 @@ class RequestPipeline:
             sentences = self._stages.restore(deltas, sanitized.mapping)
             await self._parts.presenter.present(sentences)
         except Exception as error:
-            detail = error.kind if isinstance(error, ExternalClientError) else None
-            await self._reporter.quiet_notice(NoticeKind.ANSWER_INCOMPLETE, detail)
+            await self._reporter.quiet_notice(
+                NoticeKind.ANSWER_INCOMPLETE, error_kind_of(error)
+            )
         finally:
             if deltas is not None:
                 with suppress(Exception):

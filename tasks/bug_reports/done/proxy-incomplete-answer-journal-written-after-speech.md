@@ -3,6 +3,9 @@
 Detected at commit d6bdc64 (branch feat/v2.1.0-12a-public-names), live run 2026-10-27,
 session `20261027-100105-926fcb`.
 
+**Status:** Resolved 2026-10-27 by `tasks/done/task-v2.1.1-2-incomplete-answer-journal.md`
+(live confirmation pending the next real stream failure).
+
 ## Symptoms
 
 The whole spoken answer plays first; the answer text appears in the Journal only afterwards,

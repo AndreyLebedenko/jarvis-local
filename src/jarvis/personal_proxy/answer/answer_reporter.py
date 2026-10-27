@@ -41,6 +41,9 @@ class Reporter:
     ) -> None:
         block = NoticeBlock(kind, detail, reason, forceable)
         await self._sink.post(block)
+        await self.speak_notice(block)
+
+    async def speak_notice(self, block: NoticeBlock) -> None:
         sentence = spoken_notice(block, self._language())
         if sentence is not None:
             await self.speak(sentence)

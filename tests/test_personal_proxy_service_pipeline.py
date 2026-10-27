@@ -51,7 +51,7 @@ from jarvis.personal_proxy.reporting.service_blocks import (
     NoticeKind,
     RequestSourceBlock,
 )
-from jarvis.personal_proxy.reporting.service_texts import notice_text
+from jarvis.personal_proxy.reporting.service_texts import notice_text, spoken_notice
 from jarvis.personal_proxy.request.proxy_inbox import (
     InboxFullError,
     TypedText,
@@ -1044,6 +1044,66 @@ async def test_the_sentences_shown_before_a_failed_answer_are_still_spoken():
     shown = [b.text for b in rig.sink.of(AnswerBlock)]
     assert rig.spoken_texts[: len(shown)] == shown
     assert NoticeKind.ANSWER_INCOMPLETE in rig.sink.notices()
+
+
+async def test_a_failed_answer_is_reported_incomplete_while_its_speech_is_still_held():
+    rig = Rig(speaker=FakeSpeaker([], hold=True))
+    rig.speaker.log = rig.log
+    rig.stages.deltas = ("Хорошо. ", "Это займёт минуту. ")
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await until(lambda: "speak" in rig.log)
+        await until(lambda: NoticeKind.ANSWER_INCOMPLETE in rig.sink.notices())
+
+        assert rig.spoken_texts == ["Хорошо."]
+        rig.speaker.release.set()
+        await settled(rig)
+
+    assert rig.sink.notices().count(NoticeKind.ANSWER_INCOMPLETE) == 1
+
+
+async def test_the_incomplete_notice_follows_the_shown_and_spoken_sentences():
+    rig = Rig()
+    rig.stages.deltas = ("Хорошо. ", "Это займёт минуту. ")
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+
+    await request(rig, UTTERANCE)
+
+    shown = [
+        type(b) for b in rig.sink.blocks if isinstance(b, AnswerBlock | NoticeBlock)
+    ]
+    assert shown[-1] is NoticeBlock
+    assert set(shown[:-1]) == {AnswerBlock}
+    incomplete = NoticeBlock(NoticeKind.ANSWER_INCOMPLETE)
+    assert rig.spoken_texts[-1] == spoken_notice(incomplete, rig.language)
+
+
+async def test_a_failure_before_any_sentence_posts_one_notice_and_no_answer():
+    rig = Rig()
+    rig.stages.deltas = ()
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+
+    await request(rig, UTTERANCE)
+
+    assert rig.sink.of(AnswerBlock) == []
+    assert rig.sink.notices() == [NoticeKind.ANSWER_INCOMPLETE]
+
+
+async def test_a_voice_error_after_a_failed_answer_adds_no_second_notice():
+    rig = Rig(
+        sink=RecordingSink([], fail_on=NoticeBlock),
+        speaker=FakeSpeaker([], hold=True, error=RuntimeError("speaker broke")),
+    )
+    rig.stages.deltas = ("Хорошо. ", "Это займёт минуту. ")
+    rig.stages.stream_error = ExternalClientError(ExternalErrorKind.TIMEOUT)
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await until(lambda: NoticeKind.ANSWER_INCOMPLETE in rig.sink.notices())
+        rig.speaker.release.set()
+        await settled(rig)
+
+    assert rig.sink.notices().count(NoticeKind.ANSWER_INCOMPLETE) == 1
 
 
 async def test_an_answer_that_failed_midway_posts_no_answer_complete_block():

@@ -50,3 +50,7 @@ class ExternalClientError(Exception):
         super().__init__(_MESSAGES[kind])
         self.kind = kind
         self.status = status
+
+
+def error_kind_of(error: Exception) -> ExternalErrorKind | None:
+    return error.kind if isinstance(error, ExternalClientError) else None

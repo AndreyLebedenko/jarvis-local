@@ -1,7 +1,7 @@
 # Story v2.1.1: Personal proxy speech modes (Text, Voice, Text+Voice)
 
 **Status:** Approved by the owner, 2026-10-27 (version v2.1.1, second-pass timeout 30 s,
-default mode as today). Task 1 done.
+default mode as today). Tasks 1-2 done.
 **Created:** 2026-10-27
 **Predecessors:** `tasks/story-v2.1.0-personal-proxy.md` (delivered),
 `tasks/done/story-v1.9.0-response-modes.md`.
@@ -108,7 +108,7 @@ in every mode when TTS is enabled; the modes differ in the text contract:
 1. **Speech cleanup module.** (Size: S-M. Done 2026-10-27, `tasks/done/task-v2.1.1-1-speech-cleanup.md`.) Pure function(s): Markdown markers, links, list
    markers, Roman numerals in unambiguous contexts; unit tests by examples from the owner's
    runs. No wiring.
-2. **Journal write of an incomplete answer does not wait for speech.** (Size: S.) Fix in
+2. **Journal write of an incomplete answer does not wait for speech.** (Size: S. Done 2026-10-27, `tasks/done/task-v2.1.1-2-incomplete-answer-journal.md`.) Fix in
    `answer_presenter`/`journal_writer`, with a failing-stream test and a held speaker.
 3. **Proxy follows the response mode.** (Size: M.) Verdict, hotkey, `ProxyHost` getter,
    per-request latch, mode recorded in Journal metadata, Status Console control enabled,
