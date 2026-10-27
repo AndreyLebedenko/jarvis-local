@@ -5779,7 +5779,8 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   `app.py`, `Orchestrator` or Journal dependency. A router sends every item either to the
   pending confirmation exchange or to a bounded FIFO; one worker runs one request at a time,
   so the locality seam (EXTERNAL only around the external stream) is never overlapped. The
-  payload holds only the fixed system prompt and the sanitized text (the one exception is
+  payload holds only the fixed system prompt (in Voice mode the default prompt plus the fixed
+  voice paragraph, story v2.1.1) and the sanitized text (the one exception is
   a forced request, task 10d: the verbatim typed text with an empty mapping), and the
   stream gets the exact object the gate allowed. Every failure posts a content-free notice and sends
   nothing; dry run skips the question, posts the full state and stops. The restored answer
@@ -6055,7 +6056,9 @@ Current direction:
    user input into the model in this mode; never concurrent with a normal
    instance; journal search, memory, and annotations preserved. Runtime
    locality unchanged.
-5. v2.1.0 personal proxy - delivered (story-v2.1.0, tasks 1-12, 2026-10-25):
+5. v2.1.1 proxy speech modes - delivered (story-v2.1.1, tasks 1-6, 2026-10-27): the proxy follows
+   the response mode (Text, Voice, Text+voice); see the proxy notes of "Architecture" above.
+   v2.1.0 personal proxy - delivered (story-v2.1.0, tasks 1-12, 2026-10-25):
    `--personal-proxy` cleans a spoken or typed request locally and sends only the
    cleaned text to one external model (see "Architecture v2.1.0"). Off by default;
    the runtime without the flag is unchanged.

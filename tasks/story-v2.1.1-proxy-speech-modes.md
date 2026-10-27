@@ -1,7 +1,8 @@
 # Story v2.1.1: Personal proxy speech modes (Text, Voice, Text+Voice)
 
-**Status:** Approved by the owner, 2026-10-27 (version v2.1.1, second-pass timeout 30 s,
-default mode as today). Tasks 1-5 done.
+**Status:** Delivered 2026-10-27 (version v2.1.1, second-pass timeout 30 s, default mode as
+today). Tasks 1-6 done; the owner's live run of Voice and Text+Voice passed, the handoff's
+remaining steps and the Text+Voice latency figure are the owner's.
 **Created:** 2026-10-27
 **Predecessors:** `tasks/story-v2.1.0-personal-proxy.md` (delivered),
 `tasks/done/story-v1.9.0-response-modes.md`.
@@ -118,7 +119,7 @@ in every mode when TTS is enabled; the modes differ in the text contract:
    longer system message, cleanup per sentence in the speech path, docs.
 5. **Text+Voice mode.** (Size: M-L. Done 2026-10-27, `tasks/done/task-v2.1.1-5-text-voice-mode.md`.) Buffered answer, local second pass, timeout key,
    fallback, `spoken_derivative` metadata, tag stripping of the output, docs.
-6. **Docs and release verification.** (Size: S-M.) README (EN, RU), `PROJECT.md`, handoff
+6. **Docs and release verification.** (Size: S-M. Done 2026-10-27, `tasks/done/task-v2.1.1-6-docs-and-release-verification.md`.) README (EN, RU), `PROJECT.md`, handoff
    with human-run steps for all three modes (live model, TTS, hotkey).
 
 ## Open points for the owner

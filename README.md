@@ -650,7 +650,8 @@ Journal dock) without the voice, and without the identifying details of the ques
 leaving the machine. Jarvis transcribes your speech locally, removes the identifying
 details with a local model, checks the result with deterministic rules, and sends only the
 cleaned text to one OpenAI-compatible endpoint that you choose. The answer comes back with
-the removed details restored locally and is shown and spoken in Text + voice. The audio, the
+the removed details restored locally, then shown and spoken according to the response mode (see
+"Response modes in the proxy" below). The audio, the
 screenshots, your history, memory and Jarvis's own dialog never leave the machine.
 
 It is off by default, it is not a saved setting (a restart without the flag is local again),
@@ -736,6 +737,38 @@ Typing `/force text` (or `/f text`) in the Journal dock sends that one typed mes
 is, skipping the local model stages, with the deterministic gate still on. Use it when the
 local model refuses a harmless request. It is marked "FORCED" and, because the model that
 finds names and personal text is skipped, such text in a forced request can go out.
+
+### Response modes in the proxy
+
+The proxy follows the same response-mode switch as the rest of Jarvis (`Ctrl+Alt+O`,
+`[hotkeys].response_mode_toggle`; the "Response mode" buttons on the Status tab; the default
+at start is `[response].mode`, default `text`). Speech is on in every mode while TTS is on.
+The mode is read once when a request starts, so a switch during a request affects the next
+one. It is recorded on the request's answer in the Journal.
+
+- **Text** (`text`, the default): the answer is shown and spoken sentence by sentence as
+  received. Nothing changes from before v2.1.1.
+- **Voice** (`voice`): one more fixed paragraph is added to the system message that goes out
+  (Jarvis's own text, no data of yours) asking for plain prose that can be read aloud. Each
+  sentence is also cleaned locally before it is spoken: Markdown markers, links and list
+  marks are dropped, Roman numerals in a clear context ("XX век") and common abbreviations
+  after a number ("тыс.", "млн", "°C", "г.", "т.д.") are spelled out. The screen shows the
+  sentence as received.
+- **Text + voice** (`text_voice`): the screen shows the answer as received, sentence by
+  sentence. Speech starts only after the whole answer arrived: the local model then renders
+  a spoken version (the `[generation.spoken_derivative]` prompt), which is cleaned the same
+  way and spoken. The microphone is paused meanwhile. If the local pass fails or takes longer
+  than `[personal_proxy].spoken_pass_timeout_seconds` (default 30), the answer is spoken as in
+  Voice instead. The spoken version is stored in the Journal as a "spoken aloud" derivative of
+  the answer; the answer text stays what was shown.
+
+The local pass in Text + voice never sends anything out: it runs on the local check model.
+Limits: the voice paragraph and the local pass are requests to a model, not guarantees; only
+the cleaning is deterministic, and it covers Markdown, Roman numerals in a clear context and
+the abbreviations above (a year is read as "2002 года", without inferring the case).
+Text + voice answers later than the other modes (the whole answer plus one local request),
+and the local pass runs in the check model's context (`check_num_ctx`, default 8192), so a
+very long answer may fall back to the Voice-style speech.
 
 ### Limits you should know
 
