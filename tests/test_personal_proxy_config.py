@@ -44,6 +44,7 @@ def test_section_defaults():
         request_timeout_seconds=60,
         connect_timeout_seconds=10,
         confirmation_timeout_seconds=20,
+        spoken_pass_timeout_seconds=30,
         doubt_min_listed=1,
         stt_model="large-v3-turbo",
         stt_device="cuda",
@@ -133,6 +134,10 @@ def test_section_parses_from_config(tmp_path):
         (
             "confirmation_timeout_seconds = 0",
             r"\[personal_proxy\]\.confirmation_timeout_seconds",
+        ),
+        (
+            "spoken_pass_timeout_seconds = 0",
+            r"\[personal_proxy\]\.spoken_pass_timeout_seconds",
         ),
         ("doubt_min_listed = 0", r"\[personal_proxy\]\.doubt_min_listed"),
         ("stt_min_speech_seconds = 0", r"\[personal_proxy\]\.stt_min_speech_seconds"),
@@ -225,6 +230,7 @@ def test_a_wrongly_typed_endpoint_is_rejected_without_echoing_it(tmp_path):
         "request_timeout_seconds",
         "connect_timeout_seconds",
         "confirmation_timeout_seconds",
+        "spoken_pass_timeout_seconds",
         "stt_weak_word_probability",
         "stt_min_speech_seconds",
         "check_temperature",

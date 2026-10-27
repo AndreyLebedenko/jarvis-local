@@ -5812,7 +5812,19 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   `трлн` and `°C` after a number (count form by the number), `г.`/`гг.` after a year ("2002 года",
   "1941-1945 годов": the case is not inferred, and digits are still read by the Silero adapter
   as cardinals, so "2002-го" is not produced), and `т.е.`/`т.д.`/`т.п.`; other abbreviations are
-  left alone. Text+Voice is still Text until task 5. The voice contract and the cleanup are a
+  left alone. Text+Voice (task 5) sends the default prompt and shows
+  the sentences as they arrive, but speaks nothing until the whole answer is restored: the
+  microphone is paused, and the answer (sentences joined by a space) goes to the local check
+  backend (`answer/spoken_derivative.py`, the `[generation.spoken_derivative].prompt` contract as
+  the system message, the answer as the user message, that profile's options, the
+  `[personal_proxy].spoken_pass_timeout_seconds` timeout, default 30). The reply is cleaned like
+  Voice and spoken sentence by sentence. A failed, timed-out, length-cut or empty pass (or no
+  render stage) speaks the cleaned canvas sentences instead; a failed stream skips the pass; an
+  interrupt speaks nothing. The answer is closed (journaled) after the pass: the `proxy_answer`
+  text stays the canvas and the spoken version is `metadata["spoken_derivative"]` (written only
+  when the pass produced one; it also feeds the derivative locator index and replay, as for
+  the main Jarvis). The pass runs in the check model's context (`check_num_ctx`), so a very
+  long answer can exceed it and fall back. The voice contract and the cleanup are a
   request to a model and a best-effort guarantee, not a full one. Start order: checks (topics
   file, public names file (an explicit file that is missing or unusable stops the start with
   the failure kind `public_names_file`; a missing default file is an empty list), key variable, endpoint rule, Ollama and the check model, Whisper dependencies and

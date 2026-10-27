@@ -56,6 +56,7 @@ class ProxyExchangeRecorder(Protocol):
         unresolved_placeholders: bool,
         incomplete: bool,
         response_mode: str,
+        spoken_derivative: str | None = None,
     ) -> None: ...
 
     async def record_proxy_notice(self, kind: str, detail: JSONValue) -> None: ...
@@ -134,7 +135,9 @@ class ProxyJournalWriter:
         elif isinstance(block, AnswerBlock):
             self._buffer(block)
         elif isinstance(block, AnswerCompleteBlock):
-            await self._flush_answer(incomplete=False)
+            await self._flush_answer(
+                incomplete=False, spoken_derivative=block.spoken_derivative
+            )
         elif isinstance(block, NoticeBlock):
             await self._record_notice(block)
 
@@ -165,7 +168,9 @@ class ProxyJournalWriter:
             self._answer.unresolved or block.unresolved_placeholders
         )
 
-    async def _flush_answer(self, *, incomplete: bool) -> None:
+    async def _flush_answer(
+        self, *, incomplete: bool, spoken_derivative: str | None = None
+    ) -> None:
         answer, self._answer = self._answer, None
         if answer is None:
             return
@@ -175,4 +180,5 @@ class ProxyJournalWriter:
             unresolved_placeholders=answer.unresolved,
             incomplete=incomplete,
             response_mode=self._response_mode,
+            spoken_derivative=spoken_derivative,
         )

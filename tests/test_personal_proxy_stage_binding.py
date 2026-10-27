@@ -226,3 +226,13 @@ async def test_warm_up_is_the_given_warm_up():
 
 def test_the_repr_of_the_dependencies_hides_the_topics_text():
     assert "topic line" not in repr(_deps(topics_text="topic line"))
+
+
+async def test_the_spoken_pass_is_bound_to_the_backend_with_the_contract():
+    backend = FakeBackend("пересказ")
+    stages = bind_stages(_deps(backend=backend, spoken_contract="CONTRACT"))
+
+    await stages.render_spoken("ответ")
+
+    [request] = backend.requests
+    assert (request.system, request.prompt) == ("CONTRACT", "ответ")

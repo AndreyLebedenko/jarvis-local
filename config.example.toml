@@ -705,6 +705,11 @@ connect_timeout_seconds = 10
 # treated as declined. Long enough to read it, short enough that a forgotten
 # prompt does not hold the turn open.
 confirmation_timeout_seconds = 20
+# Seconds the local model has to render the spoken version of an answer in the
+# Text+Voice response mode. When it fails or runs over, the answer is spoken
+# as the Voice mode would speak it (cleaned, sentence by sentence). Text+Voice
+# speaks only after the whole answer arrived and this pass ended.
+spoken_pass_timeout_seconds = 30
 # Fewest doubts the judge must list in a transcript to ask you for
 # confirmation. 1 means any listed doubt asks. A starting value, to be
 # confirmed against recorded data before the pipeline relies on it.

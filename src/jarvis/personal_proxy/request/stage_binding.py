@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from jarvis.core.config import PersonalProxySettings
+from jarvis.core.config import GenerationOptions, PersonalProxySettings
+from jarvis.personal_proxy.answer.spoken_derivative import SpokenDerivativeRenderer
 from jarvis.personal_proxy.check.check_backend import CheckBackend
 from jarvis.personal_proxy.check.check_result import CheckedTranscript
 from jarvis.personal_proxy.check.transcript_check import check_transcript
@@ -47,6 +48,8 @@ class StageDependencies:
     topics_text: str = field(repr=False)
     warm_up: Callable[[], Awaitable[None]]
     public_names_text: str = field(default="", repr=False)
+    spoken_contract: str = field(default="", repr=False)
+    spoken_options: GenerationOptions = field(default_factory=GenerationOptions)
 
 
 def bind_stages(deps: StageDependencies) -> PipelineStages:
@@ -83,6 +86,13 @@ def bind_stages(deps: StageDependencies) -> PipelineStages:
     ) -> AsyncIterator[RestoredSentence]:
         return restore_answer(deltas, mapping, deps.backend, settings)
 
+    spoken = SpokenDerivativeRenderer(
+        deps.backend,
+        deps.spoken_contract,
+        deps.spoken_options,
+        settings.spoken_pass_timeout_seconds,
+    )
+
     return PipelineStages(
         transcribe=transcribe,
         check=check,
@@ -91,4 +101,5 @@ def bind_stages(deps: StageDependencies) -> PipelineStages:
         open_stream=deps.open_stream,
         restore=restore,
         warm_up=deps.warm_up,
+        render_spoken=spoken.render,
     )

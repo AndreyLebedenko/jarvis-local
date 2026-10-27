@@ -4,7 +4,7 @@ payload is built, gated, and sent in this one place, as one object."""
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -25,6 +25,7 @@ from jarvis.personal_proxy.common.payload import (
     system_prompt_for,
 )
 from jarvis.personal_proxy.common.response_mode import (
+    TEXT_VOICE_MODE,
     ResponseModeGetter,
     always_text,
 )
@@ -47,6 +48,7 @@ from jarvis.personal_proxy.reporting.service_blocks import (
 from jarvis.personal_proxy.request.pipeline_stages import PipelineStages
 from jarvis.personal_proxy.request.proxy_inbox import InboxItem, TypedText, Utterance
 from jarvis.personal_proxy.request.request_intake import Heard, RequestIntake
+from jarvis.personal_proxy.restoration.restoration_result import RestoredSentence
 from jarvis.personal_proxy.sanitize.sanitize_result import (
     SanitizeFailure,
     SanitizeFailureClass,
@@ -195,6 +197,15 @@ class RequestPipeline:
         )
         await self._reporter.post(block)
 
+    async def _present(
+        self, sentences: AsyncIterator[RestoredSentence], response_mode: str
+    ) -> None:
+        presenter = self._parts.presenter
+        if response_mode == TEXT_VOICE_MODE:
+            await presenter.present_rendered(sentences, self._stages.render_spoken)
+        else:
+            await presenter.present(sentences, speech_preparation_of(response_mode))
+
     async def _send(
         self,
         payload: OutboundPayload,
@@ -209,9 +220,7 @@ class RequestPipeline:
             stream = self._stages.open_stream(payload)
             deltas = external_deltas(stream, self._parts.locality)
             sentences = self._stages.restore(deltas, sanitized.mapping)
-            await self._parts.presenter.present(
-                sentences, speech_preparation_of(response_mode)
-            )
+            await self._present(sentences, response_mode)
         except Exception as error:
             await self._reporter.quiet_notice(
                 NoticeKind.ANSWER_INCOMPLETE, error_kind_of(error)

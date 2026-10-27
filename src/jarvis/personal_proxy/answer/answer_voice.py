@@ -94,6 +94,16 @@ class SpeechSession:
         self._speech_failed = self._resume_failed = False
         return problems
 
+    async def hold_microphone(self) -> None:
+        """Pauses the microphone ahead of the first sentence, for a wait that
+        precedes the speech; a failure degrades the session to text."""
+        if self._muted:
+            return
+        try:
+            await self._pause_once()
+        except Exception:
+            self._muted = self._speech_failed = True
+
     async def say(self, text: str) -> None:
         spoken = strip_speech_control_tags(text)
         if self._muted or not spoken.strip():

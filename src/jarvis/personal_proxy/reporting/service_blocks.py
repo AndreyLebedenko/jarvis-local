@@ -103,7 +103,10 @@ class RequestSourceBlock:
 @dataclass(frozen=True)
 class AnswerCompleteBlock:
     """Reaches the persistence writer only, never the chat: the answer ended
-    after its last sentence."""
+    after its last sentence. In Text+Voice it carries the spoken version, when
+    the local pass produced one."""
+
+    spoken_derivative: str | None = field(default=None, repr=False)
 
 
 PersistenceBlock = RequestSourceBlock | AnswerCompleteBlock

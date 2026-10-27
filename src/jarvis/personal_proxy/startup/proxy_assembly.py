@@ -18,7 +18,12 @@ from typing import Protocol
 import httpx
 
 from jarvis.core.bus import EventBus
-from jarvis.core.config import BackendSettings, PersonalProxySettings, Settings
+from jarvis.core.config import (
+    SPOKEN_DERIVATIVE_PROFILE,
+    BackendSettings,
+    PersonalProxySettings,
+    Settings,
+)
 from jarvis.personal_proxy.answer.answer_speaker import (
     ReplayAnswerSpeaker,
     SpeechPlayer,
@@ -181,6 +186,7 @@ async def _build(
     engine = await load_speech_engine(proxy, seams.load_engine)
     probabilities = await asyncio.to_thread(seams.load_probabilities)
     backend = OllamaCheckBackend(settings.backend, proxy, client)
+    spoken_profile = settings.generation.profile(SPOKEN_DERIVATIVE_PROFILE)
 
     async def warm_up() -> None:
         await warm_up_check_model(backend)
@@ -196,6 +202,8 @@ async def _build(
             topics_text=topics_text,
             warm_up=warm_up,
             public_names_text=public_names_text,
+            spoken_contract=spoken_profile.prompt,
+            spoken_options=settings.generation.options_for(SPOKEN_DERIVATIVE_PROFILE),
         )
     )
 

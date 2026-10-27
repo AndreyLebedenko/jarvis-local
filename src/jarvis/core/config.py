@@ -551,6 +551,7 @@ class PersonalProxySettings:
     request_timeout_seconds: float = 60
     connect_timeout_seconds: float = 10
     confirmation_timeout_seconds: float = 20
+    spoken_pass_timeout_seconds: float = 30
     doubt_min_listed: int = 1
     stt_model: str = "large-v3-turbo"
     stt_device: str = "cuda"
@@ -1730,6 +1731,7 @@ _PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS = (
     "request_timeout_seconds",
     "connect_timeout_seconds",
     "confirmation_timeout_seconds",
+    "spoken_pass_timeout_seconds",
     "doubt_min_listed",
     "stt_min_speech_seconds",
     "check_num_ctx",

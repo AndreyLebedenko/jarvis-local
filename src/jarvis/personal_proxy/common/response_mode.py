@@ -10,6 +10,7 @@ ResponseModeGetter = Callable[[], str]
 
 TEXT_MODE = "text"
 VOICE_MODE = "voice"
+TEXT_VOICE_MODE = "text_voice"
 
 
 def always_text() -> str:

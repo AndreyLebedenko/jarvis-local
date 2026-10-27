@@ -33,3 +33,4 @@ class PipelineStages:
         [AsyncIterator[str], Mapping[str, str]], AsyncIterator[RestoredSentence]
     ]
     warm_up: Callable[[], Awaitable[None]]
+    render_spoken: Callable[[str], Awaitable[str]] | None = None

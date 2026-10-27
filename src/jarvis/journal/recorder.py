@@ -266,17 +266,21 @@ class JournalRecorder:
         unresolved_placeholders: bool,
         incomplete: bool,
         response_mode: str,
+        spoken_derivative: str | None = None,
     ) -> None:
+        metadata: dict[str, JSONValue] = {
+            METHODS_METADATA_KEY: list(methods),
+            UNRESOLVED_METADATA_KEY: unresolved_placeholders,
+            INCOMPLETE_METADATA_KEY: incomplete,
+            RESPONSE_MODE_METADATA_KEY: response_mode,
+        }
+        if spoken_derivative is not None:
+            metadata[SPOKEN_DERIVATIVE_METADATA_KEY] = spoken_derivative
         await self._record_proxy_event(
             source=PROXY_ANSWER_SOURCE,
             role="assistant",
             text=text,
-            metadata={
-                METHODS_METADATA_KEY: list(methods),
-                UNRESOLVED_METADATA_KEY: unresolved_placeholders,
-                INCOMPLETE_METADATA_KEY: incomplete,
-                RESPONSE_MODE_METADATA_KEY: response_mode,
-            },
+            metadata=metadata,
         )
 
     async def record_proxy_notice(self, kind: str, detail: JSONValue) -> None:
