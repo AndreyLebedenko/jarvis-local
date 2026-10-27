@@ -4,7 +4,7 @@ live local model for one request text and how the production parser classifies
 it.
 
   python -m manual.manual_check_sanitize_raw_reply "request text"
-      [--config PATH] [--no-topics] [--repeats N]
+      [--config PATH] [--no-topics] [--no-public-names] [--repeats N]
 
 Needs the live local Ollama endpoint, so the human runs it. The raw reply holds
 the request text and its originals, so it is printed to the console only and is
@@ -25,16 +25,21 @@ from jarvis.personal_proxy.sanitize.sanitize_parsing import parse_sanitize_outpu
 from jarvis.personal_proxy.sanitize.sanitize_requests import build_sanitize_request
 from jarvis.personal_proxy.sanitize.sanitize_result import SanitizeFailure
 from jarvis.personal_proxy.startup.proxy_assembly import local_check_client
-from jarvis.personal_proxy.startup.startup_checks import read_topics
+from jarvis.personal_proxy.startup.startup_checks import read_public_names, read_topics
 
 DEFAULT_REPEATS = 1
 
 
-async def show_replies(config: Path, text: str, no_topics: bool, repeats: int) -> None:
+async def show_replies(
+    config: Path, text: str, no_topics: bool, no_public_names: bool, repeats: int
+) -> None:
     settings = load_settings(config)
     proxy = settings.personal_proxy
     topics = "" if no_topics else read_topics(proxy)
-    request = build_sanitize_request(text, topics, proxy.check_temperature)
+    public_names = "" if no_public_names else read_public_names(proxy)
+    request = build_sanitize_request(
+        text, topics, proxy.check_temperature, public_names
+    )
     client = local_check_client(settings.backend)
     try:
         backend = OllamaCheckBackend(settings.backend, proxy, client)
@@ -57,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("text")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--no-topics", action="store_true")
+    parser.add_argument("--no-public-names", action="store_true")
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
     return parser
 
@@ -64,7 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
-    asyncio.run(show_replies(args.config, args.text, args.no_topics, args.repeats))
+    asyncio.run(
+        show_replies(
+            args.config,
+            args.text,
+            args.no_topics,
+            args.no_public_names,
+            args.repeats,
+        )
+    )
     return 0
 
 

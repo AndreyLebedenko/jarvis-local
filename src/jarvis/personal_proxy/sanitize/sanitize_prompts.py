@@ -68,24 +68,36 @@ _TOPIC_RULE = (
     'below, do not clean it up: set verdict to "refuse", name the topic in '
     "reason, and leave sanitized_text empty.\n"
 )
+_NAMES_RULE = (
+    '{number}. Do not replace the names listed under "Public names" with '
+    "placeholders; keep them exactly as said, in any case form.\n"
+)
 _NO_SPEECH_RULE = (
     '{number}. If there is no intelligible speech, set verdict to "refuse", '
     'reason to "no speech", and leave the texts empty.\n'
     'Otherwise verdict is "send" and reason is empty.\n'
 )
 _TOPICS_SECTION = "\nSensitive topics:\n{topics}\n"
+_NAMES_SECTION = "\nPublic names:\n{names}\n"
 
 
-def _rules(*, with_topics: bool) -> str:
-    head = (
+def _rules(*, with_topics: bool, with_names: bool = False) -> str:
+    rules = (
         _RULES_HEAD.replace("{types}", ", ".join(PLACEHOLDER_TYPES))
         .replace("{example_request}", json.dumps(EXAMPLE_REQUEST, ensure_ascii=False))
         .replace("{example_reply}", EXAMPLE_REPLY)
     )
+    sections = ""
+    next_number = 6
     if with_topics:
-        no_speech = _NO_SPEECH_RULE.replace("{number}", "7")
-        return head + _TOPIC_RULE + no_speech + _TOPICS_SECTION
-    return head + _NO_SPEECH_RULE.replace("{number}", "6")
+        rules += _TOPIC_RULE
+        sections += _TOPICS_SECTION
+        next_number += 1
+    if with_names:
+        rules += _NAMES_RULE.replace("{number}", str(next_number))
+        sections += _NAMES_SECTION
+        next_number += 1
+    return rules + _NO_SPEECH_RULE.replace("{number}", str(next_number)) + sections
 
 
 RULES = _rules(with_topics=True)
@@ -115,11 +127,14 @@ def topics_present(topics: str) -> bool:
     return has_visible_text(topics)
 
 
-def sanitize_system_prompt(topics: str) -> str:
-    if topics_present(topics):
-        rules = RULES.replace("{topics}", topics.strip())
-    else:
-        rules = RULES_WITHOUT_TOPICS
+def sanitize_system_prompt(topics: str, public_names: str = "") -> str:
+    with_topics = topics_present(topics)
+    with_names = has_visible_text(public_names)
+    rules = _rules(with_topics=with_topics, with_names=with_names)
+    if with_topics:
+        rules = rules.replace("{topics}", topics.strip())
+    if with_names:
+        rules = rules.replace("{names}", public_names.strip())
     return f"{rules}\n{TEXT_FORMAT}"
 
 

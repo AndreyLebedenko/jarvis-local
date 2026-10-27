@@ -547,6 +547,7 @@ class PersonalProxySettings:
     api_key_env: str = "JARVIS_PERSONAL_PROXY_KEY"
     dry_run: bool = True
     topics_file: str = "personal_proxy_topics.txt"
+    public_names_file: str = "personal_proxy_public_names.txt"
     request_timeout_seconds: float = 60
     connect_timeout_seconds: float = 10
     confirmation_timeout_seconds: float = 20
@@ -1738,6 +1739,7 @@ _PERSONAL_PROXY_POSITIVE_NUMBER_FIELDS = (
 )
 _PERSONAL_PROXY_NON_EMPTY_FIELDS = (
     "topics_file",
+    "public_names_file",
     "stt_model",
     "stt_language",
     "check_model",

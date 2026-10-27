@@ -37,6 +37,9 @@ Automated counterpart already green: `python -m pytest`, `ruff check`, `ruff for
   required), `api_key_env` (default `"JARVIS_PERSONAL_PROXY_KEY"`, the NAME of the
   environment variable that holds the key), `dry_run` (default `true`), `topics_file`
   (default `"personal_proxy_topics.txt"`, relative to the working directory),
+  `public_names_file` (default `"personal_proxy_public_names.txt"`, relative to the working
+  directory; one name per line, UTF-8, blank lines and lines starting with `#` ignored, 8000
+  characters at most; added by task v2.1.0-12a),
   `confirmation_timeout_seconds` (default `20`), `doubt_min_listed` (default `1`),
   `check_model` (default `"gemma4:12b"`), `check_num_ctx` (default `8192`), `stt_device`
   (default `"cuda"`).
@@ -72,6 +75,7 @@ Automated counterpart already green: `python -m pytest`, `ruff check`, `ruff for
    api_key_env = "JARVIS_PERSONAL_PROXY_KEY"
    dry_run = true
    topics_file = "personal_proxy_topics.txt"
+   public_names_file = "personal_proxy_public_names.txt"
    confirmation_timeout_seconds = 20
    doubt_min_listed = 1
    ```
@@ -256,6 +260,50 @@ The report `manual_check_sanitize_false_refusals_out/no-topics/report.md` holds,
 on a harmless request is a false refusal or a broken answer), `retried:` and `rescued by the
 retry:`. The recorded reference before the retry existed: 23.5% false refusals.
 
+## 10. Public names file (task v2.1.0-12a)
+
+Close Jarvis first. Needs the live local Ollama (Jarvis is not started). The key
+`[personal_proxy].public_names_file` is read from `config.toml` in the repository root
+(`DEFAULT_CONFIG_PATH`); absent means `personal_proxy_public_names.txt`
+(`PersonalProxySettings`, `src/jarvis/core/config.py`). The user documentation is step 6 of
+"Personal proxy mode" in `README.md`.
+
+10.1 Create or overwrite the names file (state-independent). In PowerShell, from the
+repository root:
+
+    [System.IO.File]::WriteAllText("$PWD\personal_proxy_public_names.txt", "Эйнштейн", (New-Object System.Text.UTF8Encoding $false))
+
+The file now holds exactly one line, `Эйнштейн`, in UTF-8 without a byte order mark. If your
+`config.toml` sets `public_names_file` to another path, write to that path instead.
+
+10.2 The Einstein request, names file present (`build_parser`,
+`manual/manual_check_sanitize_raw_reply.py`; flags `--config PATH` default `config.toml`,
+`--repeats N` default 1, `--no-topics`, `--no-public-names`):
+
+    python -m manual.manual_check_sanitize_raw_reply "Правда ли, что Эйнштейн отстаивал идею эфира" --repeats 5
+
+It prints five raw replies of the local model, each after a line "--- attempt N: accepted:
+send" (or a failure label). Expected: in the `sanitized_text` of every accepted reply the
+word `Эйнштейн` (in any case form) stays as said, there is no `<PERSON_1>` for it, and the
+`mapping` has no entry for it. Report how many of the five replies keep the name. The rule
+is a request to the model, not a guarantee: a reply that still replaces the name is not a
+crash, report it with its text.
+
+10.3 Control, names ignored (same script, flag `--no-public-names`):
+
+    python -m manual.manual_check_sanitize_raw_reply "Правда ли, что Эйнштейн отстаивал идею эфира" --no-public-names --repeats 5
+
+Expected: the name is replaced by a placeholder such as `<PERSON_1>` in most replies (this
+is the problem the file solves). Report how many of the five.
+
+10.4 False refusals with a non-empty names file (the file of 10.1 present; the names are
+read unless `--no-public-names` is given; 40 requests, both retry arms):
+
+    python -m manual.manual_check_sanitize_false_refusals run --no-topics --out manual_check_sanitize_false_refusals_out/public-names
+
+The report `manual_check_sanitize_false_refusals_out/public-names/report.md` has the same
+fields as 9.3. Compare with the `no-topics` report of 9.3 and report both rates.
+
 ## What to report
 
 For each step: what you saw against what is expected above, in your words, with the exact
@@ -264,5 +312,7 @@ text of any notice or error. Report first anything that was SENT that should not
 mapping or any heard text in a log line, a microphone that stayed off, and a started proxy
 after a failed start. From part 9 report these numbers: the sanitize leak rate and validity
 (9.1); the asked share, the covered errors, the wrong-fragment count and the verdict (9.2);
-the false-refusal rate and `rescued by the retry` for `retry-on` and `retry-off` (9.3).
-The owner records the numbers in `PROJECT.md` ("Architecture v2.1.0", honest limits).
+the false-refusal rate and `rescued by the retry` for `retry-on` and `retry-off` (9.3). From part 10 report: how many of
+the five replies keep `Эйнштейн` with the file (10.2) and with `--no-public-names` (10.3), and
+the false-refusal rate with the names file (10.4). The owner records the numbers in
+`PROJECT.md` ("Architecture v2.1.0", honest limits).

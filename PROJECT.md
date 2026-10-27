@@ -5707,6 +5707,22 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   capped at 8000 characters, and goes only into the system prompt (the opt-in debug
   transcript would record it too). The stage does not check that a `send` replaced
   anything: the outbound gate's mapping check does.
+  Public names (task 12a): `[personal_proxy].public_names_file` (default
+  `personal_proxy_public_names.txt` next to `Jarvis.cmd`, gitignored, local-only) lists names
+  the owner allows to go out as said, one per line, UTF-8; blank lines and lines starting
+  with `#` are ignored; the limit is 8000 characters, the same as the topics file, and the
+  file is read by the same reader. With at least one name the sanitize system prompt gets
+  one more numbered rule, placed before the no-speech rule, and a "Public names" section
+  that lists them: do not replace these names, keep them as said, in any case form. With no
+  names the prompt is byte-identical to the one without this feature, so every earlier
+  measurement stays valid for the default. Names go only into the sanitize system prompt:
+  the outbound gate, the restoration and the check pass do not see the file (the check
+  pass runs before sanitize and judges only whether the transcript matches the audio;
+  giving it the list would invalidate its measurements). A kept name has no placeholder and
+  no mapping entry. Limit of the rule: it is a request to the model, not a deterministic
+  guarantee; a model may still replace an allowed name, which is no worse than before; a
+  deterministic substitution after the model is out of scope (the base form in the mapping
+  does not give the surface form used in the request).
 - External client (story v2.1.0 task 6, `src/jarvis/personal_proxy/external_*.py`): the
   only code that talks to the provider. It sends one `OutboundPayload` (exact type) as
   `{model, messages, stream}` to `[personal_proxy].endpoint` with a Bearer key read from
@@ -5779,7 +5795,8 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   replay) are refused, with a visible warning in the events panel; the speech switch and
   dock text stay. Hotkeys bound: shutdown, interrupt (a pending question means "no",
   otherwise the request is cancelled) and microphone sleep. Start order: checks (topics
-  file, key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
+  file, public names file (an explicit file that is missing or unusable stops the start with
+  the failure kind `public_names_file`; a missing default file is an empty list), key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
   weights, Silero), warm-up of the check model at its own context, then the service and the
   bus subscription; a failed check keeps the window open with a reason that names only the
   kind of failure, and starts nothing. Stop order: unsubscribe, interrupt and close the
@@ -5977,7 +5994,9 @@ optional user title in `session.json` (task 10f).
   2026-10-25, without a topics file: 80 of 80 trials sent in both arms (retry on and off),
   the retry never fired, and 5 of 5 replies to the request that had failed were accepted.
   Not measured on the new text: the false refusals with a topics file, and the leak rate
-  (handoff part 9.1 only re-scores the recorded output of the earlier text).
+  (handoff part 9.1 only re-scores the recorded output of the earlier text). Also not
+  measured: the false refusals and the kept-name rate with a non-empty public names file
+  (task 12a); that measurement is pending the human run of handoff parts 10 and 9.3.
 - A forced request skips the model that finds names and personal text; that is the owner's
   explicit trade-off (2026-10-24).
 - The external provider sees the cleaned text; Jarvis cannot make the cleaned text anonymous

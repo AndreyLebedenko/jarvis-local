@@ -8,6 +8,7 @@ from enum import StrEnum
 
 class StartupFailureKind(StrEnum):
     TOPICS_FILE = "topics_file"
+    PUBLIC_NAMES_FILE = "public_names_file"
     API_KEY = "api_key"
     ENDPOINT = "endpoint"
     SPEECH_DEPENDENCY = "speech_dependency"

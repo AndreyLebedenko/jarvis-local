@@ -1,11 +1,11 @@
 """Builds the personal proxy for a run: the checks, the second HTTP client, the
 real adapters, the stages, and the service.
 
-The order is cheap checks first (nothing is loaded for a bad topics file, key
-or endpoint), then Ollama, then the speech engine and the presence model, then
-the warm-up of the check model, so the first request does not meet a cold
-load. Any failure closes what was opened and raises `ProxyStartupError`, which
-names the kind of failure and nothing else."""
+The order is cheap checks first (nothing is loaded for a bad topics file, public
+names file, key or endpoint), then Ollama, then the speech engine and the
+presence model, then the warm-up of the check model, so the first request does
+not meet a cold load. Any failure closes what was opened and raises
+`ProxyStartupError`, which names the kind of failure and nothing else."""
 
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
 from jarvis.personal_proxy.service.proxy_submissions import ProxySubmissions
 from jarvis.personal_proxy.startup.startup_checks import (
     load_speech_engine,
+    read_public_names,
     read_topics,
     require_allowed_endpoint,
     require_check_model,
@@ -145,12 +146,13 @@ async def prepare_personal_proxy_runtime(
     seams = seams or ProxySeams()
     proxy = host.settings.personal_proxy
     topics_text = read_topics(proxy)
+    public_names_text = read_public_names(proxy)
     require_usable_key(proxy, seams.environ)
     require_allowed_endpoint(proxy)
     client = seams.make_client(host.settings.backend)
     runtime = None
     try:
-        runtime = await _build(host, seams, client, topics_text)
+        runtime = await _build(host, seams, client, topics_text, public_names_text)
         return runtime
     except ProxyStartupError:
         raise
@@ -166,6 +168,7 @@ async def _build(
     seams: ProxySeams,
     client: httpx.AsyncClient,
     topics_text: str,
+    public_names_text: str,
 ) -> PersonalProxyRuntime:
     settings = host.settings
     proxy = settings.personal_proxy
@@ -187,6 +190,7 @@ async def _build(
             open_stream=seams.make_external(proxy).stream,
             topics_text=topics_text,
             warm_up=warm_up,
+            public_names_text=public_names_text,
         )
     )
 

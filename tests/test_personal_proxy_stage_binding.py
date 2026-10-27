@@ -121,6 +121,59 @@ async def test_sanitize_uses_the_topics_text_and_the_shared_backend():
     assert "topic line" in backend.requests[0].system
 
 
+async def test_sanitize_gets_the_public_names_text_in_its_system_prompt():
+    heard = "Правда ли, что Эйнштейн ошибался"
+    reply = json.dumps(
+        {"verdict": "send", "reason": "", "sanitized_text": heard, "mapping": {}},
+        ensure_ascii=False,
+    )
+    backend = FakeBackend(reply)
+    stages = bind_stages(_deps(backend=backend, public_names_text="Эйнштейн"))
+
+    result = await stages.sanitize(
+        CheckedTranscript(heard, (), CheckSource.CHECKED, False)
+    )
+
+    assert result.mapping == {}
+    assert "Public names:\nЭйнштейн" in backend.requests[0].system
+    assert "Public names" not in backend.requests[0].prompt
+
+
+async def test_no_public_names_text_leaves_the_system_prompt_without_the_section():
+    backend = FakeBackend()
+    stages = bind_stages(_deps(backend=backend))
+
+    await stages.sanitize(CheckedTranscript(HEARD, (), CheckSource.CHECKED, False))
+
+    assert "Public names" not in backend.requests[0].system
+
+
+def test_a_kept_name_has_no_mapping_entry_and_the_gate_lets_it_pass():
+    from jarvis.personal_proxy.gate.gate_context import GateContext
+
+    stages = bind_stages(_deps())
+    payload = build_outbound_payload(
+        DEFAULT_SYSTEM_PROMPT, "Правда ли, что Эйнштейн ошибался"
+    )
+
+    assert stages.gate(payload, GateContext({}, "")).allowed
+
+
+def test_the_public_names_text_is_not_shown_by_the_dependencies_repr():
+    assert "Эйнштейн" not in repr(_deps(public_names_text="Эйнштейн"))
+
+
+def test_the_gate_context_and_the_service_have_no_place_for_public_names():
+    import inspect
+
+    from jarvis.personal_proxy.gate.gate_context import GateContext
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
+
+    assert not [f for f in GateContext.__dataclass_fields__ if "name" in f]
+    parameters = inspect.signature(PersonalProxyService.__init__).parameters
+    assert not [p for p in parameters if "name" in p]
+
+
 def test_the_gate_is_the_deterministic_outbound_gate():
     from jarvis.personal_proxy.gate.gate_context import GateContext
 

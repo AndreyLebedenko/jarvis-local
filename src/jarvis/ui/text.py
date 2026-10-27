@@ -169,6 +169,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Personal proxy not started: the topics file cannot be used; "
             "see [personal_proxy].topics_file"
         ),
+        "personal_proxy_not_started_public_names_file": (
+            "Personal proxy not started: the public names file cannot be used; "
+            "see [personal_proxy].public_names_file"
+        ),
         "personal_proxy_not_started_api_key": (
             "Personal proxy not started: the API key variable is missing or "
             "unusable; see [personal_proxy].api_key_env"
@@ -322,6 +326,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "personal_proxy_not_started_topics_file": (
             "Личный прокси не запущен: файл тем недоступен; "
             "см. [personal_proxy].topics_file"
+        ),
+        "personal_proxy_not_started_public_names_file": (
+            "Личный прокси не запущен: файл публичных имён недоступен; "
+            "см. [personal_proxy].public_names_file"
         ),
         "personal_proxy_not_started_api_key": (
             "Личный прокси не запущен: переменная с ключом API не задана или "

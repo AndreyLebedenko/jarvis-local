@@ -15,6 +15,10 @@ from jarvis.personal_proxy.check.check_backend import ChatRequest, CheckBackend
 from jarvis.personal_proxy.external.external_endpoint import require_secure_endpoint
 from jarvis.personal_proxy.external.external_error import ExternalClientError
 from jarvis.personal_proxy.external.external_key import key_problem
+from jarvis.personal_proxy.gate.public_names_file import (
+    PublicNamesFileError,
+    load_public_names,
+)
 from jarvis.personal_proxy.gate.topics_file import TopicsFileError, load_topics
 from jarvis.personal_proxy.startup.startup_failure import (
     ProxyStartupError,
@@ -47,6 +51,13 @@ def read_topics(settings: PersonalProxySettings) -> str:
         return load_topics(settings)
     except TopicsFileError:
         raise ProxyStartupError(StartupFailureKind.TOPICS_FILE) from None
+
+
+def read_public_names(settings: PersonalProxySettings) -> str:
+    try:
+        return load_public_names(settings)
+    except PublicNamesFileError:
+        raise ProxyStartupError(StartupFailureKind.PUBLIC_NAMES_FILE) from None
 
 
 def require_usable_key(

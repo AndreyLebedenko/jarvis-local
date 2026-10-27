@@ -39,7 +39,10 @@ Ollama на этом компьютере (шаг 1.3). Используйте �
   `src/jarvis/core/config.py`): `endpoint` (умолчание `""`, обязателен), `model` (умолчание
   `""`, обязателен), `api_key_env` (умолчание `"JARVIS_PERSONAL_PROXY_KEY"`, ИМЯ переменной
   окружения с ключом), `dry_run` (умолчание `true`), `topics_file` (умолчание
-  `"personal_proxy_topics.txt"`, относительно рабочей папки), `confirmation_timeout_seconds`
+  `"personal_proxy_topics.txt"`, относительно рабочей папки), `public_names_file`
+  (умолчание `"personal_proxy_public_names.txt"`, относительно рабочей папки; одно имя в
+  строке, UTF-8, пустые строки и строки с `#` в начале игнорируются, не больше 8000 символов;
+  добавлен задачей v2.1.0-12a), `confirmation_timeout_seconds`
   (умолчание `20`), `doubt_min_listed` (умолчание `1`), `check_model` (умолчание
   `"gemma4:12b"`), `check_num_ctx` (умолчание `8192`), `stt_device` (умолчание `"cuda"`).
 - Горячие клавиши (`HotkeySettings`, `src/jarvis/core/config.py`; переопределяются в
@@ -74,6 +77,7 @@ Ollama на этом компьютере (шаг 1.3). Используйте �
    api_key_env = "JARVIS_PERSONAL_PROXY_KEY"
    dry_run = true
    topics_file = "personal_proxy_topics.txt"
+   public_names_file = "personal_proxy_public_names.txt"
    confirmation_timeout_seconds = 20
    doubt_min_listed = 1
    ```
@@ -262,6 +266,50 @@ doubt_min_listed = 1
 метка на безобидном запросе - ложный отказ или сломанный ответ), `retried:` и `rescued by the
 retry:`. Записанный ориентир до появления retry: 23.5% ложных отказов.
 
+## 10. Файл публичных имён (задача v2.1.0-12a)
+
+Сначала закройте Jarvis. Нужен живой локальный Ollama (сам Jarvis не запускается). Ключ
+`[personal_proxy].public_names_file` читается из `config.toml` в корне репозитория
+(`DEFAULT_CONFIG_PATH`); если его нет, берётся `personal_proxy_public_names.txt`
+(`PersonalProxySettings`, `src/jarvis/core/config.py`). Пользовательская документация - шаг 6
+раздела «Режим персонального прокси» в `README.ru.md`.
+
+10.1 Создайте или перезапишите файл имён (не зависит от начального состояния). В PowerShell,
+из корня репозитория:
+
+    [System.IO.File]::WriteAllText("$PWD\personal_proxy_public_names.txt", "Эйнштейн", (New-Object System.Text.UTF8Encoding $false))
+
+В файле ровно одна строка `Эйнштейн` в UTF-8 без метки порядка байтов. Если в вашем
+`config.toml` `public_names_file` указывает на другой путь, пишите в него.
+
+10.2 Запрос про Эйнштейна, файл имён на месте (`build_parser`,
+`manual/manual_check_sanitize_raw_reply.py`; флаги `--config PATH` умолчание `config.toml`,
+`--repeats N` умолчание 1, `--no-topics`, `--no-public-names`):
+
+    python -m manual.manual_check_sanitize_raw_reply "Правда ли, что Эйнштейн отстаивал идею эфира" --repeats 5
+
+Печатаются пять сырых ответов локальной модели, каждому предшествует строка
+«--- attempt N: accepted: send» (или метка отказа). Ожидается: в `sanitized_text` каждого
+принятого ответа слово `Эйнштейн` (в любом падеже) осталось как есть, `<PERSON_1>` вместо него
+нет, а в `mapping` для него нет записи. Сообщите, в скольких из пяти ответов имя сохранено.
+Правило - просьба к модели, а не гарантия: ответ, где имя всё же заменено, не сбой; сообщите
+его вместе с текстом.
+
+10.3 Контроль, имена игнорируются (тот же скрипт, флаг `--no-public-names`):
+
+    python -m manual.manual_check_sanitize_raw_reply "Правда ли, что Эйнштейн отстаивал идею эфира" --no-public-names --repeats 5
+
+Ожидается: в большинстве ответов имя заменено плейсхолдером вроде `<PERSON_1>` (это и есть
+проблема, которую решает файл). Сообщите, в скольких из пяти.
+
+10.4 Ложные отказы с непустым файлом имён (файл из 10.1 на месте; имена читаются, если не
+указан `--no-public-names`; 40 запросов, обе руки retry):
+
+    python -m manual.manual_check_sanitize_false_refusals run --no-topics --out manual_check_sanitize_false_refusals_out/public-names
+
+Отчёт `manual_check_sanitize_false_refusals_out/public-names/report.md` содержит те же поля,
+что и в 9.3. Сравните с отчётом `no-topics` из 9.3 и сообщите обе доли.
+
 ## Что сообщить
 
 По каждому шагу: что вы увидели против ожидаемого выше, своими словами, с точным текстом
@@ -270,5 +318,7 @@ retry:`. Записанный ориентир до появления retry: 23
 из mapping или услышанный текст в строке лога, микрофон, оставшийся выключенным, и запущенный
 proxy после неудачного запуска. Из части 9 сообщите такие числа: leak rate и validity
 sanitize (9.1); долю вопросов, покрытые ошибки, число «не тот фрагмент» и вердикт (9.2);
-долю ложных отказов и `rescued by the retry` для `retry-on` и `retry-off` (9.3). Владелец
+долю ложных отказов и `rescued by the retry` для `retry-on` и `retry-off` (9.3). Из части 10
+сообщите: в скольких из пяти ответов сохранён `Эйнштейн` с файлом (10.2) и с
+`--no-public-names` (10.3), и долю ложных отказов с файлом имён (10.4). Владелец
 записывает числа в `PROJECT.md` («Architecture v2.1.0», честные ограничения).

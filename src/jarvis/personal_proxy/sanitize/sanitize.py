@@ -49,9 +49,15 @@ async def sanitize(
     topics: str,
     backend: CheckBackend,
     settings: PersonalProxySettings,
+    public_names: str = "",
 ) -> Outcome:
     return await sanitize_with_retries(
-        checked_transcript, topics, backend, settings, SANITIZE_RETRIES
+        checked_transcript,
+        topics,
+        backend,
+        settings,
+        SANITIZE_RETRIES,
+        public_names,
     )
 
 
@@ -61,11 +67,14 @@ async def sanitize_with_retries(
     backend: CheckBackend,
     settings: PersonalProxySettings,
     retries: int,
+    public_names: str = "",
 ) -> Outcome:
     text = checked_transcript.text
     if not has_visible_text(text):
         return SanitizeResult(SanitizeVerdict.REFUSE, NO_SPEECH_REASON, "", {})
-    request = build_sanitize_request(text, topics, settings.check_temperature)
+    request = build_sanitize_request(
+        text, topics, settings.check_temperature, public_names
+    )
     has_topics = topics_present(topics)
     outcome = await _attempt(request, backend)
     for _ in range(retries):

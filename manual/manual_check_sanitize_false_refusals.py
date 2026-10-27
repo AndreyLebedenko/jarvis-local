@@ -3,7 +3,7 @@
 refuses or breaks a harmless request, with the one retry on and off.
 
   python -m manual.manual_check_sanitize_false_refusals run [--config PATH]
-      [--repeats N] [--no-topics] [--only H01,H02] [--out DIR]
+      [--repeats N] [--no-topics] [--no-public-names] [--only H01,H02] [--out DIR]
 
 Needs the live local Ollama endpoint, so the human runs it. The steps are in
 manual/sanitize-false-refusals-handoff.md. It calls the production sanitize
@@ -30,7 +30,7 @@ from jarvis.personal_proxy.sanitize.sanitize import (
     sanitize_with_retries,
 )
 from jarvis.personal_proxy.startup.proxy_assembly import local_check_client
-from jarvis.personal_proxy.startup.startup_checks import read_topics
+from jarvis.personal_proxy.startup.startup_checks import read_public_names, read_topics
 from manual.personal_proxy.false_refusals import (
     ARM_OFF,
     ARM_ON,
@@ -58,7 +58,11 @@ class CountingBackend:
 
 
 async def measure(
-    settings: Settings, topics: str, items: Sequence[Item], repeats: int
+    settings: Settings,
+    topics: str,
+    public_names: str,
+    items: Sequence[Item],
+    repeats: int,
 ) -> list[Trial]:
     proxy = settings.personal_proxy
     client = local_check_client(settings.backend)
@@ -76,6 +80,7 @@ async def measure(
                         backend,
                         proxy,
                         retries,
+                        public_names,
                     )
                     outcome = outcome_label(result)
                     trials.append(Trial(item.item_id, arm, backend.calls, outcome))
@@ -99,8 +104,11 @@ def selected_items(only: str | None) -> list[Item]:
 def command_run(args: argparse.Namespace) -> int:
     settings = load_settings(args.config)
     topics = "" if args.no_topics else read_topics(settings.personal_proxy)
+    public_names = (
+        "" if args.no_public_names else read_public_names(settings.personal_proxy)
+    )
     items = selected_items(args.only)
-    trials = asyncio.run(measure(settings, topics, items, args.repeats))
+    trials = asyncio.run(measure(settings, topics, public_names, items, args.repeats))
     report = render_report(trials, topics_present=has_visible_text(topics))
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / REPORT_NAME).write_text(report, encoding="utf-8")
@@ -122,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     run.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
     run.add_argument("--no-topics", action="store_true")
+    run.add_argument("--no-public-names", action="store_true")
     run.add_argument("--only", default=None)
     run.add_argument("--out", type=Path, default=DEFAULT_OUT)
     run.set_defaults(handler=command_run)

@@ -37,6 +37,20 @@ added.
 4. A model that still replaces an allowed name is not worse than today; this is not a
    deterministic guarantee and the docs say so.
 
+5. File lines: leading and trailing whitespace is stripped; blank lines and lines whose first
+   visible character is `#` are dropped before the prompt is built (the same reader as the
+   topics file, no copy), so comments never reach the model. The size limit counts the file
+   as read, 8000 characters.
+
+Decisions of the open points (2026-10-27):
+
+- Check pass: it does NOT get the names file. It runs before sanitize and judges only whether
+  the transcript matches the audio; it has no replacement step where a name could be lost.
+  Changing its prompt would invalidate its recorded measurements for no gain.
+- Size limit: the topics limit, 8000 characters. Reading `check/check_prompts.py` and the
+  sanitize prompt gave no reason for a different value; a names list is far shorter than a
+  topics list in practice.
+
 ## Boundary
 
 Config key and its validation, the file loader (reuse the topics file reader, no copy), the
@@ -48,10 +62,8 @@ pass. A deterministic substitution after the model is out of scope (the base for
 
 ## Open points
 
-- Should the same file also be passed to the check pass (the transcript judge)? Today it
-  does not see names specially; decide by reading `check/check_prompts.py` first.
-- Size limit of the list (the prompt grows with it); reuse the topics limit unless the
-  reading shows a reason not to.
+Both are decided, see the Design above: no names for the check pass; the topics limit of 8000
+characters.
 
 ## Acceptance criteria
 

@@ -688,6 +688,12 @@ dry_run = true
 # [journal].root (Jarvis.cmd runs from the project folder). Never commit it:
 # the default is in .gitignore.
 topics_file = "personal_proxy_topics.txt"
+# Plain-text list of public names (for example a scientist or a politician) that
+# the cleaning step must keep as said instead of replacing them with a
+# placeholder, one name per line; empty lines and lines starting with # are
+# ignored. Kept locally, same rules as topics_file. It steers the local model
+# and is not a guarantee. Never commit it: the default is in .gitignore.
+public_names_file = "personal_proxy_public_names.txt"
 # Overall deadline in seconds for the whole external call, the streamed answer
 # included. Generous because a long answer streams for a while; a request over
 # it fails with a typed error.

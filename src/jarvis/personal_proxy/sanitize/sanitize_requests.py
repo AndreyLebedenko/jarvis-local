@@ -14,12 +14,12 @@ NUM_PREDICT = 2048
 
 
 def build_sanitize_request(
-    transcript: str, topics: str, temperature: float
+    transcript: str, topics: str, temperature: float, public_names: str = ""
 ) -> ChatRequest:
     return ChatRequest(
         prompt=sanitize_user_prompt(transcript),
         audio_base64="",
         options=GenerationOptions(temperature=temperature, num_predict=NUM_PREDICT),
         response_format=TEXT_SCHEMA,
-        system=sanitize_system_prompt(topics),
+        system=sanitize_system_prompt(topics, public_names),
     )

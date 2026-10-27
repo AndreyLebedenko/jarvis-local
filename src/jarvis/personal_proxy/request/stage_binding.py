@@ -46,6 +46,7 @@ class StageDependencies:
     open_stream: Callable[[OutboundPayload], AsyncIterator[str]]
     topics_text: str = field(repr=False)
     warm_up: Callable[[], Awaitable[None]]
+    public_names_text: str = field(default="", repr=False)
 
 
 def bind_stages(deps: StageDependencies) -> PipelineStages:
@@ -69,7 +70,13 @@ def bind_stages(deps: StageDependencies) -> PipelineStages:
     async def sanitize_checked(
         checked: CheckedTranscript,
     ) -> SanitizeResult | SanitizeFailure:
-        return await sanitize(checked, deps.topics_text, deps.backend, settings)
+        return await sanitize(
+            checked,
+            deps.topics_text,
+            deps.backend,
+            settings,
+            public_names=deps.public_names_text,
+        )
 
     def restore(
         deltas: AsyncIterator[str], mapping: Mapping[str, str]

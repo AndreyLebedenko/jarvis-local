@@ -689,6 +689,15 @@ and without the flag nothing in this section has any effect.
 5. Optional: list topics you never want sent in `personal_proxy_topics.txt` (one per line,
    next to `Jarvis.cmd`; it is gitignored and never leaves the machine). A request that
    touches a listed topic is refused, not sent.
+6. Optional: list names that may go out as said (for example a public person you ask about)
+   in `personal_proxy_public_names.txt` (`[personal_proxy].public_names_file`; one name per
+   line, UTF-8, empty lines and lines starting with `#` are ignored, up to 8000 characters;
+   next to `Jarvis.cmd`; it is gitignored and never leaves the machine). Without it every
+   name is replaced by a placeholder. A missing default file is fine; if you set another
+   path and the file is missing or unusable, the start is refused. The limit of this rule:
+   the names are given to the local model as a request not to replace them. That is not a
+   guarantee - the model may still replace a listed name, which is no worse than without the
+   file. The check and the gate do not see the list.
 
 ### Running it
 

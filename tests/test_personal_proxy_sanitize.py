@@ -296,3 +296,16 @@ def test_str_of_a_result_and_a_failure_hides_the_content():
         assert "diagnosis" not in shown
         assert "Позвони" not in shown
         assert "Марина" not in shown
+
+
+async def test_public_names_do_not_count_as_a_cause_for_a_refusal():
+    refusal = _reply(
+        verdict="refuse", reason="no reason", sanitized_text="", mapping={}
+    )
+    backend = FakeBackend(refusal)
+
+    result = await sanitize(_checked(), "", backend, SETTINGS, public_names="Einstein")
+
+    assert result == SanitizeFailure(SanitizeFailureClass.UNEXPECTED_REFUSAL)
+    assert len(backend.requests) == 2
+    assert "Public names:\nEinstein" in backend.requests[0].system

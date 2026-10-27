@@ -40,6 +40,7 @@ def test_section_defaults():
         api_key_env="JARVIS_PERSONAL_PROXY_KEY",
         dry_run=True,
         topics_file="personal_proxy_topics.txt",
+        public_names_file="personal_proxy_public_names.txt",
         request_timeout_seconds=60,
         connect_timeout_seconds=10,
         confirmation_timeout_seconds=20,
@@ -69,6 +70,7 @@ def test_section_parses_from_config(tmp_path):
         api_key_env = "MY_KEY_VAR"
         dry_run = false
         topics_file = ".local/topics.txt"
+        public_names_file = ".local/names.txt"
         request_timeout_seconds = 30.5
         connect_timeout_seconds = 3
         confirmation_timeout_seconds = 7
@@ -94,6 +96,7 @@ def test_section_parses_from_config(tmp_path):
         api_key_env="MY_KEY_VAR",
         dry_run=False,
         topics_file=".local/topics.txt",
+        public_names_file=".local/names.txt",
         request_timeout_seconds=30.5,
         connect_timeout_seconds=3,
         confirmation_timeout_seconds=7,
@@ -121,6 +124,7 @@ def test_section_parses_from_config(tmp_path):
         ('api_key_env = ""', r"\[personal_proxy\]\.api_key_env"),
         ('api_key_env = "not a name"', r"\[personal_proxy\]\.api_key_env"),
         ('topics_file = "  "', r"\[personal_proxy\]\.topics_file"),
+        ('public_names_file = "  "', r"\[personal_proxy\]\.public_names_file"),
         ("request_timeout_seconds = 0", r"\[personal_proxy\]\.request_timeout_seconds"),
         (
             "connect_timeout_seconds = -1",

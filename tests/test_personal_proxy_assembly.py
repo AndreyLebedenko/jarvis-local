@@ -223,6 +223,11 @@ async def test_the_second_client_is_closed_when_the_runtime_stops():
             ENVIRON,
             StartupFailureKind.TOPICS_FILE,
         ),
+        (
+            replace(PROXY, public_names_file="no_such_public_names_file.txt"),
+            ENVIRON,
+            StartupFailureKind.PUBLIC_NAMES_FILE,
+        ),
         (PROXY, {}, StartupFailureKind.API_KEY),
         (PROXY, {"JARVIS_PERSONAL_PROXY_KEY": "  "}, StartupFailureKind.API_KEY),
         (
@@ -369,6 +374,7 @@ async def test_a_cancelled_preparation_still_closes_the_client():
 # --- the settings reach the service, not the defaults ---------------------------
 
 TOPIC = "секретная тема"
+PUBLIC_NAME = "Альберт Эйнштейн"
 SANITIZE_REPLY = json.dumps(
     {
         "verdict": "send",
@@ -392,10 +398,13 @@ class _NoExternal:
 def _custom_settings(tmp_path):
     topics = tmp_path / "topics.txt"
     topics.write_text(TOPIC + "\n", encoding="utf-8")
+    names = tmp_path / "public_names.txt"
+    names.write_text("# kept\n" + PUBLIC_NAME + "\n", encoding="utf-8")
     proxy = replace(
         PROXY,
         dry_run=False,
         topics_file=str(topics),
+        public_names_file=str(names),
         confirmation_timeout_seconds=7.5,
         doubt_min_listed=3,
     )
@@ -484,6 +493,26 @@ async def test_the_sanitize_request_carries_the_topics_text(tmp_path, monkeypatc
     await runtime.stop()
 
     assert TOPIC in json.dumps(ollama.chat_requests[1], ensure_ascii=False)
+
+
+async def test_the_public_names_reach_only_the_sanitize_prompt(tmp_path, monkeypatch):
+    ollama = _Ollama([], replies=["ok", SANITIZE_REPLY])
+    transport = _Transport()
+    runtime, captured, _ = await _custom_runtime(
+        tmp_path, monkeypatch, ollama, transport
+    )
+    runtime.start()
+
+    await runtime.submit_text("Расскажи подробнее")
+    await _until_blocked(transport)
+    await runtime.stop()
+
+    warm_up_request, sanitize_request = ollama.chat_requests[:2]
+    assert "Public names:" in json.dumps(sanitize_request, ensure_ascii=False)
+    assert PUBLIC_NAME in json.dumps(sanitize_request, ensure_ascii=False)
+    assert PUBLIC_NAME not in json.dumps(warm_up_request, ensure_ascii=False)
+    assert PUBLIC_NAME not in repr(captured["service"])
+    assert PUBLIC_NAME not in json.dumps(transport.blocks, ensure_ascii=False)
 
 
 async def test_notices_are_shown_in_the_configured_ui_language(tmp_path, monkeypatch):
