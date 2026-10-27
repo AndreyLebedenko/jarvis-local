@@ -25,6 +25,10 @@ from jarvis.personal_proxy.answer.answer_transcriber import StageAnswerTranscrib
 from jarvis.personal_proxy.answer.answer_voice import RESUME_LIMIT_SECONDS, AnswerVoice
 from jarvis.personal_proxy.check.check_result import CheckedTranscript
 from jarvis.personal_proxy.common.locality import LocalityReporter
+from jarvis.personal_proxy.common.response_mode import (
+    ResponseModeGetter,
+    always_text,
+)
 from jarvis.personal_proxy.confirmation.confirmation_exchange import (
     ConfirmationExchange,
 )
@@ -82,6 +86,7 @@ class PersonalProxyService:
         queue_capacity: int = REQUEST_QUEUE_CAPACITY,
         inbox_capacity: int = INBOX_CAPACITY,
         resume_limit_seconds: float = RESUME_LIMIT_SECONDS,
+        response_mode: ResponseModeGetter = always_text,
     ) -> None:
         self._stages = stages
         self._sink = sink
@@ -106,6 +111,7 @@ class PersonalProxyService:
                 locality=locality,
                 topics_text=topics_text,
                 dry_run=settings.dry_run,
+                response_mode=response_mode,
             )
         )
         self._inbox = ProxyInbox(inbox_capacity)

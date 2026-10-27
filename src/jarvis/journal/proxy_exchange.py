@@ -33,6 +33,7 @@ UNRESOLVED_METADATA_KEY = "unresolved_placeholders"
 NOTICE_KIND_METADATA_KEY = "notice_kind"
 NOTICE_DETAIL_METADATA_KEY = "notice_detail"
 FORCED_METADATA_KEY = "forced"
+RESPONSE_MODE_METADATA_KEY = "response_mode"
 
 ORIGIN_VOICE = "voice"
 ORIGIN_TYPED = "typed"

@@ -24,6 +24,10 @@ from jarvis.personal_proxy.answer.answer_speaker import (
     SpeechPlayer,
 )
 from jarvis.personal_proxy.check.ollama_check_backend import OllamaCheckBackend
+from jarvis.personal_proxy.common.response_mode import (
+    ResponseModeGetter,
+    always_text,
+)
 from jarvis.personal_proxy.confirmation.microphone_gate import (
     AudioMicrophoneGate,
     AutoPausable,
@@ -91,6 +95,7 @@ class ProxyHost:
     transport: ProxyTransport
     report_dropped: Callable[[], Awaitable[None]]
     journal: ProxyExchangeRecorder | None = None
+    response_mode: ResponseModeGetter = always_text
 
 
 def local_check_client(backend: BackendSettings) -> httpx.AsyncClient:
@@ -209,6 +214,7 @@ async def _build(
         language=language,
         settings=proxy,
         topics_text=topics_text,
+        response_mode=host.response_mode,
     )
     try:
         await service.warm_up()

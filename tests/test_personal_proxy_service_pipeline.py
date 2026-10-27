@@ -421,6 +421,89 @@ def _service_with(rig, **replacements):
     )
 
 
+# --- the response mode of a request ------------------------------------------
+
+
+def _service_following(rig, mode):
+    from jarvis.personal_proxy.service.proxy_service import PersonalProxyService
+
+    return PersonalProxyService(
+        stages=rig.stages.as_stages(),
+        sink=rig.sink,
+        speaker=rig.speaker,
+        microphone=rig.microphone,
+        locality=rig.locality,
+        language=lambda: rig.language,
+        settings=rig.settings,
+        topics_text=TOPICS,
+        sleep=rig.sleep,
+        resume_limit_seconds=0.05,
+        response_mode=lambda: mode[0],
+    )
+
+
+def _source_modes(rig):
+    return [
+        b.response_mode
+        for b in rig.sink.persistence_blocks
+        if isinstance(b, RequestSourceBlock)
+    ]
+
+
+async def test_a_request_without_a_response_mode_getter_is_in_the_text_mode():
+    rig = Rig()
+
+    await request(rig, UTTERANCE)
+
+    assert _source_modes(rig) == ["text"]
+
+
+async def test_the_source_of_a_request_carries_the_mode_read_for_it():
+    rig = Rig()
+    rig.service = _service_following(rig, ["voice"])
+
+    await request(rig, UTTERANCE)
+
+    assert _source_modes(rig) == ["voice"]
+
+
+async def test_a_mode_change_during_a_request_affects_only_the_next_request():
+    rig = Rig()
+    mode = ["voice"]
+    original_sanitize = rig.stages.sanitize
+
+    async def sanitize_and_switch(checked):
+        mode[0] = "text_voice"
+        return await original_sanitize(checked)
+
+    rig.stages.sanitize = sanitize_and_switch
+    rig.service = _service_following(rig, mode)
+
+    async with running(rig):
+        rig.service.submit(UTTERANCE)
+        await settled(rig)
+        rig.service.submit(UTTERANCE)
+        await settled(rig)
+
+    assert _source_modes(rig) == ["voice", "text_voice"]
+
+
+async def test_the_mode_of_a_request_leaves_the_outbound_payload_and_speech_alone():
+    texts = {}
+    for name in ("text", "voice", "text_voice"):
+        rig = Rig()
+        rig.service = _service_following(rig, [name])
+        await request(rig, UTTERANCE)
+        sent = [
+            [(m.role, m.content) for m in payload.messages]
+            for payload in rig.payloads_sent
+        ]
+        texts[name] = (sent, rig.spoken_texts)
+
+    assert texts["voice"] == texts["text"]
+    assert texts["text_voice"] == texts["text"]
+
+
 # --- dry run -----------------------------------------------------------------
 
 

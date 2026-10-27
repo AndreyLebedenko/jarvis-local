@@ -23,6 +23,10 @@ from jarvis.personal_proxy.common.payload import (
     OutboundPayload,
     build_outbound_payload,
 )
+from jarvis.personal_proxy.common.response_mode import (
+    ResponseModeGetter,
+    always_text,
+)
 from jarvis.personal_proxy.common.visible_text import has_visible_text
 from jarvis.personal_proxy.confirmation.confirmation_blocks import (
     HeardDecision,
@@ -66,6 +70,7 @@ class PipelineParts:
     locality: LocalityReporter
     topics_text: str = field(repr=False)
     dry_run: bool
+    response_mode: ResponseModeGetter = always_text
 
 
 class RequestPipeline:
@@ -76,6 +81,7 @@ class RequestPipeline:
         self._intake = RequestIntake(parts.stages, parts.reporter)
 
     async def run(self, item: InboxItem) -> None:
+        response_mode = self._parts.response_mode()
         heard = await self._intake.hear(item)
         if heard is None:
             return
@@ -84,7 +90,9 @@ class RequestPipeline:
         )
         if sanitized is None:
             return
-        if not self._parts.dry_run and not await self._confirmed(item, heard):
+        if not self._parts.dry_run and not await self._confirmed(
+            item, heard, response_mode
+        ):
             return
         payload = build_outbound_payload(
             DEFAULT_SYSTEM_PROMPT, sanitized.sanitized_text
@@ -135,9 +143,11 @@ class RequestPipeline:
         )
         return None
 
-    async def _confirmed(self, item: InboxItem, heard: Heard) -> bool:
+    async def _confirmed(
+        self, item: InboxItem, heard: Heard, response_mode: str
+    ) -> bool:
         checked = heard.checked
-        await self._reporter.post(_request_source_of(item, heard))
+        await self._reporter.post(_request_source_of(item, heard, response_mode))
         if heard.forced or not should_ask(checked):
             heard = heard_block_of(checked, HeardDecision.SEND_WITHOUT_QUESTION)
             await self._reporter.post(heard)
@@ -202,7 +212,9 @@ class RequestPipeline:
                     await deltas.aclose()
 
 
-def _request_source_of(item: InboxItem, heard: Heard) -> RequestSourceBlock:
+def _request_source_of(
+    item: InboxItem, heard: Heard, response_mode: str
+) -> RequestSourceBlock:
     if isinstance(item, Utterance):
-        return RequestSourceBlock(item.wav, heard.whisper_text)
-    return RequestSourceBlock(None, None)
+        return RequestSourceBlock(item.wav, heard.whisper_text, response_mode)
+    return RequestSourceBlock(None, None, response_mode)

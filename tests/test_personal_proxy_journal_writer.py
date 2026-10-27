@@ -658,6 +658,46 @@ async def test_a_clean_answer_is_not_marked_unresolved():
     assert kwargs["unresolved_placeholders"] is False
 
 
+# --- the response mode of an answer ------------------------------------------
+
+
+async def test_an_answer_is_recorded_with_the_mode_its_request_was_latched_in():
+    recorder = RecordingRecorder()
+    writer = ProxyJournalWriter(RecordingSink([]), recorder, dry_run=False)
+
+    await writer.post(RequestSourceBlock(None, None, "text_voice"))
+    await writer.post(answer("Первое."))
+    await writer.post(AnswerCompleteBlock())
+
+    (kwargs,) = recorder.answer_kwargs
+    assert kwargs["response_mode"] == "text_voice"
+
+
+async def test_an_answer_cut_short_by_the_next_request_keeps_its_own_mode():
+    recorder = RecordingRecorder()
+    writer = ProxyJournalWriter(RecordingSink([]), recorder, dry_run=False)
+
+    await writer.post(RequestSourceBlock(None, None, "voice"))
+    await writer.post(answer("Первое."))
+    await writer.post(RequestSourceBlock(None, None, "text"))
+    await writer.post(answer("Второе."))
+    await writer.post(AnswerCompleteBlock())
+
+    assert [kwargs["response_mode"] for kwargs in recorder.answer_kwargs] == [
+        "voice",
+        "text",
+    ]
+
+
+async def test_the_stored_answer_event_carries_the_response_mode(tmp_path):
+    journal = Journaled(tmp_path)
+
+    await journal.request(UTTERANCE)
+
+    answer_event = next(e for e in journal.events() if e.source == "proxy_answer")
+    assert answer_event.metadata["response_mode"] == "text"
+
+
 # --- a new session ------------------------------------------------------------
 
 

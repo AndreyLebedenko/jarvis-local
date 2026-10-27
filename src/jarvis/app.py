@@ -3316,14 +3316,15 @@ def _background_work(
 def _personal_proxy_background_work(
     app: App, settings: Settings
 ) -> list[Coroutine[object, object, None]]:
-    """The microphone, its sleep toggle and interrupt; capture, clipboard,
-    thinking and response mode are not bound. A proxy that failed to start
+    """The microphone, its sleep toggle, response mode and interrupt; capture,
+    clipboard and thinking are not bound. A proxy that failed to start
     gets nothing: no microphone, no listener."""
     if app.personal_proxy is None:
         return []
     return [
         app.audio_input.run_microphone_loop(),
         run_mic_sleep_hotkey_listener(app.audio_input, settings.hotkeys),
+        run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys),
         run_interrupt_hotkey_listener(app.bus, settings.hotkeys),
     ]
 

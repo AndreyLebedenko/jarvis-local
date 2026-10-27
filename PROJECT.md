@@ -5790,11 +5790,19 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   `--personal-proxy` the only consumer of utterances is the proxy (the `Orchestrator`
   turn path, the clipboard and screenshot inputs and the debug utterance recorder are not
   subscribed; `McpHost` is never enabled) and dock text is rerouted into it as typed text.
-  The controls of the main model (thinking, response mode, MCP, solo session, tools,
+  The controls of the main model (thinking, MCP, solo session, tools,
   context reset, fork, transcript, annotation and consolidation generation,
-  replay) are refused, with a visible warning in the events panel; the speech switch and
-  dock text stay. Hotkeys bound: shutdown, interrupt (a pending question means "no",
-  otherwise the request is cancelled) and microphone sleep. Start order: checks (topics
+  replay) are refused, with a visible warning in the events panel; the speech switch,
+  dock text and the response mode stay (story v2.1.1 task 3: the response mode was
+  refused here before). Hotkeys bound: shutdown, interrupt (a pending question means "no",
+  otherwise the request is cancelled), microphone sleep and the response-mode toggle
+  (`[hotkeys].response_mode_toggle`). The proxy follows the live response mode: `ProxyHost`
+  carries a plain getter (the string value of `app.response_mode`, so the proxy imports
+  no application module), the request pipeline reads it once at the start of each request
+  and latches it for that request (a change during a request affects only the next one),
+  and the latched mode is stored in the `response_mode` metadata of the request's
+  `proxy_answer` Journal event. Until the later tasks of story v2.1.1 the behavior of every
+  mode is Text: the outbound payload and the speech do not depend on the mode. Start order: checks (topics
   file, public names file (an explicit file that is missing or unusable stops the start with
   the failure kind `public_names_file`; a missing default file is an empty list), key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
   weights, Silero), warm-up of the check model at its own context, then the service and the

@@ -7,7 +7,8 @@ changes dialog settings is refused here, and nowhere else. `PERSONAL_PROXY`
 (`--personal-proxy`) sends every request to the personal proxy instead of the
 main model, so the controls of the main model and its tools are refused and
 dock text is allowed (it is rerouted into the proxy) and so is "New context"
-(it starts a new proxy session, not a new context of the main model). The Status Console
+(it starts a new proxy session, not a new context of the main model) and the
+response mode (the proxy follows it per request). The Status Console
 transport consults this policy for every WebSocket control command and every
 HTTP route; the UI greys out the same actions from the run-mode snapshot.
 """
@@ -117,7 +118,7 @@ PERSONAL_PROXY_VERDICTS: Mapping[ControlAction, Verdict] = MappingProxyType(
     {
         _A.TOGGLE_THINKING: _REFUSED,
         _A.SET_REASONING_LEVEL: _REFUSED,
-        _A.SET_RESPONSE_MODE: _REFUSED,
+        _A.SET_RESPONSE_MODE: _ALLOWED,
         _A.SET_MCP_ENABLED: _REFUSED,
         _A.SET_TTS_ENABLED: _ALLOWED,
         _A.SET_SOLO_SESSION_ENABLED: _REFUSED,

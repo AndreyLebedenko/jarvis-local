@@ -16,7 +16,6 @@ _A = ControlAction
 _REFUSED_IN_PERSONAL_PROXY = {
     _A.TOGGLE_THINKING,
     _A.SET_REASONING_LEVEL,
-    _A.SET_RESPONSE_MODE,
     _A.SET_MCP_ENABLED,
     _A.SET_SOLO_SESSION_ENABLED,
     _A.SET_TOOL_ENABLED,
@@ -48,9 +47,17 @@ def test_the_personal_proxy_refuses_exactly_the_controls_of_the_main_model():
 
 
 @pytest.mark.parametrize(
-    "action", [_A.JOURNAL_INPUT, _A.SET_TTS_ENABLED, _A.JOURNAL_NEW_CONTEXT]
+    "action",
+    [
+        _A.JOURNAL_INPUT,
+        _A.SET_TTS_ENABLED,
+        _A.JOURNAL_NEW_CONTEXT,
+        _A.SET_RESPONSE_MODE,
+    ],
 )
-def test_dock_text_the_speech_switch_and_a_new_session_are_allowed(action):
+def test_dock_text_the_speech_switch_a_new_session_and_the_response_mode_are_allowed(
+    action,
+):
     assert RunModePolicy(RunMode.PERSONAL_PROXY).verdict(action) is Verdict.ALLOWED
 
 

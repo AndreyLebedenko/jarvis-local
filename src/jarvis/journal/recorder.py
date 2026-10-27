@@ -45,6 +45,7 @@ from jarvis.journal.proxy_exchange import (
     PROXY_NOTICE_SOURCE,
     PROXY_SENT_SOURCE,
     RAW_TRANSCRIPT_METADATA_KEY,
+    RESPONSE_MODE_METADATA_KEY,
     UNRESOLVED_METADATA_KEY,
 )
 from jarvis.journal.store import JournalStore
@@ -264,6 +265,7 @@ class JournalRecorder:
         methods: tuple[str, ...],
         unresolved_placeholders: bool,
         incomplete: bool,
+        response_mode: str,
     ) -> None:
         await self._record_proxy_event(
             source=PROXY_ANSWER_SOURCE,
@@ -273,6 +275,7 @@ class JournalRecorder:
                 METHODS_METADATA_KEY: list(methods),
                 UNRESOLVED_METADATA_KEY: unresolved_placeholders,
                 INCOMPLETE_METADATA_KEY: incomplete,
+                RESPONSE_MODE_METADATA_KEY: response_mode,
             },
         )
 

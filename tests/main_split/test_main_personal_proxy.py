@@ -46,6 +46,7 @@ from jarvis.core.lifecycle import (
     TextSubmissionResult,
 )
 from jarvis.core.run_mode import RunMode
+from jarvis.dialog.response_mode import ResponseMode
 from jarvis.inputs.capture import ScreenshotCaptured
 from jarvis.inputs.clipboard import ClipboardSubmitted
 from jarvis.inputs.interrupt import InterruptRequested
@@ -69,7 +70,7 @@ PERSONAL_PROXY_BINDS_HOTKEY = {
     "clipboard_submit": False,
     "thinking_toggle": False,
     "interrupt": True,
-    "response_mode_toggle": False,
+    "response_mode_toggle": True,
 }
 
 
@@ -988,3 +989,26 @@ async def test_the_proxy_host_gets_the_apps_journal_recorder(
 
     (host,) = hosts
     assert host.journal is app.journal_recorder
+
+
+async def test_the_proxy_host_reads_the_live_response_mode_of_the_app(
+    tmp_path, quiet_run, fake_hotkeys
+):
+    settings = _settings(tmp_path)
+    app = _proxy_app(settings)
+    hosts: list[object] = []
+
+    async def prepare(host):
+        hosts.append(host)
+        return _FakeRuntime([])
+
+    running = _start_run(settings, app, fake_hotkeys, _console(), prepare)
+    await _until(lambda: settings.hotkeys.shutdown in fake_hotkeys)
+    (host,) = hosts
+    before = host.response_mode()
+    await app.response_mode.set_mode(ResponseMode.VOICE, source="UI")
+    after = host.response_mode()
+    fake_hotkeys[settings.hotkeys.shutdown]()
+    await asyncio.wait_for(running, timeout=5)
+
+    assert (before, after) == ("text", "voice")

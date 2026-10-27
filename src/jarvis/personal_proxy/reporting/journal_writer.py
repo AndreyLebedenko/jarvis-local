@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from jarvis.journal.events import JSONValue
+from jarvis.personal_proxy.common.response_mode import TEXT_MODE
 from jarvis.personal_proxy.confirmation.confirmation_blocks import HeardBlock, SentBlock
 from jarvis.personal_proxy.reporting.notice_class import notice_class
 from jarvis.personal_proxy.reporting.service_blocks import (
@@ -54,6 +55,7 @@ class ProxyExchangeRecorder(Protocol):
         methods: tuple[str, ...],
         unresolved_placeholders: bool,
         incomplete: bool,
+        response_mode: str,
     ) -> None: ...
 
     async def record_proxy_notice(self, kind: str, detail: JSONValue) -> None: ...
@@ -83,6 +85,7 @@ class ProxyJournalWriter:
         self._logger = logger or logging.getLogger(__name__)
         self._source = _NO_SOURCE
         self._answer: _AnswerBuffer | None = None
+        self._response_mode = TEXT_MODE
 
     def __repr__(self) -> str:
         return f"ProxyJournalWriter(dry_run={self._dry_run})"
@@ -107,6 +110,7 @@ class ProxyJournalWriter:
         if not still_allowed():
             return False
         self._source = _NO_SOURCE
+        self._response_mode = TEXT_MODE
         self._recorder.end_session()
         return True
 
@@ -120,6 +124,7 @@ class ProxyJournalWriter:
         if isinstance(block, RequestSourceBlock):
             await self._flush_answer(incomplete=True)
             self._source = block
+            self._response_mode = block.response_mode
         elif isinstance(block, HeardBlock):
             await self._record_heard(block)
         elif isinstance(block, SentBlock):
@@ -169,4 +174,5 @@ class ProxyJournalWriter:
             methods=tuple(method.value for method in answer.methods),
             unresolved_placeholders=answer.unresolved,
             incomplete=incomplete,
+            response_mode=self._response_mode,
         )

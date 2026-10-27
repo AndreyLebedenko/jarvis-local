@@ -11,6 +11,7 @@ from enum import Enum, StrEnum
 
 from jarvis.personal_proxy.check.check_result import Doubt
 from jarvis.personal_proxy.common.findings import Finding
+from jarvis.personal_proxy.common.response_mode import TEXT_MODE
 from jarvis.personal_proxy.confirmation.confirmation_blocks import ChatBlock
 from jarvis.personal_proxy.restoration.restoration_result import (
     RestorationMethod,
@@ -91,10 +92,12 @@ class DryRunBlock:
 @dataclass(frozen=True)
 class RequestSourceBlock:
     """Reaches the persistence writer only, never the chat: where the heard text
-    came from. A typed request has neither the recording nor the engine text."""
+    came from, and the response mode the request was latched in. A typed request
+    has neither the recording nor the engine text."""
 
     voice_wav: bytes | None = field(repr=False)
     raw_transcript: str | None = field(repr=False)
+    response_mode: str = TEXT_MODE
 
 
 @dataclass(frozen=True)

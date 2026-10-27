@@ -102,6 +102,7 @@ def proxy_host(
         transport=live_console.transport,
         report_dropped=lambda: report_dropped_proxy_input(app),
         journal=app.journal_recorder,
+        response_mode=lambda: app.response_mode.mode.value,
     )
 
 
