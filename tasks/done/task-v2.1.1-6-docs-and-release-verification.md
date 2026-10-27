@@ -28,7 +28,12 @@ Docs, the version string and a human-run handoff. No production logic change.
 
 ## Outcome (2026-10-27)
 
-Gates: see the commit. Live runs by the owner on 2026-10-27: Voice and Text+voice worked as
-intended. The handoff's latency figure for Text+voice (step 5.2) and the rest of its steps are
-not yet reported; their numbers belong in the honest limits of `PROJECT.md` when reported.
-No git tag and no publication, on purpose.
+Gates: `python -m pytest` 6261 passed, 1 skipped, 1 failed (the known timezone test
+`tests/test_journal.py::test_new_session_id_uses_sortable_local_timestamp_prefix`, failing
+without these changes too); `ruff check`; `ruff format --check`; the handoff checker.
+Live runs by the owner on 2026-10-27: Voice and Text+voice worked as intended. Text+voice
+timing of one typed request (service log, owner's hand measurement agrees): sanitize about
+1.1 s, external answer about 40.8 s, local pass about 11.1 s (limit 30 s), 53.2 s from Send to
+the answer in the Journal; now in `PROJECT.md`. The start of speech is not logged, so step
+5.2's exact T1 is open; the logging cards in `tasks/` (task-logging-1, task-logging-2) address
+that. The remaining handoff steps are the owner's. No git tag and no publication, on purpose.

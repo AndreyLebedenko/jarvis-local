@@ -5825,7 +5825,12 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   text stays the canvas and the spoken version is `metadata["spoken_derivative"]` (written only
   when the pass produced one; it also feeds the derivative locator index and replay, as for
   the main Jarvis). The pass runs in the check model's context (`check_num_ctx`), so a very
-  long answer can exceed it and fall back. The voice contract and the cleanup are a
+  long answer can exceed it and fall back. Measured (owner's live run, 2026-10-27, one typed
+  request in Text+Voice, the external model a local Ollama stand-in, times from the service log
+  and checked by hand): sanitize about 1.1 s, external answer about 40.8 s, local spoken pass
+  about 11.1 s (limit 30 s, no fallback), 53.2 s from Send to the answer written to the Journal;
+  the pause between the last shown sentence and the start of speech is the pass plus the first
+  sentence's synthesis (the start of speech is not in the log). One run, one answer length. The voice contract and the cleanup are a
   request to a model and a best-effort guarantee, not a full one. Start order: checks (topics
   file, public names file (an explicit file that is missing or unusable stops the start with
   the failure kind `public_names_file`; a missing default file is an empty list), key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
