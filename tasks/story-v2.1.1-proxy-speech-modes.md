@@ -1,7 +1,7 @@
 # Story v2.1.1: Personal proxy speech modes (Text, Voice, Text+Voice)
 
 **Status:** Approved by the owner, 2026-10-27 (version v2.1.1, second-pass timeout 30 s,
-default mode as today). Tasks 1-3 done.
+default mode as today). Tasks 1-4 done.
 **Created:** 2026-10-27
 **Predecessors:** `tasks/story-v2.1.0-personal-proxy.md` (delivered),
 `tasks/done/story-v1.9.0-response-modes.md`.
@@ -114,7 +114,7 @@ in every mode when TTS is enabled; the modes differ in the text contract:
    per-request latch, mode recorded in Journal metadata, Status Console control enabled,
    amend `PROJECT.md` and `tests/test_personal_proxy_run_mode.py`. Behavior in all modes is
    still Text.
-4. **Voice mode.** (Size: M.) Outbound voice contract, `sent_view` fold, gate test of the
+4. **Voice mode.** (Size: M. Done 2026-10-27, `tasks/done/task-v2.1.1-4-voice-mode.md`; the cleanup also expands abbreviations, approved by the owner.) Outbound voice contract, `sent_view` fold, gate test of the
    longer system message, cleanup per sentence in the speech path, docs.
 5. **Text+Voice mode.** (Size: M-L.) Buffered answer, local second pass, timeout key,
    fallback, `spoken_derivative` metadata, tag stripping of the output, docs.

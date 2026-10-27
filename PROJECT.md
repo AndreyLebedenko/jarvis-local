@@ -5783,7 +5783,8 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   a forced request, task 10d: the verbatim typed text with an empty mapping), and the
   stream gets the exact object the gate allowed. Every failure posts a content-free notice and sends
   nothing; dry run skips the question, posts the full state and stops. The restored answer
-  is shown and spoken sentence by sentence verbatim, with speech control tags stripped. The
+  is shown and spoken sentence by sentence verbatim, with speech control tags stripped (Voice
+  mode cleans the spoken text first, story v2.1.1 task 4). The
   application wiring is task 9b.
 - Application wiring (story v2.1.0 task 9b, `RunMode.PERSONAL_PROXY`, `src/jarvis/app.py`,
   `personal_proxy/startup/proxy_assembly.py`, `service/proxy_runtime.py`, `startup/launch.py`): with
@@ -5801,8 +5802,18 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   no application module), the request pipeline reads it once at the start of each request
   and latches it for that request (a change during a request affects only the next one),
   and the latched mode is stored in the `response_mode` metadata of the request's
-  `proxy_answer` Journal event. Until the later tasks of story v2.1.1 the behavior of every
-  mode is Text: the outbound payload and the speech do not depend on the mode. Start order: checks (topics
+  `proxy_answer` Journal event. Mode behavior (story v2.1.1): Text sends `DEFAULT_SYSTEM_PROMPT`
+  and speaks every sentence as received (byte-identical to v2.1.0). Voice (task 4) sends
+  `VOICE_SYSTEM_PROMPT` (the default prompt plus one fixed paragraph of Jarvis's own, on the same
+  paragraph, no user data, no digit runs or address words; the gate passes it) and speaks each
+  sentence after `strip_speech_control_tags` and `clean_for_speech` (`answer/speech_preparation.py`),
+  while the chat shows the sentence as received. `clean_for_speech` removes Markdown and converts
+  Roman numerals in unambiguous contexts ("XX век"), and expands abbreviations: `тыс.`/`млн`/`млрд`/
+  `трлн` and `°C` after a number (count form by the number), `г.`/`гг.` after a year ("2002 года",
+  "1941-1945 годов": the case is not inferred, and digits are still read by the Silero adapter
+  as cardinals, so "2002-го" is not produced), and `т.е.`/`т.д.`/`т.п.`; other abbreviations are
+  left alone. Text+Voice is still Text until task 5. The voice contract and the cleanup are a
+  request to a model and a best-effort guarantee, not a full one. Start order: checks (topics
   file, public names file (an explicit file that is missing or unusable stops the start with
   the failure kind `public_names_file`; a missing default file is an empty list), key variable, endpoint rule, Ollama and the check model, Whisper dependencies and
   weights, Silero), warm-up of the check model at its own context, then the service and the
@@ -5871,7 +5882,7 @@ Verified facts (one speaker, one room, a corpus of invented identities):
   shows an empty "new session" state with nothing selected until the first request
   (voice or typed) creates and selects the session. The "sent" block (Status ribbon, and the
   Journal feed for `proxy_sent` records) folds a system prompt equal to
-  `DEFAULT_SYSTEM_PROMPT` behind an expandable label; the server decides
+  `DEFAULT_SYSTEM_PROMPT` or `VOICE_SYSTEM_PROMPT` behind an expandable label; the server decides
   (`system_is_default` in the block payload, `proxy_sent` view in the feed payload, both
   from `personal_proxy/reporting/sent_view.py`) so the page keeps no copy of the prompt; a different
   prompt is shown in full; the stored record is unchanged.

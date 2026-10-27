@@ -337,3 +337,11 @@ def test_topic_lines_match_by_folded_word_tokens(topic_line, request_text):
 )
 def test_topic_lines_do_not_match_inside_other_words(topic_line, request_text):
     assert _gate(request_text, topics_text=topic_line).allowed
+
+
+def test_the_voice_system_prompt_passes_the_gate():
+    from jarvis.personal_proxy.common.payload import VOICE_SYSTEM_PROMPT
+
+    result = _gate("привет", system_prompt=VOICE_SYSTEM_PROMPT)
+
+    assert result.allowed

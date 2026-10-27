@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from jarvis.personal_proxy.answer.answer_presenter import AnswerPresenter
 from jarvis.personal_proxy.answer.answer_reporter import Reporter
+from jarvis.personal_proxy.answer.speech_preparation import speech_preparation_of
 from jarvis.personal_proxy.check.check_result import CheckedTranscript
 from jarvis.personal_proxy.common.findings import (
     Finding,
@@ -19,9 +20,9 @@ from jarvis.personal_proxy.common.findings import (
 )
 from jarvis.personal_proxy.common.locality import LocalityReporter
 from jarvis.personal_proxy.common.payload import (
-    DEFAULT_SYSTEM_PROMPT,
     OutboundPayload,
     build_outbound_payload,
+    system_prompt_for,
 )
 from jarvis.personal_proxy.common.response_mode import (
     ResponseModeGetter,
@@ -95,7 +96,7 @@ class RequestPipeline:
         ):
             return
         payload = build_outbound_payload(
-            DEFAULT_SYSTEM_PROMPT, sanitized.sanitized_text
+            system_prompt_for(response_mode), sanitized.sanitized_text
         )
         gate = await self._gated(payload, sanitized)
         if gate is None:
@@ -103,7 +104,9 @@ class RequestPipeline:
         if self._parts.dry_run:
             await self._stop_at_dry_run(heard, sanitized, payload, gate)
         else:
-            await self._send(payload, sanitized, forced=heard.forced)
+            await self._send(
+                payload, sanitized, forced=heard.forced, response_mode=response_mode
+            )
 
     async def _sanitized_or_verbatim(
         self, heard: Heard, *, forceable: bool
@@ -193,7 +196,12 @@ class RequestPipeline:
         await self._reporter.post(block)
 
     async def _send(
-        self, payload: OutboundPayload, sanitized: SanitizeResult, *, forced: bool
+        self,
+        payload: OutboundPayload,
+        sanitized: SanitizeResult,
+        *,
+        forced: bool,
+        response_mode: str,
     ) -> None:
         await self._reporter.post(sent_block_of(payload, forced=forced))
         deltas = None
@@ -201,7 +209,9 @@ class RequestPipeline:
             stream = self._stages.open_stream(payload)
             deltas = external_deltas(stream, self._parts.locality)
             sentences = self._stages.restore(deltas, sanitized.mapping)
-            await self._parts.presenter.present(sentences)
+            await self._parts.presenter.present(
+                sentences, speech_preparation_of(response_mode)
+            )
         except Exception as error:
             await self._reporter.quiet_notice(
                 NoticeKind.ANSWER_INCOMPLETE, error_kind_of(error)

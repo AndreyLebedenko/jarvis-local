@@ -313,3 +313,74 @@ def test_plain_text_is_unchanged_byte_for_byte(text):
 def test_cleaning_is_idempotent(text):
     once = clean_for_speech(text)
     assert clean_for_speech(once) == once
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("около 600 тыс. человек", "около 600 тысяч человек"),
+        ("1 тыс. человек", "1 тысяча человек"),
+        ("2 тыс. человек", "2 тысячи человек"),
+        ("11 тыс. человек", "11 тысяч человек"),
+        ("1,5 млн человек", "1,5 миллиона человек"),
+        ("21 млрд рублей", "21 миллиард рублей"),
+        ("5 трлн рублей", "5 триллионов рублей"),
+    ],
+)
+def test_a_scale_abbreviation_after_a_number_takes_the_count_form(source, expected):
+    assert clean_for_speech(source) == expected
+
+
+def test_a_scale_abbreviation_that_closes_a_sentence_keeps_its_dot():
+    assert clean_for_speech("оставалось 130 тыс. К Бородину") == (
+        "оставалось 130 тысяч. К Бородину"
+    )
+    assert clean_for_speech("оставалось 130 тыс.") == "оставалось 130 тысяч."
+
+
+def test_a_scale_abbreviation_without_a_number_is_left_alone():
+    assert clean_for_speech("тыс. тестов") == "тыс. тестов"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("до +30 °C", "до +30 градусов Цельсия"),
+        ("1 °C", "1 градус Цельсия"),
+        ("22 °C", "22 градуса Цельсия"),
+        ("-20…-30 °C", "-20…-30 градусов Цельсия"),
+        ("21 °С", "21 градус Цельсия"),
+        ("2,5 °C", "2,5 градуса Цельсия"),
+        ("в °C", "в градусов Цельсия"),
+    ],
+)
+def test_degrees_celsius_are_spelled_out(source, expected):
+    assert clean_for_speech(source) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("в 2002 г. нашли", "в 2002 года нашли"),
+        ("в 1941-1945 гг. шла", "в 1941-1945 годов шла"),
+        ("Это было в 1812 г.", "Это было в 1812 года."),
+    ],
+)
+def test_a_year_abbreviation_after_a_year_is_spelled_out(source, expected):
+    assert clean_for_speech(source) == expected
+
+
+def test_a_g_that_does_not_follow_a_year_is_left_alone():
+    assert clean_for_speech("Иванов А. г. Москва") == "Иванов А. г. Москва"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("то есть, т.е. да", "то есть, то есть да"),
+        ("и т. д. и т.п.", "и так далее и тому подобное."),
+        ("и т.д.", "и так далее."),
+    ],
+)
+def test_common_phrase_abbreviations_are_spelled_out(source, expected):
+    assert clean_for_speech(source) == expected

@@ -66,11 +66,35 @@ _UNDERSCORE_EMPHASIS = re.compile(
 )
 _SPACE_RUN = re.compile(r"[ \t]{2,}")
 
+_NUMBER = r"\d+(?:[.,]\d+)?"
+_SCALE_FORMS = {
+    "тыс": ("тысяча", "тысячи", "тысяч"),
+    "млн": ("миллион", "миллиона", "миллионов"),
+    "млрд": ("миллиард", "миллиарда", "миллиардов"),
+    "трлн": ("триллион", "триллиона", "триллионов"),
+}
+_SCALE_ABBREVIATION = re.compile(
+    rf"(?P<number>{_NUMBER})(?P<gap>\s+)(?P<word>тыс|млн|млрд|трлн)\.?(?!\w)"
+)
+_CELSIUS = re.compile(rf"(?:(?P<number>{_NUMBER})\s*)?°\s*[CС](?!\w)")
+_CELSIUS_FORMS = ("градус Цельсия", "градуса Цельсия", "градусов Цельсия")
+_YEAR_ABBREVIATION = re.compile(
+    r"(?P<years>\d{3,4}(?:\s*[-\u2013\u2014]\s*\d{3,4})?)\s+(?P<word>гг?)\.(?!\w)"
+)
+_YEAR_FORMS = {"г": "года", "гг": "годов"}
+_PHRASE_ABBREVIATIONS = (
+    (re.compile(r"(?<!\w)т\.\s?е\."), "то есть"),
+    (re.compile(r"(?<!\w)т\.\s?д\."), "так далее"),
+    (re.compile(r"(?<!\w)т\.\s?п\."), "тому подобное"),
+)
+
 
 def clean_for_speech(text: str) -> str:
     current = text
     while True:
-        cleaned = _replace_century_numerals(_strip_markdown(current))
+        cleaned = _expand_abbreviations(
+            _replace_century_numerals(_strip_markdown(current))
+        )
         if cleaned == current:
             return cleaned
         current = cleaned
@@ -121,3 +145,57 @@ def _ordinal(value: int, case: int) -> str:
 def _inflect(value: int, case: int) -> str:
     stem, kind = _ORDINAL_STEMS[value]
     return stem + _ENDINGS[kind][case]
+
+
+def _expand_abbreviations(text: str) -> str:
+    expanded = _SCALE_ABBREVIATION.sub(_scale_word, text)
+    expanded = _CELSIUS.sub(_celsius_words, expanded)
+    expanded = _YEAR_ABBREVIATION.sub(_year_words, expanded)
+    for pattern, words in _PHRASE_ABBREVIATIONS:
+        expanded = pattern.sub(
+            lambda match, w=words: _with_closing_dot(match, w), expanded
+        )
+    return expanded
+
+
+def _scale_word(match: re.Match[str]) -> str:
+    forms = _SCALE_FORMS[match.group("word")]
+    word = _count_form(match.group("number"), forms)
+    return _with_closing_dot(
+        match, f"{match.group('number')}{match.group('gap')}{word}"
+    )
+
+
+def _celsius_words(match: re.Match[str]) -> str:
+    number = match.group("number")
+    if number is None:
+        return _CELSIUS_FORMS[2]
+    return f"{number} {_count_form(number, _CELSIUS_FORMS)}"
+
+
+def _year_words(match: re.Match[str]) -> str:
+    return _with_closing_dot(
+        match, f"{match.group('years')} {_YEAR_FORMS[match.group('word')]}"
+    )
+
+
+def _count_form(number: str, forms: tuple[str, str, str]) -> str:
+    one, few, many = forms
+    if not number.isdigit():
+        return few
+    count = int(number)
+    if count % 100 in range(11, 15):
+        return many
+    if count % 10 == 1:
+        return one
+    if count % 10 in (2, 3, 4):
+        return few
+    return many
+
+
+def _with_closing_dot(match: re.Match[str], words: str) -> str:
+    # An abbreviation dot that also closed the sentence must survive.
+    rest = match.string[match.end() :].lstrip()
+    if match.group().endswith(".") and (not rest or rest[0].isupper()):
+        return words + "."
+    return words

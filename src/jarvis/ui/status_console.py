@@ -45,10 +45,7 @@ from jarvis.journal.proxy_exchange import PROXY_SENT_SOURCE, PROXY_SOURCES
 from jarvis.journal.search import JournalSearchHit
 from jarvis.journal.store import JournalSessionSummary, JournalStore
 from jarvis.mcp_mode.server import McpServerStatusChanged
-from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
-from jarvis.personal_proxy.reporting.sent_view import (
-    request_after_default_system_prompt,
-)
+from jarvis.personal_proxy.reporting.sent_view import split_known_system_prompt
 from jarvis.tools.builtin import CAMERA_TOOL_NAME
 from jarvis.tools.host import McpModuleStatus, ToolEnablementChanged
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
@@ -267,12 +264,13 @@ def journal_event_payload(
 
 
 def _proxy_sent_view(stored_text: str) -> dict:
-    request_text = request_after_default_system_prompt(stored_text)
-    if request_text is None:
+    split = split_known_system_prompt(stored_text)
+    if split is None:
         return {"system_is_default": False}
+    system_text, request_text = split
     return {
         "system_is_default": True,
-        "system_text": DEFAULT_SYSTEM_PROMPT,
+        "system_text": system_text,
         "request_text": request_text,
     }
 

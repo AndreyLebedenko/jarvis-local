@@ -9,6 +9,7 @@ from collections.abc import Callable
 ResponseModeGetter = Callable[[], str]
 
 TEXT_MODE = "text"
+VOICE_MODE = "voice"
 
 
 def always_text() -> str:

@@ -1,6 +1,7 @@
 """Shows each restored sentence in the chat as soon as it arrives and speaks it
-verbatim, one at a time and in order. The answer is read by a task of its own,
-so speaking never holds up showing it, and the answer is closed as soon as its
+(as received unless a speech preparation is given), one at a time and in
+order. The answer is read by a task of its own, so speaking never holds up
+showing it, and the answer is closed as soon as its
 last sentence arrived. When the answer fails, the incomplete notice is shown at
 that moment and spoken after the sentences already shown. The microphone stays
 paused for the whole answer."""
@@ -13,6 +14,10 @@ from contextlib import suppress
 
 from jarvis.personal_proxy.answer.answer_reporter import Reporter
 from jarvis.personal_proxy.answer.answer_voice import AnswerVoice
+from jarvis.personal_proxy.answer.speech_preparation import (
+    SpeechPreparation,
+    as_received,
+)
 from jarvis.personal_proxy.external.external_error import error_kind_of
 from jarvis.personal_proxy.reporting.service_blocks import (
     AnswerCompleteBlock,
@@ -30,13 +35,17 @@ class AnswerPresenter:
         self._reporter = reporter
         self._voice = voice
 
-    async def present(self, sentences: AsyncIterator[RestoredSentence]) -> None:
+    async def present(
+        self,
+        sentences: AsyncIterator[RestoredSentence],
+        prepare_speech: SpeechPreparation = as_received,
+    ) -> None:
         arrivals: asyncio.Queue[Arrival] = asyncio.Queue()
         reader = asyncio.ensure_future(self._show_arriving(sentences, arrivals))
         try:
             async with self._voice.session() as session:
                 while isinstance(arrival := await arrivals.get(), RestoredSentence):
-                    await session.say(arrival.text)
+                    await session.say(prepare_speech(arrival.text))
                     await self._reporter.report_problems(session)
             await self._reporter.report_problems(session)
             if arrival is not None:

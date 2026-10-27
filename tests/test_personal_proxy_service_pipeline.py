@@ -488,9 +488,9 @@ async def test_a_mode_change_during_a_request_affects_only_the_next_request():
     assert _source_modes(rig) == ["voice", "text_voice"]
 
 
-async def test_the_mode_of_a_request_leaves_the_outbound_payload_and_speech_alone():
+async def test_the_text_voice_mode_still_leaves_the_outbound_payload_and_speech_alone():
     texts = {}
-    for name in ("text", "voice", "text_voice"):
+    for name in ("text", "text_voice"):
         rig = Rig()
         rig.service = _service_following(rig, [name])
         await request(rig, UTTERANCE)
@@ -500,8 +500,57 @@ async def test_the_mode_of_a_request_leaves_the_outbound_payload_and_speech_alon
         ]
         texts[name] = (sent, rig.spoken_texts)
 
-    assert texts["voice"] == texts["text"]
     assert texts["text_voice"] == texts["text"]
+
+
+def _system_messages(rig):
+    return [payload.messages[0].content for payload in rig.payloads_sent]
+
+
+async def test_the_voice_mode_sends_the_voice_system_prompt():
+    from jarvis.personal_proxy.common.payload import VOICE_SYSTEM_PROMPT
+
+    rig = Rig()
+    rig.service = _service_following(rig, ["voice"])
+
+    await request(rig, UTTERANCE)
+
+    assert _system_messages(rig) == [VOICE_SYSTEM_PROMPT]
+
+
+async def test_the_text_mode_sends_the_default_system_prompt():
+    from jarvis.personal_proxy.common.payload import DEFAULT_SYSTEM_PROMPT
+
+    rig = Rig()
+    rig.service = _service_following(rig, ["text"])
+
+    await request(rig, UTTERANCE)
+
+    assert _system_messages(rig) == [DEFAULT_SYSTEM_PROMPT]
+
+
+async def test_the_voice_mode_speaks_the_cleaned_sentence_and_shows_it_as_received():
+    rig = Rig()
+    rig.service = _service_following(rig, ["voice"])
+    received = "- **Армия** в XX веке: +30 °C, около 450 тыс. "
+    rig.stages.deltas = (received,)
+
+    await request(rig, UTTERANCE)
+
+    assert rig.sink.of(AnswerBlock)[0].text == received.strip()
+    assert rig.spoken_texts == [
+        "Армия в двадцатом веке: +30 градусов Цельсия, около 450 тысяч."
+    ]
+
+
+async def test_the_text_mode_still_speaks_the_sentence_as_received():
+    rig = Rig()
+    rig.service = _service_following(rig, ["text"])
+    rig.stages.deltas = ("**Армия**: около 450 тыс. ",)
+
+    await request(rig, UTTERANCE)
+
+    assert rig.spoken_texts == ["**Армия**: около 450 тыс."]
 
 
 # --- dry run -----------------------------------------------------------------
