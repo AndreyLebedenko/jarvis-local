@@ -251,6 +251,21 @@ that can reduce but never prove absence of sensitive data. The voice-guide
 shape gives the same user value with none of that. May return later as a
 separate canvas source.
 
+## Active exploration: external consultation export (unversioned)
+
+Owner decision, 2026-11-16: further personal-proxy development is on hold,
+including task v2.1.0-12a (public names). Delivered v2.1.0/v2.1.1 behavior is
+unchanged. The next exploration is `story-external-consultation-export.md`,
+starting with `spike-external-consultation-export.md` before production design.
+
+The user invokes a context-menu action on a message/question or a whole dialog.
+Jarvis prepares text locally without shortening and retains it in the same
+conversation context. The user reviews and manually transfers it to any external
+model; optionally they bring the answer back for local discussion with the
+original private context. No automatic external send or uncertainty detection.
+Summarization is future scope. Whether the local model can usefully apply a
+returned answer is the spike's central hypothesis, not a settled capability.
+
 ## v2.2 - Canvas-guided voice (renumbered from v2.1 on 2026-10-25: v2.1.0 is the personal proxy)
 
 Purpose: explore the larger capability hinted by Text + voice: a structured

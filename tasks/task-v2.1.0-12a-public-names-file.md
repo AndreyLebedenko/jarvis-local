@@ -1,6 +1,9 @@
 # Task v2.1.0-12a: Public names file
 
-Status: Proposed 2026-10-26; waiting for the owner's go-ahead to implement.
+Status: On hold by the owner, 2026-11-16, with further personal-proxy development.
+Proposed 2026-10-26; not implemented. See
+`story-external-consultation-export.md` for the new exploration; this card's
+design remains recorded but is not an active implementation instruction.
 
 Story: `tasks/story-v2.1.0-personal-proxy.md`, after task 12. Origin: owner's live run,
 2026-10-26.

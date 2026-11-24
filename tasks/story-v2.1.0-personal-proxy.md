@@ -1,11 +1,13 @@
 # Story v2.1.0: Personal proxy (external model behind a local sensitive-data gate)
 
-**Status:** Approved by the owner, 2026-10-18 (including `--personal-proxy`
-as a launch flag); pipeline and interaction revised by the owner, 2026-10-19
-(see "Revisions of 2026-10-19"). No task card is started; the task-card
-sequence was re-cut on 2026-10-19.
+**Status:** Further development on hold by the owner, 2026-11-16. Tasks 1-12
+were delivered in v2.1.0; shipped behavior remains intact. Pending extensions,
+including task 12a (public names), are paused while
+`story-external-consultation-export.md` and its spike explore a local,
+human-transferred consultation in the existing dialog context. Historical
+decisions and measured facts below remain evidence, not active work orders.
 **Created:** 2026-10-18
-**Updated:** 2026-10-20
+**Updated:** 2026-11-16
 **Roadmap:** `tasks/roadmap-v1.9-v2.0.md`. This story reverses the item
 "Rejected for v2.0" in that file (see "Reversal of a recorded rejection").
 **Predecessors:** `tasks/done/story-v2.0-mcp-voice-guide.md` (done) shipped the

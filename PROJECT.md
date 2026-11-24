@@ -6041,6 +6041,47 @@ optional user title in `session.json` (task 10f).
 - Hardware-dependent behavior (microphone, speakers, GPU, the live provider) is verified only
   by the human-run handoffs, never by CI.
 
+## Planning decision: external consultation export (2026-11-16)
+
+The owner placed further personal-proxy development on hold, including the
+public-names extension (task v2.1.0-12a). Delivered v2.1.0/v2.1.1 behavior remains
+available; no runtime architecture or measured fact is reversed by this hold.
+
+The next exploration is a local context-menu action on a message/question or a
+whole dialog: prepare text for external consultation without shortening it,
+retain the derivative in the same local conversation context, let the user
+review and transfer it manually to a model of their choice, and optionally
+bring its answer back into that conversation. The human decides when external
+help is needed; Jarvis does not detect uncertainty or send the export itself.
+Applying the returned answer to private original context is a hypothesis to
+measure, not an established model capability. Summarization is deferred.
+
+Planning lives in `story-external-consultation-export.md` and
+`spike-external-consultation-export.md`. Persistence of local correspondences,
+provenance, revision links, and context-budget behavior remain design questions;
+the planning decision does not silently change the proxy's no-persisted-mapping
+contract. Privacy reduction is not an anonymity guarantee.
+
+The owner explicitly authorized agent-run scripts, including live local-model
+calls, for this feature's PoC on 2026-11-16. The exception is scoped to that
+spike, using synthetic fixtures and the existing local endpoint. It does not
+authorize external-provider calls or change the hardware/CI verification policy
+for other work. This planning change runs no experiments.
+
+## Experiment: consultation-export preparation (2026-11-17)
+
+Consultation-export PoC preparation result, 2026-11-17:
+`consultation-export-v1-results.md` records 27 local calls on configured
+`gemma4:12b-it-q8_0` / Ollama 0.40.16. Selected turns and required propositions
+were preserved in nine synthetic scenarios; median request time was 5.99 s.
+The frozen preparation gate failed: two unflagged identifying-description
+residuals and three private-namesake disclosures. A generated mapping could
+claim replacements absent from the export. Financial/date review policy remains
+unresolved. No application-of-returned-answer calls ran, so the functionality
+gain and benefit of local correspondence remain unmeasured. This is a measured
+candidate result, not an anonymity guarantee or a runtime architecture change.
+The spike awaits owner review; personal-proxy development remains on hold.
+
 ## Current roadmap
 
 The active roadmap is `tasks/roadmap-v1.9-v2.0.md`. It supersedes the old
@@ -6067,6 +6108,10 @@ Current direction:
    `--personal-proxy` cleans a spoken or typed request locally and sends only the
    cleaned text to one external model (see "Architecture v2.1.0"). Off by default;
    the runtime without the flag is unchanged.
+   Further personal-proxy development is on hold (owner, 2026-11-16), including
+   task 12a. The active, unversioned exploration is external consultation export
+   in the same local dialog, with manual transfer and optional answer return;
+   see the planning decision above. Spike first, no production work yet.
 6. v2.2 "canvas-guided voice" (renumbered from v2.1): explore interleaved visible
    canvas plus spoken guide protocols, if a spike proves tag stability, latency
    benefit, factual preservation, and recovery behavior.

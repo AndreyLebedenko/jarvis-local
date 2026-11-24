@@ -4,6 +4,9 @@
 today). Tasks 1-6 done; the owner's live run of Voice and Text+Voice passed, the handoff's
 remaining steps and the Text+Voice latency figure are the owner's.
 **Created:** 2026-10-27
+**Development hold:** Further personal-proxy work is on hold by the owner,
+2026-11-16, pending `story-external-consultation-export.md` and its spike.
+The delivered tasks and remaining manual-verification record below are unchanged.
 **Predecessors:** `tasks/story-v2.1.0-personal-proxy.md` (delivered),
 `tasks/done/story-v1.9.0-response-modes.md`.
 **Executor profile:** same as story-v2.1.0. Task cards name files, precedents, and
