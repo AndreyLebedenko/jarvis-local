@@ -45,21 +45,24 @@ def test_journal_event_json_line_round_trip_is_lossless_utf8_and_single_line() -
     assert JournalEvent.from_json_line(line) == event
 
 
-def test_new_session_id_uses_sortable_local_timestamp_prefix() -> None:
-    local_tz = datetime.now().astimezone().tzinfo
-    session_id = new_session_id(
-        datetime(2026, 7, 16, 15, 30, 0, tzinfo=local_tz),
-        random_bytes=2,
-    )
+@pytest.mark.parametrize(
+    ("month", "expected_prefix"),
+    [(1, "20260116-153000"), (7, "20260716-153000")],
+)
+def test_new_session_id_uses_sortable_local_timestamp_prefix(
+    month: int, expected_prefix: str
+) -> None:
+    local_time = datetime(2026, month, 16, 15, 30).astimezone()
+    session_id = new_session_id(local_time.astimezone(UTC), random_bytes=2)
 
     prefix, random_suffix = session_id.rsplit("-", maxsplit=1)
 
-    assert prefix == "20260716-153000"
+    assert prefix == expected_prefix
     assert len(random_suffix) == 4
     assert (
         JournalEvent(
             session_id=session_id,
-            timestamp="2026-07-16T15:30:00+00:00",
+            timestamp=local_time.isoformat(),
             source="voice",
             role="user",
             text="",

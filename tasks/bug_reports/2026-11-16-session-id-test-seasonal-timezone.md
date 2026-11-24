@@ -1,6 +1,6 @@
 # Session-id test assumes the current UTC offset applies in July
 
-Status: Reported 2026-11-16; outside the consultation-export spike scope.
+Status: Fixed 2026-11-24. Originally reported outside the consultation-export spike scope.
 
 Detected at commit `e3d38562dda7887599d1750cc9c64f01dfd4d322`, branch
 `codex/spike-consultation-export`, with uncommitted spike code and planning docs.
@@ -48,3 +48,9 @@ local-time session-id contract. This spike does not choose that implementation.
 The owner explicitly allowed the isolated consultation PoC to continue with this
 known failure recorded. The test remains unfixed and was not excluded; this
 exception does not apply to other tasks or change the general stop rule.
+
+## Resolution, 2026-11-24
+
+The test constructs January and July local wall times using each date's UTC
+offset. It passes the corresponding UTC instants to `new_session_id` and checks
+the expected local prefixes. The production journal code is unchanged.
