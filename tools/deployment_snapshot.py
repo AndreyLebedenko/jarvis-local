@@ -257,11 +257,9 @@ def _copy_asset(asset: _Asset, source: Path, target: Path) -> None:
         raise DeploymentPlanError(f"Unsupported snapshot asset path: {original}")
 
 
-def copy_snapshot(source: Path, target: Path, plan: SnapshotPlan) -> None:
-    assets = [
-        _Asset(_source_path(source, value, key), Path(value))
-        for key, value in _OPTIONAL_PATHS.items()
-    ]
+def snapshot_layers(
+    source: Path, plan: SnapshotPlan
+) -> Iterator[tuple[Path, str, list[_Asset]]]:
     inherited: TomlTable = {}
     for name in _LAYERS:
         if name not in plan.config_files:
@@ -269,6 +267,15 @@ def copy_snapshot(source: Path, target: Path, plan: SnapshotPlan) -> None:
         layer = _read_layer(source, name)
         content, transfers = _prepare_layer(source, layer, inherited)
         inherited = layer.table
+        yield name, content, transfers
+
+
+def copy_snapshot(source: Path, target: Path, plan: SnapshotPlan) -> None:
+    assets = [
+        _Asset(_source_path(source, value, key), Path(value))
+        for key, value in _OPTIONAL_PATHS.items()
+    ]
+    for name, content, transfers in snapshot_layers(source, plan):
         (target / name).write_bytes(content.encode("utf-8"))
         assets.extend(transfers)
     for root, name in ((plan.journal, "journal"), (plan.memory, "memory")):

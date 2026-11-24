@@ -1,7 +1,7 @@
 # Story: Jarvis Deployment Wizard
 
-Status: Draft for owner review, 2026-11-24. No implementation started or release
-version assigned.
+Status: In progress, 2026-11-24. Tasks 1-4 are complete. Documentation and
+release verification (task 5) are pending. No release version assigned.
 
 Related work: `story-installer-and-workspaces.md`. Its completed bootstrap
 installer is the foundation for this story. Its workspace tasks retain their

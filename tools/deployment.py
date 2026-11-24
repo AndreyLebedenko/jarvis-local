@@ -27,9 +27,10 @@ from tools.deployment_plan import (
     application_inventory,
     plan_deployment,
 )
-from tools.deployment_snapshot import copy_snapshot, validate_copy
+from tools.deployment_snapshot import copy_snapshot, snapshot_layers, validate_copy
 
 MANIFEST = ".jarvis-deployment.json"
+PREVIEW_PREFIX = "JARVIS_DEPLOY_PREVIEW:"
 _BOOTSTRAP = Path("tools/install/bootstrap.ps1")
 _SCHEMA_VERSION = 1
 
@@ -156,6 +157,9 @@ def _run_installer(target: Path, assume_yes: bool) -> int:
     if assume_yes:
         arguments.append("-Yes")
     env = os.environ.copy()
+    if env.pop("JARVIS_DEPLOY_NONINTERACTIVE", None) == "1":
+        arguments.insert(2, "-NonInteractive")
+        env["PYTHONUNBUFFERED"] = "1"
     env.pop("PYTHONPATH", None)
     return subprocess.run(arguments, cwd=target, env=env, check=False).returncode
 
@@ -209,6 +213,32 @@ def _install_prepared(
     return exit_code
 
 
+def preview_deployment(
+    source: Path, target: Path, mode: DeploymentMode, *, resume: bool
+) -> dict[str, str | list[str]]:
+    if resume:
+        target = target.resolve()
+        _require_resumable(target, mode)
+        return {"target": str(target), "mode": mode.value}
+
+    with _pause_runtime_for_copy() if mode is DeploymentMode.COPY else nullcontext():
+        plan = plan_deployment(source, target, mode)
+        result: dict[str, str | list[str]] = {
+            "source": str(plan.source),
+            "target": str(plan.target),
+            "mode": mode.value,
+            "journal": str(plan.target / "journal"),
+            "memory": str(plan.target / "memory"),
+        }
+        if plan.snapshot is not None:
+            result["settings"] = [str(name) for name in plan.snapshot.config_files]
+            result["source_journal"] = str(plan.snapshot.journal)
+            result["source_memory"] = str(plan.snapshot.memory)
+            for _ in snapshot_layers(plan.source, plan.snapshot):
+                continue
+        return result
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path)
@@ -216,8 +246,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--mode", type=DeploymentMode, default=DeploymentMode.CLEAN)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.preview:
+            result = preview_deployment(
+                args.source, args.target, args.mode, resume=args.resume
+            )
+            print(PREVIEW_PREFIX + json.dumps(result), flush=True)
+            return 0
         return deploy(
             args.source,
             args.target,
@@ -225,7 +262,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             resume=args.resume,
             assume_yes=args.yes,
         )
-    except (DeploymentError, DeploymentPlanError) as error:
+    except (DeploymentError, DeploymentPlanError, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
 

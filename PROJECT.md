@@ -4331,7 +4331,13 @@ Missing local Personal Proxy inputs retain their missing-file behavior in the
 copy. When the source has no `config.toml`, the installer creates it from the
 validated example.
 Active MCP tool providers block Copy because the deployment tool cannot verify
-their store isolation. See `story-deployment-wizard.md` for the GUI task.
+their store isolation.
+
+`DeploymentWizard.cmd` opens a native WPF window backed by the shared deployment
+command. Its background worker streams process output and uses a read-only
+preview for review and resume. The wizard asks before allowing winget to install
+Python. A completed deployment's shortcut targets its `Jarvis.cmd` directly
+with the destination as its working directory.
 
 ## Architecture v2.0 (MCP voice guide)
 

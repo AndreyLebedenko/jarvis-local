@@ -25,6 +25,7 @@ APPLICATION_FILES = tuple(
         "README.ru.md",
         "Jarvis.cmd",
         "JarvisLauncher.cmd",
+        "DeploymentWizard.cmd",
         "deploy.cmd",
         "install.cmd",
         "config.example.toml",
@@ -41,6 +42,11 @@ APPLICATION_FILES = tuple(
         "tools/deployment_toml.py",
         "tools/install/bootstrap.ps1",
         "tools/install/deploy.ps1",
+        "tools/install/wizard.ps1",
+        "tools/install/wizard.xaml",
+        "tools/install/wizard_job.ps1",
+        "tools/install/wizard_start.ps1",
+        "tools/install/wizard_worker.ps1",
         "tools/installer.py",
     )
 )

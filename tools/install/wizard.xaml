@@ -1,0 +1,70 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Jarvis Deployment Wizard" Width="760" Height="570"
+        MinWidth="600" MinHeight="480" WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="14" Background="#F5F7FA" Foreground="#152136">
+  <Window.Resources>
+    <Style TargetType="Button">
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Margin" Value="8,0,0,0"/>
+      <Setter Property="MinWidth" Value="88"/>
+    </Style>
+  </Window.Resources>
+  <Grid Margin="28">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,18">
+      <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold"/>
+      <TextBlock x:Name="PageStatus" Margin="0,6,0,0" Foreground="#475770" TextWrapping="Wrap"/>
+    </StackPanel>
+    <Border Grid.Row="1" Background="White" BorderBrush="#DCE2EA" BorderThickness="1"
+            CornerRadius="8" Padding="20">
+      <Grid>
+        <StackPanel x:Name="ChoicePane">
+          <TextBlock Text="Source installation" FontWeight="SemiBold"/>
+          <TextBlock x:Name="SourceText" TextWrapping="Wrap" Margin="0,3,0,14"/>
+          <RadioButton x:Name="CleanMode" GroupName="Mode" IsChecked="True"
+                       Content="Clean installation" Margin="0,0,0,6"/>
+          <RadioButton x:Name="CopyMode" GroupName="Mode" Content="Copy current Jarvis"
+                       Margin="0,0,0,16"/>
+          <Label Target="{Binding ElementName=TargetText}" Content="_Destination folder"
+                 FontWeight="SemiBold" Padding="0,0,0,4"/>
+          <DockPanel Margin="0,0,0,14" LastChildFill="True">
+            <Button x:Name="BrowseButton" DockPanel.Dock="Right" Content="Browse parent..."/>
+            <TextBox x:Name="TargetText" VerticalContentAlignment="Center" Padding="6,0"/>
+          </DockPanel>
+          <CheckBox x:Name="PythonConsent">
+            <TextBlock Text="Allow installing Python 3.11 through winget if needed"
+                       TextWrapping="Wrap"/>
+          </CheckBox>
+        </StackPanel>
+        <TextBox x:Name="ReviewPane" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" Visibility="Collapsed"/>
+        <Grid x:Name="OutputPane" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <ProgressBar x:Name="ProgressBar" Height="5" IsIndeterminate="True" Margin="0,0,0,12"/>
+          <TextBox Grid.Row="1" x:Name="OutputText" FontFamily="Consolas" FontSize="12"
+                   IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                   Padding="6" Background="#F5F7FA" BorderBrush="#DCE2EA"/>
+          <WrapPanel Grid.Row="2" x:Name="FinishActions" Margin="0,12,0,0" Visibility="Collapsed">
+            <Button x:Name="OpenButton" Content="Open folder" Margin="0"/>
+            <Button x:Name="ShortcutButton" Content="Create shortcut..."/>
+            <Button x:Name="LaunchButton" Content="Launch Jarvis"/>
+          </WrapPanel>
+        </Grid>
+      </Grid>
+    </Border>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button x:Name="BackButton" Content="Back"/>
+      <Button x:Name="NextButton" Content="Review" IsDefault="True"/>
+      <Button x:Name="CloseButton" Content="Close"/>
+    </StackPanel>
+  </Grid>
+</Window>
