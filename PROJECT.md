@@ -4303,9 +4303,9 @@ Owner confirmed successful manual verification of the launcher and About
 repository link on 2026-10-16 and authorized commit and merge into main.
 The launcher story and delivery card are completed under `tasks/done/`.
 
-## Architecture: clean deployment (2026-11-24)
+## Architecture: deployment (2026-11-24)
 
-The Deployment Wizard story starts with `deploy.cmd -Target <dir> -Mode clean`.
+The Deployment Wizard CLI is `deploy.cmd -Target <dir> -Mode clean|copy`.
 The command prepares a new app home from an explicit application inventory and
 runs the existing installer there. The destination Python environment is built
 at its final path. When the source has no ready `.venv`, the deployment
@@ -4318,7 +4318,20 @@ with that variable cleared.
 records `preparing`, `ready`, or `complete`. `-Resume` can run the installer
 from `ready` without reading or recopying source files. A per-destination
 mutex serializes deployment attempts within the Windows logon session.
-See `story-deployment-wizard.md` for the upcoming Copy and GUI tasks.
+Copy holds the existing runtime mutex while reading and transferring the
+source, then releases it before starting the installer. Copy mode snapshots
+the effective journal and memory roots by value, including junction roots.
+Nested links in copied trees stop the snapshot. The deployment tool rebases
+supported path scalars in both TOML layers, preserves comments and formatting,
+and uses `tomllib` to verify that only the selected keys changed. The installer
+runs after both layers and the effective destination settings are validated.
+Fresh logs, MCP mode token and Piper download paths are local to the copy.
+Shared Piper model references produce one copied asset across the two layers.
+Missing local Personal Proxy inputs retain their missing-file behavior in the
+copy. When the source has no `config.toml`, the installer creates it from the
+validated example.
+Active MCP tool providers block Copy because the deployment tool cannot verify
+their store isolation. See `story-deployment-wizard.md` for the GUI task.
 
 ## Architecture v2.0 (MCP voice guide)
 

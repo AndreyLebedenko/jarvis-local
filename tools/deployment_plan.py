@@ -37,6 +37,8 @@ APPLICATION_FILES = tuple(
         "tools/create_launcher_shortcut.ps1",
         "tools/deployment.py",
         "tools/deployment_plan.py",
+        "tools/deployment_snapshot.py",
+        "tools/deployment_toml.py",
         "tools/install/bootstrap.ps1",
         "tools/install/deploy.ps1",
         "tools/installer.py",
@@ -164,7 +166,7 @@ def _snapshot_root(source: Path, target: Path, value: str, key: str) -> Path:
     return root
 
 
-def _check_providers(settings: Settings) -> None:
+def check_snapshot_providers(settings: Settings) -> None:
     if not settings.mcp.enabled:
         return
     for name, provider in settings.mcp.servers.items():
@@ -180,7 +182,7 @@ def _snapshot_plan(source: Path, target: Path) -> SnapshotPlan:
         settings = load_settings(source / DEFAULT_CONFIG_PATH)
     except ConfigError as error:
         raise DeploymentPlanError(f"Cannot read source settings: {error}") from error
-    _check_providers(settings)
+    check_snapshot_providers(settings)
 
     journal = _snapshot_root(source, target, settings.journal.root, "[journal].root")
     memory = _snapshot_root(source, target, settings.memory.root, "[memory].root")

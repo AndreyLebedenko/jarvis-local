@@ -6,11 +6,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from tools import deployment
-from tools.deployment_plan import APPLICATION_FILES, PACKAGE_DIR, DeploymentMode
+from tools.deployment_plan import APPLICATION_FILES, PACKAGE_DIR
 
 
 @pytest.fixture
@@ -19,7 +20,10 @@ def home(tmp_path: Path) -> Path:
     for name in (*APPLICATION_FILES, PACKAGE_DIR / "__init__.py"):
         path = home / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(name), encoding="utf-8")
+        path.write_text(
+            "# Example\n" if name == Path("config.example.toml") else str(name),
+            encoding="utf-8",
+        )
     return home
 
 
@@ -155,19 +159,11 @@ def test_resume_rejects_a_venv_linked_to_the_source(home: Path, tmp_path: Path) 
     assert manifest_phase(target) == "ready"
 
 
-def test_copy_mode_waits_for_snapshot_implementation(
-    home: Path, tmp_path: Path
-) -> None:
-    target = tmp_path / "destination"
-    with pytest.raises(deployment.DeploymentError, match="Copy mode"):
-        deployment.deploy(home, target, mode=DeploymentMode.COPY)
-    assert not target.exists()
-
-
 @pytest.mark.skipif(os.name != "nt", reason="Windows deployment command")
 @pytest.mark.parametrize("source_venv_ready", [True, False])
+@pytest.mark.parametrize("mode", ["clean", "copy"])
 def test_cli_loads_source_code_and_reaches_installer_in_final_directory(
-    home: Path, tmp_path: Path, source_venv_ready: bool
+    home: Path, tmp_path: Path, source_venv_ready: bool, mode: str
 ) -> None:
     repository = Path(__file__).resolve().parents[1]
     for name in (
@@ -175,6 +171,8 @@ def test_cli_loads_source_code_and_reaches_installer_in_final_directory(
         "tools/install/deploy.ps1",
         "tools/deployment.py",
         "tools/deployment_plan.py",
+        "tools/deployment_snapshot.py",
+        "tools/deployment_toml.py",
         "src/jarvis/__init__.py",
         "src/jarvis/core/__init__.py",
         "src/jarvis/core/config.py",
@@ -183,6 +181,13 @@ def test_cli_loads_source_code_and_reaches_installer_in_final_directory(
         destination = home / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(repository / name, destination)
+    mutex_module = home / "src/jarvis/core/single_instance.py"
+    mutex_module.write_text(
+        mutex_module.read_text(encoding="utf-8").replace(
+            "Jarvis.SingleInstance", f"Jarvis.DeployCliTest.{uuid4().hex}"
+        ),
+        encoding="utf-8",
+    )
     (home / "tools/install/bootstrap.ps1").write_text(
         """param([switch]$Yes)
 function Get-VenvPython($AppHome) { return $env:TEST_DEPLOY_PYTHON }
@@ -201,6 +206,8 @@ if ($MyInvocation.InvocationName -ne '.') {
         encoding="utf-8",
     )
     target = tmp_path / "new home"
+    (home / "journal").mkdir()
+    (home / "journal" / "events.jsonl").write_bytes(b"history")
     stale_module = tmp_path / "stale-env" / "jarvis" / "__init__.py"
     stale_module.parent.mkdir(parents=True)
     stale_module.write_text(
@@ -208,7 +215,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     )
 
     result = subprocess.run(
-        [str(home / "deploy.cmd"), "-Target", target.name, "-Mode", "clean", "-Yes"],
+        [str(home / "deploy.cmd"), "-Target", target.name, "-Mode", mode, "-Yes"],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -226,6 +233,11 @@ if ($MyInvocation.InvocationName -ne '.') {
         encoding="utf-8-sig"
     ).strip() == str(target)
     assert manifest_phase(target) == "complete"
+    history = target / "journal" / "events.jsonl"
+    if mode == "copy":
+        assert history.read_bytes() == b"history"
+    else:
+        assert not history.exists()
 
 
 def manifest_phase(target: Path) -> str:
