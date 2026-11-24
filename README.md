@@ -264,6 +264,40 @@ unpacked repository. `JarvisLauncher.cmd` stays in its root beside
 text editor to inspect the command. The final installer summary names this
 file. `Jarvis.cmd` starts Jarvis directly (see [Usage](#usage)).
 
+### Deploy into a new directory
+
+From a checkout or an existing Jarvis home, open `DeploymentWizard.cmd`.
+Choose a new destination and review its paths before deploying. The wizard
+shows the installer output and offers to open the folder, create a shortcut,
+or start the new `Jarvis.cmd` after installation succeeds.
+
+- **Clean installation** starts with default settings and empty history and
+  memory.
+- **Copy current Jarvis** takes a snapshot of the existing journal, attachments,
+  overlays, and memory. It transfers the supported settings and local assets.
+  Close the source Jarvis before copying. An enabled MCP tool provider blocks
+  Copy when its data-store isolation cannot be verified.
+
+For the same two modes from PowerShell, run one of these from the source home:
+
+```powershell
+.\deploy.cmd -Target 'D:\AI\Jarvis-clean' -Mode clean
+.\deploy.cmd -Target 'D:\AI\Jarvis-copy' -Mode copy
+```
+
+Each destination gets its own `.venv`, `journal/`, `memory/`, and log and MCP
+token locations. Copy reads the effective source paths from `config.toml` and
+`config.ui.toml`, then rebases supported path settings in both destination
+layers. Later conversations and memory edits in the copy use the destination's
+files. Windows allows one Jarvis runtime in the same logon session, so close
+one instance before starting the other.
+
+If installation fails after preparation, fix the reported problem and select
+**Resume installation** in the wizard, or repeat `deploy.cmd` with the same
+target and mode and add `-Resume`. The `.jarvis-deployment.json` phase must be
+`ready`. For `preparing`, choose a new destination or remove the incomplete
+directory after checking its path, then run the deployment again.
+
 ### Manual installation
 
 Fallback without the installer. From the repository root, in a Python 3.11
