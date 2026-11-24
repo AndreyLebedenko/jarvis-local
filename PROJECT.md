@@ -4303,6 +4303,23 @@ Owner confirmed successful manual verification of the launcher and About
 repository link on 2026-10-16 and authorized commit and merge into main.
 The launcher story and delivery card are completed under `tasks/done/`.
 
+## Architecture: clean deployment (2026-11-24)
+
+The Deployment Wizard story starts with `deploy.cmd -Target <dir> -Mode clean`.
+The command prepares a new app home from an explicit application inventory and
+runs the existing installer there. The destination Python environment is built
+at its final path. When the source has no ready `.venv`, the deployment
+bootstrap uses the same Python 3.11 discovery and installation flow as
+`install.cmd`. Both interpreter paths expose the current source package through
+`PYTHONPATH` for the deployment process only. The destination installer runs
+with that variable cleared.
+
+`.jarvis-deployment.json` binds preparation to a canonical destination and
+records `preparing`, `ready`, or `complete`. `-Resume` can run the installer
+from `ready` without reading or recopying source files. A per-destination
+mutex serializes deployment attempts within the Windows logon session.
+See `story-deployment-wizard.md` for the upcoming Copy and GUI tasks.
+
 ## Architecture v2.0 (MCP voice guide)
 
 Facts settled by story-v2.0 tasks 1-7 (the single-instance guard, external

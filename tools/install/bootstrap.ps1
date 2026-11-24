@@ -182,16 +182,12 @@ function New-Venv {
     }
 }
 
-function Initialize-Venv {
-    param([string]$AppHome, [bool]$AssumeYes)
-    if (Test-VenvReady $AppHome) {
-        Write-Host "Virtual environment: already present ($(Get-VenvDir $AppHome))"
-        return
-    }
+function Get-OrInstallPython311 {
+    param([bool]$AssumeYes)
     $python = Find-Python311
     Write-Detection 'Python 3.11' $python
     if (-not $python) {
-        Install-Python311 -AssumeYes $AssumeYes
+        Install-Python311 -AssumeYes $AssumeYes | Out-Host
         # winget's PATH update reaches only new processes; Find-Python311 falls back to the standard install path.
         $python = Find-Python311
         if (-not $python) {
@@ -199,6 +195,16 @@ function Initialize-Venv {
         }
         Write-Detection 'Python 3.11' $python
     }
+    return $python
+}
+
+function Initialize-Venv {
+    param([string]$AppHome, [bool]$AssumeYes)
+    if (Test-VenvReady $AppHome) {
+        Write-Host "Virtual environment: already present ($(Get-VenvDir $AppHome))"
+        return
+    }
+    $python = Get-OrInstallPython311 -AssumeYes $AssumeYes
     New-Venv -AppHome $AppHome -Python $python
 }
 

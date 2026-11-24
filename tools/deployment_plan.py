@@ -25,6 +25,7 @@ APPLICATION_FILES = tuple(
         "README.ru.md",
         "Jarvis.cmd",
         "JarvisLauncher.cmd",
+        "deploy.cmd",
         "install.cmd",
         "config.example.toml",
         "latest_silero_models.yml",
@@ -34,8 +35,10 @@ APPLICATION_FILES = tuple(
         "setup_stt_model.py",
         "setup_tts_model.py",
         "tools/create_launcher_shortcut.ps1",
+        "tools/deployment.py",
         "tools/deployment_plan.py",
         "tools/install/bootstrap.ps1",
+        "tools/install/deploy.ps1",
         "tools/installer.py",
     )
 )
@@ -71,7 +74,7 @@ class DeploymentPlan:
 def plan_deployment(source: Path, target: Path, mode: DeploymentMode) -> DeploymentPlan:
     source = _resolve(source, "Source")
     target = _new_destination(source, target)
-    application_files = _application_inventory(source)
+    application_files = application_inventory(source)
     snapshot = _snapshot_plan(source, target) if mode is DeploymentMode.COPY else None
     return DeploymentPlan(source, target, mode, application_files, snapshot)
 
@@ -116,7 +119,7 @@ def _inventory_error(error: OSError) -> NoReturn:
     raise DeploymentPlanError(f"Cannot read application inventory: {error}") from error
 
 
-def _application_inventory(source: Path) -> tuple[Path, ...]:
+def application_inventory(source: Path) -> tuple[Path, ...]:
     for relative in (*APPLICATION_FILES, PACKAGE_DIR / "__init__.py"):
         if not _plain_app_path(source, relative).is_file():
             raise DeploymentPlanError(f"Application file is missing: {relative}")
