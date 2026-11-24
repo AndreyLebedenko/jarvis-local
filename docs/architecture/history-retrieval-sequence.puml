@@ -1,0 +1,113 @@
+@startuml
+title Jarvis - recording, indexing and history search
+
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam sequenceGroupBorderColor #64748B
+skinparam sequenceGroupBackgroundColor #F8FAFC
+skinparam ParticipantBorderColor #475569
+skinparam ParticipantBackgroundColor #FFFFFF
+hide footbox
+autonumber
+
+actor User
+boundary "Journal UI /\nlocal HTTP" as UI
+participant "Orchestrator" as Orch
+participant "Recorder /\nJournalStore" as Writer
+database "Raw journal" as Raw
+participant "Projection lifecycle\n(via EventBus)" as Lifecycle
+database "Overlay stores" as Overlays
+participant "Corpus repository\n(event + locator FTS5)" as Corpus
+participant "History retrieval\nservice" as Retrieval
+database "Semantic +\nannotation indexes" as Indexes
+participant "Local Ollama" as Ollama
+
+group Background indexing
+  note over Writer,Lifecycle
+    Startup maintains projections before subscribing to changes.
+    Recording and projection updates run off the dialog path.
+  end note
+  alt A dialog event is recorded
+    Orch ->> Writer : queue user or assistant event
+    Writer -> Raw : persist event and referenced media
+    Raw --> Writer : stable event reference
+    Writer ->> Lifecycle : JournalEventAppended(ref, event)
+    Lifecycle -> Corpus : project typed event and FTS rows
+    opt Semantic projection available
+      Lifecycle -> Ollama : embed eligible event text
+      Lifecycle -> Indexes : update event vector
+    end
+  else A transcript is saved or generated
+    UI -> Overlays : persist transcript by event ref
+    UI ->> Lifecycle : TranscriptOverlayChanged(ref)
+    Lifecycle -> Raw : reread source event
+    Lifecycle -> Corpus : project event with current effective text
+    Corpus -> Overlays : resolve transcript
+    opt Semantic projection available
+      Lifecycle -> Ollama : embed effective text
+      Lifecycle -> Indexes : update event vector
+    end
+  else An annotation is saved, generated or dismissed
+    UI -> Overlays : persist annotation anchored to session/range
+    UI ->> Lifecycle : AnnotationOverlayChanged(id)
+    Lifecycle -> Overlays : reread annotation
+    opt Semantic projection available for an active annotation
+      Lifecycle -> Ollama : embed annotation text
+    end
+    Lifecycle -> Indexes : update or remove annotation projections
+  end
+end
+
+alt User searches in the Journal
+  User -> UI : submit query and optional dates
+  UI -> UI : validate token and check Hidden mode
+  opt Authorized and visible
+    UI -> Corpus : via JournalHistoryService and JournalSearchIndex\nsearch event FTS5 for user / assistant events
+    Corpus --> UI : hits with event refs and snippets
+    UI -> Corpus : search locator FTS5 separately
+    Corpus --> UI : heard-phrase snippets with canonical answer refs
+    UI --> User : show hits and links to source events
+  end
+else A later dialog turn uses history
+  User -> Orch : submit request
+  opt Automatic retrieval has query text
+    Orch -> Retrieval : query from current text + recent turns\nDefault event source filter: text
+    ref over Retrieval,Ollama : Hybrid search (below)
+    Retrieval --> Orch : ranked, hydrated candidates with provenance
+    Orch -> Orch : drop overlaps and select within retrieval budget
+  end
+  Orch -> Orch : assemble bounded context from system prompt,\nrecent turns, retrieved passages and current request
+  Orch -> Ollama : stream /api/chat
+  opt Model requests a history tool
+    Ollama --> Orch : history tool call
+    alt search_history
+      Orch -> Retrieval : via HistoryToolProvider\nexplicit query and filters
+      ref over Retrieval,Ollama : Hybrid search (below)
+      Retrieval --> Orch : candidates with provenance
+    else read_history / read_history_ranges
+      Orch -> Corpus : via HistoryToolProvider\nread known refs or ranges
+      Corpus --> Orch : typed source events
+    end
+    Orch -> Ollama : continue dialog with bounded tool result
+  end
+  Ollama --> Orch : final answer
+  Orch -->> Writer : queue answer for the journal
+end
+
+group Hybrid search
+  Retrieval -> Corpus : expand query with pymorphy3 and search event FTS5
+  Retrieval -> Indexes : search annotation FTS5
+  alt Semantic index and query embedding available
+    Retrieval -> Ollama : embed query (shared across semantic indexes)
+    Retrieval -> Indexes : cosine search over event and annotation vectors
+    Retrieval -> Retrieval : apply relative score gates
+  else Semantic search unavailable or query embedding times out
+    Retrieval -> Retrieval : retain lexical candidates
+  end
+  Retrieval -> Retrieval : merge and rank by event ref or annotation ID
+  Retrieval -> Corpus : hydrate typed events by ref
+  Retrieval -> Overlays : hydrate active annotations by ID
+  Retrieval -> Retrieval : apply provenance eligibility and result limit
+end
+@enduml

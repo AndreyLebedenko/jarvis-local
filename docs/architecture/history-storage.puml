@@ -1,0 +1,86 @@
+@startuml
+title Jarvis - responsibilities for conversation storage and retrieval
+
+top to bottom direction
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Segoe UI
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam ArrowColor #475569
+skinparam componentBorderColor #475569
+skinparam componentBackgroundColor #FFFFFF
+skinparam rectangleBorderColor #94A3B8
+skinparam databaseBorderColor #475569
+skinparam databaseBackgroundColor #FFFFFF
+
+rectangle "User interfaces" as Interfaces #EAF2FF {
+  component "Conversation\nText and voice requests" as Conversation
+  component "Journal console\nBrowse, search and edit" as Journal
+}
+
+rectangle "Jarvis" as Jarvis #FFFFFF {
+  rectangle "Dialog and working context" as DialogLayer #EAF2FF {
+    component "Working context\nSession prompt, bounded recent turns,\nretrieved passages and current request" as Context
+    component "Model-facing history tools\nExplicit search and source reads" as HistoryTools
+  }
+
+  rectangle "History access" as AccessLayer #F8FAFC {
+    component "Journal search\nText / prefix matches and\na separate heard-phrase locator" as JournalSearch
+    component "Hybrid retrieval\nMorphology + vector similarity\nRanking, source text and provenance" as Hybrid
+    component "Source reads\nEvents and ranges by reference" as Reads
+  }
+
+  rectangle "Capture and indexing" as IndexLayer #FFF7E8 {
+    component "Session recording\nAppend events and save media" as Recording
+    component "Transcript and annotation management\nExplicit editing or local generation" as Editing
+    component "Projection maintenance\nStartup rebuilds and incremental updates" as Indexing
+  }
+
+  rectangle "Local data" as StorageLayer #ECFDF5 {
+    database "Raw session journal\nJSONL events and original media" as Raw
+    database "Transcript and annotation overlays\nLinked to events or session ranges" as Overlays
+    database "Read projections (SQLite)\nEvent corpus, FTS5 and vector indexes" as Projections
+    database "Curated memory (Markdown)\nself.md and memory.md" as Memory
+  }
+}
+
+rectangle "External process on the same machine" as ModelLayer #F1F5F9 {
+  component "Ollama\nGeneration and embeddings" as Ollama
+}
+
+Conversation --> Context : start a turn
+Journal --> JournalSearch : find events and phrases
+Journal --> Editing : edit or generate
+Journal --> Memory : edit through local API
+
+Context --> Hybrid : retrieve relevant history
+Context --> Recording : record dialog events
+Context --> Memory : load at session start
+Context -right-> Ollama : send bounded prompt
+Context --> HistoryTools : dispatch a model tool call
+HistoryTools --> Hybrid : explicit search
+HistoryTools --> Reads : read by reference or range
+
+JournalSearch --> Projections : query event and locator FTS5
+Hybrid --> Projections : query text and vector indexes
+Hybrid --> Reads : resolve ranked matches
+Hybrid --> Ollama : embed query when available
+Reads --> Projections : read event text and refs
+Reads --> Overlays : read active annotations
+
+Recording --> Raw : persist event and media
+Editing --> Overlays : persist derived content
+Editing --> Ollama : generate on request
+Recording ..> Indexing : event appended
+Editing ..> Indexing : overlay changed
+Indexing --> Raw : replay events
+Indexing --> Overlays : read transcripts and annotations
+Indexing --> Projections : build and refresh views
+Indexing --> Ollama : embed passages
+
+legend bottom
+  The raw journal and overlays are durable inputs to rebuildable read projections.
+  Hybrid retrieval falls back to lexical search when embeddings are unavailable.
+endlegend
+@enduml
