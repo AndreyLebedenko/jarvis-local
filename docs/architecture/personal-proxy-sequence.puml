@@ -42,8 +42,10 @@ alt call or parse failure
 else ok
   Check --> San: checked transcript + doubt list
 end
-note over Check, San: the doubt list travels with the request to the confirmation step (4);
-it is not recomputed from the sanitized text.
+note over Check, San
+  The doubt list travels with the request to the confirmation step (4);
+  it is not recomputed from the sanitized text.
+end note
 
 == 3. Sanitize (text only) ==
 Topics --> San: sensitive topics
@@ -58,8 +60,7 @@ end
 note over San, Conf: mapping stays local. Originals are never sent.
 
 == 4. Confirmation (only when there is a reason to doubt) ==
-alt doubts exist (decided in step 2: the judge listed at least
-[personal_proxy].doubt_min_listed doubts; budget: about 1 request in 4)
+alt doubts exist (decided in step 2: the judge listed at least\n[personal_proxy].doubt_min_listed doubts; budget: about 1 request in 4)
   Conf -> Chat: show the WHOLE heard text
   Conf -> User: voice names what to check
   alt clear "yes", spoken or typed
