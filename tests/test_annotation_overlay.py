@@ -501,6 +501,54 @@ class TestReadSessionAnnotations:
 
 
 class TestRebuildAndCount:
+    def test_failed_schema_creation_leaves_no_partial_schema(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = _repo(tmp_path)
+        repo.db_path.parent.mkdir()
+        connection = sqlite3.connect(repo.db_path)
+
+        def deny_schema_index(action: int, name: str, *_details: object) -> int:
+            if (
+                action == sqlite3.SQLITE_CREATE_INDEX
+                and name == "annotation_overlays_session_idx"
+            ):
+                return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        connection.set_authorizer(deny_schema_index)
+        with monkeypatch.context() as patch:
+            patch.setattr(sqlite3, "connect", lambda _path: connection)
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+                repo.add_annotation(
+                    _session_target(),
+                    "summary",
+                    "assistant",
+                    AnnotationSource.GENERATED,
+                )
+
+        with closing(sqlite3.connect(repo.db_path)) as reader:
+            assert reader.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+    def test_add_repairs_incomplete_schema_left_by_an_earlier_write(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _repo(tmp_path)
+        repo.db_path.parent.mkdir()
+        with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+            conn.execute(
+                "CREATE TABLE annotation_overlay_meta ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+
+        result = repo.add_annotation(
+            _session_target(), "summary", "assistant", AnnotationSource.GENERATED
+        )
+
+        assert result.status is AnnotationWriteStatus.ACCEPTED
+        annotations = repo.read_session_annotations(_SESSION)
+        assert [annotation.text for annotation in annotations] == ["summary"]
+
     def test_rebuild_creates_schema(self, tmp_path: Path) -> None:
         repo = _repo(tmp_path)
         repo.rebuild()

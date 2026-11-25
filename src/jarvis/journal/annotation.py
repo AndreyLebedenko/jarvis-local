@@ -197,7 +197,7 @@ class AnnotationOverlayRepository:
         annotation_id = uuid.uuid4().hex
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             count = connection.execute(
                 "SELECT COUNT(*) FROM annotation_overlays WHERE session_id = ?",
                 (target.session_id,),
@@ -256,7 +256,7 @@ class AnnotationOverlayRepository:
 
         now = _utc_now_iso()
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             connection.execute(
                 """
                 UPDATE annotation_overlays
@@ -328,7 +328,7 @@ class AnnotationOverlayRepository:
         if not self._db_path.exists():
             return AnnotationDeleteResult(AnnotationDeleteStatus.NOT_FOUND)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             cursor = connection.execute(
                 "DELETE FROM annotation_overlays WHERE annotation_id = ?",
                 (annotation_id,),
@@ -341,7 +341,7 @@ class AnnotationOverlayRepository:
         if not self._db_path.exists():
             return
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             connection.execute(
                 "DELETE FROM annotation_overlays WHERE session_id = ?",
                 (session_id,),
@@ -351,7 +351,7 @@ class AnnotationOverlayRepository:
         self._check_existing_schema_version()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
 
     def count(self) -> int:
         connection = self._open_read_connection()
@@ -391,10 +391,14 @@ class AnnotationOverlayRepository:
                 return AnnotationWriteStatus.UNKNOWN_REFERENCE
         return None
 
-    def _ensure_schema(self, connection: sqlite3.Connection) -> None:
+    def _prepare_write(self, connection: sqlite3.Connection) -> None:
+        # Start before the first schema read so concurrent writers cannot
+        # observe partial initialization or read the same pre-insert count.
+        connection.execute("BEGIN IMMEDIATE")
         if _table_exists(connection, "annotation_overlay_meta"):
             self._check_schema_version(connection)
-            return
+            if _table_exists(connection, "annotation_overlays"):
+                return
         self._create_schema(connection)
 
     def _create_schema(self, connection: sqlite3.Connection) -> None:
@@ -408,7 +412,7 @@ class AnnotationOverlayRepository:
         )
         connection.execute(
             """
-            INSERT OR REPLACE INTO annotation_overlay_meta (key, value)
+            INSERT OR IGNORE INTO annotation_overlay_meta (key, value)
             VALUES (?, ?)
             """,
             (_SCHEMA_VERSION_KEY, str(CURRENT_ANNOTATION_OVERLAY_SCHEMA_VERSION)),

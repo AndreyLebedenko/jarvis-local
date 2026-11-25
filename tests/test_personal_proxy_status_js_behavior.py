@@ -49,7 +49,7 @@ def _run(tmp_path, probe: str) -> dict:
     result = subprocess.run(
         ["node", str(harness), *map(str, sources), str(probe_file)],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
         timeout=30,
     )
