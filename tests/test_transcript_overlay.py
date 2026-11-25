@@ -268,6 +268,26 @@ class TestRebuild:
         assert repo.count() == 0
 
 
+class TestIncompleteSchema:
+    def test_upsert_repairs_schema_with_meta_table_but_no_overlay_table(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _repo(tmp_path)
+        repo.db_path.parent.mkdir()
+        with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+            conn.execute(
+                "CREATE TABLE transcript_overlay_meta ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+
+        result = repo.upsert_transcript(_ref(), "text", TranscriptSource.GENERATED)
+
+        assert result.accepted
+        read = repo.read_transcript(_ref())
+        assert read.overlay is not None
+        assert read.overlay.text == "text"
+
+
 class TestCount:
     def test_count_empty(self, tmp_path: Path) -> None:
         repo = _repo(tmp_path)

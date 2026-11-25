@@ -239,7 +239,7 @@ def run_powershell_script(
         capture_output=True,
         text=True,
         check=False,
-        timeout=30,
+        timeout=120,
     )
 
 

@@ -12,7 +12,8 @@ The SDK reports the exception as an error. The upstream report also identifies
 AnyIO 4.16.0 as a version that makes the blocked reader wake on close.
 
 Keep the shutdown assertion and the project's SDK range while the upstream
-issue is open. Downgrading MCP would lose the session bounds used by Jarvis,
+issue is open. `requirements.txt` caps `anyio` below 4.16 so CI resolves the
+version where the test passes; lift the cap when the SDK carries the fix. Downgrading MCP would lose the session bounds used by Jarvis,
 and filtering the record would leave the shutdown behavior in the dependency.
 Recheck the existing open-stream test when a compatible SDK release carries
 the fix. The migration to SDK 2.x has its own backlog task.

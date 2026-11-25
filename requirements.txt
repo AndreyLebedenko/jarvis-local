@@ -1,6 +1,10 @@
 httpx>=0.28
 aiohttp>=3.11
 mcp>=1.30,<2
+# anyio 4.16 wakes a blocked reader with ClosedResourceError on close, so the
+# MCP SDK logs an ERROR when a session with an open SSE stream is terminated
+# (tasks/bug_reports/2026-11-24-mcp-sdk-standalone-sse-close.md).
+anyio>=4.5,<4.16
 uvicorn>=0.37
 starlette>=0.52
 # Imported directly for the speak tool's Field annotations (mcp_mode/server.py),

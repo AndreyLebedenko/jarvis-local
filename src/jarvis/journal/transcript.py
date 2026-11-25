@@ -172,7 +172,7 @@ class TranscriptOverlayRepository:
         now = _utc_now_iso()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             existing = connection.execute(
                 """
                 SELECT created_at
@@ -222,7 +222,7 @@ class TranscriptOverlayRepository:
         connection.close()
 
         with closing(sqlite3.connect(self._db_path)) as conn, conn:
-            self._ensure_schema(conn)
+            self._prepare_write(conn)
             cursor = conn.execute(
                 """
                 DELETE FROM transcript_overlays
@@ -238,7 +238,7 @@ class TranscriptOverlayRepository:
         if not self._db_path.exists():
             return
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
             connection.execute(
                 "DELETE FROM transcript_overlays WHERE session_id = ?",
                 (session_id,),
@@ -248,7 +248,7 @@ class TranscriptOverlayRepository:
         self._check_existing_schema_version()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._db_path)) as connection, connection:
-            self._ensure_schema(connection)
+            self._prepare_write(connection)
 
     def count(self) -> int:
         connection = self._open_read_connection()
@@ -262,10 +262,14 @@ class TranscriptOverlayRepository:
             ).fetchone()
             return int(row[0]) if row else 0
 
-    def _ensure_schema(self, connection: sqlite3.Connection) -> None:
+    def _prepare_write(self, connection: sqlite3.Connection) -> None:
+        # Start before the first schema read so concurrent writers cannot
+        # observe partial initialization.
+        connection.execute("BEGIN IMMEDIATE")
         if _table_exists(connection, "transcript_overlay_meta"):
             self._check_schema_version(connection)
-            return
+            if _table_exists(connection, "transcript_overlays"):
+                return
         self._create_schema(connection)
 
     def _create_schema(self, connection: sqlite3.Connection) -> None:
@@ -279,7 +283,7 @@ class TranscriptOverlayRepository:
         )
         connection.execute(
             """
-            INSERT OR REPLACE INTO transcript_overlay_meta (key, value)
+            INSERT OR IGNORE INTO transcript_overlay_meta (key, value)
             VALUES (?, ?)
             """,
             (_SCHEMA_VERSION_KEY, str(CURRENT_TRANSCRIPT_OVERLAY_SCHEMA_VERSION)),
