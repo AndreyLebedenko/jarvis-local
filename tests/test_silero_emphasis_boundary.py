@@ -1,8 +1,9 @@
 import pytest
 import torch
 
+from jarvis.audio.replay import ReplayPlayer, TextReply
 from jarvis.audio.tts_silero import SileroEngine
-from jarvis.core.config import SileroTtsSettings
+from jarvis.core.config import SileroTtsSettings, TtsSettings
 
 
 class _RecordingModel:
@@ -99,3 +100,36 @@ async def test_non_russian_silero_route_keeps_a_marker_when_emphasis_is_on():
     )
 
     assert sent == "It is *very* good."
+
+
+async def _replay_through_an_emphasis_engine(reply: TextReply) -> list[str]:
+    model = _RecordingModel()
+    engine = SileroEngine(
+        SileroTtsSettings(emphasis=True), model_loader=lambda route: model
+    )
+
+    async def discard(wav_bytes: bytes) -> None:
+        return None
+
+    player = ReplayPlayer(TtsSettings(), engine, play=discard)
+    await player.replay(reply)
+    await player.wait_for_pending()
+    return model.texts
+
+
+async def test_trusted_reply_reaches_the_model_with_its_markers():
+    text = "Твой брат всё ещё *живёт* в *Лондоне*?"
+
+    sent = await _replay_through_an_emphasis_engine(
+        TextReply(text, emphasis_trusted=True)
+    )
+
+    assert sent == [text]
+
+
+async def test_untrusted_reply_loses_its_asterisks_even_with_emphasis_on():
+    sent = await _replay_through_an_emphasis_engine(
+        TextReply("Твой брат всё ещё *живёт* в *Лондоне*?")
+    )
+
+    assert sent == ["Твой брат всё ещё живёт в Лондоне?"]

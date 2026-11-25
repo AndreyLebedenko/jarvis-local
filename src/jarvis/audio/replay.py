@@ -31,6 +31,7 @@ import sounddevice as sd
 import soundfile as sf
 
 from jarvis.audio.language_segments import text_language
+from jarvis.audio.speech_emphasis import strip_emphasis
 from jarvis.audio.speech_language import TtsLanguageMode, resolve_speech_language
 from jarvis.audio.tts import TtsEngine, new_speech_units
 from jarvis.audio.tts_mute import TtsMuteState
@@ -50,6 +51,7 @@ class TextReply:
 
     text: str
     speech_language: SpeechLanguage = field(default_factory=CharsetSpeechRouting)
+    emphasis_trusted: bool = False
 
 
 @dataclass(frozen=True)
@@ -466,7 +468,8 @@ class ReplayPlayer:
 
     def _segment(self, reply: TextReply) -> list[tuple[str, str]]:
         buffer = new_speech_units(reply.speech_language, self._settings)
-        units = buffer.feed(reply.text)
+        text = reply.text if reply.emphasis_trusted else strip_emphasis(reply.text)
+        units = buffer.feed(text)
         units.extend(buffer.flush())
         return units
 

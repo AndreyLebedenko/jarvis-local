@@ -361,7 +361,10 @@ class VoiceGuideService:
         )
         text = await self._text_to_speak(item, speech_language)
         if text is not None:
-            await self._play(item, TextReply(text, speech_language))
+            trusted = item.origin is SpeechOrigin.CALLER
+            await self._play(
+                item, TextReply(text, speech_language, emphasis_trusted=trusted)
+            )
 
     async def _text_to_speak(
         self, item: _Item, speech_language: SpeechLanguage

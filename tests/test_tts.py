@@ -1113,6 +1113,21 @@ async def test_on_token_schedules_sentences_and_plays_them_in_order():
     assert played == ["Первое предложение.", "Второе предложение."]
 
 
+async def test_on_token_never_sends_an_asterisk_to_the_engine():
+    engine = _FakeEngine()
+
+    async def fake_play(audio: bytes) -> None:
+        return None
+
+    tts = TtsOutput(TtsSettings(), engine=engine, play=fake_play)
+
+    for chunk in ("Это *ва", "жно*. Ещё **раз**", " и *точно*. "):
+        await tts.on_token(ResponseToken(text=chunk))
+    await tts.wait_for_pending()
+
+    assert [text for text, _ in engine.seen] == ["Это важно.", "Ещё раз и точно."]
+
+
 async def test_on_response_complete_flushes_and_schedules_trailing_sentence():
     played = []
 

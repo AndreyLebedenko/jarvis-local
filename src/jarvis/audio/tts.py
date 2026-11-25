@@ -16,6 +16,7 @@ from jarvis.audio.language_segments import (
     CharsetLanguageStream,
     text_language,
 )
+from jarvis.audio.speech_emphasis import strip_emphasis
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import TtsSettings
@@ -466,7 +467,7 @@ class TtsOutput:
             return
         if not self._speak_streaming:
             return
-        for text, language in self._units.feed(event.text):
+        for text, language in self._units.feed(strip_emphasis(event.text)):
             self._schedule(text, language)
 
     async def on_response_complete(self, event: ResponseComplete) -> None:

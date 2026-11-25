@@ -298,6 +298,34 @@ async def test_spoken_text_from_the_caller_is_journaled_as_the_derivative(make_r
     assert rig.recorder.calls[0]["canvas"] == "A long canvas."
 
 
+async def test_spoken_text_from_the_caller_keeps_its_emphasis_markers(make_rig):
+    rig = make_rig()
+    text = "Твой брат всё ещё *живёт* в *Лондоне*?"
+
+    rig.service.enqueue(VoiceGuideRequest("A canvas.", spoken_text=text))
+    await rig.settled(1)
+
+    assert rig.play.clips == [text]
+
+
+async def test_verbatim_canvas_is_spoken_without_markdown_asterisks(make_rig):
+    rig = make_rig(origin=SpeechOrigin.VERBATIM)
+
+    rig.service.enqueue(VoiceGuideRequest("Это **важно** и *точно*."))
+    await rig.settled(1)
+
+    assert rig.play.clips == ["Это важно и точно."]
+
+
+async def test_local_guide_text_is_spoken_without_asterisks(make_rig):
+    rig = make_rig(_guide("Суть: *главное* и **важное**."))
+
+    rig.service.enqueue(VoiceGuideRequest("A canvas."))
+    await rig.settled(1)
+
+    assert rig.play.clips == ["Суть: главное и важное."]
+
+
 async def test_verbatim_canvas_is_spoken_as_is_without_a_model_call(make_rig):
     rig = make_rig(origin=SpeechOrigin.VERBATIM)
 

@@ -189,6 +189,55 @@ def test_assistant_reply_speech_expects_the_canvas_language_not_the_derivative()
     assert reply.speech_language == SingleLanguageSpeech("en")
 
 
+def test_text_reply_is_untrusted_for_emphasis_by_default():
+    assert TextReply("Текст.").emphasis_trusted is False
+
+
+def test_replay_strips_asterisks_from_an_untrusted_reply():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+
+    asyncio.run(_replay_and_wait(player, TextReply("Это **важно** и *точно*.")))
+
+    assert engine.seen == [("Это важно и точно.", "ru")]
+
+
+def test_replay_many_strips_asterisks_from_every_text():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+
+    async def replay_and_wait():
+        await player.replay_many(["Это *раз*.", "Это **два**."])
+        await player.wait_for_pending()
+
+    asyncio.run(replay_and_wait())
+
+    assert [text for text, _ in engine.seen] == ["Это раз.", "Это два."]
+
+
+def test_replay_keeps_the_markers_of_a_trusted_reply():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+    text = "Твой брат всё ещё *живёт* в *Лондоне*?"
+
+    asyncio.run(_replay_and_wait(player, TextReply(text, emphasis_trusted=True)))
+
+    assert engine.seen == [(text, "ru")]
+
+
+def test_replay_keeps_each_sentences_own_markers_for_a_trusted_reply():
+    engine = _FakeEngine()
+    player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
+    reply = TextReply("Он *пришёл*. Ты *правда* *пришёл*?", emphasis_trusted=True)
+
+    asyncio.run(_replay_and_wait(player, reply))
+
+    assert engine.seen == [
+        ("Он *пришёл*.", "ru"),
+        ("Ты *правда* *пришёл*?", "ru"),
+    ]
+
+
 def test_replay_charset_routes_a_mixed_sentence_by_script():
     engine = _FakeEngine()
     player = ReplayPlayer(_tts_settings(), engine, play=_RecordingPlay())
