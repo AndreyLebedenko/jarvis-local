@@ -2,11 +2,15 @@ import asyncio
 import io
 import random
 import re
+import sys
 import wave
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+import torch
 
 from jarvis.audio.tts import (
     _ABBREVIATIONS,
@@ -470,6 +474,44 @@ tts_models:
         SileroTtsSettings(model="future_model"),
         repo_root=repo_root,
     )
+
+
+async def test_silero_v5_6_route_synthesizes_only_with_cached_weights(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    model = Mock()
+    model.apply_tts.return_value = torch.zeros(240)
+    silero_module = SimpleNamespace(
+        __file__=str(tmp_path / "silero" / "__init__.py"),
+        silero_tts=Mock(return_value=(model, "example")),
+    )
+    monkeypatch.setitem(sys.modules, "silero", silero_module)
+    settings = TtsSettings(
+        languages={
+            "ru": SileroTtsSettings(
+                model="v5_6_ru", speaker="eugene", sample_rate=24000
+            ),
+            "en": PiperTtsSettings(model="unused.onnx"),
+        }
+    )
+
+    with pytest.raises(TtsEngineLoadError, match=r"not cached: .*v5_6_ru\.pt"):
+        await build_tts_engine(settings).synthesize("Привет!", "ru")
+    silero_module.silero_tts.assert_not_called()
+
+    weights = tmp_path / "silero" / "model" / "v5_6_ru.pt"
+    weights.parent.mkdir(parents=True)
+    weights.touch()
+    audio = await build_tts_engine(settings).synthesize("Привет!", "ru")
+
+    silero_module.silero_tts.assert_called_once_with(language="ru", speaker="v5_6_ru")
+    model.apply_tts.assert_called_once_with(
+        text="Привет!", speaker="eugene", sample_rate=24000
+    )
+    with wave.open(io.BytesIO(audio), "rb") as wav_file:
+        assert wav_file.getframerate() == 24000
+        assert wav_file.getnframes() == 240
 
 
 # --- PiperEngine ------------------------------------------------------------
