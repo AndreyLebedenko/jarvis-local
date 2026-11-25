@@ -1,8 +1,9 @@
 # Story: Silero v5 emphasis markers in spoken text
 
 **Status:** Approved 2026-11-25 with decisions A, B, C as recommended. Branch
-`feat/silero-emphasis-markers`. Task 1 done (pure module `audio/speech_emphasis.py`,
-not wired anywhere yet; runtime behavior unchanged). Next: task 2.
+`feat/silero-emphasis-markers`. Tasks 1-2 done: `audio/speech_emphasis.py` and the engine boundary
+(route key `emphasis`, default off; with it off no asterisk reaches any engine).
+Next: task 3.
 **Created:** 2026-11-25
 **Predecessors:** `tasks/done/task-silero-tts-v5-6.md` (the `v5_6_ru` route).
 **Executor profile:** task cards name files, precedents, and boundaries
@@ -95,6 +96,7 @@ as before.
 2. **Silero capability and engine boundary** - the route key (decision A),
    Silero v5 keeps normalized markers, every other engine and every untrusted
    path strips them; tests with stub engines.
+   Card: `tasks/done/task-silero-emphasis-2-engine-boundary.md` (completed 2026-11-25).
 3. **Provenance wiring** - mark caller `spoken_text` as trusted in the
    voice-guide path, strip everything else; check that `app.py` and the personal
    proxy path are not changed and that `speech_cleanup.py` still removes Markdown
