@@ -9,6 +9,7 @@ from typing import Protocol
 import torch
 from num2words import num2words
 
+from jarvis.audio.speech_emphasis import normalize_emphasis, strip_emphasis
 from jarvis.audio.tts import LazyAsyncLoad
 from jarvis.audio.utils import samples_to_wav_bytes
 from jarvis.core.config import SileroTtsSettings
@@ -227,8 +228,14 @@ class SileroEngine:
         prepared = text
         if self._route.language == "ru":
             prepared = transliterate_latin(normalize_numbers(text))
+        prepared = self._apply_emphasis_policy(prepared)
         audio_tensor = await asyncio.to_thread(model.synthesize, prepared)
         return samples_to_wav_bytes(audio_tensor, self._route.sample_rate)
+
+    def _apply_emphasis_policy(self, text: str) -> str:
+        if self._route.emphasis:
+            return normalize_emphasis(text)
+        return strip_emphasis(text)
 
     async def _ensure_model(self) -> LoadedSileroModel:
         return await self._load.get(

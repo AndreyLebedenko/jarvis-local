@@ -1083,6 +1083,15 @@ def test_engine_specific_tts_settings_reject_invalid_values(tmp_path, route, mes
         ),
         (
             """
+            engine = "silero"
+            model = "v5_6_ru"
+            emphasis = "yes"
+            """,
+            "emphasis",
+            "bool",
+        ),
+        (
+            """
             engine = "piper"
             model = "voice.onnx"
             length_scale = "fast"
@@ -1118,6 +1127,39 @@ def test_tts_route_type_mismatch_reports_python_type_name(
         ConfigError, match=rf"\[tts\.languages\.ru\]\.{field} must be {expected}, "
     ):
         load_settings(config_path)
+
+
+def test_silero_route_parses_the_emphasis_opt_in(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "v5_6_ru"
+        emphasis = true
+        """,
+        encoding="utf-8",
+    )
+
+    route = load_settings(config_path).tts.languages["ru"]
+
+    assert route == SileroTtsSettings(model="v5_6_ru", emphasis=True)
+
+
+def test_silero_route_without_the_emphasis_key_keeps_it_off(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+        [tts.languages.ru]
+        engine = "silero"
+        model = "v5_6_ru"
+        """,
+        encoding="utf-8",
+    )
+
+    route = load_settings(config_path).tts.languages["ru"]
+
+    assert route.emphasis is False
 
 
 def test_tts_language_routes_parse_for_supported_languages(tmp_path):

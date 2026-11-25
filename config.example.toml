@@ -286,6 +286,12 @@ sample_rate = 48000
 # own defaults; unsupported model/parameter combinations fail on first use.
 # put_accent = true
 # put_yo = true
+# Intonation markers for the Silero v5 Russian models (v5_*_ru): spoken text
+# may mark the stressed word as *word*, one word per marker. A question keeps
+# up to two markers, a statement one; every other asterisk is removed. Off by
+# default: with false, no asterisk ever reaches the model. xenia and eugene
+# carry the emphasis best.
+# emphasis = true
 
 # Optional v1.2.9 bilingual route. Jarvis does not download Piper models at
 # runtime; configure this only after placing the local .onnx model yourself.

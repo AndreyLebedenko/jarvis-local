@@ -302,6 +302,7 @@ function _demoConfigValues(bilingual) {
       _demoTtsSpec("sample_rate", "integer", false, false, 48000, false, 0, true),
       _demoTtsSpec("put_accent", "boolean", true, false, null),
       _demoTtsSpec("put_yo", "boolean", true, false, null),
+      _demoTtsSpec("emphasis", "boolean", false, false, false),
     ],
     piper: [
       _demoTtsSpec("model", "string", false, true, null, true),
@@ -320,7 +321,7 @@ function _demoConfigValues(bilingual) {
   const routes = {
     ru: {
       engine: "silero", model: "v3_1_ru", language: "ru", speaker: "eugene",
-      sample_rate: 48000, put_accent: null, put_yo: null,
+      sample_rate: 48000, put_accent: null, put_yo: null, emphasis: false,
     },
   };
   if (bilingual) {

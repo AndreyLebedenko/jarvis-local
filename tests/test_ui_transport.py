@@ -1164,6 +1164,7 @@ def _full_config_arguments() -> dict:
                 "sample_rate": 24000,
                 "put_accent": True,
                 "put_yo": None,
+                "emphasis": False,
             },
             "en": {
                 "engine": "piper",
@@ -1407,6 +1408,7 @@ def test_snapshot_contains_config_values_section():
         "sample_rate": 48000,
         "put_accent": None,
         "put_yo": None,
+        "emphasis": False,
     }
     assert [field["name"] for field in values["tts"]["schemas"]["silero"]] == [
         "model",
@@ -1415,6 +1417,7 @@ def test_snapshot_contains_config_values_section():
         "sample_rate",
         "put_accent",
         "put_yo",
+        "emphasis",
     ]
     assert values["vad_ranges"]["max_chunk_seconds"] == [1, 120]
 

@@ -6,6 +6,7 @@ import wave
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from jarvis.audio.speech_emphasis import strip_emphasis
 from jarvis.audio.tts import LazyAsyncLoad
 from jarvis.core.config import PiperTtsSettings
 
@@ -118,7 +119,7 @@ class PiperEngine:
         voice, synthesis_config = await self._ensure_voice()
         return await asyncio.to_thread(
             piper_chunks_to_wav_bytes,
-            voice.synthesize(text, synthesis_config),
+            voice.synthesize(strip_emphasis(text), synthesis_config),
         )
 
     async def _ensure_voice(self) -> tuple[LoadedPiperVoice, "SynthesisConfig"]:

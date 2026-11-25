@@ -197,6 +197,7 @@ class SileroTtsSettings:
     )
     put_accent: bool | None = None
     put_yo: bool | None = None
+    emphasis: bool = False
 
     @property
     def engine(self) -> str:

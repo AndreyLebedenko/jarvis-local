@@ -594,6 +594,28 @@ async def test_piper_engine_synthesize_returns_wav_bytes_from_chunk_api(tmp_path
     assert synthesis_config.volume == 0.8
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("It is *very* good.", "It is very good."),
+        ("This is **important**.", "This is important."),
+        ("*Unpaired marker?", "Unpaired marker?"),
+    ],
+    ids=["marker", "markdown-bold", "stray-asterisk"],
+)
+async def test_piper_engine_never_receives_an_asterisk(tmp_path, text, expected):
+    model_path, config_path = _write_piper_model_pair(tmp_path)
+    voice = _FakePiperVoice([_piper_chunk(22050, [0])])
+    engine = PiperEngine(
+        PiperTtsSettings(model=str(model_path), config_path=str(config_path)),
+        voice_loader=lambda **kwargs: voice,
+    )
+
+    await engine.synthesize(text, language="en")
+
+    assert voice.texts == [expected]
+
+
 async def test_piper_engine_loads_voice_only_once(tmp_path):
     model_path, config_path = _write_piper_model_pair(tmp_path)
     voice = _FakePiperVoice([_piper_chunk(22050, [0])])
