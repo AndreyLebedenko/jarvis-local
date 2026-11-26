@@ -38,6 +38,7 @@ from jarvis.mcp_mode.server import (
     bind_mcp_listener,
     build_speak_mcp,
     prepare_mcp_mode_server,
+    speak_tool_description,
 )
 from jarvis.mcp_mode.token import McpTokenFileError
 
@@ -240,6 +241,15 @@ async def test_the_tool_description_covers_what_the_caller_must_know():
         assert fact in description
     for limit in (40, 30, 20):
         assert str(limit) in description
+
+
+def test_the_tool_description_teaches_the_emphasis_marker_rules():
+    description = speak_tool_description(McpModeSettings())
+
+    assert "*word*" in description
+    assert "In a question" in description
+    assert "in a statement" in description
+    assert "*живёт* в *Лондоне*?" in description
 
 
 async def test_a_call_enqueues_one_request_carrying_the_caller_identity():

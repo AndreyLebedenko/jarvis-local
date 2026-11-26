@@ -694,6 +694,16 @@ claude mcp add -s user --transport http jarvis http://127.0.0.1:47821/mcp --head
 `speak(canvas, spoken_text?, guidance?)`; что Jarvis сохраняет и как это
 помечено - в [Architecture v2.0](PROJECT.md).
 
+Маркеры интонации: с русской моделью Silero v5 (например `v5_6_ru`) и
+`emphasis = true` в `[tts.languages.ru]` (по умолчанию выключено, см.
+`config.example.toml`) вызывающий может пометить ударное слово в `spoken_text`
+как `*слово*`. В вопросе допускаются до двух маркеров (смысловое слово и
+последнее слово), в утверждении один. Размеченное предложение должно быть из
+русских слов: латинское слово делит его на части, которые озвучиваются
+отдельно. Звёздочки в любом другом тексте удаляются перед синтезом.
+Проверено на `v5_6_ru`; лучше всего выделение передают голоса `xenia` и
+`eugene`.
+
 ![Голосовой гид Jarvis на вкладке «Статус»](docs/screenshots/ru/voice-guide-status.jpg)
 
 ![Голосовой гид Jarvis в Журнале](docs/screenshots/ru/voice-guide-journal.jpg)

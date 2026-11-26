@@ -673,6 +673,15 @@ carries that token. It is the one MCP tool Jarvis serves,
 `speak(canvas, spoken_text?, guidance?)`; see
 [Architecture v2.0](PROJECT.md) for what it stores and how it is labeled.
 
+Intonation markers: with a Silero v5 Russian model (for example `v5_6_ru`) and
+`emphasis = true` on `[tts.languages.ru]` (off by default, see
+`config.example.toml`), the `spoken_text` that the caller sends may mark the
+stressed word as `*word*`. A question takes up to two markers (the meaningful
+word and the last word), a statement one. Keep a marked sentence in Russian
+words only: a Latin word splits it into separately voiced parts. Asterisks in
+any other text are removed before synthesis. Checked on `v5_6_ru`; the voices
+`xenia` and `eugene` carry the emphasis best.
+
 ![Jarvis voice guide on the Status tab](docs/screenshots/en/voice-guide-status.jpg)
 
 ![Jarvis voice guide in the Journal](docs/screenshots/en/voice-guide-journal.jpg)

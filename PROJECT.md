@@ -1652,6 +1652,31 @@ The corrected human-run experiment is recorded in
   across clips. The effective model must be recorded because `config.ui.toml`
   can override `[backend].model` from `config.toml`.
 
+## Verified experiment (2026-11-25): Silero v5_6_ru intonation markers
+
+Human-run, one listener, `manual/manual_check_silero_v5_question_intonation.py`
+(rounds 1-3, model `v5_6_ru`, voices xenia, eugene, baya, aidar). The record and
+the decisions are in `tasks/story-silero-v5-emphasis-markers.md`.
+
+- The marker `*word*` (announced for the question model of Silero v5, which the
+  announcement ties to `v5_4_ru`) works on `v5_6_ru` in questions and in
+  statements. Two marked single words in a question ("a meaningful word + the
+  last word") sound most natural, but only when the first word is the natural
+  focus; one marked word sounds correct but stiff. In a statement one marked
+  word only: two make it sound like a question.
+- An unpaired marker or one pair around two words gives a sharp rise, a smooth
+  fall and no emphasis. xenia and eugene carry the emphasis best, baya is
+  acceptable, aidar is the weakest.
+- Live check through the MCP `speak` path (2026-11-26, same listener, `v5_*_ru`
+  with `emphasis` on): the two-marker question pattern was clearly audible
+  against an unmarked control. One marked word in a statement was barely
+  audible in every variant tried (a time adverb, the verb, a particle added,
+  contrastive "not X but *Y*" pairs); kept as is by the owner decision. Treat
+  statement markers as a weak hint, not a reliable emphasis tool.
+- Not tested: wh- and alternative questions as a pair pattern, exclamations,
+  several sentences per call, the interaction with `put_accent`/`put_yo`, a
+  literal `**bold**`, and whether `*` is silent on `v3_1_ru`.
+
 ## Open questions (unverified - do not assume an answer)
 
 - **Resolved (v1.2.5 human follow-up): prefer q8_0 KV cache for large
@@ -1865,6 +1890,25 @@ Modules (each an event-bus participant; no direct module-to-module calls):
   log warnings through standard `logging`; `app.py` configures logging at
   startup, so those warnings reach stderr and, since v1.6.4, the rotating
   file log. This is not full SSML compatibility.
+- `speech_emphasis.py` - pure per-sentence policy for Silero v5 intonation
+  markers (`*word*`): `normalize_emphasis` keeps at most two markers in a
+  question (the first and the last) and one in a statement; a marker is one
+  word with a letter or a digit, so `**bold**`, `*two words*` and unpaired
+  asterisks lose their asterisks; `strip_emphasis` removes every `*`. Engine
+  boundary: `SileroEngine` applies `normalize_emphasis` only when the route has
+  `emphasis = true` (default off) and `strip_emphasis` otherwise, after the ru
+  route's number and Latin conversion; `PiperEngine` always strips. Provenance: only the MCP
+  caller's `spoken_text` is trusted (`TextReply.emphasis_trusted`, set by
+  `VoiceGuideService` for `SpeechOrigin.CALLER`); `ReplayPlayer` and
+  `TtsOutput.on_token` strip every other text before it reaches an engine, so a
+  new producer through `TextReply` or `ResponseToken` is safe by default. Known
+  limits: journal replay voices a caller's text without markers; in dynamic
+  language mode a Latin run splits the sentence, each part is normalized and
+  voiced on its own, so a marker at the switch loses its asterisks and the
+  Russian part before the Latin run stops being a question (verified with
+  `SpeechUnitBuffer`: "Ты *читал* про *Python*?" becomes "Ты *читал* про *" and
+  "Python*?"); the two-marker question pattern holds for an all-Cyrillic
+  sentence. Story: `tasks/story-silero-v5-emphasis-markers.md`.
 - `capture.py` — mss screenshots; hotkey-triggered; modes: full screen and
   region select; publishes png to the bus for inclusion in the next request.
 - `sound_cues.py` — synthesizes placeholder cue tones (pure math, offline,
@@ -4662,7 +4706,8 @@ the refactoring sweep that left one definition per concept).
   the `mcp-session-id` request header, all nullable.
   `VoiceGuideAccepted.speech_origin` (from the service's `_origin_of()`)
   gives the result its origin without re-deriving the rule. The model-facing
-  description states the configured limits.
+  description states the configured limits and teaches the intonation-marker
+  rule for `spoken_text` (see `speech_emphasis.py`).
 - **Startup and failure.** `run()` calls the injectable
   `prepare_mcp_server(settings.mcp_mode, voice_guide, bus)` (production:
   `prepare_mcp_mode_server`, i.e. token, bind, build) synchronously, then
