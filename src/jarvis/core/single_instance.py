@@ -21,8 +21,8 @@ ALREADY_RUNNING_MESSAGE = (
     "Jarvis is already running. Only one instance may run at a time."
 )
 
+DEFAULT_MESSAGE_BOX_TITLE = "Jarvis"
 _ERROR_ALREADY_EXISTS = 183
-_MESSAGE_BOX_TITLE = "Jarvis"
 _MB_OK_ICON_INFORMATION = 0x00000040
 
 
@@ -98,7 +98,9 @@ class Win32MutexApi:
         self._kernel32.CloseHandle(handle)
 
 
-def show_already_running_message_box(message: str) -> None:
+def show_already_running_message_box(
+    message: str, title: str = DEFAULT_MESSAGE_BOX_TITLE
+) -> None:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.MessageBoxW.argtypes = [
         ctypes.c_void_p,
@@ -107,4 +109,4 @@ def show_already_running_message_box(message: str) -> None:
         ctypes.c_uint,
     ]
     user32.MessageBoxW.restype = ctypes.c_int
-    user32.MessageBoxW(None, message, _MESSAGE_BOX_TITLE, _MB_OK_ICON_INFORMATION)
+    user32.MessageBoxW(None, message, title, _MB_OK_ICON_INFORMATION)

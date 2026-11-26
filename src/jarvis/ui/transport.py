@@ -22,6 +22,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     DEFAULT_FORK_SEED_MAX_CHARS,
     TTS_ROUTE_TYPES,
+    BrandSettings,
     DataBoundary,
     Settings,
     TtsLanguageSettings,
@@ -133,6 +134,7 @@ from jarvis.ui.status_console import (
     ModelOptionsAvailable,
     StatusConsoleApi,
     UiConfigSaved,
+    brand_payload,
     config_values_payload,
     data_locality_payload,
     data_source_payload,
@@ -685,6 +687,7 @@ class UiStateStore:
         debug: bool = False,
         run_mode_policy: RunModePolicy | None = None,
         proxy_dry_run: bool = False,
+        brand: JsonObject | None = None,
     ) -> None:
         self._language = language
         self._run_mode_policy = run_mode_policy or RunModePolicy(RunMode.NORMAL)
@@ -702,6 +705,9 @@ class UiStateStore:
             # without depending on catching the original announcement.
             "debug": {"enabled": debug},
             "run_mode": cast(JsonObject, run_mode_payload(self._run_mode_policy)),
+            # Fixed for the process like "debug" and "run_mode": rebranding
+            # is edit-and-restart, so no delta is ever sent.
+            "brand": brand or cast(JsonObject, brand_payload(BrandSettings())),
             "proxy_status": {"dry_run": proxy_dry_run, "last_block": None},
             "mcp": {"status": "off", "enabled": False, "tools": []},
             # Explicit before the first event, so a client rendering the

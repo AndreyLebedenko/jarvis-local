@@ -38,6 +38,7 @@ import json
 import math
 import re
 import tomllib
+import unicodedata
 from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path, PureWindowsPath
 from typing import Any, get_args, get_origin
@@ -1006,6 +1007,24 @@ class UiSettings:
     language: str = "en"
 
 
+BRAND_NAME_MAX_LENGTH = 32
+DEFAULT_BRAND_NAME = "Jarvis"
+DEFAULT_BRAND_MONOGRAM = "J"
+DEFAULT_BRAND_ACCENT = "#3FE0D0"
+
+
+@dataclass(frozen=True)
+class BrandSettings:
+    """Validated final values: `monogram` is already derived from `name` when
+    the file omits it. Defaults are literals (config.py imports no project
+    module); a test pins the accent to the Status Console `--cyan`."""
+
+    name: str = DEFAULT_BRAND_NAME
+    monogram: str = DEFAULT_BRAND_MONOGRAM
+    accent: str = DEFAULT_BRAND_ACCENT
+    icon: str | None = None
+
+
 @dataclass(frozen=True)
 class Settings:
     backend: BackendSettings = field(default_factory=BackendSettings)
@@ -1019,6 +1038,7 @@ class Settings:
     attachments: AttachmentSettings = field(default_factory=AttachmentSettings)
     microphone: MicrophoneSettings = field(default_factory=MicrophoneSettings)
     ui: UiSettings = field(default_factory=UiSettings)
+    brand: BrandSettings = field(default_factory=BrandSettings)
     files: FilesSettings = field(default_factory=FilesSettings)
     prompts: PromptSettings = field(default_factory=PromptSettings)
     generation: GenerationSettings = field(default_factory=GenerationSettings)
@@ -1044,6 +1064,7 @@ _SECTIONS: dict[str, type] = {
     "attachments": AttachmentSettings,
     "microphone": MicrophoneSettings,
     "ui": UiSettings,
+    "brand": BrandSettings,
     "files": FilesSettings,
     "prompts": PromptSettings,
     "generation": GenerationSettings,
@@ -1304,6 +1325,117 @@ def _build_ui_section(section_name: str, raw: dict[str, Any]) -> "UiSettings":
             f"got {settings.language!r}"
         )
     return settings
+
+
+_ACCENT_PATTERN = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def _build_brand_section(section_name: str, raw: dict[str, Any]) -> "BrandSettings":
+    unknown_keys = set(raw) - {f.name for f in fields(BrandSettings)}
+    if unknown_keys:
+        raise ConfigError(
+            f"Unknown key(s) in [{section_name}]: {', '.join(sorted(unknown_keys))}"
+        )
+    name = _brand_name(section_name, raw.get("name", DEFAULT_BRAND_NAME))
+    return BrandSettings(
+        name=name,
+        monogram=_brand_monogram(section_name, raw, name),
+        accent=_brand_accent(section_name, raw.get("accent", DEFAULT_BRAND_ACCENT)),
+        icon=_brand_icon(section_name, raw.get("icon")),
+    )
+
+
+def _require_brand_string(location: str, value: object) -> str:
+    if not isinstance(value, str):
+        raise ConfigError(
+            f"{location} must be str, got {type(value).__name__}: {value!r}"
+        )
+    return value
+
+
+def _brand_name(section_name: str, value: object) -> str:
+    location = f"[{section_name}].name"
+    name = unicodedata.normalize("NFC", _require_brand_string(location, value)).strip()
+    if not name:
+        raise ConfigError(f"{location} must not be empty")
+    if len(name) > BRAND_NAME_MAX_LENGTH:
+        raise ConfigError(
+            f"{location} must be at most {BRAND_NAME_MAX_LENGTH} characters, "
+            f"got {len(name)}"
+        )
+    for character in name:
+        category = unicodedata.category(character)
+        if category[0] == "C" or (category[0] == "Z" and character != " "):
+            raise ConfigError(
+                f"{location} must not contain control, invisible or "
+                f"non-space separator characters, got {character!r}"
+            )
+    return name
+
+
+def _is_monogram_character(character: str) -> bool:
+    if "0" <= character <= "9":
+        return True
+    return character.isalpha() and unicodedata.name(character, "").startswith(
+        ("LATIN", "CYRILLIC")
+    )
+
+
+def _monogram_letter(character: str) -> str | None:
+    upper = character.upper()
+    letter = upper if len(upper) == 1 else character
+    return letter if _is_monogram_character(letter) else None
+
+
+def _brand_monogram(section_name: str, raw: dict[str, Any], name: str) -> str:
+    location = f"[{section_name}].monogram"
+    if "monogram" in raw:
+        text = unicodedata.normalize(
+            "NFC", _require_brand_string(location, raw["monogram"])
+        )
+        letter = _monogram_letter(text) if len(text) == 1 else None
+        if letter is None:
+            raise ConfigError(
+                f"{location} must be exactly one Latin or Cyrillic letter or "
+                f"digit, got {text!r}"
+            )
+        return letter
+    letter = _monogram_letter(name[0])
+    if letter is None:
+        raise ConfigError(
+            f"{location} cannot be taken from [{section_name}].name "
+            f"{name!r}: its first character is not a Latin or Cyrillic letter "
+            "or digit; set the monogram explicitly"
+        )
+    return letter
+
+
+def _brand_accent(section_name: str, value: object) -> str:
+    location = f"[{section_name}].accent"
+    accent = _require_brand_string(location, value)
+    if _ACCENT_PATTERN.fullmatch(accent) is None:
+        raise ConfigError(f"{location} must be a #RRGGBB colour, got {accent!r}")
+    return accent.upper()
+
+
+def _brand_icon(section_name: str, value: object) -> str | None:
+    if value is None:
+        return None
+    location = f"[{section_name}].icon"
+    icon = _require_brand_string(location, value)
+    path = PureWindowsPath(icon)
+    problem = None
+    if not icon or any(unicodedata.category(c)[0] == "C" for c in icon):
+        problem = "must be a non-empty path without control characters"
+    elif path.drive or path.root:
+        problem = "must be relative to the app home"
+    elif ".." in path.parts:
+        problem = "must stay inside the app home (no '..')"
+    elif len(path.name) <= len(".png") or not path.name.lower().endswith(".png"):
+        problem = "must name a .png file"
+    if problem is not None:
+        raise ConfigError(f"{location} {problem}, got {icon!r}")
+    return icon
 
 
 def _build_response_section(
@@ -2219,6 +2351,8 @@ def _read_toml_file(path: Path) -> dict[str, Any]:
             return tomllib.load(config_file)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Malformed TOML in {path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(f"{path} is not valid UTF-8: {exc}") from exc
 
 
 def _validate_raw_config(raw: dict[str, Any], source: Path) -> None:
@@ -2292,6 +2426,7 @@ def _merge_raw_section(
 _SECTION_BUILDERS: dict[type, Any] = {
     TtsSettings: _build_tts_section,
     UiSettings: _build_ui_section,
+    BrandSettings: _build_brand_section,
     FilesSettings: _build_files_section,
     McpSettings: _build_mcp_section,
     McpModeSettings: _build_mcp_mode_section,
@@ -2333,6 +2468,7 @@ def load_settings(
     base_raw = _read_toml_file(path)
     _validate_raw_config(base_raw, path)
     ui_raw = _read_toml_file(ui_path)
+    _reject_ui_layer_brand(ui_raw, ui_path)
     _validate_raw_config(ui_raw, ui_path)
 
     kwargs = {
@@ -2347,6 +2483,34 @@ def load_settings(
     settings = Settings(**kwargs)
     _validate_settings(settings)
     return settings
+
+
+def _reject_ui_layer_brand(ui_raw: dict[str, Any], ui_path: Path) -> None:
+    if "brand" in ui_raw:
+        raise ConfigError(
+            f"[brand] ({ui_path}) belongs in config.toml: the Settings form "
+            "rewrites this file and would drop it"
+        )
+
+
+def load_brand(
+    path: str | Path = DEFAULT_CONFIG_PATH,
+    ui_path: str | Path | None = None,
+) -> BrandSettings:
+    """Reads only the [brand] table, so a caller that needs the identity
+    alone (the already-running message box) cannot fail on an unrelated
+    setting. Same layer rules and builder as load_settings()."""
+    path = Path(path)
+    ui_path = (
+        path.with_name(DEFAULT_UI_CONFIG_PATH.name)
+        if ui_path is None
+        else Path(ui_path)
+    )
+    _reject_ui_layer_brand(_read_toml_file(ui_path), ui_path)
+    brand_raw = _read_toml_file(path).get("brand", {})
+    if not isinstance(brand_raw, dict):
+        raise ConfigError(f"[brand] ({path}) must be a table")
+    return _build_brand_section("brand", brand_raw)
 
 
 def _validate_settings(settings: Settings) -> None:

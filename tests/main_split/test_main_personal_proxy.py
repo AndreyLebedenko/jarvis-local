@@ -834,7 +834,7 @@ def test_the_status_console_path_refuses_main_model_controls_and_routes_dock_tex
             await transport.stop()
 
     monkeypatch.setattr(main_module, "build_app", fake_build_app)
-    monkeypatch.setattr(main_module, "StatusConsoleWindow", lambda: window)
+    monkeypatch.setattr(main_module, "StatusConsoleWindow", lambda **kwargs: window)
     monkeypatch.setattr(main_module, "run", fake_run)
     monkeypatch.setitem(
         sys.modules, "webview", types.SimpleNamespace(start=lambda start: start())

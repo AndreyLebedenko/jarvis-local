@@ -6,7 +6,7 @@
 <title>Jarvis - Status Console</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-title-suffix="Status Console">
 
 <a class="skip-link" href="#" data-i18n="skip_to_content" onclick="skipToContent(); return false;">Skip to content</a>
 
@@ -78,8 +78,8 @@
 
 <div class="topbar">
   <div class="brand">
-    <div class="brand-mark">J</div>
-    <div class="brand-name">JARVIS <span>Status Console</span></div>
+    <div class="brand-mark" id="brandMark" data-brand="default">J</div>
+    <div class="brand-name"><span class="brand-name-text" id="brandName">Jarvis</span> <span>Status Console</span></div>
   </div>
   <div class="topbar-right">
     <div class="view-toggle" id="viewToggle" role="radiogroup" aria-label="View">

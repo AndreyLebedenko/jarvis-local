@@ -54,6 +54,7 @@ function _clearSystemEvents() {
 }
 
 function _applyStateSnapshot(state) {
+  applyBrand(state.brand);
   applyUiLanguage(state.ui_language || {});
   applyRuntimeState(state.runtime);
   _moduleHealth.clear();
@@ -106,6 +107,7 @@ function _applyStateDelta(payload) {
     microphone_options: applyMicrophoneOptions,
     pending_restart: applyPendingRestart,
     ui_language: applyUiLanguage,
+    brand: applyBrand,
     config_values: applyConfigValues,
     journal_event: applyJournalEvent,
     replay_progress: applyReplayProgress,

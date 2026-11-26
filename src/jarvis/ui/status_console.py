@@ -12,12 +12,14 @@ from jarvis.audio.devices import enumerate_input_devices
 from jarvis.audio.tts_mute import TtsMuteState
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
+    DEFAULT_BRAND_NAME,
     DEFAULT_UI_CONFIG_PATH,
     SUPPORTED_RESPONSE_MODES,
     SUPPORTED_TTS_ENGINES,
     SUPPORTED_TTS_LANGUAGE_MODES,
     SUPPORTED_TTS_LANGUAGES,
     SUPPORTED_UI_LANGUAGES,
+    BrandSettings,
     Settings,
     TtsLanguageSettings,
     VadSettings,
@@ -364,6 +366,23 @@ def run_mode_payload(policy: RunModePolicy) -> dict:
     }
 
 
+def brand_payload(brand: BrandSettings) -> dict:
+    return {
+        "name": brand.name,
+        "monogram": brand.monogram,
+        "accent": brand.accent,
+        "is_default": brand == BrandSettings(),
+    }
+
+
+def status_console_title(brand_name: str) -> str:
+    return f"{brand_name} - Status Console"
+
+
+def touchstrip_title(brand_name: str) -> str:
+    return f"{brand_name} - Touchstrip"
+
+
 def visibility_mode_payload(mode: VisibilityMode) -> dict:
     return {"mode": mode.value}
 
@@ -496,7 +515,7 @@ class StatusConsoleWindow:
     def __init__(
         self,
         window_factory: WindowFactory | None = None,
-        title: str = "Jarvis - Status Console",
+        title: str = status_console_title(DEFAULT_BRAND_NAME),
         url: str | Path = INDEX_HTML,
         width: int = 1040,
         height: int = 900,
@@ -513,6 +532,10 @@ class StatusConsoleWindow:
         self._min_size = min_size
         self._resizable = resizable
         self._initially_hidden = False
+
+    @property
+    def title(self) -> str:
+        return self._title
 
     @staticmethod
     def _default_window_factory(**kwargs) -> WindowLike:
@@ -599,10 +622,14 @@ class StatusConsoleWindow:
 class TouchstripWindow(StatusConsoleWindow):
     """Compact Status Console surface for touchstrip-sized displays."""
 
-    def __init__(self, window_factory: WindowFactory | None = None) -> None:
+    def __init__(
+        self,
+        window_factory: WindowFactory | None = None,
+        title: str = touchstrip_title(DEFAULT_BRAND_NAME),
+    ) -> None:
         super().__init__(
             window_factory=window_factory,
-            title="Jarvis - Touchstrip",
+            title=title,
             url=TOUCHSTRIP_HTML,
             width=900,
             height=230,

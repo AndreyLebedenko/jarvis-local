@@ -406,7 +406,7 @@ def test_journal_markup_has_no_hardcoded_visible_text():
     for text, owner_attrs in parser.texts:
         key = owner_attrs.get("data-i18n")
         assert key is not None, f"hardcoded journal text: {text!r}"
-        assert english[key] == text
+        assert english[key].replace("{brand}", "Jarvis") == text
 
 
 def test_journal_rendering_reads_labels_through_ui_strings():

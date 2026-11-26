@@ -4383,6 +4383,54 @@ preview for review and resume. The wizard asks before allowing winget to install
 Python. A completed deployment's shortcut targets its `Jarvis.cmd` directly
 with the destination as its working directory.
 
+## Architecture: instance branding (2026-11-26)
+
+`tasks/story-instance-branding.md` lets one installation carry its own display
+identity. Task 1 (settings and runtime consumption) defines the contract; icon
+generation, deployment flags and the wizard step follow in later tasks.
+
+- Source of truth: the optional `[brand]` section of `config.toml` with keys
+  `name`, `monogram`, `accent`, `icon`. It is rejected in `config.ui.toml`
+  because the Settings form rewrites that file wholesale. Without the section
+  every name and shape is exactly as before the story. Restart-to-apply.
+- `core/config.py` `BrandSettings` holds validated final values (defaults
+  `Jarvis`, `J`, `#3FE0D0`, no icon). `name`: NFC, stripped, 1 to 32
+  characters, no control, invisible or non-space separator characters; markup
+  and quotes are allowed because the name is only ever rendered as text.
+  `monogram`: exactly one Latin or Cyrillic letter or ASCII digit, upper-cased;
+  absent means the first character of `name` (an unsupported first character
+  requires an explicit monogram). `accent`: `#RRGGBB`, stored upper-case; it
+  colours only the Status Console brand mark and the generated icon, never the
+  theme; the default equals `--cyan` in both stylesheets (a test pins it).
+  `icon`: optional PNG path relative to the app home (no drive, no `..`);
+  only the path shape is validated at load, PNG content and existence belong
+  to the icon pipeline. Errors are `ConfigError`s naming the key.
+  `load_brand()` reads only `[brand]` for callers that need the identity alone.
+- `core/brand.py` resolves `<home>/brand/brand.png` and `brand.ico` over the
+  tracked `launcher/assets/jarvis.*` defaults, per file; path logic only.
+- UI delivery: `brand` is a process-fixed key of the state snapshot
+  (`{name, monogram, accent, is_default}`, `is_default` is equality with the
+  default `BrandSettings`), set in `UiStateStore` like `debug` and `run_mode`.
+  No delta and no protocol change. Native window titles are built from the
+  settings when the windows are created (`"<name> - Status Console"`,
+  `"<name> - Touchstrip"`).
+- Web layer: `strings.js` `applyBrand()` writes only text (`textContent`,
+  `document.title`, one CSS custom property); `{brand}` in a catalog string is
+  replaced in one pass with a function replacer, so the name is inserted
+  unchanged (never declined in Russian, `$&` and `{x}` are not expanded). The
+  placeholder is `{brand}` because `{name}` already means a file name in the
+  attachment strings. A string holding `{brand}` holds no other placeholder.
+  The mark is a rounded square for the default brand and a circle for any other
+  (`data-brand`), mirroring the generated monogram icon; the header name is
+  shown upper-case through CSS, so the default still reads `JARVIS`.
+- The already-running message box takes its title from `load_brand()`, read
+  only on the refusal path after the guard decided (fallback `Jarvis` on an
+  unreadable config). Its body stays "Jarvis is already running..." because the
+  mutex is per user: the running instance may belong to another home with
+  another brand. Mutex names, exit code and acquisition order are unchanged.
+- Out of this contract: technical identifiers (mutexes, `JarvisLauncher`,
+  autostart value, package name), the persona, system prompt and `self.md`.
+
 ## Architecture v2.0 (MCP voice guide)
 
 Facts settled by story-v2.0 tasks 1-7 (the single-instance guard, external

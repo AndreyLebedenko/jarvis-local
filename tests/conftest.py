@@ -48,8 +48,8 @@ class NoWin32SingleInstanceGuard:
         return HeldInstance(self, 1)
 
 
-def _message_box_must_never_appear(message: str) -> None:
-    raise AssertionError(f"a real message box would have appeared: {message}")
+def _message_box_must_never_appear(message: str, title: str) -> None:
+    raise AssertionError(f"a real message box would have appeared: {title}: {message}")
 
 
 @pytest.fixture(autouse=True)

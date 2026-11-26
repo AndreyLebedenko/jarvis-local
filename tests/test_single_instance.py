@@ -1,18 +1,22 @@
+import inspect
 import sys
 
 import pytest
 
 from jarvis import app
+from jarvis.core.config import BrandSettings, ConfigError
 from jarvis.core.run_mode import RunMode
 from jarvis.core.single_instance import (
     ALREADY_RUNNING_EXIT_CODE,
     ALREADY_RUNNING_MESSAGE,
+    DEFAULT_MESSAGE_BOX_TITLE,
     MUTEX_NAME,
     AlreadyRunning,
     HeldInstance,
     MutexCreation,
     Win32MutexApi,
     acquire_single_instance,
+    show_already_running_message_box,
 )
 
 FAKE_HANDLE = 4242
@@ -37,6 +41,7 @@ class EntryPointSpy:
         self.run_calls = 0
         self.status_console_calls: list[dict] = []
         self.message_boxes: list[str] = []
+        self.message_box_titles: list[str] = []
         self.acquire_calls = 0
 
     async def run(self, run_mode: RunMode) -> None:
@@ -45,8 +50,9 @@ class EntryPointSpy:
     def run_with_status_console(self, **kwargs) -> None:
         self.status_console_calls.append(kwargs)
 
-    def show_message_box(self, message: str) -> None:
+    def show_message_box(self, message: str, title: str) -> None:
         self.message_boxes.append(message)
+        self.message_box_titles.append(title)
 
 
 @pytest.fixture
@@ -150,6 +156,114 @@ def test_refused_status_console_main_shows_message_box(spy: EntryPointSpy) -> No
         run_main(["--status-console"], api, spy)
 
     assert spy.message_boxes == [ALREADY_RUNNING_MESSAGE]
+
+
+def test_refused_status_console_main_titles_the_box_with_the_brand_name(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(app, "load_brand", lambda: BrandSettings(name="Work"))
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit):
+        run_main(["--status-console"], api, spy)
+
+    assert spy.message_box_titles == ["Work"]
+    assert spy.message_boxes == [ALREADY_RUNNING_MESSAGE]
+
+
+def test_refused_main_without_a_brand_titles_the_box_jarvis(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(app, "load_brand", lambda: BrandSettings())
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit):
+        run_main(["--status-console"], api, spy)
+
+    assert spy.message_box_titles == ["Jarvis"]
+
+
+def test_refused_main_with_an_unreadable_brand_falls_back_to_jarvis(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken_brand() -> BrandSettings:
+        raise ConfigError("[brand].name must not be empty")
+
+    monkeypatch.setattr(app, "load_brand", broken_brand)
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_main(["--status-console"], api, spy)
+
+    assert exit_info.value.code == ALREADY_RUNNING_EXIT_CODE
+    assert spy.message_box_titles == ["Jarvis"]
+
+
+def test_refused_main_survives_any_failure_reading_the_brand(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def undecodable() -> BrandSettings:
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(app, "load_brand", undecodable)
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_main(["--status-console"], api, spy)
+
+    assert exit_info.value.code == ALREADY_RUNNING_EXIT_CODE
+    assert spy.message_box_titles == ["Jarvis"]
+
+
+def test_refused_main_survives_a_non_value_error_from_the_config_parser(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def too_deep() -> BrandSettings:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(app, "load_brand", too_deep)
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_main(["--status-console"], api, spy)
+
+    assert exit_info.value.code == ALREADY_RUNNING_EXIT_CODE
+    assert spy.message_box_titles == ["Jarvis"]
+
+
+def test_refused_main_with_a_real_undecodable_config_keeps_its_exit_code(
+    spy: EntryPointSpy, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "config.toml").write_bytes(b'[brand]\nname = "\xd0"\n')
+    monkeypatch.chdir(tmp_path)
+    api = FakeMutexApi(already_exists=True)
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_main(["--status-console"], api, spy)
+
+    assert exit_info.value.code == ALREADY_RUNNING_EXIT_CODE
+    assert spy.message_box_titles == ["Jarvis"]
+
+
+def test_the_brand_is_not_read_before_the_guard_decides(
+    spy: EntryPointSpy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads: list[str] = []
+    monkeypatch.setattr(
+        app, "load_brand", lambda: reads.append("brand") or BrandSettings()
+    )
+    api = FakeMutexApi(already_exists=False)
+
+    run_main(["--status-console"], api, spy)
+
+    assert reads == []
+
+
+def test_the_real_message_box_defaults_to_the_jarvis_title() -> None:
+    parameters = inspect.signature(show_already_running_message_box).parameters
+
+    assert parameters["title"].default == "Jarvis"
+    assert DEFAULT_MESSAGE_BOX_TITLE == "Jarvis"
 
 
 def test_refused_headless_main_shows_no_message_box(spy: EntryPointSpy) -> None:

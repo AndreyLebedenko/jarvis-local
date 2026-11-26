@@ -491,6 +491,21 @@ thinking_off = "sounds/thinking_off.wav"
 # and TTS output are not affected by this setting.
 language = "en"
 
+# Display identity of this installation (story-instance-branding.md). Without
+# a [brand] section everything is named and drawn as "Jarvis". Only config.toml
+# may hold it: config.ui.toml is rewritten by the Settings form. Restart to
+# apply. Technical identifiers (mutexes, launcher folder, package name) do not
+# change. name: 1 to 32 characters, shown as typed in window titles, the
+# Status Console header and UI texts. monogram: one Latin or Cyrillic letter
+# or digit; default is the first character of name. accent: #RRGGBB, colours
+# only the brand mark (default is the Status Console cyan). icon: optional PNG
+# path relative to this folder, replaces the generated monogram icon.
+# [brand]
+# name = "Jarvis"
+# monogram = "J"
+# accent = "#3FE0D0"
+# icon = "brand-source/icon.png"
+
 [files]
 # Loose per-session files the model can create and read (story-v1.8.1).
 # They live in the session directory alongside the event log but are never

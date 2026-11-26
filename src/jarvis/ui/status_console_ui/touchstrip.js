@@ -22,6 +22,7 @@ const _showTransportStatus = typeof createTransportStatusHandler === "function"
   : () => {};
 
 function _applyStateSnapshot(state) {
+  applyBrand(state.brand);
   applyUiLanguage(state.ui_language || {});
   applyRuntimeState(state.runtime);
   Object.values(state.modules || {}).forEach(applyModuleHealth);
@@ -44,6 +45,7 @@ function _applyStateDelta(payload) {
     thinking: applyThinkingMode,
     visibility: applyVisibilityMode,
     ui_language: applyUiLanguage,
+    brand: applyBrand,
   });
 }
 

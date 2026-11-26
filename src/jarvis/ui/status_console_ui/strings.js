@@ -22,7 +22,7 @@ const UI_STRINGS = {
     debug_mode_banner_label: "DEBUG MODE",
     debug_mode_banner_privacy: "PRIVACY NOT GUARANTEED",
     run_mode_mcp_label: "MCP MODE",
-    run_mode_mcp_hint: "Voice guide for an MCP client: Jarvis takes no input",
+    run_mode_mcp_hint: "Voice guide for an MCP client: {brand} takes no input",
     run_mode_personal_proxy_label: "PERSONAL PROXY",
     run_mode_personal_proxy_hint: "Requests go to an external model after local sanitizing; the main model is not used",
     proxy_chat_title: "Personal proxy",
@@ -111,7 +111,7 @@ const UI_STRINGS = {
     reasoning_high: "High",
     btn_reset_context: "Reset context",
     btn_shutdown: "Shut down",
-    confirm_shutdown_text: "Jarvis will be stopped. You will need to start the process again.",
+    confirm_shutdown_text: "{brand} will be stopped. You will need to start the process again.",
     btn_cancel: "Cancel",
     btn_confirm_shutdown: "Shut down",
     config_model_label: "Model",
@@ -162,7 +162,7 @@ const UI_STRINGS = {
     config_vad_end_pause_label: "End-of-request pause, s",
     config_vad_cooldown_label: "Resume cooldown, s",
     btn_apply: "Apply",
-    pending_restart_text: "Changes saved - restart Jarvis to apply.",
+    pending_restart_text: "Changes saved - restart {brand} to apply.",
     default_microphone_option: "(system default microphone)",
     log_title: "System events",
     log_sub: "engine log - real time",
@@ -187,7 +187,7 @@ const UI_STRINGS = {
     journal_source_text: "Clipboard",
     journal_source_dock: "Typed",
     journal_source_attachment: "Attachment",
-    journal_source_assistant: "Jarvis",
+    journal_source_assistant: "{brand}",
     journal_source_fork: "Fork",
     journal_source_context: "Context",
     journal_source_mcp_canvas: "External answer",
@@ -261,24 +261,24 @@ const UI_STRINGS = {
     journal_external_answer_origin_derivative: "Spoken as a short guide.",
     journal_external_answer_origin_verbatim: "Spoken word for word.",
     journal_external_answer_origin_caller: "Spoken in the caller's wording.",
-    journal_external_answer_status_muted: "Not played: Jarvis is muted.",
+    journal_external_answer_status_muted: "Not played: {brand} is muted.",
     journal_external_answer_status_interrupted: "Cut short by an interrupt.",
     journal_external_answer_status_skipped: "Dropped before it was spoken.",
     journal_external_answer_status_failed: "Speech failed.",
     journal_audio_play: "Play",
     journal_audio_pause: "Pause",
-    journal_search_label: "Search Jarvis answers",
+    journal_search_label: "Search {brand} answers",
     journal_search_placeholder: "Search exact words or prefixes",
     journal_search_date_from: "From",
     journal_search_date_to: "To",
     journal_search_clear: "Clear",
-    journal_search_no_results: "No matching Jarvis answers",
+    journal_search_no_results: "No matching {brand} answers",
     journal_search_locator_header: "Found by something you heard",
     journal_search_locator_tag: "heard-phrase match",
     journal_search_locator_canonical_prefix: "Shown on screen: ",
-    journal_input_placeholder: "Message Jarvis",
+    journal_input_placeholder: "Message {brand}",
     journal_input_send: "Send",
-    journal_input_busy: "Jarvis is busy. Your text was kept.",
+    journal_input_busy: "{brand} is busy. Your text was kept.",
     journal_input_hidden: "Journal is hidden. Your text was kept.",
     journal_input_empty: "Write a message first.",
     journal_input_attachments_unavailable: "Attachments are not available in this mode.",
@@ -341,7 +341,7 @@ const UI_STRINGS = {
     journal_new_context_confirm: "Start a blank context and leave the current one?",
     journal_new_context_ready: "New context ready.",
     journal_new_context_required: "Start a new context first.",
-    journal_new_context_busy: "Jarvis is busy. Try again after the current turn.",
+    journal_new_context_busy: "{brand} is busy. Try again after the current turn.",
     journal_new_context_busy_proxy: "A request is in progress or a question is waiting. Try again when it ends.",
     journal_new_context_unavailable: "The personal proxy is not running.",
     journal_new_context_ready_proxy: "New session ready. Speak a request, or type it here.",
@@ -357,7 +357,7 @@ const UI_STRINGS = {
     journal_memory_title: "Memory",
     journal_memory_note: "Changes apply from the next session start.",
     journal_memory_self_title: "self.md",
-    journal_memory_self_description: "Jarvis persona and self-knowledge.",
+    journal_memory_self_description: "{brand} persona and self-knowledge.",
     journal_memory_memory_title: "memory.md",
     journal_memory_memory_description: "Durable facts and standing context.",
     journal_memory_save: "Save",
@@ -447,7 +447,7 @@ const UI_STRINGS = {
     journal_delete_active: "Current session cannot be deleted.",
     journal_delete_not_found: "Session no longer exists.",
     journal_fork_started: "Fork started.",
-    journal_fork_busy: "Jarvis is busy. Try again after the current turn.",
+    journal_fork_busy: "{brand} is busy. Try again after the current turn.",
     journal_fork_hidden: "Journal is hidden.",
     journal_fork_unknown: "Session no longer exists.",
     journal_fork_oversize: "A single turn is over the {max} character seed budget.",
@@ -494,7 +494,7 @@ const UI_STRINGS = {
     debug_mode_banner_label: "РЕЖИМ ОТЛАДКИ",
     debug_mode_banner_privacy: "ПРИВАТНОСТЬ НЕ ГАРАНТИРУЕТСЯ",
     run_mode_mcp_label: "РЕЖИМ MCP",
-    run_mode_mcp_hint: "Голосовой гид для MCP-клиента: Jarvis не принимает ввод",
+    run_mode_mcp_hint: "Голосовой гид для MCP-клиента: {brand} не принимает ввод",
     run_mode_personal_proxy_label: "ЛИЧНЫЙ ПРОКСИ",
     run_mode_personal_proxy_hint: "Запросы идут во внешнюю модель после локальной очистки; основная модель не используется",
     proxy_chat_title: "Личный прокси",
@@ -583,7 +583,7 @@ const UI_STRINGS = {
     reasoning_high: "Высокий",
     btn_reset_context: "Сбросить контекст",
     btn_shutdown: "Завершить работу",
-    confirm_shutdown_text: "Jarvis будет остановлен. Потребуется запустить процесс заново.",
+    confirm_shutdown_text: "{brand} будет остановлен. Потребуется запустить процесс заново.",
     btn_cancel: "Отмена",
     btn_confirm_shutdown: "Завершить",
     config_model_label: "Модель",
@@ -634,7 +634,7 @@ const UI_STRINGS = {
     config_vad_end_pause_label: "Пауза конца запроса, с",
     config_vad_cooldown_label: "Пауза перед возобновлением, с",
     btn_apply: "Применить",
-    pending_restart_text: "Изменения сохранены - перезапустите Jarvis, чтобы применить.",
+    pending_restart_text: "Изменения сохранены - перезапустите {brand}, чтобы применить.",
     default_microphone_option: "(системный микрофон по умолчанию)",
     log_title: "События системы",
     log_sub: "engine log - реальное время",
@@ -659,7 +659,7 @@ const UI_STRINGS = {
     journal_source_text: "Буфер обмена",
     journal_source_dock: "Ввод",
     journal_source_attachment: "Вложение",
-    journal_source_assistant: "Jarvis",
+    journal_source_assistant: "{brand}",
     journal_source_fork: "Fork",
     journal_source_context: "Контекст",
     journal_source_mcp_canvas: "Внешний ответ",
@@ -733,24 +733,24 @@ const UI_STRINGS = {
     journal_external_answer_origin_derivative: "Озвучен краткий пересказ.",
     journal_external_answer_origin_verbatim: "Озвучено дословно.",
     journal_external_answer_origin_caller: "Озвучен текст вызывающей стороны.",
-    journal_external_answer_status_muted: "Не озвучено: Jarvis заглушен.",
+    journal_external_answer_status_muted: "Не озвучено: {brand} заглушен.",
     journal_external_answer_status_interrupted: "Прервано.",
     journal_external_answer_status_skipped: "Выброшено из очереди до озвучивания.",
     journal_external_answer_status_failed: "Не удалось озвучить.",
     journal_audio_play: "Воспроизвести",
     journal_audio_pause: "Пауза",
-    journal_search_label: "Поиск ответов Jarvis",
+    journal_search_label: "Поиск ответов {brand}",
     journal_search_placeholder: "Точные слова или начала слов",
     journal_search_date_from: "С",
     journal_search_date_to: "По",
     journal_search_clear: "Очистить",
-    journal_search_no_results: "Подходящих ответов Jarvis нет",
+    journal_search_no_results: "Подходящих ответов {brand} нет",
     journal_search_locator_header: "Найдено по фразе, которую вы слышали",
     journal_search_locator_tag: "совпадение по услышанной фразе",
     journal_search_locator_canonical_prefix: "Было показано на экране: ",
-    journal_input_placeholder: "Сообщение Jarvis",
+    journal_input_placeholder: "Сообщение {brand}",
     journal_input_send: "Отправить",
-    journal_input_busy: "Jarvis занят. Текст сохранён.",
+    journal_input_busy: "{brand} занят. Текст сохранён.",
     journal_input_hidden: "Журнал скрыт. Текст сохранён.",
     journal_input_attachments_unavailable: "Вложения в этом режиме недоступны.",
     journal_input_proxy_note: "Личный прокси: это прежняя сессия, она не принимает запросы. Выберите текущую сессию или начните новый контекст, чтобы писать здесь.",
@@ -813,7 +813,7 @@ const UI_STRINGS = {
     journal_new_context_confirm: "Начать пустой контекст и выйти из текущего?",
     journal_new_context_ready: "Новый контекст готов.",
     journal_new_context_required: "Сначала начните новый контекст.",
-    journal_new_context_busy: "Jarvis занят. Попробуйте после текущего ответа.",
+    journal_new_context_busy: "{brand} занят. Попробуйте после текущего ответа.",
     journal_new_context_busy_proxy: "Идёт запрос или ждёт вопрос. Повторите, когда он закончится.",
     journal_new_context_unavailable: "Личный прокси не запущен.",
     journal_new_context_ready_proxy: "Новая сессия готова. Скажите запрос или введите его здесь.",
@@ -829,7 +829,7 @@ const UI_STRINGS = {
     journal_memory_title: "Память",
     journal_memory_note: "Изменения применятся со следующей сессии.",
     journal_memory_self_title: "self.md",
-    journal_memory_self_description: "Персона Jarvis и знание о себе.",
+    journal_memory_self_description: "Персона {brand} и знание о себе.",
     journal_memory_memory_title: "memory.md",
     journal_memory_memory_description: "Долговременные факты и постоянный контекст.",
     journal_memory_save: "Сохранить",
@@ -919,7 +919,7 @@ const UI_STRINGS = {
     journal_delete_active: "Текущую сессию нельзя удалить.",
     journal_delete_not_found: "Сессия больше не существует.",
     journal_fork_started: "Новая сессия создана.",
-    journal_fork_busy: "Jarvis занят. Попробуйте после текущего ответа.",
+    journal_fork_busy: "{brand} занят. Попробуйте после текущего ответа.",
     journal_fork_hidden: "Журнал скрыт.",
     journal_fork_unknown: "Сессия больше не существует.",
     journal_fork_oversize: "Одна реплика длиннее бюджета seed: {max} символов.",
@@ -961,13 +961,21 @@ const UI_STRINGS = {
 const DEFAULT_UI_LANGUAGE = "en";
 let _uiLanguage = DEFAULT_UI_LANGUAGE;
 
+const DEFAULT_BRAND_NAME = "Jarvis";
+let _brandName = DEFAULT_BRAND_NAME;
+
+function _withBrandName(text) {
+  // Function replacer: a string replacement would expand "$&" in the name.
+  return text.replace(/\{brand\}/g, () => _brandName);
+}
+
 function uiString(key) {
   const catalog = UI_STRINGS[_uiLanguage] || UI_STRINGS[DEFAULT_UI_LANGUAGE];
   const text = catalog[key];
   if (text === undefined) {
     throw new Error("Unknown UI string key: " + key);
   }
-  return text;
+  return _withBrandName(text);
 }
 
 // For keys that legitimately may not exist, so a caller can fall back to
@@ -976,7 +984,7 @@ function uiString(key) {
 function optionalUiString(key) {
   const catalog = UI_STRINGS[_uiLanguage] || UI_STRINGS[DEFAULT_UI_LANGUAGE];
   const text = catalog[key];
-  return text === undefined ? null : text;
+  return text === undefined ? null : _withBrandName(text);
 }
 
 function currentUiLanguage() {
@@ -992,6 +1000,10 @@ function applyUiLanguage(payload) {
   if (!Object.prototype.hasOwnProperty.call(UI_STRINGS, language)) return;
   _uiLanguage = language;
   document.documentElement.setAttribute("lang", language);
+  _stampUiStrings();
+}
+
+function _stampUiStrings() {
   document.querySelectorAll("[data-i18n]").forEach((element) => {
     element.textContent = uiString(element.getAttribute("data-i18n"));
   });
@@ -1001,4 +1013,23 @@ function applyUiLanguage(payload) {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
     element.placeholder = uiString(element.getAttribute("data-i18n-placeholder"));
   });
+}
+
+// Text only (textContent, document.title): the name is user input.
+function applyBrand(payload) {
+  if (!payload || typeof payload.name !== "string") return;
+  _brandName = payload.name;
+  _stampUiStrings();
+  const suffix = document.body && document.body.dataset
+    ? document.body.dataset.titleSuffix
+    : "";
+  document.title = suffix ? _brandName + " - " + suffix : _brandName;
+  const mark = document.getElementById("brandMark");
+  if (mark) {
+    mark.textContent = payload.monogram;
+    mark.style.setProperty("--brand-accent", payload.accent);
+    mark.setAttribute("data-brand", payload.is_default ? "default" : "custom");
+  }
+  const name = document.getElementById("brandName");
+  if (name) name.textContent = _brandName;
 }

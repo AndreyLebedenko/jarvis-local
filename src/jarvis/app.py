@@ -55,6 +55,7 @@ from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     ANNOTATION_PROFILE,
     BUILTIN_TOOL_PROVIDER_NAME,
+    DEFAULT_BRAND_NAME,
     DEFAULT_UI_CONFIG_PATH,
     DIALOG_PROFILE_BY_REASONING,
     HISTORY_TOOL_PROVIDER_NAME,
@@ -70,6 +71,7 @@ from jarvis.core.config import (
     PromptSettings,
     ResponseSettings,
     Settings,
+    load_brand,
     load_settings,
 )
 from jarvis.core.debug_transcript import (
@@ -283,8 +285,11 @@ from jarvis.ui.status_console import (
     StatusConsoleApi,
     StatusConsoleWindow,
     TouchstripWindow,
+    brand_payload,
     config_values_payload,
     mcp_state_payload,
+    status_console_title,
+    touchstrip_title,
 )
 from jarvis.ui.text import ui_text
 from jarvis.ui.transport import (
@@ -2336,8 +2341,13 @@ def create_live_status_console(
         ui_config_path=app.ui_config_path,
         run_mode=app.run_mode,
     )
-    console = console or StatusConsoleWindow()
-    touchstrip = (touchstrip or TouchstripWindow()) if include_touchstrip else None
+    brand_name = app.settings.brand.name
+    console = console or StatusConsoleWindow(title=status_console_title(brand_name))
+    touchstrip = (
+        (touchstrip or TouchstripWindow(title=touchstrip_title(brand_name)))
+        if include_touchstrip
+        else None
+    )
     return LiveStatusConsole(console=console, touchstrip=touchstrip, api=api)
 
 
@@ -3374,6 +3384,7 @@ def run_with_status_console(
             language=settings.ui.language,
             config_values=config_values_payload(settings),
             debug=debug,
+            brand=brand_payload(settings.brand),
             run_mode_policy=RunModePolicy(run_mode),
             proxy_dry_run=(
                 run_mode is RunMode.PERSONAL_PROXY and settings.personal_proxy.dry_run
@@ -3526,7 +3537,7 @@ def main(
     argv: list[str] | None = None,
     *,
     acquire: Callable[[], HeldInstance | AlreadyRunning] | None = None,
-    show_message_box: Callable[[str], None] | None = None,
+    show_message_box: Callable[[str, str], None] | None = None,
     desktop_control: DesktopControl | None = None,
 ) -> None:
     # The guard is taken after parse_args so --help and argument errors still
@@ -3544,7 +3555,7 @@ def main(
         print(ALREADY_RUNNING_MESSAGE, file=sys.stderr)
         if args.status_console:
             (show_message_box or show_already_running_message_box)(
-                ALREADY_RUNNING_MESSAGE
+                ALREADY_RUNNING_MESSAGE, _already_running_title()
             )
         raise SystemExit(ALREADY_RUNNING_EXIT_CODE)
     try:
@@ -3562,6 +3573,15 @@ def main(
             _run_headless(run_mode)
     finally:
         guard.release()
+
+
+def _already_running_title() -> str:
+    try:
+        return load_brand().name
+    except Exception:
+        # Cosmetic title: no config failure may change the exit code the
+        # launcher checks (tomllib can raise RecursionError, MemoryError).
+        return DEFAULT_BRAND_NAME
 
 
 def _run_mode_of(args: argparse.Namespace) -> RunMode:

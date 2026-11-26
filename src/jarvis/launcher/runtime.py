@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> None:
         desktop_control=StdinDesktopControl(
             sys.stdin, touchstrip_visible=args.touchstrip == "on"
         ),
-        show_message_box=lambda message: print(message, file=sys.stderr),
+        show_message_box=lambda message, title: print(message, file=sys.stderr),
     )
 
 

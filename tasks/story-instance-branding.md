@@ -1,6 +1,6 @@
 # Story: Instance branding
 
-Status: Approved scope (owner, 2026-11-26). No task cards opened yet. No
+Status: In progress, 2026-11-26. Task 1 is complete; tasks 2-5 are pending. No
 release version assigned.
 
 Related work: `story-deployment-wizard.md`. Its wizard and `deploy.cmd` are
