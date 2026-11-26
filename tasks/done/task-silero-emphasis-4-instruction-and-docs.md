@@ -1,6 +1,6 @@
 # Task 4: Caller instruction and docs
 
-**Status:** Implemented, waiting for the owner's review.
+**Status:** Completed.
 **Story:** `tasks/story-silero-v5-emphasis-markers.md`.
 **Predecessor:** `tasks/done/task-silero-emphasis-3-provenance.md`.
 

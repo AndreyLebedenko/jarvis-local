@@ -1,10 +1,11 @@
 # Story: Silero v5 emphasis markers in spoken text
 
 **Status:** Approved 2026-11-25 with decisions A, B, C as recommended. Branch
-`feat/silero-emphasis-markers`. Tasks 1-3 done: `audio/speech_emphasis.py`, the engine boundary (route key
-`emphasis`, default off; with it off no asterisk reaches any engine), and the
-provenance wiring (only the caller's `spoken_text` may carry markers).
-Next: task 4.
+`feat/silero-emphasis-markers`. Tasks 1-4 done: `audio/speech_emphasis.py`, the engine boundary (route key
+`emphasis`, default off; with it off no asterisk reaches any engine), the
+provenance wiring (only the caller's `spoken_text` may carry markers), and the
+caller instruction with docs.
+Next: task 5.
 **Created:** 2026-11-25
 **Predecessors:** `tasks/done/task-silero-tts-v5-6.md` (the `v5_6_ru` route).
 **Executor profile:** task cards name files, precedents, and boundaries
@@ -105,6 +106,7 @@ as before.
    Card: `tasks/done/task-silero-emphasis-3-provenance.md` (completed 2026-11-25).
 4. **Caller instruction and docs** - `speak_tool_description`, `config.example.toml`,
    `PROJECT.md` (verified facts from the spike, the decision), README mention.
+   Card: `tasks/done/task-silero-emphasis-4-instruction-and-docs.md` (completed 2026-11-26).
 5. **Manual verification** - one handoff through the real MCP `speak`: a question
    and a statement with markers on xenia and eugene; the same canvas in verbatim
    mode with `*italic*` and `**bold**` must sound unchanged; check `**bold**`
