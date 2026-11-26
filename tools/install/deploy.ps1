@@ -4,7 +4,13 @@ param(
     [switch]$Resume,
     [switch]$Yes,
     [switch]$Preview,
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [string]$Name,
+    [string]$Monogram,
+    [string]$Accent,
+    [string]$Icon,
+    [switch]$NoIcon,
+    [switch]$DefaultBrand
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,6 +19,18 @@ $assumeYes = $Yes.IsPresent
 
 $source = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $targetPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Target)
+
+# The brand travels in the environment: Windows PowerShell 5.1 drops embedded double quotes from native arguments.
+$brand = [ordered]@{}
+foreach ($option in 'Name', 'Monogram', 'Accent') {
+    if ($PSBoundParameters.ContainsKey($option)) { $brand[$option.ToLowerInvariant()] = [string](Get-Variable -Name $option -ValueOnly) }
+}
+if ($PSBoundParameters.ContainsKey('Icon')) {
+    $brand['icon'] = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Icon)
+}
+if ($NoIcon) { $brand['no_icon'] = $true }
+if ($DefaultBrand) { $brand['default_brand'] = $true }
+$brandJson = if ($brand.Count) { $brand | ConvertTo-Json -Compress }
 $python = Get-VenvPython $source
 if (-not (Test-IsPython311 $python)) {
     if ($NonInteractive -and -not $assumeYes) {
@@ -32,15 +50,18 @@ if ($Preview) { $arguments += '--preview' }
 
 $previousPythonPath = $env:PYTHONPATH
 $previousNonInteractive = $env:JARVIS_DEPLOY_NONINTERACTIVE
+$previousBrand = $env:JARVIS_DEPLOY_BRAND
 Push-Location -LiteralPath $source
 try {
     $env:PYTHONPATH = Join-Path $source 'src'
+    $env:JARVIS_DEPLOY_BRAND = $brandJson
     if ($NonInteractive) { $env:JARVIS_DEPLOY_NONINTERACTIVE = '1' }
     & $python @arguments
     $deploymentExitCode = $LASTEXITCODE
 } finally {
     $env:PYTHONPATH = $previousPythonPath
     $env:JARVIS_DEPLOY_NONINTERACTIVE = $previousNonInteractive
+    $env:JARVIS_DEPLOY_BRAND = $previousBrand
     Pop-Location
 }
 exit $deploymentExitCode

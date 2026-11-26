@@ -21,6 +21,7 @@ $controls.TargetText.Text = "$source-new"
 $script:worker = $null
 $script:request = $null
 $script:previewResult = $null
+$script:deploymentResult = $null
 $script:page = ''
 
 function Show-WizardPage {
@@ -59,6 +60,7 @@ function Start-WizardStep {
 
     $script:request.Preview = $Preview
     $script:previewResult = $null
+    $script:deploymentResult = $null
     $controls.OutputText.Clear()
     try {
         $script:worker = Start-DeploymentWorker -ScriptPath $backend `
@@ -141,6 +143,8 @@ $timer.Add_Tick({
             $prefix = 'JARVIS_DEPLOY_PREVIEW:'
             if ($script:request.Preview -and $line.StartsWith($prefix)) {
                 $script:previewResult = $line.Substring($prefix.Length) | ConvertFrom-Json
+            } elseif ($result = ConvertFrom-DeploymentResultLine $line) {
+                $script:deploymentResult = $result
             } else {
                 $controls.OutputText.AppendText($line + [Environment]::NewLine)
             }
@@ -215,7 +219,11 @@ $controls.ShortcutButton.Add_Click({
         $save = New-Object Microsoft.Win32.SaveFileDialog
         $save.Title = 'Save Jarvis shortcut'
         $save.InitialDirectory = [Environment]::GetFolderPath('Desktop')
-        $save.FileName = 'Jarvis - ' + (Split-Path -Leaf $script:request.Target) + '.lnk'
+        $save.FileName = if ($script:deploymentResult) {
+            $script:deploymentResult.shortcut_file
+        } else {
+            'Jarvis - ' + (Split-Path -Leaf $script:request.Target) + '.lnk'
+        }
         $save.Filter = 'Windows shortcut (*.lnk)|*.lnk'
         $save.DefaultExt = '.lnk'
         if ($save.ShowDialog($window)) {
@@ -223,7 +231,12 @@ $controls.ShortcutButton.Add_Click({
             $shortcut = $shell.CreateShortcut($save.FileName)
             $shortcut.TargetPath = Join-Path $script:request.Target 'Jarvis.cmd'
             $shortcut.WorkingDirectory = $script:request.Target
-            $shortcut.IconLocation = (Join-Path $script:request.Target 'src\jarvis\launcher\assets\jarvis.ico') + ',0'
+            $icon = if ($script:deploymentResult) {
+                $script:deploymentResult.shortcut_icon
+            } else {
+                Join-Path $script:request.Target 'src\jarvis\launcher\assets\jarvis.ico'
+            }
+            $shortcut.IconLocation = $icon + ',0'
             $shortcut.Save()
             $controls.PageStatus.Text = "Saved shortcut: $($save.FileName)"
         }

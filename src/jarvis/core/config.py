@@ -2513,6 +2513,12 @@ def load_brand(
     return _build_brand_section("brand", brand_raw)
 
 
+def brand_from_table(raw: dict[str, Any]) -> BrandSettings:
+    """Validates a [brand] table that did not come from a file (a deployment
+    request), with the builder and the messages load_brand() uses."""
+    return _build_brand_section("brand", raw)
+
+
 def _validate_settings(settings: Settings) -> None:
     reserve = settings.generation.dialog_generation_reserve()
     context_window_tokens = settings.history.prompt_capacity_tokens + reserve.tokens

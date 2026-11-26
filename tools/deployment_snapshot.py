@@ -229,6 +229,16 @@ def _copy_tree(source: Path, destination: Path) -> None:
             shutil.copy2(child, target)
 
 
+def check_directory_tree(source: Path) -> None:
+    """Refuses a tree that holds a link or a non-regular file."""
+    for _ in _tree_entries(source):
+        continue
+
+
+def copy_directory_by_value(source: Path, destination: Path) -> None:
+    _copy_tree(source, destination)
+
+
 def _copy_asset(asset: _Asset, source: Path, target: Path) -> None:
     destination = target / asset.destination
     original = asset.source

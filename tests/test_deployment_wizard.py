@@ -251,3 +251,30 @@ def test_wizard_xaml_has_every_control_requested_by_controller() -> None:
     declared = controller.partition("foreach ($name in @(")[2].partition(")) {")[0]
 
     assert set(declared.split("'")[1::2]) == names
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell worker")
+def test_wizard_worker_reads_the_deployment_result_line(tmp_path: Path) -> None:
+    script = tmp_path / "result line.ps1"
+    script.write_text(
+        r"""param($Worker)
+$ErrorActionPreference = 'Stop'
+. $Worker
+$ok = ConvertFrom-DeploymentResultLine ('JARVIS_DEPLOY_RESULT:' +
+    '{"target": "C:\\x", "shortcut_file": "Caf\u00e9 - x.lnk", ' +
+    '"shortcut_icon": "C:\\x\\i.ico"}')
+[Console]::WriteLine($ok.shortcut_file.Length)
+[Console]::WriteLine([int]$ok.shortcut_file[3])
+[Console]::WriteLine($ok.shortcut_icon)
+foreach ($line in @('Installing Jarvis in C:\x', '', 'JARVIS_DEPLOY_RESULT:{broken',
+                    'JARVIS_DEPLOY_PREVIEW:{}')) {
+    if (ConvertFrom-DeploymentResultLine $line) { exit 9 }
+}
+""",
+        encoding="utf-8",
+    )
+
+    result = run_powershell_script(script, WIZARD_DIR / "wizard_worker.ps1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == ["12", "233", "C:\\x\\i.ico"]

@@ -6,6 +6,7 @@ from jarvis.core.config import (
     BrandSettings,
     ConfigError,
     Settings,
+    brand_from_table,
     load_brand,
     load_settings,
 )
@@ -286,3 +287,13 @@ def test_a_ui_layer_brand_with_an_unknown_key_still_gets_the_brand_message(tmp_p
 
     with pytest.raises(ConfigError, match=r"belongs in config\.toml"):
         load_settings(config, ui_path=ui)
+
+
+def test_a_table_that_is_not_a_file_is_validated_with_the_file_messages():
+    assert brand_from_table({"name": "Work"}) == BrandSettings(
+        name="Work", monogram="W"
+    )
+    with pytest.raises(ConfigError, match=r"\[brand\]\.monogram must be exactly one"):
+        brand_from_table({"name": "Work", "monogram": "AB"})
+    with pytest.raises(ConfigError, match=r"Unknown key\(s\) in \[brand\]: colour"):
+        brand_from_table({"colour": "red"})

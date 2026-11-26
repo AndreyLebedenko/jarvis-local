@@ -4381,14 +4381,16 @@ their store isolation.
 command. Its background worker streams process output and uses a read-only
 preview for review and resume. The wizard asks before allowing winget to install
 Python. A completed deployment's shortcut targets its `Jarvis.cmd` directly
-with the destination as its working directory.
+with the destination as its working directory; its file name and icon come from
+the destination's resolved brand (see "Architecture: instance branding"). Brand
+options, Copy inheritance and the icon-generation stage are described there too.
 
 ## Architecture: instance branding (2026-11-26)
 
 `tasks/story-instance-branding.md` lets one installation carry its own display
 identity. Task 1 (settings and runtime consumption) defines the contract; task 2
-adds icon generation and the launcher identity; deployment flags and the wizard
-step follow in later tasks.
+adds icon generation and the launcher identity; task 3 integrates deployment
+(flags, `[brand]` rewrite, icon stage, shortcut); the wizard step follows later.
 
 - Source of truth: the optional `[brand]` section of `config.toml` with keys
   `name`, `monogram`, `accent`, `icon`. It is rejected in `config.ui.toml`
@@ -4476,6 +4478,79 @@ Icon generation and the launcher identity (task 2):
   (`WindowsTray.set_identity`). Instance texts (tooltip, window titles and
   headers, "stopped unexpectedly") use the name; product and other-instance texts
   (About, "already running", the launcher-already-running dialog) keep "Jarvis".
+
+Deployment integration (task 3):
+
+- CLI: `deploy.cmd -Target <dir> -Mode clean|copy` takes `-Name`, `-Monogram`,
+  `-Accent`, `-Icon <png>`, `-NoIcon` and `-DefaultBrand`. `deploy.ps1` resolves
+  `-Icon` against the caller's directory and passes the bound options to
+  `tools.deployment` as one JSON object in the environment variable
+  `JARVIS_DEPLOY_BRAND` (not as command-line flags: Windows PowerShell 5.1
+  silently drops embedded double quotes from native arguments, and a name may
+  contain them). The installer subprocess does not inherit the variable. Through
+  `deploy.cmd` a name with spaces or `& ^ %` must be wrapped in double quotes
+  and an embedded `"` written as `\"`; the wizard has no cmd.exe layer.
+- Request rules (`tools/deployment_brand.py`): an option left unset keeps the
+  stored value; `-DefaultBrand` cannot be combined with any other option and
+  `-Icon` not with `-NoIcon`. There is no per-key clearing: set a default value
+  explicitly (the launcher treats a brand equal to the default as the default).
+  The merged table is validated with the task-1 rules (`brand_from_table`,
+  messages name `[brand].<key>`), and a user PNG with the task-2 PNG rules
+  (`validate_icon_file`, the same wording, any path on disk), before the
+  destination directory is created. Planning also dry-runs the `[brand]` rewrite
+  on the text the destination is made from, so a form the line editor cannot
+  rewrite (inline table, dotted keys) is refused naming the source file; an
+  inherited icon that is a generated brand file is refused when regenerating. `--preview` validates the same way and adds a
+  `brand` object (`name`, `monogram`, `accent`, `icon`, `is_default`, `origin`
+  `default`, `inherited` or `requested`).
+- Clean: default settings plus the requested `[brand]`. With flags the
+  destination `config.toml` is `config.example.toml` plus a `[brand]` table (the
+  installer then finds it present and its "Load settings" step re-validates it);
+  without flags nothing changes (no `config.toml`, no `brand/`). Clean never reads
+  the source config, so a branded source gives a default-brand clean home.
+- Copy: the brand is the source `config.toml` `[brand]` table (the effective brand:
+  it cannot live in `config.ui.toml`). Without options the copy is faithful: the
+  table is copied byte-for-byte with the config, the referenced icon file and the
+  whole `brand/` directory by value (a stale or hand-placed `brand.ico` stays; a
+  linked or link-containing `brand/` stops the plan). With options only the given
+  keys change (comments and layout kept), the source `brand/` is not carried, and
+  the icons are generated; `-Icon` replaces an inherited icon, `-NoIcon` drops it,
+  `-DefaultBrand` removes `[brand]`, `brand/` and the icon file. The user PNG is
+  stored as `brand-source/icon.png` (the convention of `config.example.toml`) and
+  `[brand].icon` records that home-relative path; `brand/` stays purely generated.
+- TOML: `tools/deployment_toml.py` gained `set_table_strings`, `remove_table` and
+  `remove_table_strings`, with the same discipline as the path rebase (plain
+  single-line quoted values under an explicit header, `tomllib` equality as proof,
+  an error naming `[brand]` and the file otherwise). A `[brand]` in the
+  destination `config.ui.toml` stops the deployment.
+- Icon stage: after the manifest says `ready` and before the installer.
+  `generate_missing_icons` runs when the destination brand is not the default and
+  `brand/brand.png` or `brand/brand.ico` is missing; it calls
+  `regenerate_home_icons`. The manifest schema is unchanged; the decision is read
+  from the disk, so `-Resume` retries a failed generation without recopying
+  anything or reading the source, and skips it when the files exist. A failure
+  prints `[failed] Generate brand icons: <message>` and the `-Resume` hint, exits 1,
+  keeps `ready` and does not run the installer (the wizard offers its Resume page
+  for `ready`). A missing destination home is refused before the generator is
+  called; a default brand never calls it. `-Resume` with brand options is an error.
+- No destination `.venv` is needed: the stage runs in the deployment process (the
+  source `.venv` Python or the discovered Python 3.11, `PYTHONPATH=<source>\src`)
+  and starts only Windows PowerShell 5.1 with the deployer's own
+  `tools\generate_brand_icons.ps1`.
+- Shortcut: `tools/deployment_shortcut.py` builds `<brand name> - <folder>.lnk`
+  (the default brand gives the former `Jarvis - <folder>.lnk`): characters Windows
+  forbids and control characters become `_`, leading spaces and trailing dots and
+  spaces go, a device name (CON, PRN, AUX, NUL, COM0-9, LPT0-9, superscript digits,
+  CONIN$, CONOUT$) gets a `_` after it, the stem is cut to 120 UTF-16 units, empty
+  becomes `Jarvis`. The icon is the launcher's own choice (`load_launcher_identity`),
+  mapped to the destination's packaged icon when it is the default. After a
+  successful deployment (also a resumed one) the tool prints
+  `JARVIS_DEPLOY_RESULT:{target, shortcut_file, shortcut_icon}`; the wizard worker
+  parses it (`ConvertFrom-DeploymentResultLine`) and the Create shortcut action uses
+  it, falling back to the old literals when no line arrived.
+- Not branded: `tools/create_launcher_shortcut.ps1` (`Jarvis Launcher.lnk`). The
+  launcher is one per-user supervisor whose identity follows the home selected in
+  its Settings at run time, so a shortcut named after one home would mislead.
 
 ## Architecture v2.0 (MCP voice guide)
 

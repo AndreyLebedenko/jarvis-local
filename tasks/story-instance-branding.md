@@ -1,6 +1,6 @@
 # Story: Instance branding
 
-Status: In progress, 2026-11-26. Tasks 1-2 are complete; tasks 3-5 are pending. No
+Status: In progress, 2026-11-26. Tasks 1-3 are complete; tasks 4-5 are pending. No
 release version assigned.
 
 Related work: `story-deployment-wizard.md`. Its wizard and `deploy.cmd` are

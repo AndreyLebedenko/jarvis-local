@@ -15,10 +15,23 @@ from contextlib import contextmanager, nullcontext
 from enum import StrEnum
 from pathlib import Path
 
+from jarvis.core.brand_icon import BrandIconError
+from jarvis.core.brand_render import Renderer, run_powershell_renderer
+from jarvis.core.config import ConfigError
 from jarvis.core.single_instance import (
     MUTEX_NAME,
     AlreadyRunning,
     acquire_single_instance,
+)
+from tools.deployment_brand import (
+    BRAND_ENVIRONMENT_VARIABLE,
+    BrandPlan,
+    BrandRequest,
+    BrandStageError,
+    apply_brand,
+    generate_missing_icons,
+    plan_brand,
+    request_from_environment,
 )
 from tools.deployment_plan import (
     DeploymentMode,
@@ -27,10 +40,12 @@ from tools.deployment_plan import (
     application_inventory,
     plan_deployment,
 )
+from tools.deployment_shortcut import shortcut_result
 from tools.deployment_snapshot import copy_snapshot, snapshot_layers, validate_copy
 
 MANIFEST = ".jarvis-deployment.json"
 PREVIEW_PREFIX = "JARVIS_DEPLOY_PREVIEW:"
+RESULT_PREFIX = "JARVIS_DEPLOY_RESULT:"
 _BOOTSTRAP = Path("tools/install/bootstrap.ps1")
 _SCHEMA_VERSION = 1
 
@@ -118,7 +133,7 @@ def _reserve_deployment(target: Path) -> Iterator[None]:
         guard.release()
 
 
-def _prepare(plan: DeploymentPlan) -> None:
+def _prepare(plan: DeploymentPlan, brand: BrandPlan) -> None:
     plan.target.mkdir(parents=True)
     _record_phase(plan.target, plan.mode, _Phase.PREPARING)
     print(f"Preparing application files in {plan.target}", flush=True)
@@ -129,6 +144,7 @@ def _prepare(plan: DeploymentPlan) -> None:
     if plan.snapshot is not None:
         print(f"Copying the Jarvis snapshot into {plan.target}", flush=True)
         copy_snapshot(plan.source, plan.target, plan.snapshot)
+    apply_brand(brand, plan.target)
     _record_phase(plan.target, plan.mode, _Phase.READY)
 
 
@@ -161,6 +177,7 @@ def _run_installer(target: Path, assume_yes: bool) -> int:
         arguments.insert(2, "-NonInteractive")
         env["PYTHONUNBUFFERED"] = "1"
     env.pop("PYTHONPATH", None)
+    env.pop(BRAND_ENVIRONMENT_VARIABLE, None)
     return subprocess.run(arguments, cwd=target, env=env, check=False).returncode
 
 
@@ -172,7 +189,10 @@ def deploy(
     resume: bool = False,
     assume_yes: bool = False,
     installer: Installer = _run_installer,
+    brand: BrandRequest | None = None,
+    renderer: Renderer = run_powershell_renderer,
 ) -> int:
+    _reject_brand_on_resume(resume, brand)
     try:
         target = requested_target.resolve()
     except (OSError, RuntimeError) as error:
@@ -190,17 +210,44 @@ def deploy(
                     else nullcontext()
                 )
                 with exclusion:
-                    _prepare(plan_deployment(source, requested_target, mode))
-            return _install_prepared(target, mode, assume_yes, installer)
+                    plan = plan_deployment(source, requested_target, mode)
+                    _prepare(plan, plan_brand(plan.source, mode, brand))
+            return _install_prepared(target, mode, assume_yes, installer, renderer)
     except OSError as error:
         raise DeploymentError(
             f"Cannot deploy to {requested_target}: {error}"
         ) from error
 
 
+def _reject_brand_on_resume(resume: bool, brand: BrandRequest | None) -> None:
+    if resume and brand is not None and not brand.is_empty:
+        raise DeploymentError(
+            "The brand was prepared with the files and cannot be changed while "
+            "resuming. Start a new deployment to change it."
+        )
+
+
+def _generate_icons(target: Path, renderer: Renderer) -> bool:
+    try:
+        message = generate_missing_icons(target, renderer=renderer)
+    except (BrandStageError, BrandIconError, ConfigError, OSError) as error:
+        print(f"[failed] Generate brand icons: {error}")
+        print("Use -Resume after addressing the error.")
+        return False
+    if message:
+        print(message, flush=True)
+    return True
+
+
 def _install_prepared(
-    target: Path, mode: DeploymentMode, assume_yes: bool, installer: Installer
+    target: Path,
+    mode: DeploymentMode,
+    assume_yes: bool,
+    installer: Installer,
+    renderer: Renderer,
 ) -> int:
+    if not _generate_icons(target, renderer):
+        return 1
     print(f"Installing Jarvis in {target}", flush=True)
     exit_code = installer(target, assume_yes)
     if exit_code:
@@ -210,12 +257,19 @@ def _install_prepared(
         )
     else:
         _record_phase(target, mode, _Phase.COMPLETE)
+        print(RESULT_PREFIX + json.dumps(shortcut_result(target)), flush=True)
     return exit_code
 
 
 def preview_deployment(
-    source: Path, target: Path, mode: DeploymentMode, *, resume: bool
-) -> dict[str, str | list[str]]:
+    source: Path,
+    target: Path,
+    mode: DeploymentMode,
+    *,
+    resume: bool,
+    brand: BrandRequest | None = None,
+) -> dict[str, object]:
+    _reject_brand_on_resume(resume, brand)
     if resume:
         target = target.resolve()
         _require_resumable(target, mode)
@@ -223,12 +277,13 @@ def preview_deployment(
 
     with _pause_runtime_for_copy() if mode is DeploymentMode.COPY else nullcontext():
         plan = plan_deployment(source, target, mode)
-        result: dict[str, str | list[str]] = {
+        result: dict[str, object] = {
             "source": str(plan.source),
             "target": str(plan.target),
             "mode": mode.value,
             "journal": str(plan.target / "journal"),
             "memory": str(plan.target / "memory"),
+            "brand": plan_brand(plan.source, mode, brand).preview(),
         }
         if plan.snapshot is not None:
             result["settings"] = [str(name) for name in plan.snapshot.config_files]
@@ -249,9 +304,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--preview", action="store_true")
     args = parser.parse_args(argv)
     try:
+        brand = request_from_environment(os.environ)
         if args.preview:
             result = preview_deployment(
-                args.source, args.target, args.mode, resume=args.resume
+                args.source, args.target, args.mode, resume=args.resume, brand=brand
             )
             print(PREVIEW_PREFIX + json.dumps(result), flush=True)
             return 0
@@ -261,6 +317,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=args.mode,
             resume=args.resume,
             assume_yes=args.yes,
+            brand=brand,
         )
     except (DeploymentError, DeploymentPlanError, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

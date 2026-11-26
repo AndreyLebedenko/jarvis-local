@@ -14,6 +14,7 @@ from jarvis.core.brand_icon import (
     FitRectangle,
     fit_inside_square,
     inspect_png,
+    validate_icon_file,
     validate_icon_png,
 )
 
@@ -439,3 +440,57 @@ def test_a_file_system_failure_is_a_prefixed_icon_error_not_a_raw_oserror(
     monkeypatch.setattr(Path, operation, fail)
 
     assert rejection(tmp_path) == KEY + "cannot be read: Access is denied"
+
+
+def test_a_file_anywhere_on_disk_is_validated_without_a_home(tmp_path):
+    path = write_icon(tmp_path / "pictures", make_png(256, 128), "wide.png")
+
+    icon = validate_icon_file(path)
+
+    assert icon.path == path.resolve()
+    assert (icon.info.width, icon.info.height) == (256, 128)
+
+
+@pytest.mark.parametrize(
+    ("data", "problem"),
+    [
+        (b"", "is empty"),
+        (b"this is text", "is not a PNG file (bad signature)"),
+        (make_png(32, 32), "is 32x32; the shorter side must be at least 64 px"),
+        (
+            make_png(500, 100),
+            "is 500x100; it must be at most twice as wide as high (or the reverse)",
+        ),
+    ],
+)
+def test_an_outside_file_gets_the_same_messages_naming_the_given_path(
+    tmp_path, data, problem
+):
+    path = write_icon(tmp_path, data, "any.png")
+
+    with pytest.raises(BrandIconError) as error:
+        validate_icon_file(path)
+
+    assert str(error.value) == f'[brand].icon "{path}": {problem}'
+
+
+def test_a_missing_outside_file_names_where_it_was_looked_for(tmp_path):
+    path = tmp_path / "absent.png"
+
+    with pytest.raises(BrandIconError) as error:
+        validate_icon_file(path)
+
+    assert str(error.value) == (
+        f'[brand].icon "{path}": file not found: {path.resolve()}'
+    )
+
+
+def test_an_outside_file_may_be_reached_through_a_link_to_elsewhere(tmp_path):
+    real = write_icon(tmp_path / "real", make_png(64, 64), "icon.png")
+    link = tmp_path / "link.png"
+    try:
+        link.symlink_to(real)
+    except OSError:
+        pytest.skip("symbolic links are not permitted here")
+
+    assert validate_icon_file(link).path == real.resolve()

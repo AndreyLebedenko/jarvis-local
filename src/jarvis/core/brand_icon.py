@@ -7,7 +7,7 @@ before Win32 or Tk load them.
 
 import struct
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -231,32 +231,33 @@ def _icon_limit_problem(info: PngInfo) -> str | None:
     return None
 
 
+def _file_problem(path: Path) -> str | None:
+    if not path.exists():
+        return f"file not found: {path}"
+    if not path.is_file():
+        return "is not a file"
+    size = path.stat().st_size
+    if size == 0:
+        return "is empty"
+    if size > MAX_ICON_FILE_BYTES:
+        mebibytes = size / (1024 * 1024)
+        limit = MAX_ICON_FILE_BYTES // (1024 * 1024)
+        return f"is {mebibytes:.1f} MiB; the limit is {limit} MiB"
+    return None
+
+
 def _icon_file_problem(home: Path, relative_icon: str) -> tuple[Path, str | None]:
     path = (home / relative_icon).resolve()
     if not path.is_relative_to(home.resolve()):
         return path, "resolves outside the app home"
-    if not path.exists():
-        return path, f"file not found: {path}"
-    if not path.is_file():
-        return path, "is not a file"
-    size = path.stat().st_size
-    if size == 0:
-        return path, "is empty"
-    if size > MAX_ICON_FILE_BYTES:
-        mebibytes = size / (1024 * 1024)
-        limit = MAX_ICON_FILE_BYTES // (1024 * 1024)
-        return path, f"is {mebibytes:.1f} MiB; the limit is {limit} MiB"
-    return path, None
+    return path, _file_problem(path)
 
 
-def validate_icon_png(
-    home: Path, relative_icon: str, key: str = "[brand].icon"
+def _validated_icon(
+    prefix: str, locate: Callable[[], tuple[Path, str | None]]
 ) -> ValidatedIcon:
-    """Validates a user icon before any rendering. The messages name the key
-    and the configured value."""
-    prefix = f'{key} "{relative_icon}": '
     try:
-        path, problem = _icon_file_problem(home, relative_icon)
+        path, problem = locate()
         if problem is not None:
             raise BrandIconError(problem)
         info, image_data = _walk_png(path.read_bytes())
@@ -271,6 +272,27 @@ def validate_icon_png(
     except BrandIconError as error:
         raise BrandIconError(prefix + str(error)) from None
     return ValidatedIcon(path, info)
+
+
+def validate_icon_png(
+    home: Path, relative_icon: str, key: str = "[brand].icon"
+) -> ValidatedIcon:
+    """Validates a user icon before any rendering. The messages name the key
+    and the configured value."""
+    return _validated_icon(
+        f'{key} "{relative_icon}": ', lambda: _icon_file_problem(home, relative_icon)
+    )
+
+
+def validate_icon_file(path: Path, key: str = "[brand].icon") -> ValidatedIcon:
+    """The same checks for a file that may be anywhere on disk (a deployment
+    request, before the file is copied into a home); only containment is skipped."""
+
+    def locate() -> tuple[Path, str | None]:
+        resolved = path.resolve()
+        return resolved, _file_problem(resolved)
+
+    return _validated_icon(f'{key} "{path}": ', locate)
 
 
 def fit_inside_square(width: int, height: int, side: int) -> FitRectangle:

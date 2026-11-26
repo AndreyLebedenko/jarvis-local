@@ -283,3 +283,10 @@ def test_plan_reports_package_file_access_error(
         DeploymentPlanError, match=r"Cannot inspect application file.*app\.py"
     ):
         plan_deployment(home, tmp_path / "clean", DeploymentMode.CLEAN)
+
+
+def test_every_deployment_tool_module_is_in_the_inventory() -> None:
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    modules = {Path("tools") / path.name for path in tools.glob("deployment*.py")}
+
+    assert modules <= set(APPLICATION_FILES), "A deployed home could not deploy"

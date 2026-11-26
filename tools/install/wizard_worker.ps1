@@ -55,6 +55,18 @@ function Receive-DeploymentWorker {
     return [pscustomobject]@{ Lines = $lines; Done = $done; ExitCode = $exitCode }
 }
 
+function ConvertFrom-DeploymentResultLine {
+    param([string]$Line)
+
+    $prefix = 'JARVIS_DEPLOY_RESULT:'
+    if (-not $Line.StartsWith($prefix)) { return }
+    try {
+        return $Line.Substring($prefix.Length) | ConvertFrom-Json
+    } catch {
+        return
+    }
+}
+
 function Get-DeploymentWizardPhase {
     param([string]$Target, [string]$Mode)
 
