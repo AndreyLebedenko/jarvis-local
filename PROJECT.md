@@ -4386,8 +4386,9 @@ with the destination as its working directory.
 ## Architecture: instance branding (2026-11-26)
 
 `tasks/story-instance-branding.md` lets one installation carry its own display
-identity. Task 1 (settings and runtime consumption) defines the contract; icon
-generation, deployment flags and the wizard step follow in later tasks.
+identity. Task 1 (settings and runtime consumption) defines the contract; task 2
+adds icon generation and the launcher identity; deployment flags and the wizard
+step follow in later tasks.
 
 - Source of truth: the optional `[brand]` section of `config.toml` with keys
   `name`, `monogram`, `accent`, `icon`. It is rejected in `config.ui.toml`
@@ -4430,6 +4431,51 @@ generation, deployment flags and the wizard step follow in later tasks.
   another brand. Mutex names, exit code and acquisition order are unchanged.
 - Out of this contract: technical identifiers (mutexes, `JarvisLauncher`,
   autostart value, package name), the persona, system prompt and `self.md`.
+
+Icon generation and the launcher identity (task 2):
+
+- `core/brand_icon.py` (stdlib-only, pure) validates a user `[brand].icon` PNG
+  before any image library sees it: real PNG signature, IHDR and chunk CRCs,
+  image data that inflates to exactly the size the header promises (GDI+ draws a
+  corrupt stream as a blank image without an error), file at most 8 MiB, shorter
+  side at least 64 px, longer side at most 2048 px, aspect at most 2:1, path
+  inside the home. Transparency is accepted and preserved. A non-square image is
+  scaled to fit a 512x512 transparent canvas and centred, never cropped or
+  stretched. Messages name `[brand].icon` and the configured value. It also
+  verifies ICO files (container, PNG frame headers); the ICO writer stays in
+  `tools/build_launcher_icon.ps1`.
+- `core/brand_render.py` makes every art decision (disc = accent, letter colour =
+  graphite `#0A0D14` or white by WCAG contrast, glyph at most 50% of the disc
+  height and 62% of its width) and runs `tools/generate_brand_icons.ps1`, a
+  System.Drawing drawing tool, through Windows PowerShell 5.1. It renders a
+  512x512 `brand.png`, builds `brand.ico` (nine PNG frames, 16 to 256 px) with
+  `build_launcher_icon.ps1`, verifies both in a staging directory inside
+  `<home>/brand/` and replaces the published files with `os.replace`; a failure
+  leaves the old files untouched. The icon is a filled disc, the Status Console mark
+  an outline circle: the same shape, accent and letter, intentionally not the same
+  fill (an outline plus a same-colour letter is muddy at 16 px on an unknown
+  taskbar colour). The two scripts are in the deployment inventory.
+- Regeneration is always a user action; nothing regenerates by itself and there is
+  no manifest. Entry points: `python -m jarvis.core.brand_render --home <dir>`
+  (deployment reuses `regenerate_home_icons`) and the `Regenerate icons` button in
+  the launcher Settings window (not the Status Console Settings view, because
+  `[brand]` is `config.toml`-only). The button runs the generator for the saved
+  home on a worker thread at once, then reloads the launcher identity. It needs no
+  runtime-state gating: the runtime never reads `brand.png` or `brand.ico`, and
+  files are replaced atomically. A default brand answers "Default identity:
+  nothing to generate" and deletes nothing. After a hand edit of `[brand]` the tray
+  icon stays stale until the button or the CLI is used (accepted).
+- `launcher/identity.py` gives the launcher `LauncherIdentity(name, icon)` from the
+  selected home's `config.toml` through `load_brand` (the launcher imports only
+  stdlib and `jarvis.core`, never the engine). It never raises: any failure, or a
+  default brand, gives the packaged identity (a default brand ignores a stale
+  `<home>/brand/`); a corrupt `brand.ico` keeps the name and falls back to the
+  packaged icon. It is reloaded at launcher start, after a home change, before
+  each mode start and after the button, so a home switch updates the tray tooltip
+  and icon at once. The tray swaps its icon handle on `WM_REFRESH`
+  (`WindowsTray.set_identity`). Instance texts (tooltip, window titles and
+  headers, "stopped unexpectedly") use the name; product and other-instance texts
+  (About, "already running", the launcher-already-running dialog) keep "Jarvis".
 
 ## Architecture v2.0 (MCP voice guide)
 

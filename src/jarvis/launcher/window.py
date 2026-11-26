@@ -7,6 +7,8 @@ from importlib.metadata import version
 from pathlib import Path
 from tkinter import filedialog
 
+from jarvis.launcher.branding import IconRegeneration
+from jarvis.launcher.identity import DEFAULT_IDENTITY, LauncherIdentity
 from jarvis.launcher.model import LauncherController
 from jarvis.launcher.startup import StartupRegistration
 
@@ -16,7 +18,7 @@ TEXT = "#DCE3ED"
 DIM = "#8993A5"
 ACCENT = "#3FE0D0"
 FONT = ("Segoe UI", 10)
-ICON_PATH = Path(__file__).with_name("assets") / "jarvis.ico"
+ICON_PATH = DEFAULT_IDENTITY.icon
 REPOSITORY_URL = "https://github.com/AndreyLebedenko/jarvis-local"
 
 
@@ -42,16 +44,34 @@ def label(parent: tk.Misc, text: str, *, color: str = TEXT) -> tk.Label:
     return tk.Label(parent, text=text, bg=BG, fg=color, font=FONT, anchor="w")
 
 
-def dialog(root: tk.Tk, title: str, message: str, *, link: str | None = None) -> None:
+def set_window_icon(window: tk.Misc, icon: Path) -> None:
+    try:
+        window.iconbitmap(str(icon))
+    except tk.TclError:
+        window.iconbitmap(str(ICON_PATH))
+
+
+def dialog(
+    root: tk.Tk,
+    title: str,
+    message: str,
+    *,
+    link: str | None = None,
+    identity: LauncherIdentity = DEFAULT_IDENTITY,
+) -> None:
     window = tk.Toplevel(root)
-    window.title("Jarvis")
+    window.title(identity.name)
     window.configure(bg=BG)
     window.resizable(False, False)
-    window.iconbitmap(str(ICON_PATH))
+    set_window_icon(window, identity.icon)
     body = tk.Frame(window, bg=BG, padx=28, pady=24)
     body.pack(fill="both", expand=True)
     tk.Label(
-        body, text="JARVIS", bg=BG, fg=ACCENT, font=("Segoe UI Semibold", 11)
+        body,
+        text=identity.name.upper(),
+        bg=BG,
+        fg=ACCENT,
+        font=("Segoe UI Semibold", 11),
     ).pack(anchor="w")
     tk.Label(
         body,
@@ -107,31 +127,40 @@ class SettingsWindow:
         controller: LauncherController,
         startup: StartupRegistration,
         show_error: Callable[[Exception], None],
+        regeneration: IconRegeneration,
+        identity: LauncherIdentity = DEFAULT_IDENTITY,
+        on_home_changed: Callable[[], None] = lambda: None,
     ) -> None:
         self.root = root
         self.controller = controller
         self.startup = startup
         self.show_error = show_error
+        self.regeneration = regeneration
+        self.on_home_changed = on_home_changed
         self.window = tk.Toplevel(root)
-        self.window.title("Jarvis - Settings")
         self.window.configure(bg=BG)
         self.window.resizable(False, False)
-        self.window.iconbitmap(str(ICON_PATH))
         self.home = tk.StringVar(value=str(controller.settings.home))
         self.touchstrip = tk.BooleanVar(value=controller.settings.touchstrip)
         self.autostart = tk.BooleanVar(value=startup.enabled)
         self.status = tk.StringVar()
+        self.brand_status = tk.StringVar()
         self._build()
+        self.apply_identity(identity)
         self.refresh()
         self.window.update_idletasks()
         center(self.window)
 
+    def apply_identity(self, identity: LauncherIdentity) -> None:
+        self.window.title(f"{identity.name} - Settings")
+        self.header.configure(text=identity.name.upper())
+        set_window_icon(self.window, identity.icon)
+
     def _build(self) -> None:
         body = tk.Frame(self.window, bg=BG, padx=28, pady=24)
         body.pack(fill="both", expand=True)
-        tk.Label(
-            body, text="JARVIS", bg=BG, fg=ACCENT, font=("Segoe UI Semibold", 12)
-        ).pack(anchor="w")
+        self.header = tk.Label(body, bg=BG, fg=ACCENT, font=("Segoe UI Semibold", 12))
+        self.header.pack(anchor="w")
         tk.Label(
             body,
             text="Launcher settings",
@@ -161,11 +190,35 @@ class SettingsWindow:
         self.home_entry.pack(side="left", fill="both", expand=True, ipady=9)
         self.browse = button(folder, "Browse...", self._browse)
         self.browse.pack(side="left", padx=(8, 0))
-        self.save_home = button(body, "Save folder", self._save_home)
-        self.save_home.pack(anchor="e", pady=(6, 16))
+        actions = tk.Frame(body, bg=BG)
+        actions.pack(fill="x", pady=(6, 16))
+        self.regenerate_button = button(actions, "Regenerate icons", self._regenerate)
+        self.regenerate_button.pack(side="left")
+        self.save_home = button(actions, "Save folder", self._save_home)
+        self.save_home.pack(side="right")
         label(
             body, "The installed Jarvis folder, including its .venv.", color=DIM
         ).pack(anchor="w")
+        tk.Label(
+            body,
+            text="Regenerate icons rebuilds the tray and window icons from the "
+            "saved folder's config.toml [brand]. They do not change until you "
+            "use it.",
+            bg=BG,
+            fg=DIM,
+            font=FONT,
+            wraplength=480,
+            justify="left",
+            anchor="w",
+        ).pack(anchor="w", pady=(8, 0))
+        tk.Label(
+            body,
+            textvariable=self.brand_status,
+            bg=BG,
+            fg=ACCENT,
+            font=FONT,
+            anchor="w",
+        ).pack(fill="x", pady=(4, 0))
         tk.Frame(body, bg="#1C2433", height=1).pack(fill="x", pady=20)
         self._checkbox(body, "Touchstrip", self.touchstrip, self._touchstrip)
         tk.Label(
@@ -220,8 +273,11 @@ class SettingsWindow:
 
     def refresh(self) -> None:
         busy = self.controller.mode is not None or self.controller.exiting
+        working = self.regeneration.working
         for widget in (self.home_entry, self.browse, self.save_home):
-            widget.configure(state="disabled" if busy else "normal")
+            widget.configure(state="disabled" if busy or working else "normal")
+        self.regenerate_button.configure(state="disabled" if working else "normal")
+        self.brand_status.set(self.regeneration.status)
         self.status.set(
             "Shutting down Jarvis..."
             if self.controller.exiting
@@ -246,9 +302,16 @@ class SettingsWindow:
         if chosen:
             self.home.set(chosen)
 
+    def _regenerate(self) -> None:
+        self.regeneration.click()
+        self.refresh()
+
     def _save_home(self) -> None:
+        previous = self.controller.settings.home
         self._perform(lambda: self.controller.set_home(Path(self.home.get())))
         self.home.set(str(self.controller.settings.home))
+        if self.controller.settings.home != previous:
+            self.on_home_changed()
 
     def _touchstrip(self) -> None:
         self._perform(lambda: self.controller.set_touchstrip(self.touchstrip.get()))

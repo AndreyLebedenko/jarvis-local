@@ -14,6 +14,8 @@ from jarvis.core.single_instance import (
     AlreadyRunning,
     acquire_single_instance,
 )
+from jarvis.launcher.branding import IconRegeneration
+from jarvis.launcher.identity import DEFAULT_IDENTITY, load_launcher_identity
 from jarvis.launcher.model import (
     LauncherController,
     LaunchMode,
@@ -23,7 +25,7 @@ from jarvis.launcher.model import (
 from jarvis.launcher.process import ChildRuntime, runtime_is_busy
 from jarvis.launcher.startup import StartupRegistration, WindowsStartupStore
 from jarvis.launcher.tray import SHOW_TOUCHSTRIP, WindowsTray
-from jarvis.launcher.window import ICON_PATH, SettingsWindow, dialog
+from jarvis.launcher.window import ICON_PATH, SettingsWindow, dialog, set_window_icon
 
 LAUNCHER_MUTEX = r"Local\Jarvis.Launcher.SingleInstance"
 LAUNCHER_LOG_MAX_BYTES = 1_000_000
@@ -45,9 +47,29 @@ class LauncherApp:
             WindowsStartupStore(), Path(sys.executable).with_name("pythonw.exe")
         )
         self.events: queue.Queue[int | Exception] = queue.Queue()
-        self.tray = WindowsTray(ICON_PATH, self.events.put, self.events.put)
+        self.identity = load_launcher_identity(self.controller.settings.home)
+        self.tray = WindowsTray(
+            self.identity.icon, self.events.put, self.events.put, self.identity.name
+        )
+        self.regeneration = IconRegeneration(
+            lambda: self.controller.settings.home,
+            self.refresh_identity,
+            self._show_error,
+        )
         self.settings: SettingsWindow | None = None
         self._tray_failed = False
+        set_window_icon(self.root, self.identity.icon)
+
+    def refresh_identity(self) -> None:
+        self.identity = load_launcher_identity(self.controller.settings.home)
+        self.tray.set_identity(self.identity.name, self.identity.icon)
+        set_window_icon(self.root, self.identity.icon)
+        if self.settings is not None and self.settings.window.winfo_exists():
+            self.settings.apply_identity(self.identity)
+
+    def _home_changed(self) -> None:
+        self.regeneration.clear()
+        self.refresh_identity()
 
     def run(self) -> None:
         self.root.report_callback_exception = self._callback_error
@@ -69,17 +91,18 @@ class LauncherApp:
 
     def _show_error(self, error: Exception) -> None:
         logger.error("Launcher operation failed: %s", error)
+        busy = isinstance(error, RuntimeBusyError)
         dialog(
             self.root,
-            "Jarvis is already running"
-            if isinstance(error, RuntimeBusyError)
-            else "Could not complete the action",
+            "Jarvis is already running" if busy else "Could not complete the action",
             str(error),
+            identity=DEFAULT_IDENTITY if busy else self.identity,
         )
 
     def _action(self, identifier: int) -> None:
         try:
             if identifier in (1, 2):
+                self.refresh_identity()
                 self.controller.start(
                     LaunchMode.ASSISTANT if identifier == 1 else LaunchMode.MCP
                 )
@@ -98,7 +121,13 @@ class LauncherApp:
             self.settings.window.focus_force()
         else:
             self.settings = SettingsWindow(
-                self.root, self.controller, self.startup, self._show_error
+                self.root,
+                self.controller,
+                self.startup,
+                self._show_error,
+                self.regeneration,
+                self.identity,
+                self._home_changed,
             )
 
     def _tick(self) -> None:
@@ -119,10 +148,12 @@ class LauncherApp:
             else:
                 dialog(
                     self.root,
-                    "Jarvis stopped unexpectedly",
+                    f"{self.identity.name} stopped unexpectedly",
                     f"{result.mode.value.title()} exited with code {result.code}.\n\n"
                     f"Startup details are saved in:\n{self.log_path}",
+                    identity=self.identity,
                 )
+        self.regeneration.poll()
         self.tray.update(self.controller.mode, exiting=self.controller.exiting)
         if self.settings is not None and self.settings.window.winfo_exists():
             self.settings.refresh()
@@ -153,7 +184,7 @@ def main() -> None:
     try:
         root = tk.Tk()
         root.withdraw()
-        root.iconbitmap(str(ICON_PATH))
+        set_window_icon(root, ICON_PATH)
         if isinstance(guard, AlreadyRunning):
             dialog(
                 root,

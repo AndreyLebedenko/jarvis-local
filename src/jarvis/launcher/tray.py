@@ -7,6 +7,8 @@ from ctypes import wintypes as wt
 from pathlib import Path
 from typing import ClassVar
 
+from jarvis.core.config import DEFAULT_BRAND_NAME
+from jarvis.launcher.identity import DEFAULT_IDENTITY
 from jarvis.launcher.model import LaunchMode
 
 WM_CLOSE = 0x0010
@@ -49,18 +51,33 @@ class NotifyIconData(ctypes.Structure):
     ]
 
 
+def tray_tooltip(name: str, mode: LaunchMode | None, exiting: bool) -> str:
+    if exiting:
+        return f"{name} - shutting down"
+    if mode is not None:
+        return f"{name} - {mode.value.title()}"
+    return f"{name} - waiting for a mode"
+
+
 class WindowsTray:
     def __init__(
         self,
         icon: Path,
         on_action: Callable[[int], None],
         on_error: Callable[[Exception], None],
+        name: str = DEFAULT_BRAND_NAME,
     ) -> None:
         self._icon_path = icon
+        self._loaded_icon_path: Path | None = None
+        self._icon: int | None = None
+        self._reload_icon = False
         self._on_action = on_action
         self._on_error = on_error
+        self._name = name
         self._mode: LaunchMode | None = None
-        self._tooltip = "Jarvis - waiting for a mode"
+        self._exiting = False
+        self._tooltip = tray_tooltip(name, None, False)
+        self._lock = threading.Lock()
         self._hwnd: int | None = None
         self._data = NotifyIconData(cbSize=ctypes.sizeof(NotifyIconData))
         self._ready = threading.Event()
@@ -77,17 +94,27 @@ class WindowsTray:
             raise self._failure
 
     def update(self, mode: LaunchMode | None, *, exiting: bool = False) -> None:
-        self._mode = mode
-        tooltip = (
-            "Jarvis - shutting down"
-            if exiting
-            else f"Jarvis - {mode.value.title()}"
-            if mode is not None
-            else "Jarvis - waiting for a mode"
-        )
-        if tooltip == self._tooltip:
-            return
+        with self._lock:
+            self._mode, self._exiting = mode, exiting
+            changed = self._retitle()
+        if changed:
+            self._post_refresh()
+
+    def set_identity(self, name: str, icon: Path) -> None:
+        """Always reloads the icon: the same path may hold a regenerated file."""
+        with self._lock:
+            self._name, self._icon_path = name, icon
+            self._reload_icon = True
+            self._retitle()
+        self._post_refresh()
+
+    def _retitle(self) -> bool:
+        tooltip = tray_tooltip(self._name, self._mode, self._exiting)
+        changed = tooltip != self._tooltip
         self._tooltip = tooltip
+        return changed
+
+    def _post_refresh(self) -> None:
         if self._hwnd is not None:
             self._user32.PostMessageW(self._hwnd, WM_REFRESH, 0, 0)
 
@@ -214,6 +241,38 @@ class WindowsTray:
             if getattr(self, "_class_registered", False):
                 self._user32.UnregisterClassW(self._class_name, self._instance)
 
+    def _load_icon(self, path: Path) -> int:
+        return self._user32.LoadImageW(
+            None,
+            str(path),
+            1,
+            self._user32.GetSystemMetrics(49),
+            self._user32.GetSystemMetrics(50),
+            0x10,
+        )
+
+    def _load_icon_or_default(self, path: Path) -> int:
+        icon = self._load_icon(path)
+        if not icon and path != DEFAULT_IDENTITY.icon:
+            icon = self._load_icon(DEFAULT_IDENTITY.icon)
+        return icon
+
+    def _refresh(self) -> None:
+        with self._lock:
+            tooltip, icon_path = self._tooltip, self._icon_path
+            reload_icon, self._reload_icon = self._reload_icon, False
+        previous = None
+        if reload_icon or icon_path != self._loaded_icon_path:
+            icon = self._load_icon_or_default(icon_path)
+            if icon:
+                previous, self._icon = self._icon, icon
+                self._data.hIcon = icon
+                self._loaded_icon_path = icon_path
+        self._data.szTip = tooltip
+        self._shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self._data))
+        if previous:
+            self._user32.DestroyIcon(previous)
+
     def _create(self) -> None:
         class WindowClass(ctypes.Structure):
             _fields_: ClassVar[list[tuple[str, type]]] = [
@@ -259,16 +318,10 @@ class WindowsTray:
         )
         if not self._hwnd:
             raise ctypes.WinError(ctypes.get_last_error())
-        self._icon = self._user32.LoadImageW(
-            None,
-            str(self._icon_path),
-            1,
-            self._user32.GetSystemMetrics(49),
-            self._user32.GetSystemMetrics(50),
-            0x10,
-        )
+        self._icon = self._load_icon_or_default(self._icon_path)
         if not self._icon:
             raise ctypes.WinError(ctypes.get_last_error())
+        self._loaded_icon_path = self._icon_path
         self._data = NotifyIconData(
             cbSize=ctypes.sizeof(NotifyIconData),
             hWnd=self._hwnd,
@@ -293,8 +346,7 @@ class WindowsTray:
             self._popup(hwnd)
             return 0
         if message == WM_REFRESH:
-            self._data.szTip = self._tooltip
-            self._shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self._data))
+            self._refresh()
             return 0
         if message == getattr(self, "_taskbar_created", -1):
             self._shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self._data))
