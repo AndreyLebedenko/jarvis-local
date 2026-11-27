@@ -4341,7 +4341,7 @@ backup, replaced each time; no size bound within one session).
 `launcher.log` holds launcher diagnostics, capped at about 1 MB with one
 backup. The tray refreshes its tooltip only when the text changes. The
 existing `Jarvis.cmd` and CLI behavior remain available. Windows UI, logon, and live runtime
-verification is human-run in `manual-check-windows-tray-launcher.md`.
+verification is human-run in `tasks/done/manual-check-windows-tray-launcher.md`.
 
 Owner confirmed successful manual verification of the launcher and About
 repository link on 2026-10-16 and authorized commit and merge into main.
@@ -5124,7 +5124,7 @@ extensions live in the same session directory as event media, so
 `list_session_files` also surfaces the journal's own event media (utterance
 `.wav`, screenshots). This is a metadata-only surface (never transcript/corpus)
 and was accepted by the owner; see
-`tasks/bug_reports/session-file-list-surfaces-journal-media.md` for the
+`tasks/bug_reports/done/session-file-list-surfaces-journal-media.md` for the
 declined `list`-filtering alternative and how to revisit it later.
 
 ## Architecture v1.8.2 (reply replay)

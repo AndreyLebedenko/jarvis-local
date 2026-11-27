@@ -464,7 +464,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\create_launcher_shor
 
 The shortcut targets the installation's `.venv\Scripts\pythonw.exe -m
 jarvis.launcher`. The existing direct launch commands below remain available.
-Human verification: `tasks/manual-check-windows-tray-launcher.md`.
+Human verification: `tasks/done/manual-check-windows-tray-launcher.md`.
 
 Start Jarvis with the live Status Console UI:
 

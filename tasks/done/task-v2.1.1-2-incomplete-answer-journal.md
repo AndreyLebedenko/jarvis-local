@@ -2,7 +2,7 @@
 
 Status: Completed.
 
-Story: `tasks/story-v2.1.1-proxy-speech-modes.md`, task 2 (Size: S).
+Story: `tasks/done/story-v2.1.1-proxy-speech-modes.md`, task 2 (Size: S).
 Origin: `tasks/bug_reports/proxy-incomplete-answer-journal-written-after-speech.md`.
 
 ## Problem

@@ -1,8 +1,10 @@
 # Story v2.1.1: Personal proxy speech modes (Text, Voice, Text+Voice)
 
-**Status:** Delivered 2026-10-27 (version v2.1.1, second-pass timeout 30 s, default mode as
-today). Tasks 1-6 done; the owner's live run of Voice and Text+Voice passed, the handoff's
-remaining steps and the Text+Voice latency figure are the owner's.
+**Status:** Completed (delivered 2026-10-27 as v2.1.1, second-pass timeout 30 s, default
+mode as today). Tasks 1-6 are done and their cards are in `tasks/done/`; the owner's live run of
+Voice and Text+Voice passed and the Text+Voice latency was measured and recorded when task 6
+was closed. Closed on 2026-11-27 during a cleanup of `tasks/`; the criteria below were ticked
+from the task cards, not re-run.
 **Created:** 2026-10-27
 **Development hold:** Further personal-proxy work is on hold by the owner,
 2026-11-16, pending `story-external-consultation-export.md` and its spike.
@@ -134,15 +136,15 @@ in every mode when TTS is enabled; the modes differ in the text contract:
 
 ## Acceptance criteria
 
-- [ ] The proxy follows the switch (hotkey and Status Console) per request.
-- [ ] Text: outbound payload and speech byte-identical to v2.1.0.
-- [ ] Voice: contract in the outbound message, cleanup before TTS; "**" and "XX век" are
+- [x] The proxy follows the switch (hotkey and Status Console) per request.
+- [x] Text: outbound payload and speech byte-identical to v2.1.0.
+- [x] Voice: contract in the outbound message, cleanup before TTS; "**" and "XX век" are
       not read as in the owner's run (human-run, live).
-- [ ] Text+Voice: spoken text comes from the local pass; fallback to cleanup works; the
+- [x] Text+Voice: spoken text comes from the local pass; fallback to cleanup works; the
       canvas stays the Journal text and the spoken version is metadata only.
-- [ ] An incomplete answer reaches the Journal without waiting for speech.
-- [ ] README (EN, RU), `PROJECT.md`, and the handoff name the modes and their limits.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check`, and
+- [x] An incomplete answer reaches the Journal without waiting for speech.
+- [x] README (EN, RU), `PROJECT.md`, and the handoff name the modes and their limits.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check`, and
       `tools/check_handoff_self_sufficiency.py` are green.
 
 ## Stop conditions

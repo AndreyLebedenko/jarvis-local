@@ -1,7 +1,10 @@
 # Windows tray launcher: human verification
 
-**Status:** Owner verified on 2026-10-16; not run by the agent. Steps 2 and 4
-were changed afterwards (Show Touchstrip tray item) and need a human re-run.
+**Status:** Closed with its task. The owner verified the original procedure on 2026-10-16
+(not run by the agent). Steps 2 and 4 were changed afterwards (Show Touchstrip tray item); no
+re-run of those two steps is recorded, so treat them as unverified when repeating this
+procedure. Moved to `tasks/done/` on 2026-11-27 as the verification record of
+`task-windows-tray-launcher.md`.
 **Task:** `task-windows-tray-launcher.md`.
 **Base commit:** `0f4464623d6e5985f50bfcaa43cd7cbd05368a56`, plus the task diff.
 

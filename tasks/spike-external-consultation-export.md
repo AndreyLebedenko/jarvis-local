@@ -189,7 +189,7 @@ the handoff checker passed. Graph updated. Full `python -m pytest`: 6294 passed,
 expected `20260716-153000`, got `20260716-163000`. This known pre-existing
 timezone-sensitive test failure was also recorded in the v2.1.1 task 6 outcome.
 No production or timezone code was changed. Issue and stop decision:
-`2026-11-16-session-id-test-seasonal-timezone.md` under `tasks/bug_reports/`.
+`2026-11-16-session-id-test-seasonal-timezone.md` under `tasks/bug_reports/done/`.
 
 At the end of 2026-11-16 no live calls, manifest freeze, or model results existed.
 Work stopped under

@@ -487,7 +487,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\create_launcher_shor
 
 Ярлык запускает `.venv\Scripts\pythonw.exe -m jarvis.launcher` из этой
 установки. Прямые команды ниже также доступны.
-Ручная проверка: `tasks/manual-check-windows-tray-launcher.md`.
+Ручная проверка: `tasks/done/manual-check-windows-tray-launcher.md`.
 
 Запуск Jarvis с живым Status Console UI:
 

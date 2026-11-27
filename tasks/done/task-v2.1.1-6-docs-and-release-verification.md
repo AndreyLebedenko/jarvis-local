@@ -2,7 +2,7 @@
 
 Status: Completed.
 
-Story: `tasks/story-v2.1.1-proxy-speech-modes.md`, task 6 (Size: S-M). Precedent:
+Story: `tasks/done/story-v2.1.1-proxy-speech-modes.md`, task 6 (Size: S-M). Precedent:
 `tasks/done/task-v2.1.0-12-docs-and-release-verification.md`.
 
 ## Boundary

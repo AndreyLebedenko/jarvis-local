@@ -2,7 +2,7 @@
 
 Status: Completed.
 
-Story: `tasks/story-v2.1.1-proxy-speech-modes.md`, task 4 (Size: M).
+Story: `tasks/done/story-v2.1.1-proxy-speech-modes.md`, task 4 (Size: M).
 
 ## Problem
 
