@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from jarvis.core.bus import EventBus
 from jarvis.core.config import (
     BUILTIN_TOOL_PROVIDER_NAME,
@@ -24,6 +26,7 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.memory.health import MemoryFileOutcome
 from jarvis.tools.builtin import BuiltinToolProvider
 from jarvis.tools.host import McpHost, McpModuleStatus
 from jarvis.tools.registry import ToolRegistry
@@ -436,3 +439,82 @@ async def test_camera_tool_rejects_arguments_it_does_not_understand(tmp_path) ->
     assert result.is_error is True
     assert "zoom" in str(result.content)
     assert backend.usb_calls == []
+
+
+def _reporting_provider(
+    repository: MemoryFileRepository,
+) -> tuple[BuiltinToolProvider, list[tuple[MemoryFileId, MemoryFileOutcome]]]:
+    outcomes: list[tuple[MemoryFileId, MemoryFileOutcome]] = []
+
+    async def record(file_id: MemoryFileId, outcome: MemoryFileOutcome) -> None:
+        outcomes.append((file_id, outcome))
+
+    provider = BuiltinToolProvider(
+        thinking_mode=ReasoningLevelState(EventBus()),
+        memory_file_repository=repository,
+        on_memory_file_outcome=record,
+    )
+    return provider, outcomes
+
+
+async def test_builtin_memory_tool_reports_a_successful_write(tmp_path) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path)))
+    )
+    provider, outcomes = _reporting_provider(repository)
+
+    await provider.call_tool(
+        "remember", {"file": "memory", "mode": "append", "content": "a fact"}
+    )
+
+    assert outcomes == [(MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_OK)]
+
+
+async def test_builtin_memory_tool_reports_a_write_refused_for_size(tmp_path) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path), memory_max_chars=5))
+    )
+    provider, outcomes = _reporting_provider(repository)
+
+    result = await provider.call_tool(
+        "remember", {"file": "memory", "mode": "append", "content": "too much text"}
+    )
+
+    assert result.is_error is True
+    assert outcomes == [(MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)]
+
+
+async def test_builtin_memory_tool_reports_an_io_failure_and_still_raises(
+    tmp_path,
+) -> None:
+    def failing_writer(path: Path, content: str) -> None:
+        raise PermissionError(str(path))
+
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path))),
+        writer=failing_writer,
+    )
+    provider, outcomes = _reporting_provider(repository)
+
+    with pytest.raises(PermissionError):
+        await provider.call_tool(
+            "remember", {"file": "self", "mode": "append", "content": "a fact"}
+        )
+
+    assert outcomes == [(MemoryFileId.SELF, MemoryFileOutcome.IO_FAILED)]
+
+
+async def test_builtin_memory_tool_reports_nothing_for_a_rejected_request(
+    tmp_path,
+) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path)))
+    )
+    provider, outcomes = _reporting_provider(repository)
+
+    result = await provider.call_tool(
+        "remember", {"file": "memory", "mode": "append", "content": ""}
+    )
+
+    assert result.is_error is True
+    assert outcomes == []

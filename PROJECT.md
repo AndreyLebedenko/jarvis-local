@@ -2887,8 +2887,8 @@ Task 2 (module health events) landed second:
     v1.2.10 wording keys.
 - "Unknown before first signal" is honest by construction: the tracker
   publishes nothing until a signal arrives, and the module chips' markup
-  default is `data-status="unavailable"`. Memory publishes nothing (no
-  engine implementation).
+  default is `data-status="unavailable"`. Memory published nothing here;
+  superseded 2026-11-27, see "Architecture: Memory chip health".
 - Deliberate deviation from the task card's letter: the microphone seed
   in `wire_status_console()` still calls `set_module_health` directly -
   it is the initial snapshot value (mirroring task 1's WARMING seed
@@ -5701,6 +5701,39 @@ latency-for-quality trade.
   is only ever invoked long after `build_app()` returns, mirroring the
   `journal_active_session_id` lambda pattern already used in
   `run_with_status_console()`).
+
+## Architecture: Memory chip health (2026-11-27)
+
+Owner decisions, task `tasks/done/task-memory-chip-health.md`.
+
+- The Memory chip (`ModuleId.MEMORY`) reports whether the long-term memory
+  tools are ready: history search (`search_history`) and `remember`. It no
+  longer means "conversation history/context". Before this change nothing
+  published a signal for it, so it was always grey.
+- Statuses: `ok` (`memory_detail_ready`); `degraded` when a memory file
+  refused a write for size (`memory_detail_file_full`) or semantic search
+  failed at runtime (`memory_detail_semantic_down`); `error` when a memory
+  file raised `OSError` (`memory_detail_files_unreadable`); grey until the
+  first signal. Precedence: unreadable, then full, then semantic down.
+- Semantic search disabled in config is the user's choice and reports `ok`
+  (`SemanticProjectionState.disabled`). Solo session mode restricts reads to
+  the current session and does not gate `remember`; it does not change the
+  status.
+- Same rule as the other chips: the tracker only consumes bus events, no
+  polling or probes. Sources: `SemanticSearchHealthObserved(available)`
+  (`journal/health.py`, published by `HistoryProjectionLifecycle` after each
+  projected journal event and once from `run()` after the status console is
+  wired, because the lifecycle starts before the tracker subscribes) and
+  `MemoryFileOutcomeObserved(file_id, outcome)` (`memory/health.py`,
+  published by the `remember` tool and the memory panel endpoints).
+  `READ_OK` clears "unreadable" only; `WRITE_OK` clears "unreadable" and
+  "full" for that file. Full and unreadable are tracked per file.
+- Not covered, on purpose: a journal that cannot be read at startup stops
+  the application before the chip exists, so it has no chip state. A
+  semantic failure is noticed at the next journaled event, not at the query
+  that failed. The semantic index does not retry after a runtime failure
+  until the next rebuild (restart), so the chip stays `degraded` until then;
+  that is the index's behavior, not the chip's.
 
 ## v1.9.2 closed as unrealistic (2026-09-12) - do not re-litigate
 

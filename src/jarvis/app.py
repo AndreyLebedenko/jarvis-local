@@ -248,10 +248,12 @@ from jarvis.mcp_mode.server import (
 )
 from jarvis.mcp_mode.token import McpTokenFileError
 from jarvis.memory.files import (
+    MemoryFileId,
     MemoryFileLoader,
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.memory.health import MemoryFileOutcome, MemoryFileOutcomeObserved
 from jarvis.personal_proxy.service.proxy_runtime import PersonalProxyRuntime
 from jarvis.personal_proxy.startup.launch import ProxyPreparer
 from jarvis.personal_proxy.startup.proxy_assembly import (
@@ -1941,6 +1943,13 @@ def build_app(
         current = journal_recorder.session_id if journal_recorder is not None else None
         return resolve_session_file_scope(journal_store, current)
 
+    async def on_memory_file_outcome(
+        file_id: MemoryFileId, outcome: MemoryFileOutcome
+    ) -> None:
+        await bus.publish(
+            MemoryFileOutcomeObserved, MemoryFileOutcomeObserved(file_id, outcome)
+        )
+
     builtin_tool_provider = BuiltinToolProvider(
         thinking_mode=thinking_mode,
         memory_file_repository=memory_file_repository,
@@ -1949,6 +1958,7 @@ def build_app(
         on_camera_failure=on_camera_failure,
         session_file_repository=session_file_repository,
         session_file_scope=current_session_file_scope,
+        on_memory_file_outcome=on_memory_file_outcome,
     )
     builtin_tool_provider.register_tools(tool_registry)
     tool_registry.set_tool_enabled(CAMERA_TOOL_NAME, settings.camera.enabled)
@@ -3189,6 +3199,7 @@ async def run(
         status_console_subscriptions = wire_status_console(
             app, live_console, asyncio.get_running_loop()
         )
+        await _publish_initial_memory_health(app)
     else:
         status_console_subscriptions = []
     await _warm_up_for_run_mode(app, settings, live_console, prepare_personal_proxy)
@@ -3337,6 +3348,12 @@ def _personal_proxy_background_work(
         run_response_mode_hotkey_listener(app.response_mode, settings.hotkeys),
         run_interrupt_hotkey_listener(app.bus, settings.hotkeys),
     ]
+
+
+async def _publish_initial_memory_health(app: App) -> None:
+    if app.history_projection_lifecycle is None:
+        return
+    await app.history_projection_lifecycle.publish_search_health()
 
 
 async def _start_history_projection_lifecycle(app: App) -> None:

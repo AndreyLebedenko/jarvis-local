@@ -22,6 +22,7 @@ from jarvis.memory.files import (
     MemoryFileOverCapError,
     MemoryFileRepository,
 )
+from jarvis.memory.health import MemoryFileOutcome
 from jarvis.tools.json_types import JSONObject
 from jarvis.tools.registry import RegisteredTool, ToolRegistry
 from jarvis.tools.results import ToolArguments, ToolCallResult
@@ -34,6 +35,7 @@ _READ_SESSION_TEXT_TOOL_NAME = "read_session_text"
 _VIEW_SESSION_IMAGE_TOOL_NAME = "view_session_image"
 _STAT_SESSION_FILE_TOOL_NAME = "stat_session_file"
 _LIST_SESSION_FILES_TOOL_NAME = "list_session_files"
+MemoryFileOutcomeCallback = Callable[[MemoryFileId, MemoryFileOutcome], Awaitable[None]]
 _NEXT_SESSION_NOTE = (
     "The new content enters Jarvis's system prompt at the next session start."
 )
@@ -50,9 +52,14 @@ class BuiltinToolProvider:
         on_camera_failure: Callable[[str], Awaitable[None]] | None = None,
         session_file_repository: SessionFileRepository | None = None,
         session_file_scope: Callable[[], SessionFileScope] | None = None,
+        on_memory_file_outcome: Callable[
+            [MemoryFileId, MemoryFileOutcome], Awaitable[None]
+        ]
+        | None = None,
     ) -> None:
         self._thinking_mode = thinking_mode
         self._memory_file_repository = memory_file_repository
+        self._on_memory_file_outcome = on_memory_file_outcome
         self._camera_capture = camera_capture
         self._on_camera_capture = on_camera_capture
         self._on_camera_failure = on_camera_failure
@@ -72,7 +79,7 @@ class BuiltinToolProvider:
         if name == _REASONING_TOOL_NAME:
             return await self._set_reasoning_level(arguments)
         if name == _MEMORY_TOOL_NAME:
-            return self._remember(arguments)
+            return await self._remember(arguments)
         if name == CAMERA_TOOL_NAME:
             return await self._capture_camera_image(arguments)
         if name == _WRITE_SESSION_FILE_TOOL_NAME:
@@ -280,11 +287,26 @@ class BuiltinToolProvider:
             },
         )
 
-    def _remember(self, arguments: ToolArguments) -> ToolCallResult:
+    async def _report_memory_file_outcome(
+        self, file_id: MemoryFileId, outcome: MemoryFileOutcome
+    ) -> None:
+        if self._on_memory_file_outcome is not None:
+            await self._on_memory_file_outcome(file_id, outcome)
+
+    async def _remember(self, arguments: ToolArguments) -> ToolCallResult:
         parsed = _parse_memory_arguments(arguments)
         if isinstance(parsed, ToolCallResult):
             return parsed
         file_id, mode, content = parsed
+        try:
+            return await self._write_memory(file_id, mode, content)
+        except OSError:
+            await self._report_memory_file_outcome(file_id, MemoryFileOutcome.IO_FAILED)
+            raise
+
+    async def _write_memory(
+        self, file_id: MemoryFileId, mode: str, content: str
+    ) -> ToolCallResult:
         current = self._memory_file_repository.read(file_id)
         next_content = (
             content
@@ -298,6 +320,9 @@ class BuiltinToolProvider:
                 else self._memory_file_repository.write(file_id, next_content)
             )
         except MemoryFileOverCapError as error:
+            await self._report_memory_file_outcome(
+                file_id, MemoryFileOutcome.WRITE_REFUSED_FULL
+            )
             label = _memory_file_label(file_id)
             return ToolCallResult(
                 content=(
@@ -314,6 +339,7 @@ class BuiltinToolProvider:
                 },
             )
 
+        await self._report_memory_file_outcome(file_id, MemoryFileOutcome.WRITE_OK)
         delta = written.chars - current.chars
         label = _memory_file_label(file_id)
         backup = f"{label}.bak" if mode == "replace" else None

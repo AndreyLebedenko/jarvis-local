@@ -415,3 +415,47 @@ async def test_wire_status_console_repaints_tool_rows_after_a_toggle():
         "write_session_file",
     ]
     unwire(app, subscriptions)
+
+
+class _StopBeforeWarmUp(Exception):
+    pass
+
+
+async def test_run_publishes_memory_health_once_the_status_console_is_wired(
+    monkeypatch,
+):
+    """The lifecycle starts before the health tracker subscribes, so its own
+    startup is invisible to the Memory chip; run() asks it to publish again
+    after wiring, or the chip stays grey until the first incident."""
+    calls: list[str] = []
+
+    class _FakeLifecycle:
+        async def start(self) -> None:
+            calls.append("lifecycle started")
+
+        async def publish_search_health(self) -> None:
+            calls.append("search health published")
+
+    def wire(*args, **kwargs) -> list:
+        calls.append("console wired")
+        return []
+
+    def stop_before_warm_up(*args, **kwargs):
+        raise _StopBeforeWarmUp
+
+    app = _fake_app(bus=EventBus())
+    app.history_projection_lifecycle = _FakeLifecycle()
+    fake_console = types.SimpleNamespace(
+        api=types.SimpleNamespace(set_shutdown_event=lambda event: None)
+    )
+    monkeypatch.setattr(main_module, "wire_status_console", wire)
+    monkeypatch.setattr(main_module, "_warm_up_for_run_mode", stop_before_warm_up)
+
+    with pytest.raises(_StopBeforeWarmUp):
+        await main_module.run(settings=Settings(), app=app, live_console=fake_console)
+
+    assert calls == [
+        "lifecycle started",
+        "console wired",
+        "search health published",
+    ]

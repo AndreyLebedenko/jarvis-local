@@ -25,6 +25,9 @@ from jarvis.inputs.camera import (
     CameraStateChanged,
 )
 from jarvis.inputs.capture import CaptureFailed, ScreenshotCaptured
+from jarvis.journal.health import SemanticSearchHealthObserved
+from jarvis.memory.files import MemoryFileId
+from jarvis.memory.health import MemoryFileOutcome, MemoryFileOutcomeObserved
 from jarvis.ui.contract import HealthStatus, ModuleId
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,11 @@ class ModuleHealthTracker:
         # this latch a mute/unmute would repaint a dead microphone as
         # "listening", which is the exact class of lie this work removed.
         self._microphone_capture_failed = False
+        # The Memory chip is one module over several independent conditions,
+        # each kept here so one recovery cannot hide another fault.
+        self._semantic_search_down = False
+        self._full_memory_files: set[MemoryFileId] = set()
+        self._unreadable_memory_files: set[MemoryFileId] = set()
 
     def subscribe(self) -> list[Subscription]:
         subscriptions: list[Subscription] = [
@@ -72,6 +80,8 @@ class ModuleHealthTracker:
             (CameraStateChanged, self._on_camera_state_changed),
             (CameraCaptureSucceeded, self._on_camera_capture_succeeded),
             (CameraCaptureFailed, self._on_camera_capture_failed),
+            (SemanticSearchHealthObserved, self._on_semantic_search_health),
+            (MemoryFileOutcomeObserved, self._on_memory_file_outcome),
         ]
         for event_type, handler in subscriptions:
             self._bus.subscribe(event_type, handler)
@@ -212,6 +222,37 @@ class ModuleHealthTracker:
         await self._transition(
             ModuleId.CAMERA, HealthStatus.ERROR, "camera_detail_failed"
         )
+
+    async def _on_semantic_search_health(
+        self, event: SemanticSearchHealthObserved
+    ) -> None:
+        self._semantic_search_down = not event.available
+        await self._publish_memory_status()
+
+    async def _on_memory_file_outcome(self, event: MemoryFileOutcomeObserved) -> None:
+        file_id = event.file_id
+        if event.outcome is MemoryFileOutcome.IO_FAILED:
+            self._unreadable_memory_files.add(file_id)
+        elif event.outcome is MemoryFileOutcome.WRITE_REFUSED_FULL:
+            self._full_memory_files.add(file_id)
+        elif event.outcome is MemoryFileOutcome.WRITE_OK:
+            self._unreadable_memory_files.discard(file_id)
+            self._full_memory_files.discard(file_id)
+        else:
+            # A read proves the file is readable, not that it has room.
+            self._unreadable_memory_files.discard(file_id)
+        await self._publish_memory_status()
+
+    async def _publish_memory_status(self) -> None:
+        if self._unreadable_memory_files:
+            status, detail_key = HealthStatus.ERROR, "memory_detail_files_unreadable"
+        elif self._full_memory_files:
+            status, detail_key = HealthStatus.DEGRADED, "memory_detail_file_full"
+        elif self._semantic_search_down:
+            status, detail_key = HealthStatus.DEGRADED, "memory_detail_semantic_down"
+        else:
+            status, detail_key = HealthStatus.OK, "memory_detail_ready"
+        await self._transition(ModuleId.MEMORY, status, detail_key)
 
     async def _transition(
         self, module: ModuleId, status: HealthStatus, detail_key: str

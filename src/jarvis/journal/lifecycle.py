@@ -24,6 +24,7 @@ from jarvis.journal.events import (
     JournalEventRecord,
     JournalEventRef,
 )
+from jarvis.journal.health import SemanticSearchHealthObserved
 from jarvis.journal.search import JournalSearchHit, JournalSearchIndex
 from jarvis.journal.session_metadata import SessionMetadata
 from jarvis.journal.store import (
@@ -101,6 +102,7 @@ class SemanticProjectionState:
     stored_backend: SemanticProjectionBackendIdentity | None = None
     passage_count: int = 0
     last_error: str | None = None
+    disabled: bool = False
 
 
 class HistoryProjection(Protocol):
@@ -379,6 +381,16 @@ class HistoryProjectionLifecycle:
                 )
             self._subscribed = True
 
+    async def publish_search_health(self) -> None:
+        state = self._semantic_projection.state()
+        failed = (
+            state.status is HistoryProjectionStatus.UNAVAILABLE and not state.disabled
+        )
+        await self._bus.publish(
+            SemanticSearchHealthObserved,
+            SemanticSearchHealthObserved(available=not failed),
+        )
+
     async def close(self) -> None:
         async with self._start_lock:
             if self._subscribed:
@@ -561,6 +573,7 @@ class HistoryProjectionLifecycle:
                 record.reference.session_id,
                 record.reference.event_position,
             )
+        await self.publish_search_health()
 
     def _project_event(self, record: JournalEventRecord) -> None:
         for projection in self._projections:

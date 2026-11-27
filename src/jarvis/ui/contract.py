@@ -44,8 +44,8 @@ class RuntimeState(enum.Enum):
 class ModuleId(enum.Enum):
     """The module chips required by story-status-console-ui.md's Product
     Boundary. BACKEND covers the Ollama/model pair (shown as one chip in
-    the mock-up); MEMORY covers conversation history/context, not a
-    separate storage service - v1.0 has no such service."""
+    the mock-up); MEMORY covers the long-term memory tools (history search
+    and the remember tool), see PROJECT.md "Memory chip health"."""
 
     BACKEND = "backend"
     MICROPHONE = "microphone"

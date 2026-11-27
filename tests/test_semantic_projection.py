@@ -318,6 +318,39 @@ def test_query_is_unavailable_when_projection_is_disabled(tmp_path: Path) -> Non
     assert not index.db_path.exists()
 
 
+def test_projection_disabled_in_config_is_marked_disabled_not_failed(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    repository = _build_corpus(store, tmp_path / "derived")
+    index = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        _semantic_settings(enabled=False),
+        _FakeEmbedder(),
+    )
+
+    assert index.state().disabled is True
+
+
+def test_projection_that_failed_at_runtime_is_not_marked_disabled(
+    tmp_path: Path,
+) -> None:
+    store = JournalStore(tmp_path / "journal")
+    store.append(_event("20260716-153000-ab12", 0, "user", "old data"))
+    repository = _build_corpus(store, tmp_path / "derived")
+    failing = SemanticPassageIndex(
+        repository,
+        tmp_path / "derived",
+        _semantic_settings(),
+        _FailingEmbedder(),
+    )
+    failing.rebuild()
+
+    assert failing.state().status is HistoryProjectionStatus.UNAVAILABLE
+    assert failing.state().disabled is False
+
+
 def test_query_reports_timeout_when_query_embedding_exceeds_deadline(
     tmp_path: Path,
 ) -> None:
