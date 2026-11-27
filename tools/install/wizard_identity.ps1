@@ -6,10 +6,11 @@ $script:IdentityCheckTimeoutSeconds = 20
 $script:IdentityMessageLimit = 300
 
 function New-IdentityState {
-    param([string]$Mode)
+    param([string]$Mode, [string]$HomeFolder = '')
 
     return @{
         Mode = $Mode
+        Home = $HomeFolder
         Start = $null
         StartAnswer = $null
         StartStatus = 'unread'
@@ -310,7 +311,10 @@ function Get-IdentityIconText {
     if ($State.UseDefault) { return 'The standard Jarvis icon' }
     if ($State.IconPath) { return [string]$State.IconPath }
     if ($State.NoIcon) { return 'No PNG: a generated monogram is used' }
-    if ($State.Start -and $State.Start.icon) { return "Inherited from the source: $($State.Start.icon)" }
+    if ($State.Start -and $State.Start.icon) {
+        $label = if ($State.Mode -eq 'rebrand') { 'Current PNG' } else { 'Inherited from the source' }
+        return "${label}: $($State.Start.icon)"
+    }
     return 'No PNG: a generated monogram is used'
 }
 
@@ -321,11 +325,14 @@ function Get-IdentityView {
     $shown = $State.UseDefault -and $State.CheckStatus -eq 'ok'
     $hasIcon = [bool]($State.IconPath -or ($State.Start -and $State.Start.icon -and -not $State.NoIcon))
     $monogram = if ($State.LastOk) { [string]$State.LastOk.brand.monogram }
+    $rebrand = $State.Mode -eq 'rebrand'
+    $nothingToChange = $rebrand -and $State.CheckStatus -eq 'ok' -and -not (Test-IdentityHasEdits $State)
     $status = switch ($State.CheckStatus) {
         'loading' { 'Reading the current identity...' }
         'pending' { 'Updating...' }
-        default { '' }
+        default { if ($nothingToChange) { 'Change at least one value to continue.' } else { '' } }
     }
+    $checked = if ($rebrand) { @('ok') } else { @('ok', 'unavailable') }
     $canChange = -not $loading -and -not $State.UseDefault
     return [pscustomobject]@{
         NameText = if ($shown) { [string]$State.Answer.brand.name } else { $State.NameText }
@@ -338,10 +345,10 @@ function Get-IdentityView {
         IconText = Get-IdentityIconText $State
         CanChoosePng = $canChange
         CanRemovePng = $canChange -and $hasIcon
-        CanRestoreDefault = ($State.Mode -eq 'copy') -and $canChange -and (
+        CanRestoreDefault = ($State.Mode -in @('copy', 'rebrand')) -and $canChange -and (
             $State.StartStatus -eq 'failed' -or ($State.Start -and -not $State.Start.is_default))
         CanDiscard = -not $loading -and (Test-IdentityHasEdits $State)
-        Ready = ($State.CheckStatus -in @('ok', 'unavailable')) -and -not $loading
+        Ready = ($State.CheckStatus -in $checked) -and -not $loading -and -not $nothingToChange
         Status = $status
         Messages = $State.Messages.Clone()
         Preview = Get-IdentityPreview $State
@@ -373,6 +380,43 @@ function Get-ReviewBrandLines {
         $lines += "Icon image: $($Brand.icon)$copy"
     } else {
         $lines += "Monogram: $($Brand.monogram) on $($Brand.accent)"
+    }
+    return $lines
+}
+
+function Get-RebrandReviewLines {
+    param([string]$HomeFolder, $Brand, [string]$ChosenIconPath = '')
+
+    $lines = @('Change the identity of an existing Jarvis home.', "Home: $HomeFolder", '')
+    if ($Brand.is_default) {
+        $lines += @(
+            'Identity: the default Jarvis identity', '', 'Files that will change:',
+            '  config.toml: the [brand] section is removed',
+            '  brand\ and brand-source\ stay as they are; Jarvis ignores them'
+        )
+    } else {
+        $lines += "Identity: $($Brand.name) (changed)"
+        $lines += if ($Brand.icon) { "Icon image: $($Brand.icon)" } else { "Monogram: $($Brand.monogram) on $($Brand.accent)" }
+        $lines += @('', 'Files that will change:', '  config.toml: the [brand] section')
+        if ($ChosenIconPath) { $lines += "  brand-source\icon.png: a copy of $ChosenIconPath" }
+        $lines += '  brand\brand.png and brand\brand.ico: regenerated'
+    }
+    return $lines + @('', 'Everything else in the home stays as it is.')
+}
+
+function Get-RebrandFinishLines {
+    param($Result)
+
+    $lines = @(
+        'The identity of this home was changed.',
+        "Written: $(@($Result.files) -join ', ')",
+        '',
+        'The Status Console and window titles change when Jarvis starts next.',
+        'The tray name and icon change at the next mode start from the tray, or after Regenerate icons.',
+        'A shortcut you saved earlier keeps its name; save a new one to get the new name and icon.'
+    )
+    if ($Result.brand.is_default) {
+        $lines += 'A shortcut that points at brand\brand.ico keeps showing the old icon, because that file stays.'
     }
     return $lines
 }

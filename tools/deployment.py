@@ -356,7 +356,12 @@ def _rebrand(home: Path) -> int:
     except DeploymentPlanError as error:
         answer: dict[str, object] = {"ok": False, "message": str(error)}
     else:
-        answer = {"ok": True, "brand": result.brand, "files": list(result.files)}
+        answer = {
+            "ok": True,
+            "brand": result.brand,
+            "files": list(result.files),
+            **shortcut_result(home),
+        }
     print(REBRAND_PREFIX + json.dumps(answer), flush=True)
     return 0
 

@@ -46,9 +46,11 @@
           <RadioButton x:Name="CleanMode" GroupName="Mode" IsChecked="True"
                        Content="Clean installation" Margin="0,0,0,6"/>
           <RadioButton x:Name="CopyMode" GroupName="Mode" Content="Copy current Jarvis"
-                       Margin="0,0,0,16"/>
-          <Label Target="{Binding ElementName=TargetText}" Content="_Destination folder"
-                 FontWeight="SemiBold" Padding="0,0,0,4"/>
+                       Margin="0,0,0,6"/>
+          <RadioButton x:Name="RebrandMode" GroupName="Mode"
+                       Content="Change the identity of an existing home" Margin="0,0,0,16"/>
+          <Label x:Name="TargetLabel" Target="{Binding ElementName=TargetText}"
+                 Content="_Destination folder" FontWeight="SemiBold" Padding="0,0,0,4"/>
           <DockPanel Margin="0,0,0,14" LastChildFill="True">
             <Button x:Name="BrowseButton" DockPanel.Dock="Right" Content="Browse parent..."/>
             <TextBox x:Name="TargetText" VerticalContentAlignment="Center" Padding="6,0"/>

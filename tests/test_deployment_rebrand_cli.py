@@ -58,6 +58,8 @@ def test_a_rebrand_prints_the_resolved_brand_and_the_written_files(
     assert result["ok"] is True
     assert result["files"] == ["config.toml", "brand/brand.png", "brand/brand.ico"]
     assert result["brand"]["name"] == "Lab"  # type: ignore[index]
+    assert result["shortcut_file"] == "Lab - home.lnk"
+    assert str(result["shortcut_icon"]).endswith("brand.ico")
     assert load_brand(home / "config.toml").name == "Lab"
 
 

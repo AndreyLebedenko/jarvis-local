@@ -21,7 +21,8 @@ foreach ($name in @(
     'IdentityAccent', 'PickColourButton', 'IdentityAccentMessage', 'IdentityIconText',
     'ChoosePngButton', 'RemovePngButton', 'IdentityIconMessage', 'RestoreDefaultButton',
     'DiscardButton', 'IdentityGeneralMessage', 'PreviewLarge', 'PreviewCaption',
-    'PreviewDark32', 'PreviewDark16', 'PreviewLight32', 'PreviewLight16'
+    'PreviewDark32', 'PreviewDark16', 'PreviewLight32', 'PreviewLight16',
+    'RebrandMode', 'TargetLabel'
 )) {
     $controls[$name] = $window.FindName($name)
 }
@@ -31,6 +32,7 @@ $script:worker = $null
 $script:request = $null
 $script:previewResult = $null
 $script:deploymentResult = $null
+$script:rebrandResult = $null
 $script:page = ''
 $script:identity = New-IdentityState 'clean'
 $script:checkWorker = $null
@@ -50,9 +52,14 @@ function Set-ControlVisible {
 }
 
 function Set-WizardChrome {
+    $rebrand = Test-RebrandMode
     $state = Get-WizardPageState -Page $script:page -Resume ([bool]$script:request.Resume) `
         -Preview ([bool]$script:request.Preview) `
-        -IdentityReady ((Get-IdentityView $script:identity).Ready)
+        -IdentityReady ((Get-IdentityView $script:identity).Ready) -Rebrand $rebrand
+    Set-ControlVisible $controls.CustomizeButton (-not $rebrand)
+    Set-ControlVisible $controls.IdentitySummary (-not $rebrand)
+    Set-ControlVisible $controls.PythonConsent (-not $rebrand)
+    Set-ControlVisible $controls.LaunchButton (-not $rebrand)
     Set-ControlVisible $controls.ChoicePane $state.ChoiceVisible
     Set-ControlVisible $controls.IdentityPane $state.IdentityVisible
     Set-ControlVisible $controls.ReviewPane $state.ReviewVisible
@@ -83,8 +90,13 @@ function Update-ChoiceSummary {
 }
 
 function Get-SelectedMode {
+    if ($controls.RebrandMode.IsChecked) { return 'rebrand' }
     if ($controls.CopyMode.IsChecked) { return 'copy' }
     return 'clean'
+}
+
+function Test-RebrandMode {
+    return $script:identity.Mode -eq 'rebrand'
 }
 
 function Set-BoxText {
@@ -173,12 +185,13 @@ function Start-WizardStep {
     $script:request.Preview = $Preview
     $script:previewResult = $null
     $script:deploymentResult = $null
+    $script:rebrandResult = $null
     $controls.OutputText.Clear()
     try {
         $script:worker = Start-DeploymentWorker -ScriptPath $backend `
             -Target $script:request.Target -Mode $script:request.Mode -Preview $Preview `
             -Resume $script:request.Resume -Consent $script:request.Consent `
-            -BrandJson $script:request.BrandJson
+            -BrandJson $script:request.BrandJson -Rebrand ([bool]$script:request.Rebrand)
         Show-WizardPage 'busy' 'The output below shows each step as it runs.'
     } catch {
         $controls.OutputText.Text = $_.Exception.Message
@@ -216,11 +229,35 @@ function Set-WizardReview {
     Show-WizardPage 'review'
 }
 
+function Complete-RebrandStep {
+    param([int]$ExitCode)
+
+    $result = $script:rebrandResult
+    if ($ExitCode -eq 0 -and $result -and $result.ok) {
+        $script:deploymentResult = $result
+        foreach ($line in (Get-RebrandFinishLines $result)) {
+            $controls.OutputText.AppendText($line + [Environment]::NewLine)
+        }
+        Show-WizardPage 'finish' $script:request.Target
+        return
+    }
+    if ($result -and -not $result.ok) {
+        $controls.OutputText.AppendText((Format-IdentityMessage ([string]$result.message)) + [Environment]::NewLine)
+    } elseif ($ExitCode -eq 0) {
+        $controls.OutputText.AppendText("The identity change returned no answer.`r`n")
+    }
+    Show-WizardPage 'error' 'Read the details below. Go back to change the identity.'
+}
+
 function Complete-WizardStep {
     param([int]$ExitCode)
 
     $script:worker.Process.Dispose()
     $script:worker = $null
+    if ($script:request.Rebrand) {
+        Complete-RebrandStep $ExitCode
+        return
+    }
     $preview = $script:request.Preview
     $success = $ExitCode -eq 0 -and (-not $preview -or $null -ne $script:previewResult)
     $phase = if (-not $success -and -not $preview) {
@@ -248,9 +285,7 @@ function Complete-WizardStep {
     }
 }
 
-$timer = New-Object Windows.Threading.DispatcherTimer
-$timer.Interval = [TimeSpan]::FromMilliseconds(100)
-$timer.Add_Tick({
+function Receive-WizardWorker {
     if ($null -eq $script:worker) { return }
     try {
         $batch = Receive-DeploymentWorker $script:worker
@@ -258,6 +293,8 @@ $timer.Add_Tick({
             $prefix = 'JARVIS_DEPLOY_PREVIEW:'
             if ($script:request.Preview -and $line.StartsWith($prefix)) {
                 $script:previewResult = $line.Substring($prefix.Length) | ConvertFrom-Json
+            } elseif ($script:request.Rebrand -and ($answer = ConvertFrom-RebrandLine $line)) {
+                $script:rebrandResult = $answer
             } elseif ($result = ConvertFrom-DeploymentResultLine $line) {
                 $script:deploymentResult = $result
             } else {
@@ -270,11 +307,20 @@ $timer.Add_Tick({
         $controls.OutputText.AppendText($_.Exception.Message + [Environment]::NewLine)
         if ($script:worker -and $script:worker.Process.HasExited) { Complete-WizardStep 1 }
     }
-})
+}
+
+$timer = New-Object Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromMilliseconds(100)
+$timer.Add_Tick({ Receive-WizardWorker })
 
 $controls.BrowseButton.Add_Click({
     $picker = New-Object Windows.Forms.FolderBrowserDialog
     try {
+        if (Test-RebrandMode) {
+            $picker.Description = 'Choose the Jarvis home folder to change.'
+            if ($picker.ShowDialog() -eq 'OK') { $controls.TargetText.Text = $picker.SelectedPath }
+            return
+        }
         $picker.Description = 'Choose the parent folder for the new Jarvis directory.'
         if ($picker.ShowDialog() -eq 'OK') {
             $leaf = if ($controls.CopyMode.IsChecked) { 'Jarvis-copy' } else { 'Jarvis-clean' }
@@ -304,10 +350,12 @@ function Start-IdentityProcessIfNeeded {
     $started = Start-IdentityCheck $script:identity ([datetime]::Now)
     $script:checkAnswer = $null
     $script:checkLastLine = ''
+    $rebrand = Test-RebrandMode
+    $folder = if ($rebrand) { [string]$script:identity.Home } else { '' }
     try {
-        $script:checkWorker = Start-DeploymentWorker -ScriptPath $backend -Target '' `
+        $script:checkWorker = Start-DeploymentWorker -ScriptPath $backend -Target $folder `
             -Mode $script:identity.Mode -Preview $false -Resume $false -Consent $false `
-            -BrandJson $started.BrandJson -CheckBrand $true
+            -BrandJson $started.BrandJson -CheckBrand $true -Rebrand $rebrand
     } catch {
         Complete-IdentityCheckProcess $script:identity
         [void](Receive-IdentityFailure $script:identity $started.RequestId $_.Exception.Message)
@@ -368,20 +416,70 @@ function Edit-IdentityField {
 }
 
 function Enter-IdentityPage {
+    if (Test-RebrandMode) {
+        $value = $controls.TargetText.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $controls.PageStatus.Text = 'Choose the Jarvis home folder.'
+            return
+        }
+        $folder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($value)
+        if ($script:identity.Home -ne $folder -or $script:identity.StartStatus -eq 'failed') {
+            $debounce.Stop()
+            Stop-IdentityCheckProcess
+            $script:identity = New-IdentityState 'rebrand' $folder
+        }
+    }
     if ($script:identity.StartStatus -eq 'unread') { Request-IdentityStart $script:identity }
     $script:focusName = $true
     Show-WizardPage 'identity'
     Start-IdentityProcessIfNeeded
 }
 
+function Update-TargetControls {
+    param([string]$Mode)
+
+    $rebrand = $Mode -eq 'rebrand'
+    $controls.TargetLabel.Content = if ($rebrand) { '_Jarvis home folder' } else { '_Destination folder' }
+    $controls.BrowseButton.Content = if ($rebrand) { 'Browse...' } else { 'Browse parent...' }
+    if ($rebrand -and $controls.TargetText.Text -eq "$source-new") {
+        $controls.TargetText.Text = $source
+    } elseif (-not $rebrand -and $controls.TargetText.Text -eq $source) {
+        $controls.TargetText.Text = "$source-new"
+    }
+}
+
+function Show-RebrandReview {
+    $view = Get-IdentityView $script:identity
+    if (-not $view.Ready) {
+        $controls.PageStatus.Text = 'Wait for the identity check, then choose Review.'
+        return
+    }
+    $script:request = [pscustomobject]@{
+        Target = $script:identity.Home
+        Mode = 'rebrand'
+        Resume = $false
+        Consent = $false
+        Preview = $false
+        BrandJson = ConvertTo-BrandRequestJson (Get-BrandRequest $script:identity)
+        ChosenIcon = [string]$script:identity.IconPath
+        CameFromIdentity = $true
+        Rebrand = $true
+    }
+    $lines = Get-RebrandReviewLines $script:identity.Home $script:identity.Answer.brand $script:request.ChosenIcon
+    $controls.ReviewPane.Text = $lines -join [Environment]::NewLine
+    Show-WizardPage 'review'
+}
+
 function Sync-IdentityMode {
     $mode = Get-SelectedMode
+    Update-TargetControls $mode
     if ($script:identity.Mode -eq $mode) { return }
     $debounce.Stop()
     Stop-IdentityCheckProcess
     $switch = Switch-IdentityMode $script:identity $mode
     $script:identity = $switch.State
     Update-ChoiceSummary
+    if ($script:page -eq 'choice') { Set-WizardChrome }
     if ($switch.Discarded) {
         $controls.PageStatus.Text = 'Identity changes were discarded because the mode changed.'
     }
@@ -436,6 +534,7 @@ $debounce.Add_Tick({
 })
 $controls.CleanMode.Add_Checked({ Sync-IdentityMode })
 $controls.CopyMode.Add_Checked({ Sync-IdentityMode })
+$controls.RebrandMode.Add_Checked({ Sync-IdentityMode })
 $controls.CustomizeButton.Add_Click({ Enter-IdentityPage })
 $controls.IdentityName.Add_TextChanged({ Edit-IdentityField 'name' $controls.IdentityName.Text })
 $controls.IdentityMonogram.Add_TextChanged({ Edit-IdentityField 'monogram' $controls.IdentityMonogram.Text })
@@ -475,7 +574,11 @@ $controls.DiscardButton.Add_Click({
     Invoke-IdentityNow
 })
 $controls.NextButton.Add_Click({
-    if ($script:page -in @('choice', 'identity')) {
+    if ($script:page -eq 'choice' -and (Test-RebrandMode)) {
+        Enter-IdentityPage
+    } elseif ($script:page -eq 'identity' -and (Test-RebrandMode)) {
+        Show-RebrandReview
+    } elseif ($script:page -in @('choice', 'identity')) {
         Invoke-Review
     } elseif ($script:page -in @('review', 'retry')) {
         Start-WizardStep $false

@@ -1,21 +1,36 @@
 function Get-WizardPageState {
-    param([string]$Page, [bool]$Resume = $false, [bool]$Preview = $false, [bool]$IdentityReady = $true)
+    param(
+        [string]$Page, [bool]$Resume = $false, [bool]$Preview = $false, [bool]$IdentityReady = $true,
+        [bool]$Rebrand = $false
+    )
 
     $nextContent = switch ($Page) {
-        'choice' { 'Review' }
+        'choice' { if ($Rebrand) { 'Customize identity' } else { 'Review' } }
         'identity' { 'Review' }
-        'review' { if ($Resume) { 'Resume installation' } else { 'Deploy' } }
+        'review' { if ($Rebrand) { 'Apply' } elseif ($Resume) { 'Resume installation' } else { 'Deploy' } }
         'retry' { 'Resume installation' }
         default { 'Continue' }
     }
-    $title = switch ($Page) {
-        'choice' { 'Deploy Jarvis' }
-        'identity' { 'Customize identity' }
-        'review' { 'Review deployment' }
-        'busy' { if ($Preview) { 'Checking deployment' } else { 'Deploying Jarvis' } }
-        'retry' { 'Installation needs attention' }
-        'error' { 'Deployment could not continue' }
-        'finish' { 'Jarvis is ready' }
+    $title = if ($Rebrand) {
+        switch ($Page) {
+            'choice' { 'Change identity' }
+            'identity' { 'Change identity' }
+            'review' { 'Review identity change' }
+            'busy' { 'Changing identity' }
+            'error' { 'The identity was not changed' }
+            'finish' { 'Identity changed' }
+            default { 'Change identity' }
+        }
+    } else {
+        switch ($Page) {
+            'choice' { 'Deploy Jarvis' }
+            'identity' { 'Customize identity' }
+            'review' { 'Review deployment' }
+            'busy' { if ($Preview) { 'Checking deployment' } else { 'Deploying Jarvis' } }
+            'retry' { 'Installation needs attention' }
+            'error' { 'Deployment could not continue' }
+            'finish' { 'Jarvis is ready' }
+        }
     }
     return [pscustomobject]@{
         Title = $title

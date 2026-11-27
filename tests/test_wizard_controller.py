@@ -233,3 +233,154 @@ def test_a_copy_inherits_the_source_identity_and_offers_the_two_resets(
     assert steps["restored fields"]["request"] == '{"default_brand":true}'
     assert steps["restored fields"]["restore"] is False
     assert steps["discarded"]["name"] == "Work" and steps["discarded"]["next"]
+
+
+REBRAND_DRIVER = (
+    DRIVER.split("Snapshot 'first page'")[0]
+    + r"""
+function Press($control) {
+    $clickEvent = [Windows.Controls.Primitives.ButtonBase]::ClickEvent
+    $control.RaiseEvent((New-Object Windows.RoutedEventArgs $clickEvent))
+}
+function PumpWorker {
+    for ($i = 0; $i -lt 400 -and $script:worker; $i++) {
+        Start-Sleep -Milliseconds 50
+        Receive-WizardWorker
+    }
+    if ($script:worker) { throw 'The worker never finished' }
+}
+function Look([string]$Label) {
+    [ordered]@{
+        label = $Label
+        page = $script:page
+        title = $controls.PageTitle.Text
+        status = $controls.PageStatus.Text
+        next = $controls.NextButton.IsEnabled
+        nextText = [string]$controls.NextButton.Content
+        customize = [string]$controls.CustomizeButton.Visibility
+        consent = [string]$controls.PythonConsent.Visibility
+        targetLabel = [string]$controls.TargetLabel.Content
+        target = $controls.TargetText.Text
+        name = $controls.IdentityName.Text
+        general = $controls.IdentityGeneralMessage.Text
+        review = $controls.ReviewPane.Text
+        output = $controls.OutputText.Text
+        launch = [string]$controls.LaunchButton.Visibility
+        shortcut = $script:deploymentResult.shortcut_file
+        icon = $script:deploymentResult.shortcut_icon
+    } | ConvertTo-Json -Compress
+}
+$controls.RebrandMode.IsChecked = $true
+Look 'rebrand choice'
+$controls.TargetText.Text = $env:REBRAND_HOME
+Press $controls.NextButton
+Look 'entered'
+Pump 'ok'
+Look 'read'
+$controls.IdentityName.Text = 'Lab'
+Pump 'ok'
+Look 'edited'
+Press $controls.NextButton
+Look 'review'
+Press $controls.BackButton
+Look 'back'
+Press $controls.NextButton
+Press $controls.NextButton
+Look 'applying'
+PumpWorker
+Look 'finished'
+Stop-IdentityCheckProcess
+"""
+)
+
+
+def rebrand_environment(tmp_path: Path, target: Path) -> dict[str, str]:
+    return {
+        "PYTHONIOENCODING": "utf-8",
+        "TEST_DEPLOY_PYTHON": sys.executable,
+        "TEST_DEPLOY_VENV_READY": "1",
+        "DRIVEN_TARGET": str(tmp_path / "never-created"),
+        "REBRAND_HOME": str(target),
+    }
+
+
+def existing_home(root: Path) -> Path:
+    (root / "src/jarvis/core").mkdir(parents=True)
+    (root / "src/jarvis/core/brand.py").write_text("# marker", encoding="utf-8")
+    (root / "config.toml").write_text(
+        '[brand]\nname = "Work"\nmonogram = "W"\naccent = "#E0A03F"\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_a_home_is_rebranded_through_the_wizard_without_a_window(
+    home: Path, tmp_path: Path
+) -> None:
+    target = existing_home(tmp_path / "work-home")
+
+    result = run_powershell(
+        driven_controller(home, REBRAND_DRIVER),
+        env=rebrand_environment(tmp_path, target),
+        sta=True,
+    )
+
+    steps = {step["label"]: step for step in json_lines(result)}
+    choice = steps["rebrand choice"]
+    assert (choice["title"], choice["nextText"]) == (
+        "Change identity",
+        "Customize identity",
+    )
+    assert choice["customize"] == "Collapsed" and choice["consent"] == "Collapsed"
+    assert choice["targetLabel"] == "_Jarvis home folder"
+    assert steps["entered"]["page"] == "identity"
+    assert (steps["read"]["name"], steps["read"]["next"]) == ("Work", False)
+    assert steps["read"]["status"] == ""
+    assert (steps["edited"]["name"], steps["edited"]["next"]) == ("Lab", True)
+    review = steps["review"]
+    assert (review["page"], review["title"], review["nextText"]) == (
+        "review",
+        "Review identity change",
+        "Apply",
+    )
+    assert f"Home: {target}" in review["review"]
+    assert "Identity: Lab (changed)" in review["review"]
+    assert steps["back"]["page"] == "identity" and steps["back"]["name"] == "Lab"
+    assert steps["applying"]["page"] == "busy"
+    done = steps["finished"]
+    assert (done["page"], done["title"]) == ("finish", "Identity changed")
+    assert "The identity of this home was changed." in done["output"]
+    assert done["launch"] == "Collapsed"
+    assert done["shortcut"] == "Lab - work-home.lnk"
+    assert done["icon"] == str(target / "brand" / "brand.ico")
+    config = (target / "config.toml").read_text(encoding="utf-8")
+    assert 'name = "Lab"' in config
+    assert (target / "brand" / "brand.ico").is_file()
+    assert not (tmp_path / "never-created").exists()
+
+
+def test_a_home_that_cannot_be_rebranded_stops_at_the_identity_page(
+    home: Path, tmp_path: Path
+) -> None:
+    target = existing_home(tmp_path / "old-home")
+    (target / "src/jarvis/core/brand.py").unlink()
+    driver = (
+        REBRAND_DRIVER.split("$controls.RebrandMode.IsChecked = $true")[0]
+        + "$controls.RebrandMode.IsChecked = $true\n"
+        + "$controls.TargetText.Text = $env:REBRAND_HOME\n"
+        + "Press $controls.NextButton\n"
+        + "Pump 'invalid'\n"
+        + "Look 'refused'\n"
+        + "Stop-IdentityCheckProcess\n"
+    )
+
+    result = run_powershell(
+        driven_controller(home, driver),
+        env=rebrand_environment(tmp_path, target),
+        sta=True,
+    )
+
+    refused = {step["label"]: step for step in json_lines(result)}["refused"]
+    assert refused["page"] == "identity" and refused["next"] is False
+    assert "update this home first" in refused["general"]
+    assert 'name = "Work"' in (target / "config.toml").read_text(encoding="utf-8")
