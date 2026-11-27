@@ -263,6 +263,7 @@ class SemanticPassageIndex:
                 configured_backend=self.configured_backend,
                 stored_backend=stored,
                 last_error="semantic projection is disabled",
+                disabled=True,
             )
         if stored is None:
             return SemanticProjectionState(

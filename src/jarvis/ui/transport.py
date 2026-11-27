@@ -114,6 +114,7 @@ from jarvis.memory.files import (
     MemoryFileRead,
     MemoryFileRepository,
 )
+from jarvis.memory.health import MemoryFileOutcome, MemoryFileOutcomeObserved
 from jarvis.tools.interception import ToolCallFinished, ToolCallStarted
 from jarvis.ui.config_selection import validate_response_mode
 from jarvis.ui.contract import (
@@ -2114,7 +2115,12 @@ class UiTransportServer:
         if self._memory_file_repository is None:
             raise web.HTTPServiceUnavailable(text="memory files not available")
         file_id = self._parse_memory_file_id(request)
-        read = await asyncio.to_thread(self._memory_file_repository.read, file_id)
+        try:
+            read = await asyncio.to_thread(self._memory_file_repository.read, file_id)
+        except OSError:
+            await self._report_memory_file_outcome(file_id, MemoryFileOutcome.IO_FAILED)
+            raise
+        await self._report_memory_file_outcome(file_id, MemoryFileOutcome.READ_OK)
         return web.json_response(self._memory_file_payload(read))
 
     async def _memory_file_put_handler(self, request: web.Request) -> web.Response:
@@ -2135,6 +2141,9 @@ class UiTransportServer:
                 self._memory_file_repository.write, file_id, payload["content"]
             )
         except MemoryFileOverCapError as error:
+            await self._report_memory_file_outcome(
+                file_id, MemoryFileOutcome.WRITE_REFUSED_FULL
+            )
             return web.json_response(
                 {
                     "status": "rejected",
@@ -2144,7 +2153,18 @@ class UiTransportServer:
                 },
                 status=413,
             )
+        except OSError:
+            await self._report_memory_file_outcome(file_id, MemoryFileOutcome.IO_FAILED)
+            raise
+        await self._report_memory_file_outcome(file_id, MemoryFileOutcome.WRITE_OK)
         return web.json_response(self._memory_file_payload(read))
+
+    async def _report_memory_file_outcome(
+        self, file_id: MemoryFileId, outcome: MemoryFileOutcome
+    ) -> None:
+        await self._bus.publish(
+            MemoryFileOutcomeObserved, MemoryFileOutcomeObserved(file_id, outcome)
+        )
 
     def _require_http_token(self, request: web.Request) -> None:
         if not token_matches(self.token, request.query.get("token")):

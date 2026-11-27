@@ -90,3 +90,17 @@ def test_russian_wording_preserves_v1_2_10_muted_microphone_detail():
 def test_unknown_language_raises_key_error():
     with pytest.raises(KeyError):
         ui_text("context_reset", "de")
+
+
+@pytest.mark.parametrize("language", SUPPORTED_UI_LANGUAGES)
+@pytest.mark.parametrize(
+    "key",
+    [
+        "memory_detail_ready",
+        "memory_detail_semantic_down",
+        "memory_detail_file_full",
+        "memory_detail_files_unreadable",
+    ],
+)
+def test_every_memory_chip_detail_has_text_in_every_language(key, language):
+    assert ui_text(key, language) != key

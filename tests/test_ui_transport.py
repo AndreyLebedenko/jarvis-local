@@ -103,6 +103,7 @@ from jarvis.memory.files import (
     MemoryFileRepository,
     build_memory_file_specs,
 )
+from jarvis.memory.health import MemoryFileOutcome, MemoryFileOutcomeObserved
 from jarvis.tools.interception import ToolCallFinished, ToolCallStarted
 from jarvis.ui.contract import (
     EventLevel,
@@ -2713,6 +2714,82 @@ async def test_memory_file_api_auth_hidden_over_cap_and_invalid_identifier(
             assert repository.read(MemoryFileId.MEMORY).content == ""
     finally:
         await server.stop()
+
+
+async def _memory_outcomes(
+    bus: EventBus,
+) -> list[tuple[MemoryFileId, MemoryFileOutcome]]:
+    outcomes: list[tuple[MemoryFileId, MemoryFileOutcome]] = []
+
+    async def record(event: MemoryFileOutcomeObserved) -> None:
+        outcomes.append((event.file_id, event.outcome))
+
+    bus.subscribe(MemoryFileOutcomeObserved, record)
+    return outcomes
+
+
+@pytest.mark.asyncio
+async def test_memory_file_api_reports_read_write_and_refused_write_outcomes(
+    tmp_path: Path,
+) -> None:
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path), memory_max_chars=5))
+    )
+    bus = EventBus()
+    outcomes = await _memory_outcomes(bus)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        memory_file_repository=repository,
+    )
+    info = await server.start()
+    url = f"http://127.0.0.1:{info.port}/api/memory/files/memory?token=valid-token"
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.get(url)
+            await session.put(url, json={"content": "ok"})
+            await session.put(url, json={"content": "far too long"})
+    finally:
+        await server.stop()
+
+    assert outcomes == [
+        (MemoryFileId.MEMORY, MemoryFileOutcome.READ_OK),
+        (MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_OK),
+        (MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_memory_file_api_reports_an_io_failure_on_read(
+    tmp_path: Path,
+) -> None:
+    def failing_reader(path: Path) -> str | None:
+        raise PermissionError(str(path))
+
+    repository = MemoryFileRepository(
+        build_memory_file_specs(MemorySettings(root=str(tmp_path))),
+        reader=failing_reader,
+    )
+    bus = EventBus()
+    outcomes = await _memory_outcomes(bus)
+    server = UiTransportServer(
+        bus,
+        _FakeControlApi(),
+        token_factory=lambda: "valid-token",
+        memory_file_repository=repository,
+    )
+    info = await server.start()
+    try:
+        async with aiohttp.ClientSession() as session:
+            response = await session.get(
+                f"http://127.0.0.1:{info.port}/api/memory/files/self?token=valid-token"
+            )
+            assert response.status == 500
+    finally:
+        await server.stop()
+
+    assert outcomes == [(MemoryFileId.SELF, MemoryFileOutcome.IO_FAILED)]
 
 
 @pytest.mark.asyncio

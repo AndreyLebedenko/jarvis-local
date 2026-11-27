@@ -12,6 +12,9 @@ from jarvis.inputs.camera import (
     CameraStateChanged,
 )
 from jarvis.inputs.capture import CaptureFailed, ScreenshotCaptured
+from jarvis.journal.health import SemanticSearchHealthObserved
+from jarvis.memory.files import MemoryFileId
+from jarvis.memory.health import MemoryFileOutcome, MemoryFileOutcomeObserved
 from jarvis.ui.contract import HealthStatus, ModuleId
 from jarvis.ui.module_health import ModuleHealthChanged, ModuleHealthTracker
 
@@ -338,3 +341,134 @@ async def test_a_failed_source_keeps_the_module_degraded_after_another_succeeds(
         (HealthStatus.ERROR, "camera_detail_failed"),
         (HealthStatus.DEGRADED, "camera_detail_partial"),
     ]
+
+
+def _memory_states(recorder: _Recorder) -> list[tuple[HealthStatus, str]]:
+    return [
+        (e.status, e.detail_key) for e in recorder.events if e.module is ModuleId.MEMORY
+    ]
+
+
+async def _semantic(bus: EventBus, *, available: bool) -> None:
+    await bus.publish(
+        SemanticSearchHealthObserved, SemanticSearchHealthObserved(available)
+    )
+
+
+async def _file(bus: EventBus, file_id: MemoryFileId, outcome: MemoryFileOutcome):
+    await bus.publish(
+        MemoryFileOutcomeObserved, MemoryFileOutcomeObserved(file_id, outcome)
+    )
+
+
+async def test_memory_is_ok_once_semantic_search_reports_available():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+
+    assert _memory_states(recorder) == [(HealthStatus.OK, "memory_detail_ready")]
+
+
+async def test_memory_is_degraded_while_semantic_search_is_down():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _semantic(bus, available=False)
+    await _semantic(bus, available=True)
+
+    assert _memory_states(recorder) == [
+        (HealthStatus.OK, "memory_detail_ready"),
+        (HealthStatus.DEGRADED, "memory_detail_semantic_down"),
+        (HealthStatus.OK, "memory_detail_ready"),
+    ]
+
+
+async def test_a_refused_write_degrades_memory_until_a_write_succeeds():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_OK)
+
+    assert _memory_states(recorder) == [
+        (HealthStatus.OK, "memory_detail_ready"),
+        (HealthStatus.DEGRADED, "memory_detail_file_full"),
+        (HealthStatus.OK, "memory_detail_ready"),
+    ]
+
+
+async def test_a_read_does_not_clear_a_full_file():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.READ_OK)
+
+    assert _memory_states(recorder)[-1] == (
+        HealthStatus.DEGRADED,
+        "memory_detail_file_full",
+    )
+
+
+async def test_a_write_to_one_file_does_not_clear_the_other_full_file():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)
+    await _file(bus, MemoryFileId.SELF, MemoryFileOutcome.WRITE_OK)
+
+    assert _memory_states(recorder)[-1] == (
+        HealthStatus.DEGRADED,
+        "memory_detail_file_full",
+    )
+
+
+async def test_a_file_io_failure_is_an_error_until_the_file_works_again():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.SELF, MemoryFileOutcome.IO_FAILED)
+    await _file(bus, MemoryFileId.SELF, MemoryFileOutcome.READ_OK)
+
+    assert _memory_states(recorder) == [
+        (HealthStatus.OK, "memory_detail_ready"),
+        (HealthStatus.ERROR, "memory_detail_files_unreadable"),
+        (HealthStatus.OK, "memory_detail_ready"),
+    ]
+
+
+async def test_an_unreadable_file_outranks_a_full_file():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)
+    await _file(bus, MemoryFileId.SELF, MemoryFileOutcome.IO_FAILED)
+
+    assert _memory_states(recorder)[-1] == (
+        HealthStatus.ERROR,
+        "memory_detail_files_unreadable",
+    )
+
+
+async def test_a_full_file_is_reported_ahead_of_semantic_search_being_down():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=False)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_REFUSED_FULL)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_OK)
+
+    assert _memory_states(recorder) == [
+        (HealthStatus.DEGRADED, "memory_detail_semantic_down"),
+        (HealthStatus.DEGRADED, "memory_detail_file_full"),
+        (HealthStatus.DEGRADED, "memory_detail_semantic_down"),
+    ]
+
+
+async def test_repeated_identical_memory_signals_publish_once():
+    bus, recorder = _tracked_bus()
+
+    await _semantic(bus, available=True)
+    await _semantic(bus, available=True)
+    await _file(bus, MemoryFileId.MEMORY, MemoryFileOutcome.WRITE_OK)
+
+    assert _memory_states(recorder) == [(HealthStatus.OK, "memory_detail_ready")]

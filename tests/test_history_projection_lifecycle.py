@@ -24,6 +24,7 @@ from jarvis.journal import (
     SemanticProjectionState,
     UnavailableSemanticHistoryProjection,
 )
+from jarvis.journal.health import SemanticSearchHealthObserved
 
 
 @pytest.mark.asyncio
@@ -245,6 +246,89 @@ async def test_lifecycle_logs_projection_error_and_wait_for_idle_does_not_raise(
     assert "History projection update failed" in caplog.text
 
 
+async def _collect_semantic_health(bus: EventBus) -> list[SemanticSearchHealthObserved]:
+    events: list[SemanticSearchHealthObserved] = []
+
+    async def handler(event: SemanticSearchHealthObserved) -> None:
+        events.append(event)
+
+    bus.subscribe(SemanticSearchHealthObserved, handler)
+    return events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "available"),
+    [
+        (SemanticProjectionState(HistoryProjectionStatus.ENABLED), True),
+        (SemanticProjectionState(HistoryProjectionStatus.UNBUILT), True),
+        (
+            SemanticProjectionState(
+                HistoryProjectionStatus.UNAVAILABLE, last_error="embedding failed"
+            ),
+            False,
+        ),
+        (
+            SemanticProjectionState(
+                HistoryProjectionStatus.UNAVAILABLE,
+                last_error="semantic projection is disabled",
+                disabled=True,
+            ),
+            True,
+        ),
+    ],
+    ids=["enabled", "unbuilt", "failed", "disabled-in-config"],
+)
+async def test_lifecycle_publishes_semantic_availability_from_projection_state(
+    state: SemanticProjectionState, available: bool
+) -> None:
+    bus = EventBus()
+    events = await _collect_semantic_health(bus)
+    lifecycle = HistoryProjectionLifecycle(
+        bus,
+        projections=(),
+        semantic_projection=_FakeSemanticProjection(state),
+    )
+
+    await lifecycle.publish_search_health()
+
+    assert events == [SemanticSearchHealthObserved(available=available)]
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_republishes_semantic_availability_after_an_event() -> None:
+    bus = EventBus()
+    events = await _collect_semantic_health(bus)
+    semantic = _FakeSemanticProjection()
+    lifecycle = HistoryProjectionLifecycle(
+        bus, projections=(), semantic_projection=semantic
+    )
+    await lifecycle.start()
+    semantic.current_state = SemanticProjectionState(
+        HistoryProjectionStatus.UNAVAILABLE, last_error="embedding failed"
+    )
+    event = _event(
+        session_id="20260716-153000-ab12",
+        timestamp="2026-07-16T15:31:00+01:00",
+        role="assistant",
+        source="assistant",
+        text="new answer",
+    )
+
+    await bus.publish(
+        JournalEventAppended,
+        JournalEventAppended(
+            reference=JournalEventRef(event.session_id, 0), event=event
+        ),
+    )
+    try:
+        await lifecycle.wait_for_idle()
+    finally:
+        await lifecycle.close()
+
+    assert events == [SemanticSearchHealthObserved(available=False)]
+
+
 def test_history_service_deletes_raw_and_derived_session(tmp_path: Path) -> None:
     bus = EventBus()
     store = JournalStore(tmp_path / "journal")
@@ -348,12 +432,15 @@ class _FailingProjection:
 class _FakeSemanticProjection:
     name = "semantic"
 
-    def __init__(self) -> None:
+    def __init__(self, state: SemanticProjectionState | None = None) -> None:
         self.rebuild_calls = 0
         self.rebuild_if_backend_changed_calls = 0
+        self.current_state = state or SemanticProjectionState(
+            HistoryProjectionStatus.ENABLED
+        )
 
     def state(self) -> SemanticProjectionState:
-        return SemanticProjectionState(HistoryProjectionStatus.ENABLED)
+        return self.current_state
 
     def rebuild(self) -> None:
         self.rebuild_calls += 1
