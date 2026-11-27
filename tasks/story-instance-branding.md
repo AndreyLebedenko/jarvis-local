@@ -1,7 +1,7 @@
 # Story: Instance branding
 
-Status: In progress, 2026-11-27. Tasks 1-4 are complete; task 5 is implemented and
-waits for the owner's handoff run; task 6 is pending. No release version assigned. On 2026-11-27 the owner added task 5 (change the identity of an
+Status: In progress, 2026-11-27. Tasks 1-5 are complete; task 6 is pending. No release
+version assigned. On 2026-11-27 the owner added task 5 (change the identity of an
 existing home) and moved documentation and release verification to task 6.
 
 Related work: `story-deployment-wizard.md`. Its wizard and `deploy.cmd` are

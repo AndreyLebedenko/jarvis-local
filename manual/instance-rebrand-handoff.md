@@ -13,7 +13,7 @@ window cases. The agent did run:
 
 What no agent run has seen: the window's look, the folder dialog, the shortcut file, the
 real tray and the real installer.
-Card: `tasks/task-instance-rebrand-existing-home.md`.
+Card: `tasks/done/task-instance-rebrand-existing-home.md`.
 
 What it answers: a home that is already deployed can get a new name, letter, accent colour
 or PNG without a new folder; the rules and messages are the deployment's own; a refused

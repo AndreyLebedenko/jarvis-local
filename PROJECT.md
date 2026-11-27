@@ -4391,7 +4391,7 @@ options, Copy inheritance and the icon-generation stage are described there too.
 identity. Task 1 (settings and runtime consumption) defines the contract; task 2
 adds icon generation and the launcher identity; task 3 integrates deployment
 (flags, `[brand]` rewrite, icon stage, shortcut); task 4 adds the wizard
-Identity step. Task 5 (`tasks/task-instance-rebrand-existing-home.md`) lets the
+Identity step. Task 5 (`tasks/done/task-instance-rebrand-existing-home.md`) lets the
 owner change the identity of an existing home in place; task 6 documents the story.
 
 - Source of truth: the optional `[brand]` section of `config.toml` with keys
@@ -4614,7 +4614,7 @@ Wizard Identity step (task 4):
   control, format, separator and private-use characters become U+FFFD before display;
   everything is assigned as plain text.
 
-Rebrand an existing home (task 5, `tasks/task-instance-rebrand-existing-home.md`):
+Rebrand an existing home (task 5, `tasks/done/task-instance-rebrand-existing-home.md`):
 
 - Decision (owner, 2026-11-27, reversing the story's "edit `[brand]` and restart"): the
   identity of a deployed home can be changed in place, from the CLI and from the wizard,

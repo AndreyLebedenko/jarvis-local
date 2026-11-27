@@ -1,10 +1,9 @@
 # Task instance-rebrand: Change the identity of an existing home
 
-Status: In progress, 2026-11-27. Implemented and verified by the automated suite on branch
-`feat/branding-5-rebrand` (cut from `feat/branding-4-wizard`, which holds task 4); waiting for
-the owner's run of `manual/instance-rebrand-handoff.md` (window, shortcut, tray and the
-installer are human-run). Task instance-branding-4 is completed; its Identity page,
-`--brand-check` and page modules are the base of this card.
+Status: Completed. Verified by the automated suite and, on 2026-11-27, by the owner's run of
+`manual/instance-rebrand-handoff.md` (window, shortcut, tray; human-run): it works. Branch
+`feat/branding-5-rebrand` (cut from `feat/branding-4-wizard`, which holds task 4). Task
+instance-branding-4's Identity page, `--brand-check` and page modules are the base of this card.
 
 Story: `tasks/story-instance-branding.md`, task 5 (release verification moved to task 6).
 This card reverses one decision of that story, "No in-place rebranding wizard. An existing
@@ -237,8 +236,8 @@ identifiers; the single-instance guard; CI scope and `requirements.txt`.
 - [x] No new dependency; technical identifiers unchanged; new files in the inventory.
   Proof: `tests/test_deployment_plan.py` (inventory and the `tools/install` pin test); `requirements.txt` untouched.
 
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green (7182 passed, 2 skipped;
-  ruff clean); the human handoff is prepared and waits for the owner's run.
+- [x] `python -m pytest`, `ruff check`, `ruff format --check` green (7182 passed, 2 skipped;
+  ruff clean); the human handoff was prepared and the owner ran it on 2026-11-27.
 
 ## Implementation plan (TDD order)
 
