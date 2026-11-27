@@ -4391,7 +4391,7 @@ options, Copy inheritance and the icon-generation stage are described there too.
 identity. Task 1 (settings and runtime consumption) defines the contract; task 2
 adds icon generation and the launcher identity; task 3 integrates deployment
 (flags, `[brand]` rewrite, icon stage, shortcut); task 4 adds the wizard
-Identity step. Task 5 (planned, `tasks/task-instance-rebrand-existing-home.md`) lets the
+Identity step. Task 5 (`tasks/task-instance-rebrand-existing-home.md`) lets the
 owner change the identity of an existing home in place; task 6 documents the story.
 
 - Source of truth: the optional `[brand]` section of `config.toml` with keys
@@ -4574,8 +4574,9 @@ Wizard Identity step (task 4):
   request is an answer (exit code 0); only a crash exits 1. `icon_preview` says
   what to draw: `monogram` with the renderer's own `MonogramStyle` as `art`,
   `image` with the validated PNG path, or `packaged` for the default brand.
-  `deploy.ps1` has two parameter sets (`Deploy` with the mandatory `-Target`, and
-  `CheckBrand` without it and without `-Resume`, `-Yes`, `-Preview`).
+  `deploy.ps1` has three parameter sets (`Deploy` with the mandatory `-Target`,
+  `CheckBrand` without it and without `-Resume`, `-Yes`, `-Preview`, and `Rebrand`,
+  see "Rebrand an existing home").
 - Request rules (`tools/install/wizard_identity.ps1`, pure state): the starting values
   come from a check of the empty request (Clean: the default brand; Copy: the source
   brand, `origin inherited`). Name and accent boxes are prefilled and a key is sent
@@ -4612,6 +4613,53 @@ Wizard Identity step (task 4):
   planner's wording is still reachable), messages are cut at 300 characters and
   control, format, separator and private-use characters become U+FFFD before display;
   everything is assigned as plain text.
+
+Rebrand an existing home (task 5, `tasks/task-instance-rebrand-existing-home.md`):
+
+- Decision (owner, 2026-11-27, reversing the story's "edit `[brand]` and restart"): the
+  identity of a deployed home can be changed in place, from the CLI and from the wizard,
+  with the deployment's own rules and messages. Editing `[brand]` by hand and the
+  `Regenerate icons` button keep working and stay the way to rebuild icons alone.
+- Entry points: `deploy.cmd -Rebrand -Target <home>` with the six brand options
+  (`deploy.ps1` set `Rebrand`: `-Target` mandatory, `-Resume`, `-Yes`, `-Preview` absent;
+  no consent flag, it never installs Python) runs `tools.deployment --rebrand`;
+  `deploy.ps1 -Rebrand -Target <home> -CheckBrand` runs `--brand-check --target <home>`,
+  the read-only answer of the same shape as the wizard's check, with the home as the
+  source of the stored brand (Copy semantics). A rejected request is an answer
+  (`JARVIS_DEPLOY_REBRAND:{ok: false, message}`, exit 0); a half-applied one is an
+  `ERROR:` line and exit 1.
+- Eligibility (`tools/deployment_rebrand.py`): the folder exists, has `config.toml` and
+  `src/jarvis/core/brand.py`. A home that predates branding is refused with "update this
+  home first": an old runtime rejects an unknown `[brand]` section (`config.py`, unknown
+  section check), so writing it would stop that home from starting. A `[brand]` in
+  `config.ui.toml` is refused. An empty request is refused ("Nothing to change"),
+  because regeneration already has its own entry points.
+- Write order (all-or-nothing from the owner's view): plan with `plan_brand(home, COPY,
+  request)`; render and verify the icons in a staging folder (a new PNG is rendered from
+  its validated path, not from a half-written home: `generate_brand_assets(image=...)`);
+  only then, through `before_publish`, write `brand-source/icon.png` and `config.toml`
+  (both by temporary file and `os.replace`; a chosen file that already is the home's
+  `brand-source/icon.png` is not copied onto itself), then publish `brand.png` and
+  `brand.ico`. A planner or renderer failure leaves the home byte-identical; a failure
+  after the first write raises an error naming `python -m jarvis.core.brand_render --home
+  <home>`. A non-default result always renders (the command also repairs stale icons).
+  A default result removes `[brand]`, renders nothing and deletes nothing: `brand/` and
+  `brand-source/` stay, the launcher ignores them for a default brand.
+- The command may run while Jarvis runs: nothing in `src/` writes `config.toml` (the
+  Settings form writes `config.ui.toml`) and the runtime never reads the icon files.
+  Refresh times: the Status Console and window titles read `[brand]` at runtime start; the
+  tray follows at the next mode start or after `Regenerate icons`. A shortcut saved earlier
+  keeps its name; its icon changes only if it already pointed at `brand\brand.ico`. After a
+  restore to the default such a shortcut keeps showing the old icon because the file stays.
+  The answer carries `shortcut_file` and `shortcut_icon` of the new identity for a new one.
+- Wizard: the third mode `Change the identity of an existing home` (the destination box
+  becomes `Jarvis home folder`, `Customize identity...`, the Python consent and `Launch`
+  are hidden). Flow `choice -> identity -> review -> busy -> finish`; the review is built
+  from the home check's answer (no preview run), `Apply` runs the job with
+  `JARVIS_WIZARD_REBRAND=True`. The Identity page starts from the home's stored brand and
+  has the same resets as Copy; `Review` stays off until the check is `ok` (an unavailable
+  check does not let a rebrand go on) and until something changed. The state remembers the
+  home it was read from; another home, or a failed first read, starts a new state.
 
 ## Architecture v2.0 (MCP voice guide)
 

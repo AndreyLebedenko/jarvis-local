@@ -1,8 +1,10 @@
 # Task instance-rebrand: Change the identity of an existing home
 
-Status: Approved, 2026-11-27. Not started. Task instance-branding-4 is completed; its
-Identity page, `--brand-check` and page modules are the base of this card (still
-uncommitted on `feat/branding-4-wizard` until the owner asks for a commit).
+Status: In progress, 2026-11-27. Implemented and verified by the automated suite on branch
+`feat/branding-5-rebrand` (cut from `feat/branding-4-wizard`, which holds task 4); waiting for
+the owner's run of `manual/instance-rebrand-handoff.md` (window, shortcut, tray and the
+installer are human-run). Task instance-branding-4 is completed; its Identity page,
+`--brand-check` and page modules are the base of this card.
 
 Story: `tasks/story-instance-branding.md`, task 5 (release verification moved to task 6).
 This card reverses one decision of that story, "No in-place rebranding wizard. An existing
@@ -195,28 +197,48 @@ identifiers; the single-instance guard; CI scope and `requirements.txt`.
 
 ## Acceptance criteria
 
-- [ ] A request changes `[brand]` in the existing home and nothing else in `config.toml`
+- [x] A request changes `[brand]` in the existing home and nothing else in `config.toml`
   (other keys, comments and order preserved); with a new PNG, `brand-source/icon.png` is
   replaced; `brand.png` and `brand.ico` are regenerated; nothing else in the home changes.
-- [ ] Every task-1/2/3 rejection arrives with the planner's exact message and the home is
+  Proof: `tests/test_deployment_rebrand.py::test_a_rename_changes_the_name_and_nothing_else_in_the_config`, `...::test_a_new_png_replaces_the_source_png_and_is_what_gets_rendered`, `tests/test_wizard_brand_plumbing.py::test_a_rebrand_through_the_job_changes_the_existing_home_with_real_icons`. (human) Cases 2 and 3.
+
+- [x] Every task-1/2/3 rejection arrives with the planner's exact message and the home is
   byte-identical afterwards.
-- [ ] A render failure leaves the home byte-identical; a failure after the first write
+  Proof: `tests/test_deployment_rebrand.py::test_every_rejection_names_the_key_and_leaves_the_home_untouched` (and the PNG, empty-request, ineligible and UI-layer tests). (human) Case 5.
+
+- [x] A render failure leaves the home byte-identical; a failure after the first write
   names the recovery command.
-- [ ] `-DefaultBrand` removes `[brand]`, generates nothing, deletes nothing, and the
+  Proof: `...::test_a_renderer_failure_leaves_the_home_byte_identical`, `...::test_a_failure_while_publishing_names_the_recovery_command`, `tests/test_deployment_rebrand_cli.py::test_a_half_applied_rebrand_is_an_error_naming_the_recovery_command`.
+
+- [x] `-DefaultBrand` removes `[brand]`, generates nothing, deletes nothing, and the
   launcher then shows the packaged identity.
-- [ ] Picking the home's own `brand-source/icon.png` does not fail or corrupt it.
-- [ ] A home that is not eligible, an empty request, and a `[brand]` in `config.ui.toml`
+  Proof: `...::test_the_default_brand_removes_the_table_generates_nothing_and_deletes_nothing`. (human) Case 4; the launcher showing the packaged identity is task 2's tested behaviour.
+
+- [x] Picking the home's own `brand-source/icon.png` does not fail or corrupt it.
+  Proof: `...::test_choosing_the_homes_own_source_png_changes_nothing_about_it`. (human) Case 3.
+
+- [x] A home that is not eligible, an empty request, and a `[brand]` in `config.ui.toml`
   are refused with a message that says what to do.
-- [ ] Hostile names and paths survive the JSON hand-over, the TOML and the page, as in
+  Proof: `...::test_a_home_that_predates_branding_is_refused_and_told_to_update`, `...::test_an_empty_request_is_refused_and_points_at_regeneration`, `...::test_a_brand_table_in_the_ui_layer_is_refused`, `tests/test_wizard_controller.py::test_a_home_that_cannot_be_rebranded_stops_at_the_identity_page`. (human) Cases 1, 6 and 8.
+
+- [x] Hostile names and paths survive the JSON hand-over, the TOML and the page, as in
   task 4.
-- [ ] Wizard: the third mode follows the table in C; the Identity page starts from the
+  Proof: `...::test_a_hostile_name_survives_the_toml`, `tests/test_wizard_brand_plumbing.py::test_the_worker_hands_a_rebrand_to_the_backend_as_target_and_brand_only` and the hostile-name job test of task 4 (same hand-over).
+
+- [x] Wizard: the third mode follows the table in C; the Identity page starts from the
   stored brand; Review shows the resolved brand and the files that change; the default
   Clean and Copy flows and their Review text are unchanged (the task-4 tests stay green).
-- [ ] The finish text states when each surface refreshes; a shortcut saved afterwards has
+  Proof: `tests/test_wizard_rebrand.py` (titles, readiness, texts), `tests/test_wizard_controller.py::test_a_home_is_rebranded_through_the_wizard_without_a_window`; the task-4 page, identity and plumbing tests stay green. (human) Cases 7 and 8.
+
+- [x] The finish text states when each surface refreshes; a shortcut saved afterwards has
   the new name and icon. (human) the owner confirms tray, titles and shortcut.
-- [ ] No new dependency; technical identifiers unchanged; new files in the inventory.
-- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green; the human handoff is
-  prepared, not run.
+  Proof: `tests/test_wizard_rebrand.py::test_the_finish_text_says_what_refreshes_when`, `tests/test_deployment_rebrand_cli.py::test_a_rebrand_prints_the_resolved_brand_and_the_written_files` (shortcut name and icon of the new identity). (human) Case 7, steps 4 and 5, and Case 9.
+
+- [x] No new dependency; technical identifiers unchanged; new files in the inventory.
+  Proof: `tests/test_deployment_plan.py` (inventory and the `tools/install` pin test); `requirements.txt` untouched.
+
+- [ ] `python -m pytest`, `ruff check`, `ruff format --check` green (7182 passed, 2 skipped;
+  ruff clean); the human handoff is prepared and waits for the owner's run.
 
 ## Implementation plan (TDD order)
 
@@ -247,3 +269,45 @@ runs and what refreshes when (Status Console after restart, tray after the next 
 start); a shortcut saved before and after; an ineligible home. The installer is not run
 by any case if the home is prepared from a fake-installer deployment; the cases that need
 the real installer are named in the document.
+
+## Implementation notes (differences from the plan above)
+
+- **Spikes (step 1), no contradiction with the card.** Nothing in `src/` writes `config.toml`
+  (the Settings form writes `config.ui.toml`), so a rebrand is allowed while Jarvis runs. An
+  old runtime rejects an unknown `[brand]` section (`core/config.py`, "Unknown section(s)"),
+  which is why a home without `src/jarvis/core/brand.py` is refused. The launcher's own rule
+  for a launcher-ready home (`.venv` and `launcher/runtime.py`, `launcher/model.py`) was not
+  reused: a rebrand needs neither.
+- **Renderer.** `generate_brand_assets` gained two keyword parameters: `image` (an explicit
+  PNG, validated as a deployment file, for a PNG that is not in the home yet) and
+  `before_publish` (called after the staged icons are verified and before the first
+  replacement). The rebrand writes the source PNG and `config.toml` there.
+- **Home check.** The read-only check of a home is `--brand-check --target <home>`
+  (`deploy.ps1 -Rebrand -Target <home> -CheckBrand`), not `--rebrand --brand-check`; the
+  latter combination is refused. `--brand-check` without `--target` is task 4's, unchanged.
+- **No preview run.** The wizard's review is built from the home check's answer, so the
+  card's table row "identity -> busy (read-only check) -> review" is simply "identity ->
+  review". `Review` stays off until the check is `ok` (an `unavailable` check does not let a
+  rebrand go on, unlike Clean and Copy) and until something changed.
+- **Answer.** `JARVIS_DEPLOY_REBRAND` also carries `shortcut_file` and `shortcut_icon`
+  (`shortcut_result`), so the finish page saves a shortcut with the new name and icon.
+- **Wizard chrome.** In this mode the Python consent, `Customize identity...`, the identity
+  line and `Launch Jarvis` are hidden; the destination box defaults to the folder the wizard
+  runs from (the handoff tells the owner to replace it); switching away restores `<folder>-new`.
+  The tick handler of the deployment worker became the function `Receive-WizardWorker` so
+  the controller test can pump it without a dispatcher.
+- **Names.** `_rewritten` and `_reject_ui_layer_brand` of `deployment_brand.py` became public
+  (`rewritten_config`, `reject_ui_layer_brand`) and `_rejected` of `deployment_brand_check.py`
+  became `rejected`, because the new module reuses them.
+
+## Verification
+
+Run on the final tree (Windows 11, Python 3.11.9, Windows PowerShell 5.1):
+
+- `python -m pytest`: 7182 passed, 2 skipped (2026-11-27, 3 min 45 s).
+- `python -m ruff check .`: all checks passed; `python -m ruff format --check .`: 678 files
+  already formatted.
+- Handoff Preparation and Cases 1 to 6 were run in the test area with the real renderer; the
+  output equals the documented blocks. The controller was driven without a window through a
+  complete rebrand. `tools/check_handoff_self_sufficiency.py` on this card and the handoff:
+  exit code 0.
