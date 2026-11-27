@@ -33,6 +33,7 @@ from tools.deployment_brand import (
     plan_brand,
     request_from_environment,
 )
+from tools.deployment_brand_check import BRAND_CHECK_PREFIX, check_brand_environment
 from tools.deployment_plan import (
     DeploymentMode,
     DeploymentPlan,
@@ -297,12 +298,19 @@ def preview_deployment(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path)
-    parser.add_argument("--target", required=True, type=Path)
+    parser.add_argument("--target", type=Path)
     parser.add_argument("--mode", type=DeploymentMode, default=DeploymentMode.CLEAN)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--preview", action="store_true")
+    parser.add_argument("--brand-check", action="store_true")
     args = parser.parse_args(argv)
+    if args.brand_check:
+        answer = check_brand_environment(args.source.resolve(), args.mode, os.environ)
+        print(BRAND_CHECK_PREFIX + json.dumps(answer), flush=True)
+        return 0
+    if args.target is None:
+        parser.error("the following arguments are required: --target")
     try:
         brand = request_from_environment(os.environ)
         if args.preview:

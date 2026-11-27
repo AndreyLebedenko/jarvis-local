@@ -20,6 +20,7 @@ from deploy_cli_support import build_cli_home, run_deploy_cmd
 from jarvis.core.brand_icon import check_standard_ico, inspect_png
 from jarvis.core.config import BrandSettings, load_brand
 from tools import deployment
+from tools.deployment_brand_check import BRAND_CHECK_PREFIX
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows deployment command")
 
@@ -194,3 +195,29 @@ def test_resume_refuses_brand_parameters(home: Path, tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "cannot be changed while resuming" in result.stderr
+
+
+def test_check_brand_answers_without_a_target_and_creates_nothing(
+    home: Path, tmp_path: Path
+) -> None:
+    before = {path.name for path in tmp_path.iterdir()}
+
+    result = run_deploy_cmd(home, tmp_path, "-CheckBrand", "-Name", "Work")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = result.stdout.strip().splitlines()[-1]
+    assert line.startswith(BRAND_CHECK_PREFIX)
+    assert json.loads(line.removeprefix(BRAND_CHECK_PREFIX))["brand"]["name"] == "Work"
+    assert {path.name for path in tmp_path.iterdir()} - {"stale-env"} == before
+
+
+@pytest.mark.parametrize("extra", ["-Target", "-Resume", "-Preview", "-Yes"])
+def test_check_brand_cannot_be_combined_with_deployment_parameters(
+    home: Path, tmp_path: Path, extra: str
+) -> None:
+    arguments = ["-CheckBrand", extra] + (["x"] if extra == "-Target" else [])
+
+    result = run_deploy_cmd(home, tmp_path, *arguments)
+
+    assert result.returncode != 0
+    assert BRAND_CHECK_PREFIX not in result.stdout

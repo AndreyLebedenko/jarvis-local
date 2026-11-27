@@ -290,3 +290,10 @@ def test_every_deployment_tool_module_is_in_the_inventory() -> None:
     modules = {Path("tools") / path.name for path in tools.glob("deployment*.py")}
 
     assert modules <= set(APPLICATION_FILES), "A deployed home could not deploy"
+
+
+def test_every_wizard_script_and_the_window_definition_is_in_the_inventory() -> None:
+    install = Path(__file__).resolve().parents[1] / "tools" / "install"
+    files = {Path("tools/install") / path.name for path in install.iterdir()}
+
+    assert files <= set(APPLICATION_FILES), "A deployed home could not run its wizard"

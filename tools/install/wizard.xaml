@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Jarvis Deployment Wizard" Width="760" Height="570"
+        Title="Jarvis Deployment Wizard" Width="760" Height="640"
         MinWidth="600" MinHeight="480" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" FontSize="14" Background="#F5F7FA" Foreground="#152136">
   <Window.Resources>
@@ -8,6 +8,23 @@
       <Setter Property="Padding" Value="14,7"/>
       <Setter Property="Margin" Value="8,0,0,0"/>
       <Setter Property="MinWidth" Value="88"/>
+    </Style>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#B3261E"/>
+    <SolidColorBrush x:Key="HintBrush" Color="#475770"/>
+    <Style x:Key="FieldMessage" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource ErrorBrush}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,3,0,0"/>
+      <Setter Property="AutomationProperties.LiveSetting" Value="Polite"/>
+    </Style>
+    <Style x:Key="FieldHint" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource HintBrush}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,3,0,0"/>
+    </Style>
+    <Style x:Key="FieldLabel" TargetType="Label">
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="0,10,0,3"/>
     </Style>
   </Window.Resources>
   <Grid Margin="28">
@@ -40,7 +57,96 @@
             <TextBlock Text="Allow installing Python 3.11 through winget if needed"
                        TextWrapping="Wrap"/>
           </CheckBox>
+          <DockPanel Margin="0,18,0,0" LastChildFill="True">
+            <Button x:Name="CustomizeButton" DockPanel.Dock="Right" Content="C_ustomize identity..."/>
+            <TextBlock x:Name="IdentitySummary" VerticalAlignment="Center" TextWrapping="Wrap"/>
+          </DockPanel>
         </StackPanel>
+        <ScrollViewer x:Name="IdentityPane" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+          <Grid Margin="0,0,8,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,24,0">
+              <TextBlock x:Name="IdentityStatus" Style="{StaticResource FieldHint}" Margin="0"/>
+              <Label Style="{StaticResource FieldLabel}" Content="_Name"
+                     Target="{Binding ElementName=IdentityName}"/>
+              <TextBox x:Name="IdentityName" TabIndex="0" MaxLength="100" Padding="6,3"
+                       AutomationProperties.Name="Name"/>
+              <TextBlock x:Name="IdentityNameMessage" Style="{StaticResource FieldMessage}"/>
+              <Label Style="{StaticResource FieldLabel}" Content="_Monogram letter"
+                     Target="{Binding ElementName=IdentityMonogram}"/>
+              <TextBox x:Name="IdentityMonogram" TabIndex="1" MaxLength="4" Width="80"
+                       HorizontalAlignment="Left" Padding="6,3"
+                       AutomationProperties.Name="Monogram letter"/>
+              <TextBlock x:Name="IdentityMonogramHint" Style="{StaticResource FieldHint}"/>
+              <TextBlock x:Name="IdentityMonogramMessage" Style="{StaticResource FieldMessage}"/>
+              <Label Style="{StaticResource FieldLabel}" Content="_Accent colour"
+                     Target="{Binding ElementName=IdentityAccent}"/>
+              <DockPanel LastChildFill="False">
+                <Border x:Name="AccentSwatch" DockPanel.Dock="Left" Width="28" Height="28"
+                        BorderBrush="#475770" BorderThickness="1" CornerRadius="14"
+                        Background="Transparent" AutomationProperties.Name="Accent colour sample"/>
+                <TextBox x:Name="IdentityAccent" DockPanel.Dock="Left" TabIndex="2" MaxLength="16"
+                         Width="110" Margin="8,0,0,0" Padding="6,3" VerticalContentAlignment="Center"
+                         AutomationProperties.Name="Accent colour"/>
+                <Button x:Name="PickColourButton" DockPanel.Dock="Left" TabIndex="3"
+                        Content="_Pick colour..."/>
+              </DockPanel>
+              <TextBlock x:Name="IdentityAccentMessage" Style="{StaticResource FieldMessage}"/>
+              <Label Style="{StaticResource FieldLabel}" Content="Icon _image (optional PNG)"
+                     Target="{Binding ElementName=IdentityIconText}"/>
+              <TextBox x:Name="IdentityIconText" TabIndex="4" IsReadOnly="True" Padding="6,3"
+                       TextWrapping="NoWrap" AutomationProperties.Name="Icon image"/>
+              <WrapPanel Margin="0,6,0,0">
+                <Button x:Name="ChoosePngButton" TabIndex="5" Margin="0" Content="C_hoose PNG..."/>
+                <Button x:Name="RemovePngButton" TabIndex="6" Content="Remove PN_G"/>
+              </WrapPanel>
+              <TextBlock x:Name="IdentityIconMessage" Style="{StaticResource FieldMessage}"/>
+              <WrapPanel Margin="0,14,0,0">
+                <Button x:Name="RestoreDefaultButton" TabIndex="7" Margin="0"
+                        Content="_Restore default identity"/>
+                <Button x:Name="DiscardButton" TabIndex="8" Content="Dis_card changes"/>
+              </WrapPanel>
+              <TextBlock x:Name="IdentityGeneralMessage" Style="{StaticResource FieldMessage}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Width="210">
+              <TextBlock Text="Preview" FontWeight="SemiBold" Margin="0,10,0,6"/>
+              <Border BorderBrush="#DCE2EA" BorderThickness="1" CornerRadius="8" Padding="12"
+                      Background="White" HorizontalAlignment="Left">
+                <Image x:Name="PreviewLarge" Width="96" Height="96"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       AutomationProperties.Name="Icon preview unavailable"/>
+              </Border>
+              <TextBlock x:Name="PreviewCaption" Style="{StaticResource FieldHint}"/>
+              <TextBlock Text="At icon size" FontWeight="SemiBold" Margin="0,16,0,6"/>
+              <StackPanel Orientation="Horizontal">
+                <Border Background="#202020" Padding="10" CornerRadius="4">
+                  <StackPanel Orientation="Horizontal">
+                    <Image x:Name="PreviewDark32" Width="32" Height="32"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           AutomationProperties.Name="Icon at 32 pixels on a dark background"/>
+                    <Image x:Name="PreviewDark16" Width="16" Height="16" Margin="10,0,0,0"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           AutomationProperties.Name="Icon at 16 pixels on a dark background"/>
+                  </StackPanel>
+                </Border>
+                <Border Background="#F3F3F3" BorderBrush="#DCE2EA" BorderThickness="1"
+                        Padding="9" CornerRadius="4" Margin="8,0,0,0">
+                  <StackPanel Orientation="Horizontal">
+                    <Image x:Name="PreviewLight32" Width="32" Height="32"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           AutomationProperties.Name="Icon at 32 pixels on a light background"/>
+                    <Image x:Name="PreviewLight16" Width="16" Height="16" Margin="10,0,0,0"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           AutomationProperties.Name="Icon at 16 pixels on a light background"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
         <TextBox x:Name="ReviewPane" IsReadOnly="True" BorderThickness="0" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" Visibility="Collapsed"/>
         <Grid x:Name="OutputPane" Visibility="Collapsed">

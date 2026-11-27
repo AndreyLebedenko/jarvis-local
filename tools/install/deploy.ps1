@@ -1,9 +1,11 @@
+[CmdletBinding(DefaultParameterSetName = 'Deploy')]
 param(
-    [Parameter(Mandatory = $true)][string]$Target,
+    [Parameter(Mandatory = $true, ParameterSetName = 'Deploy')][string]$Target,
     [ValidateSet('clean', 'copy')][string]$Mode = 'clean',
-    [switch]$Resume,
-    [switch]$Yes,
-    [switch]$Preview,
+    [Parameter(ParameterSetName = 'Deploy')][switch]$Resume,
+    [Parameter(ParameterSetName = 'Deploy')][switch]$Yes,
+    [Parameter(ParameterSetName = 'Deploy')][switch]$Preview,
+    [Parameter(Mandatory = $true, ParameterSetName = 'CheckBrand')][switch]$CheckBrand,
     [switch]$NonInteractive,
     [string]$Name,
     [string]$Monogram,
@@ -18,7 +20,7 @@ $assumeYes = $Yes.IsPresent
 . (Join-Path $PSScriptRoot 'bootstrap.ps1')
 
 $source = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$targetPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Target)
+$targetPath = if (-not $CheckBrand) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Target) }
 
 # The brand travels in the environment: Windows PowerShell 5.1 drops embedded double quotes from native arguments.
 $brand = [ordered]@{}
@@ -33,7 +35,8 @@ if ($DefaultBrand) { $brand['default_brand'] = $true }
 $brandJson = if ($brand.Count) { $brand | ConvertTo-Json -Compress }
 $python = Get-VenvPython $source
 if (-not (Test-IsPython311 $python)) {
-    if ($NonInteractive -and -not $assumeYes) {
+    # A brand check runs while the owner types and must never start an installation.
+    if ($CheckBrand -or ($NonInteractive -and -not $assumeYes)) {
         $python = Find-Python311
         if (-not $python) {
             throw 'Python 3.11 was not found. Allow its installation through winget or install Python 3.11 before retrying.'
@@ -43,10 +46,15 @@ if (-not (Test-IsPython311 $python)) {
     }
 }
 
-$arguments = @('-m', 'tools.deployment', '--source', $source, '--target', $targetPath, '--mode', $Mode.ToLowerInvariant())
-if ($Resume) { $arguments += '--resume' }
-if ($assumeYes) { $arguments += '--yes' }
-if ($Preview) { $arguments += '--preview' }
+$arguments = @('-m', 'tools.deployment', '--source', $source, '--mode', $Mode.ToLowerInvariant())
+if ($CheckBrand) {
+    $arguments += '--brand-check'
+} else {
+    $arguments += @('--target', $targetPath)
+    if ($Resume) { $arguments += '--resume' }
+    if ($assumeYes) { $arguments += '--yes' }
+    if ($Preview) { $arguments += '--preview' }
+}
 
 $previousPythonPath = $env:PYTHONPATH
 $previousNonInteractive = $env:JARVIS_DEPLOY_NONINTERACTIVE

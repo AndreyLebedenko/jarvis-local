@@ -4390,7 +4390,9 @@ options, Copy inheritance and the icon-generation stage are described there too.
 `tasks/story-instance-branding.md` lets one installation carry its own display
 identity. Task 1 (settings and runtime consumption) defines the contract; task 2
 adds icon generation and the launcher identity; task 3 integrates deployment
-(flags, `[brand]` rewrite, icon stage, shortcut); the wizard step follows later.
+(flags, `[brand]` rewrite, icon stage, shortcut); task 4 adds the wizard
+Identity step. Task 5 (planned, `tasks/task-instance-rebrand-existing-home.md`) lets the
+owner change the identity of an existing home in place; task 6 documents the story.
 
 - Source of truth: the optional `[brand]` section of `config.toml` with keys
   `name`, `monogram`, `accent`, `icon`. It is rejected in `config.ui.toml`
@@ -4551,6 +4553,65 @@ Deployment integration (task 3):
 - Not branded: `tools/create_launcher_shortcut.ps1` (`Jarvis Launcher.lnk`). The
   launcher is one per-user supervisor whose identity follows the home selected in
   its Settings at run time, so a shortcut named after one home would mislead.
+
+Wizard Identity step (task 4):
+
+- Placement (`tasks/done/task-instance-branding-4-wizard-identity-step.md`): an opt-in
+  page. The first page shows `Identity: default` (Copy: `same as the source`) and a
+  `Customize identity...` button; `Review` there skips the page, so the default flow
+  has no extra click and sends no brand data. The page opens only through the
+  button; its `Review` button runs the same review. `Back` from the review returns
+  to the page that started it. The page table, back targets and the review gate are
+  pure functions in `tools/install/wizard_pages.ps1`.
+- Validation is never re-implemented in PowerShell. `tools.deployment --brand-check`
+  (`deploy.ps1 -CheckBrand`, module `tools/deployment_brand_check.py`) runs
+  `plan_brand` for the typed request, read-only: no destination, no runtime lock,
+  and it never installs Python (it ignores the consent checkbox). It prints one
+  `JARVIS_DEPLOY_BRAND_CHECK:` line, `{ok, brand, icon_preview}` or `{ok: false,
+  field, message}`; `field` is the first `[brand].<key>` named in the planner's own
+  message (null for messages that name none, for example an unsupported source
+  form), and the wizard shows the message unchanged next to that field. A rejected
+  request is an answer (exit code 0); only a crash exits 1. `icon_preview` says
+  what to draw: `monogram` with the renderer's own `MonogramStyle` as `art`,
+  `image` with the validated PNG path, or `packaged` for the default brand.
+  `deploy.ps1` has two parameter sets (`Deploy` with the mandatory `-Target`, and
+  `CheckBrand` without it and without `-Resume`, `-Yes`, `-Preview`).
+- Request rules (`tools/install/wizard_identity.ps1`, pure state): the starting values
+  come from a check of the empty request (Clean: the default brand; Copy: the source
+  brand, `origin inherited`). Name and accent boxes are prefilled and a key is sent
+  only when the text differs from the start (accent compared case-insensitively); the
+  monogram box is empty-means-automatic and is sent only when non-empty, so an
+  untouched Copy sends nothing and stays a faithful inherit. The two reset
+  affordances are the two CLI switches: `Restore default identity` (`-DefaultBrand`,
+  alone, Copy only; the fields become read-only because the CLI forbids combining it)
+  and `Remove PNG` (`-NoIcon` when the source has an icon). `Discard changes` only
+  clears the local edits. A mode change discards edits; a non-empty request for a
+  destination whose manifest is `ready` (a resume, which rejects brand options) is
+  refused on the first page, never silently dropped.
+- Transport: the worker hands `JARVIS_WIZARD_BRAND` (the request as JSON with the
+  keys of `JARVIS_DEPLOY_BRAND`, always set so nothing is inherited) and
+  `JARVIS_WIZARD_CHECK_BRAND` to `wizard_job.ps1`, which splats them into the
+  `deploy.ps1` parameters (`ConvertTo-DeployBrandParameters`); `deploy.ps1` stays the
+  only builder of `JARVIS_DEPLOY_BRAND`. The Review page adds `Identity:` and
+  `Monogram:` or `Icon image:` lines for a non-default brand only.
+- Concurrency: edits restart a 350 ms debounce; at most one check process lives; an
+  answer is applied only when its request id is the latest; a check that has not
+  answered in 20 seconds is killed; a failed check leaves the page usable (the real
+  `--preview` at Review validates the same request).
+- Preview match rule (`tools/install/wizard_preview.ps1`): the preview is drawn natively
+  in WPF from the answer's `art` (disc, glyph colour, ratios, margin, canvas), so
+  PowerShell holds no art constant and no letter, hex or contrast rule; it therefore
+  trails typing by about a second. The image is a vector at 96 px and at 32 and 16 px
+  on a dark and a light strip. An invisible full-canvas rectangle fixes the image
+  extent (without it WPF stretches the disc to the target size). A Windows test
+  renders the real GDI+ icon and the WPF drawing offscreen and compares corners,
+  disc and glyph colour and the glyph's bounding box (within 2 px). A user PNG is
+  shown scaled only after an `ok` answer for that exact path, so the task-2 PNG
+  validation stands between a hostile file and the WPF decoder.
+- Hostile text: name box limit 100 characters (above the 32-character rule so the
+  planner's wording is still reachable), messages are cut at 300 characters and
+  control, format, separator and private-use characters become U+FFFD before display;
+  everything is assigned as plain text.
 
 ## Architecture v2.0 (MCP voice guide)
 

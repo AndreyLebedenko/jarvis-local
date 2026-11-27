@@ -3,7 +3,8 @@ $script:DeploymentWorkerJob = Join-Path $PSScriptRoot 'wizard_job.ps1'
 function Start-DeploymentWorker {
     param(
         [string]$ScriptPath, [string]$Target, [string]$Mode,
-        [bool]$Preview, [bool]$Resume, [bool]$Consent
+        [bool]$Preview, [bool]$Resume, [bool]$Consent,
+        [string]$BrandJson = '', [bool]$CheckBrand = $false
     )
 
     $info = New-Object Diagnostics.ProcessStartInfo
@@ -23,6 +24,9 @@ function Start-DeploymentWorker {
     $info.EnvironmentVariables['JARVIS_WIZARD_PREVIEW'] = [string]$Preview
     $info.EnvironmentVariables['JARVIS_WIZARD_RESUME'] = [string]$Resume
     $info.EnvironmentVariables['JARVIS_WIZARD_CONSENT'] = [string]$Consent
+    # Always set: an inherited value from the wizard's own environment must never reach the job.
+    $info.EnvironmentVariables['JARVIS_WIZARD_BRAND'] = $BrandJson
+    $info.EnvironmentVariables['JARVIS_WIZARD_CHECK_BRAND'] = [string]$CheckBrand
 
     $process = [Diagnostics.Process]::Start($info)
     $process.StandardInput.Close()
@@ -65,6 +69,35 @@ function ConvertFrom-DeploymentResultLine {
     } catch {
         return
     }
+}
+
+function ConvertFrom-BrandCheckLine {
+    param([string]$Line)
+
+    $prefix = 'JARVIS_DEPLOY_BRAND_CHECK:'
+    if (-not $Line.StartsWith($prefix)) { return }
+    try {
+        return $Line.Substring($prefix.Length) | ConvertFrom-Json
+    } catch {
+        return
+    }
+}
+
+function ConvertTo-DeployBrandParameters {
+    param([string]$Json)
+
+    $parameters = @{}
+    if ([string]::IsNullOrWhiteSpace($Json)) { return $parameters }
+    $brand = $Json | ConvertFrom-Json
+    $text = [ordered]@{ name = 'Name'; monogram = 'Monogram'; accent = 'Accent'; icon = 'Icon' }
+    foreach ($option in $text.Keys) {
+        if ($brand.PSObject.Properties[$option]) {
+            $parameters[$text[$option]] = [string]$brand.$option
+        }
+    }
+    if ($brand.no_icon -eq $true) { $parameters['NoIcon'] = $true }
+    if ($brand.default_brand -eq $true) { $parameters['DefaultBrand'] = $true }
+    return $parameters
 }
 
 function Get-DeploymentWizardPhase {
