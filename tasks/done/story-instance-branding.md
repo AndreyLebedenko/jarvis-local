@@ -1,8 +1,8 @@
 # Story: Instance branding
 
-Status: In progress, 2026-11-27. Tasks 1-5 are complete; task 6 is pending. No release
-version assigned. On 2026-11-27 the owner added task 5 (change the identity of an
-existing home) and moved documentation and release verification to task 6.
+Status: Completed, 2026-11-27. Tasks 1-6 are complete. No release version assigned.
+On 2026-11-27 the owner added task 5 (change the identity of an existing home) and moved
+documentation and release verification to task 6.
 
 Related work: `story-deployment-wizard.md`. Its wizard and `deploy.cmd` are
 the entry points this story extends; its tasks 1-4 are complete, task 5
@@ -100,23 +100,38 @@ Branding is hard-coded in several places:
 
 ## Acceptance criteria
 
-- [ ] Without `[brand]` every visible name and icon is exactly as before.
-- [ ] With a name, monogram and accent, the Status Console, touchstrip,
+- [x] Without `[brand]` every visible name and icon is exactly as before.
+  Proof: task 1 tests and handoff; the default flow of the task 3 and 4 handoffs.
+
+- [x] With a name, monogram and accent, the Status Console, touchstrip,
   window titles, tray tooltip, tray and window icons, MessageBox title and
   wizard shortcut all show the chosen identity.
-- [ ] The monogram defaults to the first letter of the name and can be
+  Proof: task 1 handoff (Status Console, touchstrip, titles, MessageBox), task 2 handoff (tray, window, icons), task 3 handoff and the rebrand handoff (shortcut).
+
+- [x] The monogram defaults to the first letter of the name and can be
   overridden; invalid values (empty, more than one letter, unsupported
   characters, over-long name, malformed accent) are rejected with a message
   naming the key, in config loading and in the wizard.
-- [ ] A user PNG replaces the generated icon; a missing, non-PNG or unusable
+  Proof: task 1 config tests and task 3, 4 and 5 handoffs (the same messages in the CLI and in the wizard).
+
+- [x] A user PNG replaces the generated icon; a missing, non-PNG or unusable
   PNG fails validation before deployment starts.
-- [ ] A hostile name (markup, quotes, control characters, very long) is shown
+  Proof: task 2 validation tests; `--brand-check` and `--rebrand` refuse before anything is written.
+
+- [x] A hostile name (markup, quotes, control characters, very long) is shown
   literally and cannot break the page, the TOML or the shortcut.
-- [ ] Clean mode applies the wizard's identity; Copy mode inherits the
+  Proof: task 1 UI contract tests, task 3 hostile-name cases and the task 4 and 5 hostile-input tests.
+
+- [x] Clean mode applies the wizard's identity; Copy mode inherits the
   source's brand and the override works; `brand/` assets are copied by value.
-- [ ] Technical identifiers and the single-instance guard are unchanged.
-- [ ] `PROJECT.md` records the brand contract; README documents the wizard
+  Proof: task 3 and task 4 tests and handoffs; task 5 does the same for an existing home.
+
+- [x] Technical identifiers and the single-instance guard are unchanged.
+  Proof: the single-instance and launcher tests stay green; no identifier was renamed.
+
+- [x] `PROJECT.md` records the brand contract; README documents the wizard
   step, CLI flags and the `[brand]` keys.
+  Proof: `PROJECT.md` ("Architecture: instance branding") and the README.md and README.ru.md section "Give an installation its own identity".
 
 ## Ordered task-card sequence
 
@@ -144,15 +159,30 @@ Branding is hard-coded in several places:
 
 ## Open questions
 
-1. Default accent colour value. Decide in task 1 (the owner's rule is fixed
-   below: the accent never recolours the UI theme).
-2. PNG requirements: minimum size and whether non-square images are centred or
-   rejected. Decide in task 2. Transparency is allowed from the start
-   (owner, 2026-11-26, tentative: open to discussion when task 2 begins).
+None left. Both were decided in the tasks that owned them:
+
+1. Default accent colour: `#3FE0D0`, the Status Console cyan (task 1,
+   `DEFAULT_BRAND_ACCENT` in `core/config.py`).
+2. PNG requirements (task 2, `core/brand_icon.py`): shorter side at least 64 px, longer
+   side at most 2048 px, aspect ratio at most 2:1, file at most 8 MiB; a non-square image
+   is fitted inside the square and centred; transparency is allowed.
 
 ## Resolved questions (owner, 2026-11-26)
 
 - The accent colours only the brand mark and the generated icon, never the UI
   theme.
 - Allowed monogram characters: Latin and Cyrillic letters and digits.
-- A user PNG may contain transparency (tentative, see open question 2).
+- A user PNG may contain transparency (confirmed in task 2).
+
+## Closing notes (2026-11-27)
+
+- Task 6 was done as: README.md and README.ru.md (the new section covers the wizard step,
+  the `deploy.cmd` options, the `[brand]` keys and the in-place rebrand), `PROJECT.md`, and
+  the owner's own check of deployment on 2026-11-27, who reported that it works. No
+  separate release handoff was written for task 6: the per-task handoffs
+  (`manual/instance-branding-1-handoff.md` to `manual/instance-branding-4-handoff.md` and
+  `manual/instance-rebrand-handoff.md`) cover every surface and were run by the owner.
+- Deployment of a clean and a copied home with the real installer was last covered by the
+  owner's handoff runs of tasks 3 and 4 and by this final check; the automated suite uses a
+  fake installer.
+- The story's tasks and their cards are in `tasks/done/`.

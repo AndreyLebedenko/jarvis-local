@@ -5,7 +5,7 @@ Status: Completed. Verified by the automated suite and, on 2026-11-27, by the ow
 `feat/branding-5-rebrand` (cut from `feat/branding-4-wizard`, which holds task 4). Task
 instance-branding-4's Identity page, `--brand-check` and page modules are the base of this card.
 
-Story: `tasks/story-instance-branding.md`, task 5 (release verification moved to task 6).
+Story: `tasks/done/story-instance-branding.md`, task 5 (release verification moved to task 6).
 This card reverses one decision of that story, "No in-place rebranding wizard. An existing
 home is rebranded by editing `[brand]` and restarting." The owner asked for the reversal on
 2026-11-27; the story card is updated accordingly. `PROJECT.md` records the contract when

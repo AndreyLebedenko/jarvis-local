@@ -4,7 +4,7 @@ Status: Completed. Owner ran the Windows handoff on 2026-11-26 and reported it
 working as specified (card approved by the orchestrator; blocking question 1
 resolved as option B, see "Blocking questions").
 
-Story: `tasks/story-instance-branding.md`, task 3 (Size: L in practice: seven
+Story: `tasks/done/story-instance-branding.md`, task 3 (Size: L in practice: seven
 modules touched, two new tools modules, a PowerShell transport, a real-renderer
 Windows test and a human handoff; the card first said M-L).
 
@@ -523,7 +523,7 @@ recorded as decisions, not conflicts:
   (story task 4); `--preview` already returns the `brand` object it will need.
 - README and README.ru do not mention the new options (story task 5); the handoff and
   `PROJECT.md` carry the documentation until then.
-- `tasks/story-instance-branding.md` still says tasks 1-2 are complete (the orchestrator updates
+- `tasks/done/story-instance-branding.md` still says tasks 1-2 are complete (the orchestrator updates
   the story card and moves this card on acceptance).
 - A faithful Copy carries a stale `brand/` by design (decision above); regenerating it needs the
   launcher button or `python -m jarvis.core.brand_render --home <dir>`.

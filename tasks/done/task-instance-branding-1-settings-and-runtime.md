@@ -2,7 +2,7 @@
 
 Status: Completed. Owner ran the Windows handoff on 2026-11-26: normal paths and rejection cases behaved as specified.
 
-Story: `tasks/story-instance-branding.md`, task 1 (Size: M).
+Story: `tasks/done/story-instance-branding.md`, task 1 (Size: M).
 
 ## Summary
 

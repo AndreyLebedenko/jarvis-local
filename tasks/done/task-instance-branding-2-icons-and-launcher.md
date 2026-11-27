@@ -5,7 +5,7 @@ working as specified. Owner decisions of 2026-11-26 recorded below
 (regeneration is a user action: CLI and a launcher Settings button; no
 self-healing).
 
-Story: `tasks/story-instance-branding.md`, task 2 (Size: M).
+Story: `tasks/done/story-instance-branding.md`, task 2 (Size: M).
 
 ## Summary
 

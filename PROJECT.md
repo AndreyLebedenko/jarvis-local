@@ -4387,7 +4387,7 @@ options, Copy inheritance and the icon-generation stage are described there too.
 
 ## Architecture: instance branding (2026-11-26)
 
-`tasks/story-instance-branding.md` lets one installation carry its own display
+`tasks/done/story-instance-branding.md` lets one installation carry its own display
 identity. Task 1 (settings and runtime consumption) defines the contract; task 2
 adds icon generation and the launcher identity; task 3 integrates deployment
 (flags, `[brand]` rewrite, icon stage, shortcut); task 4 adds the wizard

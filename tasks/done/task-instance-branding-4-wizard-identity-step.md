@@ -5,7 +5,7 @@ manual check of the wizard (window, dialogs and installer, human-run per
 `manual/instance-branding-4-handoff.md`): it works as designed. The orchestrator approved
 the card and the three confirmation items (see "Resolved: confirmation items").
 
-Story: `tasks/story-instance-branding.md`, task 4 (Size: L; one Python tool module,
+Story: `tasks/done/story-instance-branding.md`, task 4 (Size: L; one Python tool module,
 three PowerShell modules, XAML, deploy-script plumbing, a drawing parity test and a
 human handoff).
 
