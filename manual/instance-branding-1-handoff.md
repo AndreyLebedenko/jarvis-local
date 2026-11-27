@@ -11,9 +11,10 @@ differs from before.
 
 Out of scope here: tray icon, launcher window, shortcut and generated icon
 files (tasks 2 and 3). The `[brand]` keys are documented only in
-`config.example.toml` (section `[brand]`, commented) and `PROJECT.md` ("Architecture:
-instance branding"); the README does not mention them yet (story task 5 debt, not
-crossed silently - do not look for them there).
+`config.example.toml` (section `[brand]`, commented), `PROJECT.md` ("Architecture:
+instance branding") and, since story task 6, the README.md section "Give an installation
+its own identity" (README.ru.md: "Собственная идентичность инстанса"). The README did not
+mention them when this handoff was written.
 
 ## Preparation
 

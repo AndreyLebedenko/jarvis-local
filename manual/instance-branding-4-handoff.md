@@ -21,10 +21,12 @@ preview; it validates with the same rules as `deploy.cmd` (it calls the same cod
 preview matches the icon the deployment generates; an untouched wizard deploys exactly as
 before; the identity the owner chose is what the deployed home gets.
 
-Documentation debt (stated, not crossed): `README.md` and `README.ru.md` do not mention
-the Identity step, the brand options or `-CheckBrand` (story task 6). This handoff and
-`PROJECT.md` (sections "Architecture: instance branding" and "Wizard Identity step") are
-the only documentation. Everything a case relies on is named here with its source.
+Documentation: `README.md` and `README.ru.md` (section "Give an installation its own
+identity") describe the Identity step and the brand options. They deliberately do not
+describe `-CheckBrand`, the read-only check the wizard runs while you type; it is
+documented in this handoff and in `PROJECT.md` (sections "Architecture: instance
+branding" and "Wizard Identity step"). Everything a case relies on is named here with its
+source.
 
 ## Names and fixed paths
 

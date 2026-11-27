@@ -20,10 +20,11 @@ uses its icon.
 
 Out of scope here (do not look for them): the wizard Identity screen with the
 live preview (story task 4: the wizard has no brand fields yet, so a wizard Copy
-can only INHERIT a brand), the README (story task 5: it does not mention `-Name`,
-`-Monogram`, `-Accent`, `-Icon`, `-NoIcon`, `-DefaultBrand`, `[brand]` or
-`brand-source\` yet; this handoff and `PROJECT.md` section "Architecture:
-instance branding" are the only documentation), the tray launcher shortcut
+can only INHERIT a brand), the README (when this handoff was written it did not mention
+`-Name`, `-Monogram`, `-Accent`, `-Icon`, `-NoIcon`, `-DefaultBrand`, `[brand]` or
+`brand-source\`; since story task 6 the README.md section "Give an installation its own
+identity" covers them, as do this handoff and `PROJECT.md` section "Architecture:
+instance branding"), the tray launcher shortcut
 (`tools\create_launcher_shortcut.ps1` is deliberately unchanged:
 `Jarvis Launcher.lnk`, packaged icon).
 

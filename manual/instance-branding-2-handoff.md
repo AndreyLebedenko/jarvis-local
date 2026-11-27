@@ -17,9 +17,10 @@ icons` in the launcher Settings (or run the CLI). The tooltip name is re-read fr
 
 Out of scope here: the Status Console header and window titles (task 1 handoff,
 `manual/instance-branding-1-handoff.md`), deployment flags and shortcuts (task 3),
-the wizard (task 4). The README does not mention `[brand]`, the button or the CLI
-yet (story task 5 debt, not crossed silently - do not look for them there). The
-keys are in `config.example.toml` (section `[brand]`, commented) and `PROJECT.md`
+the wizard (task 4). The README did not mention `[brand]`, the button or the CLI when
+this handoff was written; since story task 6 the README.md section "Give an installation
+its own identity" (README.ru.md: "Собственная идентичность инстанса") covers them. The
+keys are also in `config.example.toml` (section `[brand]`, commented) and `PROJECT.md`
 ("Architecture: instance branding").
 
 ## Names used below

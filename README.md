@@ -298,6 +298,70 @@ target and mode and add `-Resume`. The `.jarvis-deployment.json` phase must be
 `ready`. For `preparing`, choose a new destination or remove the incomplete
 directory after checking its path, then run the deployment again.
 
+### Give an installation its own identity
+
+To tell several installations on one machine apart, an installation can have its
+own display name, a monogram letter, an accent colour and an optional PNG icon.
+Without any of them everything is named and drawn as "Jarvis", exactly as before.
+Only one Jarvis runs at a time; the identity is display-only. Mutexes, the
+launcher folder, the autostart entry and the `jarvis` package keep their names,
+and the persona and prompts are not affected.
+
+**In the wizard.** After choosing the mode and destination, `Customize identity...`
+opens an optional page with a live preview of the icon. Clean starts from the
+default identity; Copy starts from the source's identity and sends nothing unless
+you change something. `Remove PNG` drops the PNG, and in Copy `Restore default
+identity` returns to the default (its fields are then read-only, because the
+default cannot be combined with other changes). The Review page shows the
+resulting identity. Skipping the page keeps today's behaviour.
+
+**From PowerShell.** The same rules and messages, through the same code:
+
+```powershell
+.\deploy.cmd -Target 'D:\AI\Jarvis-work' -Mode clean -Name Work -Monogram W -Accent '#E0A03F' -Icon 'D:\pics\logo.png'
+```
+
+| Option | Meaning |
+| --- | --- |
+| `-Name` | Display name, 1 to 32 characters. |
+| `-Monogram` | One Latin or Cyrillic letter or digit; the default is the first character of the name. |
+| `-Accent` | `#RRGGBB`; colours only the brand mark and the generated icon, never the UI theme. |
+| `-Icon` | A PNG that replaces the generated icon: 64 to 2048 px, at most 2:1, at most 8 MiB. The file is copied to `brand-source/icon.png` in the destination. |
+| `-NoIcon` | Drop the PNG and use the generated monogram. |
+| `-DefaultBrand` | Back to the default identity; it cannot be combined with other options. |
+
+An option you leave out keeps the stored value (in Copy, the source's). `-Icon`
+and `-NoIcon` exclude each other, and none of these options works with
+`-Resume`. Through `deploy.cmd` a name with spaces or with `&`, `^` or `%` must be
+wrapped in double quotes, and an embedded `"` is written as `\"`.
+
+**Where it is stored.** In `config.toml` under `[brand]` with the keys `name`,
+`monogram`, `accent` and `icon` (a path relative to the home; see
+`config.example.toml`). It must not be in `config.ui.toml`, which the Settings
+form rewrites. Generated icons live in `brand/` (`brand.png`, `brand.ico`).
+
+**Change it later, in place.** An existing home can get a new identity without a
+new folder. In the wizard choose **Change the identity of an existing home**,
+enter the home folder and use the same page; from PowerShell:
+
+```powershell
+.\deploy.cmd -Rebrand -Target 'D:\AI\Jarvis-work' -Name Studio -Accent '#112233'
+```
+
+Nothing else in the home changes. The command refuses an empty request, a
+folder without `config.toml`, a home that predates this feature (update it first),
+a `[brand]` in `config.ui.toml` and any invalid value, and leaves the home
+untouched in each case. It also works while Jarvis runs. The Status Console and
+window titles change at the next Jarvis start; the tray name and icon at the next
+mode start from the tray, or at once with **Regenerate icons** in the launcher
+Settings. `-DefaultBrand` removes `[brand]` and deletes nothing: `brand/` and
+`brand-source/` stay. A shortcut you saved earlier keeps its name; save a new
+one from the wizard's finish page to get the new name and icon.
+
+You can still edit `[brand]` by hand and rebuild the icons with **Regenerate
+icons** or `python -m jarvis.core.brand_render --home <home>`; nothing
+regenerates by itself.
+
 ### Manual installation
 
 Fallback without the installer. From the repository root, in a Python 3.11

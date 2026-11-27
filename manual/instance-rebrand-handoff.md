@@ -19,10 +19,12 @@ What it answers: a home that is already deployed can get a new name, letter, acc
 or PNG without a new folder; the rules and messages are the deployment's own; a refused
 request leaves the home byte-identical; the wizard and the command do the same thing.
 
-Documentation debt (stated, not crossed): `README.md` and `README.ru.md` do not mention
-`-Rebrand` or the third wizard mode (story task 6). This handoff and `PROJECT.md` (section
-"Architecture: instance branding", part "Rebrand an existing home") are the only
-documentation. Everything a case relies on is named here with its source.
+Documentation: `README.md` and `README.ru.md` (section "Give an installation its own
+identity", paragraph "Change it later, in place") describe `-Rebrand` and the third wizard
+mode. They deliberately do not describe `-Rebrand -CheckBrand`, the read-only check the
+wizard runs while you type; it is documented in this handoff and in `PROJECT.md` (section
+"Architecture: instance branding", part "Rebrand an existing home"). Everything a case
+relies on is named here with its source.
 
 ## Names and fixed paths
 
