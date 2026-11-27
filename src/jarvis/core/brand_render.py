@@ -28,6 +28,7 @@ from jarvis.core.brand_icon import (
     check_standard_ico,
     fit_inside_square,
     inspect_png,
+    validate_icon_file,
     validate_icon_png,
 )
 from jarvis.core.config import BrandSettings, ConfigError, load_brand
@@ -99,10 +100,17 @@ def monogram_style(brand: BrandSettings) -> MonogramStyle:
     return MonogramStyle(ord(brand.monogram), brand.accent, glyph)
 
 
-def build_request(home: Path, brand: BrandSettings) -> RenderRequest:
+def build_request(
+    home: Path, brand: BrandSettings, *, image: Path | None = None
+) -> RenderRequest:
+    """`image` is a PNG not yet in the home (a rebrand renders it before copying it)."""
     if brand.icon is None:
         return monogram_style(brand)
-    icon = validate_icon_png(home, brand.icon)
+    icon = (
+        validate_icon_file(image)
+        if image is not None
+        else validate_icon_png(home, brand.icon)
+    )
     return ImageRequest(
         icon.path, fit_inside_square(icon.info.width, icon.info.height, MASTER_SIDE)
     )
@@ -255,16 +263,22 @@ def generate_brand_assets(
     brand: BrandSettings,
     *,
     renderer: Renderer = run_powershell_renderer,
+    image: Path | None = None,
+    before_publish: Callable[[], None] | None = None,
 ) -> BrandAssets:
     """Renders into a staging directory, verifies, then replaces each published
-    file atomically: a failure before publishing leaves the old files alone."""
+    file atomically: a failure before publishing leaves the old files alone.
+    `before_publish` runs once the staged files are verified and before the first
+    replacement, so a caller can write what the icons belong to."""
     home = home.resolve()
-    request = build_request(home, brand)
+    request = build_request(home, brand, image=image)
     directory = brand_asset_directory(home)
     directory.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".render-", dir=directory))
     try:
         png, ico = _render_to(request, brand, renderer, staging)
+        if before_publish is not None:
+            before_publish()
         published = BrandAssets(directory / BRAND_PNG_NAME, directory / BRAND_ICO_NAME)
         os.replace(png, published.png)
         os.replace(ico, published.ico)

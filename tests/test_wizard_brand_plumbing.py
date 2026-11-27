@@ -16,6 +16,7 @@ from wizard_ps_support import WIZARD_DIR, json_lines, run_powershell, run_snippe
 from jarvis.core.config import BrandSettings, load_brand
 from tools import deployment
 from tools.deployment_brand_check import BRAND_CHECK_PREFIX
+from tools.deployment_rebrand import REBRAND_PREFIX
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell worker")
 
@@ -170,6 +171,7 @@ def run_job(home: Path, tmp_path: Path, **wizard: str) -> tuple[int, list[str], 
             "JARVIS_WIZARD_CONSENT": "False",
             "JARVIS_WIZARD_BRAND": "",
             "JARVIS_WIZARD_CHECK_BRAND": "False",
+            "JARVIS_WIZARD_REBRAND": "False",
             **wizard,
         },
     )
@@ -288,3 +290,142 @@ def test_a_deployment_through_the_job_without_a_brand_is_the_old_deployment(
     assert code == 0, errors + "\n".join(lines)
     assert not (target / "brand").exists()
     assert not (target / "brand-source").exists()
+
+
+# --- rebrand an existing home -----------------------------------------------------
+
+
+def existing_home(tmp_path: Path) -> Path:
+    root = tmp_path / "existing home"
+    (root / "src/jarvis/core").mkdir(parents=True)
+    (root / "src/jarvis/core/brand.py").write_text("# marker", encoding="utf-8")
+    (root / "config.toml").write_text(
+        '[brand]\nname = "Work"\nmonogram = "W"\naccent = "#E0A03F"\n', encoding="utf-8"
+    )
+    return root
+
+
+def test_the_worker_hands_a_rebrand_to_the_backend_as_target_and_brand_only(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "fake backend.ps1"
+    backend.write_text(
+        """param([string]$Target, [string]$Mode, [switch]$Rebrand, [switch]$CheckBrand,
+    [switch]$NonInteractive, [string]$Name)
+$bound = [ordered]@{}
+foreach ($pair in $PSBoundParameters.GetEnumerator()) {
+    $value = $pair.Value
+    $bound[$pair.Key] = if ($value -is [switch]) { $value.IsPresent } else { $value }
+}
+[Console]::WriteLine(($bound | ConvertTo-Json -Compress))
+exit 0
+""",
+        encoding="utf-8",
+    )
+    job = tmp_path / "job.ps1"
+    shutil.copy2(WIZARD_DIR / "wizard_job.ps1", job)
+    shutil.copy2(WIZARD_DIR / "wizard_worker.ps1", tmp_path / "wizard_worker.ps1")
+    body = r"""
+. $env:WORKER
+foreach ($check in @($false, $true)) {
+    $worker = Start-DeploymentWorker $env:BACKEND 'C:\home' 'clean' `
+        $false $false $false '{"name": "Lab"}' $check $true
+    $lines = @()
+    do {
+        $batch = Receive-DeploymentWorker $worker
+        $lines += @($batch.Lines | ForEach-Object { $_ })
+        if (-not $batch.Done) { Start-Sleep -Milliseconds 20 }
+    } until ($batch.Done)
+    $worker.Process.Dispose()
+    $lines[0]
+}
+"""
+    result = run_snippet(
+        tmp_path,
+        body,
+        "wizard_worker.ps1",
+        env={"WORKER": str(WIZARD_DIR / "wizard_worker.ps1"), "BACKEND": str(backend)},
+    )
+
+    apply, check = json_lines(result)
+    assert apply == {
+        "Target": r"C:\home",
+        "Rebrand": True,
+        "NonInteractive": True,
+        "Name": "Lab",
+    }
+    assert check == {**apply, "CheckBrand": True}
+
+
+def test_the_rebrand_line_parser_ignores_everything_else(tmp_path: Path) -> None:
+    body = r"""
+$prefix = 'JARVIS_DEPLOY_REBRAND:'
+(ConvertFrom-RebrandLine ($prefix + '{"ok": true, "files": ["config.toml"]}')).files
+$others = @('', ($prefix + '{broken'), 'JARVIS_DEPLOY_BRAND_CHECK:{}', 'ERROR: x')
+foreach ($line in $others) {
+    if (ConvertFrom-RebrandLine $line) { exit 9 }
+}
+"""
+    result = run_snippet(tmp_path, body, "wizard_worker.ps1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.split() == ["config.toml"]
+
+
+def test_a_rebrand_through_the_job_changes_the_existing_home_with_real_icons(
+    home: Path, tmp_path: Path
+) -> None:
+    target = existing_home(tmp_path)
+
+    code, lines, errors = run_job(
+        home,
+        tmp_path,
+        JARVIS_WIZARD_REBRAND="True",
+        JARVIS_WIZARD_TARGET=str(target),
+        JARVIS_WIZARD_BRAND=json.dumps({"name": HOSTILE, "accent": "#112233"}),
+    )
+
+    assert code == 0, errors + "\n".join(lines)
+    answer = answer_of(lines, REBRAND_PREFIX)
+    assert answer["ok"] is True
+    assert answer["files"] == ["config.toml", "brand/brand.png", "brand/brand.ico"]
+    assert load_brand(target / "config.toml") == BrandSettings(HOSTILE, "W", "#112233")
+    assert (target / "brand" / "brand.ico").is_file()
+
+
+def test_a_rebrand_check_through_the_job_answers_the_stored_brand_and_writes_nothing(
+    home: Path, tmp_path: Path
+) -> None:
+    target = existing_home(tmp_path)
+
+    code, lines, errors = run_job(
+        home,
+        tmp_path,
+        JARVIS_WIZARD_REBRAND="True",
+        JARVIS_WIZARD_CHECK_BRAND="True",
+        JARVIS_WIZARD_TARGET=str(target),
+    )
+
+    assert code == 0, errors + "\n".join(lines)
+    answer = answer_of(lines, BRAND_CHECK_PREFIX)
+    assert answer["brand"]["name"] == "Work"
+    assert answer["brand"]["origin"] == "inherited"
+    assert not (target / "brand").exists()
+
+
+def test_a_rebrand_never_installs_python_even_with_consent_in_the_environment(
+    home: Path, tmp_path: Path
+) -> None:
+    code, lines, errors = run_job(
+        home,
+        tmp_path,
+        ready="0",
+        JARVIS_WIZARD_REBRAND="True",
+        JARVIS_WIZARD_TARGET=str(existing_home(tmp_path)),
+        JARVIS_WIZARD_CONSENT="True",
+        JARVIS_WIZARD_BRAND=json.dumps({"name": "Lab"}),
+    )
+
+    assert code == 1
+    assert "Python 3.11 was not found" in errors
+    assert not any(line.startswith(REBRAND_PREFIX) for line in lines)

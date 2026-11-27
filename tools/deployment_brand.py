@@ -228,7 +228,7 @@ def _check_rewrite(
     before anything is written. Path rebasing never touches [brand]."""
     config = source / DEFAULT_CONFIG_PATH
     path = config if is_copy and config.is_file() else source / _EXAMPLE_CONFIG
-    result = _rewritten(path.read_bytes().decode("utf-8"), table, path)
+    result = rewritten_config(path.read_bytes().decode("utf-8"), table, path)
     written = parse_layer(result, path).get(BRAND_TABLE, {})
     if not isinstance(written, dict) or _validated_brand(written) != brand:
         raise DeploymentPlanError(f"Cannot rewrite [brand] in {path}")
@@ -270,7 +270,7 @@ def _destination_config(target: Path) -> str | None:
     return None
 
 
-def _reject_ui_layer_brand(target: Path) -> None:
+def reject_ui_layer_brand(target: Path) -> None:
     path = target / DEFAULT_UI_CONFIG_PATH
     if path.is_file() and BRAND_TABLE in parse_layer(path.read_text("utf-8"), path):
         raise DeploymentPlanError(
@@ -279,7 +279,7 @@ def _reject_ui_layer_brand(target: Path) -> None:
         )
 
 
-def _rewritten(content: str, table: dict[str, str], origin: Path) -> str:
+def rewritten_config(content: str, table: dict[str, str], origin: Path) -> str:
     if not table:
         return remove_table(content, BRAND_TABLE, origin)
     current = parse_layer(content, origin).get(BRAND_TABLE, {})
@@ -299,7 +299,7 @@ def _rewrite_config(target: Path, plan: BrandPlan) -> None:
     if content is None:
         return
     config = target / DEFAULT_CONFIG_PATH
-    result = _rewritten(content, plan.table, config)
+    result = rewritten_config(content, plan.table, config)
     if result != content:
         config.write_bytes(result.encode("utf-8"))
 
@@ -312,7 +312,7 @@ def _copy_file(source: Path, destination: Path) -> None:
 def apply_brand(plan: BrandPlan, target: Path) -> None:
     """Writes the destination brand. A faithful Copy changes nothing in the
     copied config; every failure is raised before the deployment is ready."""
-    _reject_ui_layer_brand(target)
+    reject_ui_layer_brand(target)
     _rewrite_config(target, plan)
     if plan.carried_assets is not None:
         copy_directory_by_value(plan.carried_assets, target / BRAND_DIRECTORY_NAME)

@@ -221,3 +221,20 @@ def test_check_brand_cannot_be_combined_with_deployment_parameters(
 
     assert result.returncode != 0
     assert BRAND_CHECK_PREFIX not in result.stdout
+
+
+@pytest.mark.parametrize("extra", ["-Resume", "-Preview", "-Yes"])
+def test_rebrand_cannot_be_combined_with_deployment_parameters(
+    home: Path, tmp_path: Path, extra: str
+) -> None:
+    result = run_deploy_cmd(home, tmp_path, "-Rebrand", "-Target", "x", extra)
+
+    assert result.returncode != 0
+    assert "JARVIS_DEPLOY_REBRAND:" not in result.stdout
+
+
+def test_rebrand_needs_a_target(home: Path, tmp_path: Path) -> None:
+    result = run_deploy_cmd(home, tmp_path, "-Rebrand", "-Name", "Lab")
+
+    assert result.returncode != 0
+    assert "JARVIS_DEPLOY_REBRAND:" not in result.stdout

@@ -205,6 +205,55 @@ def test_a_failing_renderer_keeps_the_previous_files_and_removes_staging(tmp_pat
     ]
 
 
+def test_before_publish_runs_after_rendering_and_before_any_file_is_replaced(tmp_path):
+    generate_brand_assets(tmp_path, WORK, renderer=FakeRenderer())
+    seen = []
+    newer = make_png(512, 512, pixel=b"\x01\x02\x03\x04")
+
+    generate_brand_assets(
+        tmp_path,
+        WORK,
+        renderer=FakeRenderer(png=newer),
+        before_publish=lambda: seen.append(
+            (tmp_path / "brand" / "brand.png").read_bytes()
+        ),
+    )
+
+    assert seen == [GOOD_PNG]
+    assert (tmp_path / "brand" / "brand.png").read_bytes() == newer
+
+
+def test_a_failing_before_publish_keeps_the_previous_files(tmp_path):
+    generate_brand_assets(tmp_path, WORK, renderer=FakeRenderer())
+
+    def refuse():
+        raise OSError("no room")
+
+    with pytest.raises(OSError, match="no room"):
+        generate_brand_assets(
+            tmp_path, WORK, renderer=FakeRenderer(), before_publish=refuse
+        )
+
+    assert (tmp_path / "brand" / "brand.png").read_bytes() == GOOD_PNG
+    assert sorted(entry.name for entry in (tmp_path / "brand").iterdir()) == [
+        "brand.ico",
+        "brand.png",
+    ]
+
+
+def test_an_explicit_image_is_rendered_instead_of_the_homes_icon_path(tmp_path):
+    chosen = make_png(256, 128)
+    (tmp_path / "chosen.png").write_bytes(chosen)
+    brand = BrandSettings(name="Work", monogram="W", accent="#E0A03F", icon="icon.png")
+    renderer = FakeRenderer()
+
+    generate_brand_assets(
+        tmp_path, brand, renderer=renderer, image=tmp_path / "chosen.png"
+    )
+
+    assert renderer.requests[0].source == (tmp_path / "chosen.png").resolve()
+
+
 @pytest.mark.parametrize(
     ("png", "ico", "message"),
     [

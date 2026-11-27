@@ -4,7 +4,7 @@ function Start-DeploymentWorker {
     param(
         [string]$ScriptPath, [string]$Target, [string]$Mode,
         [bool]$Preview, [bool]$Resume, [bool]$Consent,
-        [string]$BrandJson = '', [bool]$CheckBrand = $false
+        [string]$BrandJson = '', [bool]$CheckBrand = $false, [bool]$Rebrand = $false
     )
 
     $info = New-Object Diagnostics.ProcessStartInfo
@@ -27,6 +27,7 @@ function Start-DeploymentWorker {
     # Always set: an inherited value from the wizard's own environment must never reach the job.
     $info.EnvironmentVariables['JARVIS_WIZARD_BRAND'] = $BrandJson
     $info.EnvironmentVariables['JARVIS_WIZARD_CHECK_BRAND'] = [string]$CheckBrand
+    $info.EnvironmentVariables['JARVIS_WIZARD_REBRAND'] = [string]$Rebrand
 
     $process = [Diagnostics.Process]::Start($info)
     $process.StandardInput.Close()
@@ -75,6 +76,18 @@ function ConvertFrom-BrandCheckLine {
     param([string]$Line)
 
     $prefix = 'JARVIS_DEPLOY_BRAND_CHECK:'
+    if (-not $Line.StartsWith($prefix)) { return }
+    try {
+        return $Line.Substring($prefix.Length) | ConvertFrom-Json
+    } catch {
+        return
+    }
+}
+
+function ConvertFrom-RebrandLine {
+    param([string]$Line)
+
+    $prefix = 'JARVIS_DEPLOY_REBRAND:'
     if (-not $Line.StartsWith($prefix)) { return }
     try {
         return $Line.Substring($prefix.Length) | ConvertFrom-Json

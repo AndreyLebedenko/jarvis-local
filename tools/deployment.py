@@ -41,6 +41,7 @@ from tools.deployment_plan import (
     application_inventory,
     plan_deployment,
 )
+from tools.deployment_rebrand import REBRAND_PREFIX, check_home_brand, rebrand_home
 from tools.deployment_shortcut import shortcut_result
 from tools.deployment_snapshot import copy_snapshot, snapshot_layers, validate_copy
 
@@ -304,14 +305,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--preview", action="store_true")
     parser.add_argument("--brand-check", action="store_true")
+    parser.add_argument("--rebrand", action="store_true")
     args = parser.parse_args(argv)
+    if args.rebrand and (args.resume or args.yes or args.preview or args.brand_check):
+        parser.error(
+            "--rebrand cannot be combined with --resume, --yes, --preview "
+            "or --brand-check"
+        )
+    if args.brand_check and (args.resume or args.yes or args.preview):
+        parser.error(
+            "--brand-check cannot be combined with --resume, --yes or --preview"
+        )
     if args.brand_check:
-        answer = check_brand_environment(args.source.resolve(), args.mode, os.environ)
+        answer = (
+            check_home_brand(args.target, os.environ)
+            if args.target is not None
+            else check_brand_environment(args.source.resolve(), args.mode, os.environ)
+        )
         print(BRAND_CHECK_PREFIX + json.dumps(answer), flush=True)
         return 0
     if args.target is None:
         parser.error("the following arguments are required: --target")
     try:
+        if args.rebrand:
+            return _rebrand(args.target)
         brand = request_from_environment(os.environ)
         if args.preview:
             result = preview_deployment(
@@ -327,9 +344,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             assume_yes=args.yes,
             brand=brand,
         )
-    except (DeploymentError, DeploymentPlanError, OSError) as error:
+    except (DeploymentError, DeploymentPlanError, BrandStageError, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
+
+
+def _rebrand(home: Path) -> int:
+    """A rejected request is an answer (exit 0); a half-applied one is an error."""
+    try:
+        result = rebrand_home(home, request_from_environment(os.environ))
+    except DeploymentPlanError as error:
+        answer: dict[str, object] = {"ok": False, "message": str(error)}
+    else:
+        answer = {"ok": True, "brand": result.brand, "files": list(result.files)}
+    print(REBRAND_PREFIX + json.dumps(answer), flush=True)
+    return 0
 
 
 if __name__ == "__main__":

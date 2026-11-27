@@ -5,7 +5,11 @@ $ProgressPreference = 'SilentlyContinue'
 
 try {
     $brand = ConvertTo-DeployBrandParameters $env:JARVIS_WIZARD_BRAND
-    if ($env:JARVIS_WIZARD_CHECK_BRAND -eq 'True') {
+    if ($env:JARVIS_WIZARD_REBRAND -eq 'True') {
+        $check = @{}
+        if ($env:JARVIS_WIZARD_CHECK_BRAND -eq 'True') { $check['CheckBrand'] = $true }
+        & $env:JARVIS_WIZARD_SCRIPT -Rebrand -Target $env:JARVIS_WIZARD_TARGET -NonInteractive @check @brand
+    } elseif ($env:JARVIS_WIZARD_CHECK_BRAND -eq 'True') {
         & $env:JARVIS_WIZARD_SCRIPT -CheckBrand -Mode $env:JARVIS_WIZARD_MODE -NonInteractive @brand
     } else {
         & $env:JARVIS_WIZARD_SCRIPT -Target $env:JARVIS_WIZARD_TARGET `

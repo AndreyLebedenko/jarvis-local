@@ -16,6 +16,7 @@ CLI_REPOSITORY_FILES = (
     "tools/deployment_brand.py",
     "tools/deployment_brand_check.py",
     "tools/deployment_plan.py",
+    "tools/deployment_rebrand.py",
     "tools/deployment_shortcut.py",
     "tools/deployment_snapshot.py",
     "tools/deployment_toml.py",

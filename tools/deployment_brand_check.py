@@ -28,7 +28,7 @@ _FIELD = re.compile(r"\[brand\]\.(name|monogram|accent|icon)")
 Answer = dict[str, object]
 
 
-def _rejected(message: str) -> Answer:
+def rejected(message: str) -> Answer:
     named = _FIELD.search(message)
     return {
         "ok": False,
@@ -52,7 +52,7 @@ def check_brand(
     try:
         plan = plan_brand(source, mode, request)
     except DeploymentPlanError as error:
-        return _rejected(str(error))
+        return rejected(str(error))
     return {
         "ok": True,
         "brand": plan.preview(),
@@ -66,5 +66,5 @@ def check_brand_environment(
     try:
         request = request_from_environment(environment)
     except DeploymentPlanError as error:
-        return _rejected(str(error))
+        return rejected(str(error))
     return check_brand(source, mode, request)
