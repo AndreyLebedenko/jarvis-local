@@ -1,11 +1,15 @@
 # Story: Instance branding
 
-Status: In progress, 2026-11-26. Tasks 1-3 are complete; tasks 4-5 are pending. No
-release version assigned.
+Status: In progress, 2026-11-27. Tasks 1-4 are complete; tasks 5-6 are pending. No
+release version assigned. On 2026-11-27 the owner added task 5 (change the identity of an
+existing home) and moved documentation and release verification to task 6.
 
 Related work: `story-deployment-wizard.md`. Its wizard and `deploy.cmd` are
 the entry points this story extends; its tasks 1-4 are complete, task 5
 (release verification) is pending and unaffected.
+
+Story task 5 (`task-instance-rebrand-existing-home.md`) reuses the Identity page and
+`--brand-check` of task 4.
 
 ## Goal
 
@@ -73,8 +77,11 @@ Branding is hard-coded in several places:
   -Accent -Icon <png>` feed the same code. Clean mode starts from the default
   brand. Copy mode inherits the source's brand and lets the owner override it.
   The wizard shortcut name and icon come from the resolved brand.
-- **No in-place rebranding wizard.** An existing home is rebranded by editing
-  `[brand]` and restarting.
+- **In-place rebranding (task 5, owner 2026-11-27).** An existing home can have its
+  identity changed without deploying to a new folder, from the CLI (`deploy.cmd -Rebrand`)
+  and from a third wizard mode, with the same validation and preview. This replaces the
+  earlier decision "no in-place rebranding wizard; edit `[brand]` and restart". Editing
+  `[brand]` by hand and using `Regenerate icons` keeps working.
 
 ## Boundaries
 
@@ -126,10 +133,14 @@ Branding is hard-coded in several places:
    installer.
 4. **Wizard step.** The "Identity" screen with live preview and the shared
    validation rules; UI state-transition tests and a Windows visual handoff.
-5. **Documentation and release verification.** README, `PROJECT.md`, and a
+5. **Change the identity of an existing home.** `--rebrand` and `deploy.ps1
+   -Rebrand`, a third wizard mode on the Identity page of task 4, an
+   all-or-nothing write of `[brand]`, the source PNG and the icons. Card:
+   `task-instance-rebrand-existing-home.md`.
+6. **Documentation and release verification.** README, `PROJECT.md`, and a
    human-run end-to-end handoff: deploy a clean and a copied home with a
-   custom name, a generated monogram and a custom PNG, and confirm every
-   surface listed in the acceptance criteria.
+   custom name, a generated monogram and a custom PNG, rebrand an existing home,
+   and confirm every surface listed in the acceptance criteria.
 
 ## Open questions
 
